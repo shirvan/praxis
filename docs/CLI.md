@@ -1,0 +1,538 @@
+# CLI Reference
+
+The `praxis` binary is the primary human interface for Praxis. It communicates with Praxis Core exclusively through the Restate ingress HTTP endpoint — it never talks to driver services or deployment state directly.
+
+## Quick Reference
+
+| Command              | Audience | Purpose                                         |
+|----------------------|----------|-------------------------------------------------|
+| `deploy`             | Users    | Deploy from a registered template               |
+| `template register`  | Operators| Register a CUE template                         |
+| `template list`      | Both     | List registered templates                        |
+| `template describe`  | Both     | Show template details and variable schema        |
+| `template delete`    | Operators| Remove a registered template                     |
+| `apply`              | Operators| Provision resources from inline CUE              |
+| `plan`               | Operators| Preview what would change without applying       |
+| `get`                | Both     | Show deployment or resource details              |
+| `list`               | Both     | List active deployments                          |
+| `delete`             | Both     | Tear down a deployment                           |
+| `import`             | Operators| Adopt an existing cloud resource                 |
+| `observe`            | Both     | Watch deployment progress in real time           |
+| `version`            | Both     | Print the CLI version                            |
+
+## Global Flags
+
+Every subcommand inherits these flags:
+
+| Flag         | Env Var                   | Default                  | Description                              |
+|--------------|---------------------------|--------------------------|------------------------------------------|
+| `--endpoint` | `PRAXIS_RESTATE_ENDPOINT` | `http://localhost:8080`  | Restate ingress URL                      |
+| `-o, --output` | —                       | `table`                  | Output format: `table` or `json`         |
+| `--region`   | `PRAXIS_REGION`           | —                        | Default AWS region for key resolution    |
+
+The `--account` flag is available on commands that touch provider APIs (`apply`, `deploy`, `plan`, `import`). It can also be set via the `PRAXIS_ACCOUNT` environment variable.
+
+### Output Formats
+
+- **table** (default) — Human-friendly aligned columns using a tabwriter. This is the format shown in all examples below.
+- **json** — Machine-readable indented JSON, suitable for scripting, piping to `jq`, and AI agents.
+
+---
+
+## deploy
+
+Deploy infrastructure from a pre-registered CUE template. This is the primary user-facing command — no CUE knowledge required.
+
+```
+praxis deploy <template-name> [flags]
+```
+
+**Flags:**
+
+| Flag              | Default | Description                                        |
+|-------------------|---------|----------------------------------------------------|
+| `--var key=value` | —       | Template variable (repeatable)                     |
+| `-f, --file`      | —       | JSON file containing template variables            |
+| `--key`           | —       | Pin a stable deployment key for idempotent re-deploy|
+| `--account`       | env     | AWS account name                                   |
+| `--wait`          | false   | Poll until deployment reaches a terminal state     |
+| `--dry-run`       | false   | Preview changes without provisioning (runs PlanDeploy) |
+| `--show-rendered` | false   | Display the fully-evaluated template JSON (with `--dry-run`) |
+| `--poll-interval` | 2s      | Polling interval when `--wait` is set              |
+| `--timeout`       | 5m      | Maximum wait time (0 for no limit)                 |
+
+**Examples:**
+
+```bash
+# Deploy from a registered template
+praxis deploy stack1 --var name=orders-api --var environment=prod
+
+# With a JSON variables file
+praxis deploy stack1 -f variables.json
+
+# Combine file and flags (flags override file values)
+praxis deploy stack1 -f base.json --var environment=prod
+
+# Idempotent re-deploy with a stable key
+praxis deploy stack1 --var name=orders-api --key orders-prod
+
+# Wait for completion
+praxis deploy stack1 --var name=orders-api --key orders-prod --wait
+
+# Preview changes without provisioning
+praxis deploy stack1 --var name=orders-api --dry-run
+
+# JSON output for scripting
+praxis deploy stack1 --var name=orders-api -o json
+```
+
+**Behavior:**
+
+The template must have been registered by an operator using `praxis template register`. Variables are validated against the template's extracted schema before the CUE pipeline runs — missing required variables, type mismatches, and invalid enum values are rejected immediately with a clear error.
+
+Without `--wait`, the command returns immediately with the deployment key and status. With `--wait`, the CLI polls until a terminal state or `--timeout` is reached.
+
+The `--dry-run` flag runs the full evaluation pipeline but does not submit a workflow — it shows a plan diff of what would change, identical to `praxis plan` output.
+
+---
+
+## template
+
+Manage CUE templates in the Praxis registry. Templates must be registered before they can be used with `praxis deploy`.
+
+### template register
+
+Register or update a CUE template from a file.
+
+```
+praxis template register <file.cue> [flags]
+```
+
+**Flags:**
+
+| Flag            | Default        | Description                                |
+|-----------------|----------------|--------------------------------------------|
+| `--name`        | filename       | Template name (defaults to filename without extension) |
+| `--description` | —              | Human-readable description                 |
+
+**Examples:**
+
+```bash
+# Register with auto-name from filename
+praxis template register stack1.cue
+
+# Custom name
+praxis template register stack1.cue --name my-stack
+
+# With description
+praxis template register stack1.cue --description "Service stack with S3 and SG"
+```
+
+On registration, Praxis extracts the variable schema from the CUE `variables:` block. Re-registering the same name updates the template and shifts the previous version to a one-level rollback buffer.
+
+### template list
+
+List all registered templates.
+
+```
+praxis template list
+```
+
+**Output:**
+
+```
+NAME          DESCRIPTION                        UPDATED
+----          -----------                        -------
+stack1        Service stack with S3 and SG       2026-03-15 10:30:00 UTC
+vpc-baseline  VPC baseline with public subnets   2026-03-14 09:00:00 UTC
+```
+
+### template describe
+
+Show template details including the extracted variable schema.
+
+```
+praxis template describe <name>
+```
+
+**Output:**
+
+```
+Template:    stack1
+Description: Service stack with S3 and SG
+Digest:      a1b2c3d4...
+Created:     2026-03-15 10:30:00 UTC
+Updated:     2026-03-15 10:30:00 UTC
+
+Variables:
+  NAME          TYPE    REQUIRED  DEFAULT  CONSTRAINT
+  name          string  yes       -        ^[a-z][a-z0-9-]{2,40}$
+  environment   string  yes       -        dev | staging | prod
+  vpcId         string  yes       -        -
+```
+
+### template delete
+
+Remove a registered template.
+
+```
+praxis template delete <name>
+```
+
+---
+
+## apply
+
+Evaluate a CUE template and submit it to the Praxis orchestrator for provisioning. This is the operator/developer path — for user-facing deployments, see `deploy`.
+
+
+```
+praxis apply <template.cue> [flags]
+```
+
+**Flags:**
+
+| Flag              | Default | Description                                        |
+|-------------------|---------|----------------------------------------------------|
+| `--var key=value` | —       | Template variable (repeatable)                     |
+| `--key`           | —       | Pin a stable deployment key for idempotent re-apply|
+| `--account`       | env     | AWS account name                                   |
+| `--wait`          | false   | Poll until deployment reaches a terminal state     |
+| `--poll-interval` | 2s      | Polling interval when `--wait` is set              |
+| `--timeout`       | 5m      | Maximum wait time (0 for no limit)                 |
+
+**Examples:**
+
+```bash
+# Basic apply
+praxis apply webapp.cue
+
+# With template variables
+praxis apply webapp.cue --var env=production --var region=us-west-2
+
+# Idempotent re-apply with a stable key
+praxis apply webapp.cue --key my-webapp
+
+# Wait for completion (blocks until terminal state)
+praxis apply webapp.cue --key my-webapp --wait
+
+# JSON output for scripting
+praxis apply webapp.cue -o json
+```
+
+**Behavior:**
+
+Without `--wait`, the command returns immediately with the deployment key and status. The deployment continues asynchronously in the background.
+
+With `--wait`, the CLI polls the deployment state at the configured interval. If the deployment does not reach a terminal state before `--timeout`, the CLI prints an error message with recovery commands and exits with code **2**.
+
+The `--key` flag enables idempotent re-apply: submitting the same template with the same key updates the existing deployment rather than creating a new one.
+
+---
+
+## plan
+
+Perform a dry-run evaluation of a CUE template. Runs the full template pipeline (CUE evaluation, SSM resolution, template-time CEL, DAG construction) and compares desired state against current driver state to produce a diff.
+
+No resources are provisioned — this is a read-only operation.
+
+```
+praxis plan <template.cue> [flags]
+```
+
+**Flags:**
+
+| Flag              | Default | Description                                     |
+|-------------------|---------|-------------------------------------------------|
+| `--var key=value` | —       | Template variable (repeatable)                  |
+| `--account`       | env     | AWS account name                                |
+| `--show-rendered` | false   | Display the fully-evaluated template JSON       |
+
+**Examples:**
+
+```bash
+# Preview changes
+praxis plan webapp.cue
+
+# With variables
+praxis plan webapp.cue --var env=staging
+
+# Debug template evaluation
+praxis plan webapp.cue --show-rendered
+
+# Machine-readable diff
+praxis plan webapp.cue -o json
+```
+
+**Plan Output:**
+
+The plan displays each resource with a change symbol and field-level diffs:
+
+```
++ my-bucket (S3Bucket)
+    + bucket_name = "my-bucket"
+    + tags = {"env": "staging"}
+
+~ web-sg (SecurityGroup)
+    ~ description: "old desc" => "new desc"
+
+- old-resource (S3Bucket)
+    - bucket_name = "old-resource"
+```
+
+Symbols: `+` create, `~` update, `-` delete. A summary line follows with the total counts.
+
+---
+
+## get
+
+Retrieve the current state of a deployment or individual resource.
+
+```
+praxis get <Kind>/<Key>
+```
+
+The argument uses `Kind/Key` format. Supported kinds:
+
+- `Deployment/<key>` — Full deployment status with per-resource breakdown and outputs
+- `S3Bucket/<key>` — Single S3 bucket resource status
+- `SecurityGroup/<key>` — Single security group status
+
+**Examples:**
+
+```bash
+# Deployment overview
+praxis get Deployment/my-webapp
+
+# Individual resource
+praxis get S3Bucket/my-bucket
+praxis get SecurityGroup/vpc-123~web-sg
+
+# JSON for scripting
+praxis get Deployment/my-webapp -o json
+```
+
+**Deployment Output:**
+
+```
+Deployment: my-webapp
+Status:     Complete
+Template:   webapp.cue
+Created:    2025-01-15 10:30:00 UTC
+Updated:    2025-01-15 10:31:45 UTC
+
+RESOURCE      KIND            STATUS    ERROR
+--------      ----            ------    -----
+my-bucket     S3Bucket        Ready     -
+web-sg        SecurityGroup   Ready     -
+
+Outputs:
+  my-bucket.arn = arn:aws:s3:::my-bucket
+  web-sg.group_id = sg-0abc123
+```
+
+**Resource Output:**
+
+```
+Resource:   S3Bucket/my-bucket
+Status:     Ready
+Mode:       managed
+Generation: 3
+```
+
+For resources with errors, the full error text is displayed below the summary table so you can diagnose failures without digging into logs.
+
+---
+
+## list
+
+List known resources of a given type. Currently supports deployments.
+
+```
+praxis list <resource-type>
+```
+
+Accepted values: `deployments`, `deployment`, `deploy`.
+
+**Examples:**
+
+```bash
+praxis list deployments
+praxis list deployments -o json
+```
+
+**Output:**
+
+```
+KEY          STATUS     RESOURCES  CREATED                   UPDATED
+---          ------     ---------  -------                   -------
+my-webapp    Complete   3          2025-01-15 10:30:00 UTC   2025-01-15 10:31:45 UTC
+staging-app  Applying   2          2025-01-15 11:00:00 UTC   2025-01-15 11:00:05 UTC
+```
+
+---
+
+## delete
+
+Tear down a deployment and all its resources in reverse dependency order.
+
+```
+praxis delete Deployment/<key> [flags]
+```
+
+**Flags:**
+
+| Flag        | Default | Description                               |
+|-------------|---------|-------------------------------------------|
+| `--yes`     | false   | Skip confirmation prompt                  |
+| `--wait`    | false   | Block until deletion completes            |
+| `--timeout` | 5m      | Maximum wait time (0 for no limit)        |
+
+**Examples:**
+
+```bash
+# Interactive confirmation
+praxis delete Deployment/my-webapp
+
+# Skip prompt (CI/scripting)
+praxis delete Deployment/my-webapp --yes
+
+# Wait for completion
+praxis delete Deployment/my-webapp --yes --wait
+```
+
+Without `--yes`, the command prompts for confirmation before proceeding. Deletion is asynchronous — use `--wait` to block until all resources have been removed!
+
+The same timeout behavior as `apply --wait` applies: exit code **2** on timeout, with recovery commands printed to stderr.
+
+---
+
+## import
+
+Adopt an existing cloud resource under Praxis management without recreating it.
+
+```
+praxis import <Kind> [flags]
+```
+
+**Flags:**
+
+| Flag        | Default   | Description                                        |
+|-------------|-----------|----------------------------------------------------|
+| `--id`      | —         | Cloud-provider-native resource identifier (required)|
+| `--region`  | env       | AWS region where the resource lives (required)     |
+| `--account` | env       | AWS account name                                   |
+| `--observe` | false     | Import in observed mode (track but never modify)   |
+
+**Examples:**
+
+```bash
+# Import an S3 bucket
+praxis import S3Bucket --id my-existing-bucket --region us-east-1
+
+# Import a security group
+praxis import SecurityGroup --id sg-0abc123 --region us-east-1
+
+# Import in observed mode (read-only tracking)
+praxis import S3Bucket --id my-bucket --region us-west-2 --observe
+```
+
+The `--observe` flag imports the resource in **observed mode** — Praxis tracks it and reports drift, but never modifies it. This is useful for monitoring resources managed by another system.
+
+**Output:**
+
+```
+Key:    my-existing-bucket
+Status: Ready
+Outputs:
+  arn = arn:aws:s3:::my-existing-bucket
+  region = us-east-1
+```
+
+---
+
+## observe
+
+Stream deployment progress events in real time by polling the event timeline.
+
+```
+praxis observe Deployment/<key> [flags]
+```
+
+**Flags:**
+
+| Flag              | Default | Description                           |
+|-------------------|---------|---------------------------------------|
+| `--poll-interval` | 1s      | How frequently to poll for new events |
+| `--timeout`       | 5m      | Maximum time to observe (0 = no limit)|
+
+**Examples:**
+
+```bash
+# Watch a deployment
+praxis observe Deployment/my-webapp
+
+# Faster polling
+praxis observe Deployment/my-webapp --poll-interval 500ms
+
+# JSON event stream
+praxis observe Deployment/my-webapp -o json
+```
+
+**Output:**
+
+```
+Observing deployment my-webapp...
+
+[2025-01-15 10:30:05 UTC] Applying my-bucket/S3Bucket: Provisioning started
+[2025-01-15 10:30:12 UTC] Applying web-sg/SecurityGroup: Provisioning started
+[2025-01-15 10:30:18 UTC] Complete my-bucket/S3Bucket: Resource ready
+[2025-01-15 10:30:25 UTC] Complete web-sg/SecurityGroup: Resource ready
+[2025-01-15 10:30:25 UTC] Complete Deployment complete
+```
+
+The command exits automatically when the deployment reaches a terminal state (Complete, Failed, Deleted, or Cancelled). If the event stream is unavailable, it falls back to status polling.
+
+---
+
+## version
+
+Print the CLI binary version and build date.
+
+```
+praxis version
+```
+
+```
+praxis v0.1.0 (built 2025-01-15T10:00:00Z)
+```
+
+---
+
+## Resource Key Resolution
+
+Resources are identified by `Kind/Key` pairs. The CLI automatically resolves keys based on the resource kind's scope:
+
+| Scope    | Kinds           | Key Format        | Example                   |
+|----------|-----------------|-------------------|---------------------------|
+| Global   | `S3Bucket`      | Name as-is        | `my-bucket`               |
+| Custom   | `SecurityGroup` | User-supplied key  | `vpc-123~web-sg`          |
+| Region   | (future kinds)  | `region~name`      | `us-east-1~my-resource`   |
+
+When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain a `~` separator, the CLI prepends the region for region-scoped resources. Global and custom-scoped resources are passed through unchanged.
+
+## Exit Codes
+
+| Code | Meaning                                          |
+|------|--------------------------------------------------|
+| 0    | Success                                          |
+| 1    | Error (invalid arguments, API failure, etc.)     |
+| 2    | Timeout waiting for deployment completion        |
+
+## Environment Variables
+
+| Variable                   | Purpose                                 |
+|----------------------------|-----------------------------------------|
+| `PRAXIS_RESTATE_ENDPOINT`  | Restate ingress URL                    |
+| `PRAXIS_REGION`            | Default AWS region for key resolution  |
+| `PRAXIS_ACCOUNT`           | Default AWS account for provider calls |

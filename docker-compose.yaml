@@ -1,0 +1,125 @@
+# docker-compose.yaml — local integration stack
+#
+# This file wires together every moving part needed for a realistic local Praxis
+# session:
+# - LocalStack stands in for AWS.
+# - Restate is the public ingress and durable execution runtime.
+# - praxis-core hosts the command service, workflows, and read models.
+# - praxis-s3 and praxis-sg host the typed resource drivers.
+#
+# The stack is intentionally explicit rather than clever. The goal is that a
+# human operator or an AI agent can read this file and understand the topology,
+# ports, and environment contract without chasing additional context.
+
+services:
+  # --- Infrastructure -------------------------------------------------------
+
+  localstack:
+    image: localstack/localstack:4.4.0
+    container_name: praxis-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      # Only enable the AWS APIs that Praxis requires.
+      - SERVICES=s3,ssm,sts,ec2
+      - DEFAULT_REGION=us-east-1
+      - DEBUG=0
+    volumes:
+      - "./hack/localstack-init:/etc/localstack/init/ready.d"
+      - "localstack-data:/var/lib/localstack"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  restate:
+    image: docker.restate.dev/restatedev/restate:1.3
+    container_name: praxis-restate
+    ports:
+      - "8080:8080"   # ingress used by the CLI and by any external callers
+      - "9070:9070"   # admin API used by `just register`
+      - "9071:9071"   # metrics / observability
+    environment:
+      - RESTATE_OBSERVABILITY__LOG__FILTER=restate=info
+    volumes:
+      - "restate-data:/target/restate"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9070/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- Praxis Services ------------------------------------------------------
+
+  praxis-s3:
+    build:
+      context: .
+      dockerfile: cmd/praxis-s3/Dockerfile
+    container_name: praxis-s3
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    ports:
+      - "9081:9080"
+    environment:
+      # Every Praxis service exposes a Restate endpoint on 9080 inside the
+      # container. The host port only exists for local debugging convenience.
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+
+  praxis-sg:
+    build:
+      context: .
+      dockerfile: cmd/praxis-sg/Dockerfile
+    container_name: praxis-sg
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    ports:
+      - "9082:9080"
+    environment:
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+
+  praxis-core:
+    build:
+      context: .
+      dockerfile: cmd/praxis-core/Dockerfile
+    container_name: praxis-core
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    ports:
+      - "9083:9080"
+    environment:
+      # Praxis Core binds the command service and orchestration/read-model
+      # services on one Restate-discoverable endpoint.
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+
+      # Core still talks to Restate ingress as a client for command-side
+      # workflow/object invocations.
+      - PRAXIS_RESTATE_ENDPOINT=http://restate:8080
+
+      # The template engine expects the schema bundle at a stable path.
+      - PRAXIS_SCHEMA_DIR=/schemas
+    volumes:
+      # Mount schemas read-only so local edits are visible without baking a new
+      # image, while still documenting the runtime contract explicitly.
+      - "./schemas:/schemas:ro"
+
+volumes:
+  # Keep infra data in named volumes so operators can opt into clean slates via
+  # `just down` while normal restarts remain fast.
+  localstack-data:
+  restate-data:
