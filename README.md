@@ -14,6 +14,8 @@
 
 ---
 
+> Praxis is very much in **alpha** and not ready for any sort of real world use.
+
 Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers — continuous reconciliation, drift correction, dependency-aware orchestration — but **without requiring a Kubernetes cluster to run it**.
 
 Powered by [Restate](https://restate.dev) for durable execution, Praxis models every cloud resource as a stateful Virtual Object with exactly-once lifecycle guarantees. Define what you want in [CUE](https://cuelang.org/) templates, and Praxis converges reality to match.
