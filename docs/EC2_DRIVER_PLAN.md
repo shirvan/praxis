@@ -1,5 +1,9 @@
 # EC2 Instance Driver — Implementation Plan (v2)
 
+> **Status: ✓ COMPLETED** — This plan has been fully implemented. All files referenced
+> below exist in the repository. This document is retained as a reference guide for
+> building future drivers.
+
 > Target: A Restate Virtual Object driver that manages EC2 instances, following the
 > exact patterns established by the S3 Bucket and Security Group drivers.
 >

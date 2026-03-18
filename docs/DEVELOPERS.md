@@ -242,9 +242,9 @@ Rate limiting is built into the AWS wrapper layer — drivers never touch the li
 
 ### Reference Implementations
 
-Study the S3 driver (`internal/drivers/s3/`) and Security Group driver (`internal/drivers/sg/`) — every pattern described here is demonstrated in those implementations.
+Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), and EC2 driver (`internal/drivers/ec2/`) — every pattern described here is demonstrated in those implementations.
 
-For a step-by-step walkthrough of how to plan and build a new driver from scratch, see [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md). It covers the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision. It is kept in the repo as an example of what a good driver implementation plan looks like.
+The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which walks through the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision. It is kept in the repo as a reference for how to plan and build a new driver from scratch.
 
 ## Code Style
 

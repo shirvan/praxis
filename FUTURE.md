@@ -8,35 +8,34 @@
 
 ## High-Priority AWS Driver Expansion
 
-Extend the driver ecosystem to cover the top ~20% of AWS services by real-world usage (guided by Terraform AWS provider adoption). S3 and Security Group drivers already ship; the following represent the most commonly provisioned resource types and should be prioritized before niche or multi-cloud drivers.
+Extend the driver ecosystem to cover the top ~20% of AWS services by real-world usage (guided by Terraform AWS provider adoption). S3, Security Group, and EC2 drivers already ship; the following represent the most commonly provisioned resource types and should be prioritized before niche or multi-cloud drivers.
 
 **Drivers to implement (roughly by Terraform usage frequency):**
 
 | # | Driver Service | Key Resource Types | Key Scope |
 |---|---|---|---|
-| 1 | **EC2** | Instances, AMIs, EBS volumes, key pairs, launch templates, Elastic IPs | Region (`region~instanceId`) |
-| 2 | **VPC** | VPCs, subnets, route tables, internet gateways, NAT gateways, VPC peering, network ACLs | Region (`region~vpcId`) |
-| 3 | **IAM** | Roles, policies, users, groups, instance profiles | Global (`roleName`) |
-| 4 | **ELB** | ALBs, NLBs, target groups, listeners, listener rules | Region (`region~lbName`) |
-| 5 | **Route 53** | Hosted zones, DNS records, health checks | Global (`hostedZoneId~recordName`) |
-| 6 | **RDS** | DB instances, Aurora clusters, parameter groups, subnet groups | Region (`region~dbIdentifier`) |
-| 7 | **Lambda** | Functions, layers, permissions, event source mappings | Region (`region~functionName`) |
-| 8 | **CloudWatch** | Log groups, metric alarms, dashboards | Region (`region~resourceName`) |
-| 9 | **ECS** | Clusters, services, task definitions | Region (`region~clusterName`) |
-| 10 | **SNS** | Topics, subscriptions | Region (`region~topicName`) |
-| 11 | **SQS** | Queues, queue policies | Region (`region~queueName`) |
-| 12 | **DynamoDB** | Tables, global tables | Region (`region~tableName`) |
-| 13 | **CloudFront** | Distributions, origin access controls | Global (`distributionId`) |
-| 14 | **ACM** | Certificates, DNS validation records | Region (`region~certArn`) |
-| 15 | **KMS** | Keys, aliases, key policies | Region (`region~keyAlias`) |
-| 16 | **EKS** | Clusters, managed node groups, Fargate profiles | Region (`region~clusterName`) |
-| 17 | **Secrets Manager** | Secrets, secret versions | Region (`region~secretName`) |
-| 18 | **API Gateway** | REST APIs, HTTP APIs, stages, routes | Region (`region~apiId`) |
-| 19 | **Auto Scaling** | Auto Scaling groups, scaling policies, launch configurations | Region (`region~asgName`) |
+| 1 | **VPC** | VPCs, subnets, route tables, internet gateways, NAT gateways, VPC peering, network ACLs | Region (`region~vpcId`) |
+| 2 | **IAM** | Roles, policies, users, groups, instance profiles | Global (`roleName`) |
+| 3 | **ELB** | ALBs, NLBs, target groups, listeners, listener rules | Region (`region~lbName`) |
+| 4 | **Route 53** | Hosted zones, DNS records, health checks | Global (`hostedZoneId~recordName`) |
+| 5 | **RDS** | DB instances, Aurora clusters, parameter groups, subnet groups | Region (`region~dbIdentifier`) |
+| 6 | **Lambda** | Functions, layers, permissions, event source mappings | Region (`region~functionName`) |
+| 7 | **CloudWatch** | Log groups, metric alarms, dashboards | Region (`region~resourceName`) |
+| 8 | **ECS** | Clusters, services, task definitions | Region (`region~clusterName`) |
+| 9 | **SNS** | Topics, subscriptions | Region (`region~topicName`) |
+| 10 | **SQS** | Queues, queue policies | Region (`region~queueName`) |
+| 11 | **DynamoDB** | Tables, global tables | Region (`region~tableName`) |
+| 12 | **CloudFront** | Distributions, origin access controls | Global (`distributionId`) |
+| 13 | **ACM** | Certificates, DNS validation records | Region (`region~certArn`) |
+| 14 | **KMS** | Keys, aliases, key policies | Region (`region~keyAlias`) |
+| 15 | **EKS** | Clusters, managed node groups, Fargate profiles | Region (`region~clusterName`) |
+| 16 | **Secrets Manager** | Secrets, secret versions | Region (`region~secretName`) |
+| 17 | **API Gateway** | REST APIs, HTTP APIs, stages, routes | Region (`region~apiId`) |
+| 18 | **Auto Scaling** | Auto Scaling groups, scaling policies, launch configurations | Region (`region~asgName`) |
 
 **Technical approach:** Each driver follows the established pattern — a Restate Virtual Object service implementing the driver contract (`Provision`, `Delete`, `Plan`/drift detection, `Import`, `Reconcile`, `GetStatus`, `GetOutputs`). Each gets its own binary under `cmd/praxis-<driver>/`, CUE validation schema under `schemas/aws/<service>/`, and a typed adapter registered in the provider registry. Drivers are deployed as individual containers and registered with Restate independently, preserving the existing loose-coupling model.
 
-**Implementation order considerations:** VPC and IAM are foundational — almost every other resource depends on VPC networking or IAM roles. EC2, RDS, and Lambda cover the bulk of compute workloads. ELB and Route 53 complete a typical web-application stack. The remaining services (ECS, EKS, DynamoDB, CloudFront, etc.) fill out the long tail of common infrastructure patterns. Prioritize based on what unblocks real-world compound templates — a practical first wave is VPC → IAM → EC2 → RDS → Lambda → ELB → Route 53.
+**Implementation order considerations:** VPC and IAM are foundational — almost every other resource depends on VPC networking or IAM roles. RDS and Lambda cover the bulk of compute workloads. ELB and Route 53 complete a typical web-application stack. The remaining services (ECS, EKS, DynamoDB, CloudFront, etc.) fill out the long tail of common infrastructure patterns. Prioritize based on what unblocks real-world compound templates — a practical first wave is VPC → IAM → RDS → Lambda → ELB → Route 53.
 
 ---
 

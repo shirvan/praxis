@@ -297,6 +297,7 @@ The argument uses `Kind/Key` format. Supported kinds:
 - `Deployment/<key>` — Full deployment status with per-resource breakdown and outputs
 - `S3Bucket/<key>` — Single S3 bucket resource status
 - `SecurityGroup/<key>` — Single security group status
+- `EC2Instance/<key>` — Single EC2 instance status
 
 **Examples:**
 
@@ -307,6 +308,7 @@ praxis get Deployment/my-webapp
 # Individual resource
 praxis get S3Bucket/my-bucket
 praxis get SecurityGroup/vpc-123~web-sg
+praxis get EC2Instance/us-east-1~web-server
 
 # JSON for scripting
 praxis get Deployment/my-webapp -o json

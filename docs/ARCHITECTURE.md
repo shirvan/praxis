@@ -44,7 +44,7 @@ The result: a system with the same reconciliation semantics (drift detection, se
 │                   DRIVER SERVICES (per resource type)            │
 │                                                                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐                 │
-│  │ S3 Driver  │  │ SG Driver  │  │ ... more   │                 │
+│  │ S3 Driver  │  │ SG Driver  │  │ EC2 Driver │                 │
 │  │ (container)│  │ (container)│  │ (container) │                │
 │  └────────────┘  └────────────┘  └────────────┘                 │
 └──────────────────────────┬───────────────────────────────────────┘
@@ -85,7 +85,7 @@ Core runs as a single container. All its Restate services register under one dep
 
 ### Driver Services
 
-Each cloud resource type is managed by a dedicated driver service — a standalone container hosting Restate Virtual Objects. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. Each driver:
+Each cloud resource type is managed by a dedicated driver service — a standalone container hosting Restate Virtual Objects. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. Each driver:
 
 - Runs independently with its own deployment lifecycle
 - Registers with Restate as a separate service

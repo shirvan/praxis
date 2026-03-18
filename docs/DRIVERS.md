@@ -6,7 +6,7 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. Each driver is a standalone Restate Virtual Object service — an independent binary that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. Each driver is a standalone Restate Virtual Object service — an independent binary that registers with Restate and communicates with Praxis Core via durable RPC.
 
 Drivers are intentionally simple. They know how to create, read, update, delete, and reconcile one type of resource. They have zero knowledge of other drivers, dependency graphs, or deployment workflows. All coordination happens in [Core's orchestrator](ORCHESTRATOR.md).
 
@@ -18,6 +18,7 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 
 - S3 Bucket: `my-bucket` (bucket names are globally unique)
 - SecurityGroup: `vpc-123~web-sg` (VPC-scoped, using `~` as separator)
+- EC2 Instance: `us-east-1~web-server` (region-scoped, using `~` as separator)
 
 Each Virtual Object holds:
 
@@ -192,6 +193,7 @@ Each driver owns its key format, producing the shortest natural key for its reso
 |---------------|-------|--------|---------|
 | S3Bucket | Global | `<name>` | `my-bucket` |
 | SecurityGroup | Custom (VPC-scoped) | `<vpcId>~<groupName>` | `vpc-123~web-sg` |
+| EC2Instance | Region | `<region>~<name>` | `us-east-1~web-server` |
 
 The `~` separator is URL-safe and does not collide with characters valid in AWS resource names.
 

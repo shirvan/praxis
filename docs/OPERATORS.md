@@ -10,7 +10,7 @@ Praxis consists of three service tiers, all fronted by a Restate server:
 |--------------------|------------------------------------------------------|--------------------------------------------|
 | **Restate Server** | Durable execution engine — state, journals, timers   | Single instance (or HA cluster)            |
 | **Praxis Core**    | Command service, template engine, orchestrator       | Stateless; scale horizontally              |
-| **Driver Services**| One binary per resource type (S3, SecurityGroup)     | Stateless; scale horizontally per type     |
+| **Driver Services**| One binary per resource type (S3, SecurityGroup, EC2)| Stateless; scale horizontally per type     |
 
 Every component is shipped as a Docker image. The reference topology is captured in [docker-compose.yaml](../docker-compose.yaml).
 
@@ -24,6 +24,7 @@ Every component is shipped as a Docker image. The reference topology is captured
 | Praxis Core  | 9080          | 9083      | Restate endpoint     |
 | S3 Driver    | 9080          | 9081      | Restate endpoint     |
 | SG Driver    | 9080          | 9082      | Restate endpoint     |
+| EC2 Driver   | 9080          | 9084      | Restate endpoint     |
 | LocalStack   | 4566          | 4566      | Mock AWS (local dev) |
 
 ## Quick Start (Local Development)
@@ -68,7 +69,8 @@ just doctor       # Fast endpoint + registration sanity check
 just logs         # Follow Praxis Core logs
 just logs-s3      # Follow S3 driver logs
 just logs-sg      # Follow SG driver logs
-just logs-drivers # Follow both driver logs together
+just logs-ec2     # Follow EC2 driver logs
+just logs-drivers # Follow all driver logs together
 just logs-all     # Follow all service logs
 ```
 
@@ -135,6 +137,11 @@ curl -X POST http://localhost:9070/deployments \
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
   -d '{"uri": "http://praxis-sg:9080"}'
+
+# Register EC2 driver
+curl -X POST http://localhost:9070/deployments \
+  -H 'content-type: application/json' \
+  -d '{"uri": "http://praxis-ec2:9080"}'
 
 # Register Praxis Core
 curl -X POST http://localhost:9070/deployments \
