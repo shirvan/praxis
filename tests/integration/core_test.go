@@ -48,6 +48,7 @@ import (
 	"github.com/praxiscloud/praxis/internal/core/orchestrator"
 	"github.com/praxiscloud/praxis/internal/core/provider"
 	"github.com/praxiscloud/praxis/internal/core/registry"
+	driverec2 "github.com/praxiscloud/praxis/internal/drivers/ec2"
 	drivers3 "github.com/praxiscloud/praxis/internal/drivers/s3"
 	driversg "github.com/praxiscloud/praxis/internal/drivers/sg"
 	"github.com/praxiscloud/praxis/internal/infra/awsclient"
@@ -79,7 +80,7 @@ type coreTestEnv struct {
 //
 //  1. Builds a LocalStack-backed AWS config (same pattern as existing driver
 //     integration tests).
-//  2. Instantiates the S3 and SG drivers.
+//  2. Instantiates the S3, EC2, and SG drivers.
 //  3. Constructs the provider adapter registry with live AWS describe APIs.
 //  4. Constructs the PraxisCommandService, both deployment workflows, and all
 //     read-model objects.
@@ -100,6 +101,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 
 	// --- Typed drivers ---
 	s3Driver := drivers3.NewS3BucketDriver(accounts)
+	ec2Driver := driverec2.NewEC2InstanceDriver(accounts)
 	sgDriver := driversg.NewSecurityGroupDriver(accounts)
 
 	// --- Provider adapter registry ---
@@ -109,6 +111,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	// cmd/praxis-core/main.go keeps these tests honest.
 	providers := provider.NewRegistryWithAdapters(
 		provider.NewS3AdapterWithRegistry(accounts),
+		provider.NewEC2AdapterWithRegistry(accounts),
 		provider.NewSecurityGroupAdapterWithRegistry(accounts),
 	)
 
@@ -153,6 +156,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 
 		// Typed drivers — the workflows call these via Restate service-to-service
 		restate.Reflect(s3Driver),
+		restate.Reflect(ec2Driver),
 		restate.Reflect(sgDriver),
 	)
 

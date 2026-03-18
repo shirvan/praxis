@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/praxiscloud/praxis/internal/drivers/ec2"
 	"github.com/praxiscloud/praxis/internal/drivers/s3"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
 
@@ -211,6 +212,13 @@ func TestRegistry_Get_S3(t *testing.T) {
 	adapter, err := registry.Get("S3Bucket")
 	require.NoError(t, err)
 	assert.Equal(t, "S3Bucket", adapter.Kind())
+}
+
+func TestRegistry_Get_EC2Instance(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("EC2Instance")
+	require.NoError(t, err)
+	assert.Equal(t, ec2.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_SecurityGroup(t *testing.T) {

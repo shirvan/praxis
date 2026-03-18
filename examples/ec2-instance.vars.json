@@ -1,0 +1,5 @@
+{
+  "name": "my-app",
+  "environment": "dev",
+  "subnetId": "subnet-abc123"
+}

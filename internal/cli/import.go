@@ -18,6 +18,7 @@ import (
 // Usage:
 //
 //	praxis import S3Bucket --id my-existing-bucket --region us-east-1
+//	praxis import EC2Instance --id i-0abc123 --region us-east-1 --observe
 //	praxis import SecurityGroup --id sg-0abc123 --region us-east-1
 //	praxis import S3Bucket --id my-bucket --region us-west-2 --observe
 //	praxis import S3Bucket --id my-bucket --region us-east-1 -o json
@@ -43,7 +44,7 @@ modify the resource itself.
 Required flags:
 
     --id       The cloud-provider-native resource identifier
-               (S3: bucket name, SecurityGroup: group ID)
+			   (S3: bucket name, EC2: instance ID, SecurityGroup: group ID)
     --region   The AWS region where the resource lives
 
 Optional flags:
@@ -55,6 +56,7 @@ Optional flags:
 Examples:
 
     praxis import S3Bucket --id my-bucket --region us-east-1
+	praxis import EC2Instance --id i-0abc123 --region us-east-1 --observe
     praxis import SecurityGroup --id sg-0abc123 --region us-east-1 --observe`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

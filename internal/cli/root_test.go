@@ -22,8 +22,7 @@ func TestResolveResourceKey_CustomScope(t *testing.T) {
 
 func TestResolveResourceKey_RegionScope_PrependRegion(t *testing.T) {
 	flags := &rootFlags{region: "us-west-2"}
-	// Unknown kind defaults to region scope — region is prepended.
-	key := flags.resolveResourceKey("Lambda", "my-function")
+	key := flags.resolveResourceKey("EC2Instance", "my-function")
 	assert.Equal(t, "us-west-2~my-function", key)
 }
 

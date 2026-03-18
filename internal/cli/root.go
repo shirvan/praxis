@@ -140,6 +140,7 @@ const (
 // default to scopeRegion (the safe fallback).
 var kindScopes = map[string]keyScope{
 	"S3Bucket":      scopeGlobal,
+	"EC2Instance":   scopeRegion,
 	"SecurityGroup": scopeCustom,
 }
 

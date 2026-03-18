@@ -28,6 +28,7 @@ func main() {
 	accounts := cfg.Auth()
 	providers := provider.NewRegistryWithAdapters(
 		provider.NewS3AdapterWithRegistry(accounts),
+		provider.NewEC2AdapterWithRegistry(accounts),
 		provider.NewSecurityGroupAdapterWithRegistry(accounts),
 	)
 

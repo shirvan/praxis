@@ -67,7 +67,7 @@ wait-stack:
 # Rebuild and restart the core + driver services, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-s3 praxis-sg
+    docker compose up -d --build praxis-core praxis-s3 praxis-ec2 praxis-sg
     just wait-stack
     just register
 
@@ -87,9 +87,13 @@ logs-s3:
 logs-sg:
     docker compose logs -f praxis-sg
 
+# Follow logs for the EC2 driver only.
+logs-ec2:
+    docker compose logs -f praxis-ec2
+
 # Follow logs for both drivers together.
 logs-drivers:
-    docker compose logs -f praxis-s3 praxis-sg
+    docker compose logs -f praxis-s3 praxis-ec2 praxis-sg
 
 # Follow logs for all services
 logs-all:
@@ -106,6 +110,11 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-s3:9080"}' | jq .
     @echo "✓ S3 driver registered"
+    @echo "Registering EC2 driver with Restate..."
+    @curl -s -X POST http://localhost:9070/deployments \
+        -H 'content-type: application/json' \
+        -d '{"uri": "http://praxis-ec2:9080"}' | jq .
+    @echo "✓ EC2 driver registered"
     @echo "Registering SG driver with Restate..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
@@ -124,6 +133,7 @@ build:
     go build -o bin/praxis ./cmd/praxis
     go build -o bin/praxis-core ./cmd/praxis-core
     go build -o bin/praxis-s3 ./cmd/praxis-s3
+    go build -o bin/praxis-ec2 ./cmd/praxis-ec2
     go build -o bin/praxis-sg ./cmd/praxis-sg
 
 # Build CLI binary only
@@ -155,6 +165,10 @@ test-cli:
 # Run S3 driver unit tests only
 test-s3:
     go test ./internal/drivers/s3/... -v -count=1 -race
+
+# Run EC2 driver unit tests only
+test-ec2:
+    go test ./internal/drivers/ec2/... -v -count=1 -race
 
 # Run SG driver unit tests only
 test-sg:
@@ -197,6 +211,18 @@ test-sg-integration:
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-sg-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run EC2 integration tests (requires Docker — Testcontainers + LocalStack)
+test-ec2-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestEC2 -v -count=1 -tags=integration -timeout=5m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-ec2-integration] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"

@@ -5,7 +5,7 @@
 # - LocalStack stands in for AWS.
 # - Restate is the public ingress and durable execution runtime.
 # - praxis-core hosts the command service, workflows, and read models.
-# - praxis-s3 and praxis-sg host the typed resource drivers.
+# - praxis-s3, praxis-ec2, and praxis-sg host the typed resource drivers.
 #
 # The stack is intentionally explicit rather than clever. The goal is that a
 # human operator or an AI agent can read this file and understand the topology,
@@ -69,6 +69,23 @@ services:
     environment:
       # Every Praxis service exposes a Restate endpoint on 9080 inside the
       # container. The host port only exists for local debugging convenience.
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+
+  praxis-ec2:
+    build:
+      context: .
+      dockerfile: cmd/praxis-ec2/Dockerfile
+    container_name: praxis-ec2
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    ports:
+      - "9084:9080"
+    environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
   praxis-sg:

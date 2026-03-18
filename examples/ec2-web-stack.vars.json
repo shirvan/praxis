@@ -1,0 +1,6 @@
+{
+  "name": "web",
+  "environment": "dev",
+  "vpcId": "vpc-abc123",
+  "subnetId": "subnet-abc123"
+}
