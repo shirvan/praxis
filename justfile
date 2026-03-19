@@ -310,9 +310,18 @@ doctor:
 #   Minor — driver-level releases / new features
 #   Patch — hotfixes and patches
 #
-# Release workflow:
-#   1. just release-preflight v0.1.0   — validate, test, build locally
-#   2. just release v0.1.0             — tag + push → triggers GitHub Actions release
+# Mass release workflow (all services + CLI):
+#   1. just release-preflight v0.3.0   — validate, test, build everything
+#   2. just release v0.3.0             — tag + push → triggers GitHub Actions
+#
+# Per-service release workflow (single service):
+#   1. just release-service-preflight praxis-network v0.2.1
+#   2. just release-service praxis-network v0.2.1
+#
+# Per-service tags use the format SERVICE/vX.Y.Z (e.g. praxis-network/v0.2.1).
+# Mass release tags use vX.Y.Z.
+#
+# Valid services: praxis, praxis-core, praxis-storage, praxis-network, praxis-compute
 #
 # GitHub Actions builds the artifacts and creates the GitHub Release.
 # You write the release notes in the GitHub UI (or pass --notes to gh).
@@ -323,6 +332,17 @@ _validate-version VERSION:
     echo "{{VERSION}}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$' \
         || (echo "Invalid version: {{VERSION}}. Must match vMAJOR.MINOR.PATCH[-prerelease]" && exit 1)
     echo "✓ Version {{VERSION}} is valid semver"
+
+# Validate that SERVICE is a known Praxis component
+_validate-service SERVICE:
+    #!/bin/sh
+    case "{{SERVICE}}" in
+        praxis|praxis-core|praxis-storage|praxis-network|praxis-compute) ;;
+        *) echo "Unknown service: {{SERVICE}}"
+           echo "Valid services: praxis, praxis-core, praxis-storage, praxis-network, praxis-compute"
+           exit 1 ;;
+    esac
+    echo "✓ Service {{SERVICE}} is valid"
 
 # Run pre-release checks: lint, unit tests, build all binaries
 release-preflight VERSION: (_validate-version VERSION)
@@ -419,6 +439,114 @@ release VERSION: (_validate-version VERSION)
     echo "Next steps:"
     echo "  1. Go to https://github.com/shirvan/praxis/actions to monitor the build"
     echo "  2. Once complete, edit the release at https://github.com/shirvan/praxis/releases/tag/{{VERSION}}"
+    echo "     to add release notes describing what changed."
+
+# ─── Per-Service Release ────────────────────────────────────
+
+# Run pre-release checks for a single service: lint, service-specific tests, build
+# Usage: just release-service-preflight praxis-network v0.2.1
+release-service-preflight SERVICE VERSION: (_validate-service SERVICE) (_validate-version VERSION)
+    #!/bin/sh
+    set -e
+    echo "═══ Pre-release checks for {{SERVICE}} {{VERSION}} ═══"
+    echo ""
+    echo "→ Checking working tree is clean..."
+    git diff --quiet --exit-code || (echo "ERROR: working tree has uncommitted changes" && exit 1)
+    git diff --cached --quiet --exit-code || (echo "ERROR: index has staged changes" && exit 1)
+    echo "✓ Working tree clean"
+    echo ""
+    echo "→ Running lint..."
+    just lint
+    echo ""
+    echo "→ Running {{SERVICE}} tests..."
+    case "{{SERVICE}}" in
+        praxis)          go test ./internal/cli/... -v -count=1 -race ;;
+        praxis-core)     go test ./internal/core/command/... ./internal/core/dag/... ./internal/core/orchestrator/... -v -count=1 -race ;;
+        praxis-storage)  go test ./internal/drivers/s3/... -v -count=1 -race ;;
+        praxis-network)  go test ./internal/drivers/sg/... ./internal/drivers/vpc/... -v -count=1 -race ;;
+        praxis-compute)  go test ./internal/drivers/ec2/... -v -count=1 -race ;;
+    esac
+    echo ""
+    echo "→ Building {{SERVICE}}..."
+    just release-service-build {{SERVICE}} {{VERSION}}
+    echo ""
+    echo "✓ Pre-release checks passed for {{SERVICE}} {{VERSION}}"
+    echo "  Run 'just release-service {{SERVICE}} {{VERSION}}' to tag and push."
+
+# Build a single service's release artifacts locally
+# Usage: just release-service-build praxis-network v0.2.1
+release-service-build SERVICE VERSION: (_validate-service SERVICE) (_validate-version VERSION)
+    #!/bin/sh
+    set -eu
+    VERSION="{{VERSION}}"
+    SERVICE="{{SERVICE}}"
+    DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    DIST="dist/${SERVICE}/${VERSION}"
+    LDFLAGS="-X github.com/praxiscloud/praxis/internal/cli.version=${VERSION} \
+             -X github.com/praxiscloud/praxis/internal/cli.buildDate=${DATE}"
+
+    mkdir -p "${DIST}"
+
+    if [ "${SERVICE}" = "praxis" ]; then
+        echo "Building CLI binaries..."
+        for GOOS_GOARCH in darwin/arm64 darwin/amd64 linux/amd64; do
+            GOOS="${GOOS_GOARCH%/*}"
+            GOARCH="${GOOS_GOARCH#*/}"
+            OUT="${DIST}/praxis_${GOOS}_${GOARCH}"
+            mkdir -p "${OUT}"
+            echo "  ${GOOS}/${GOARCH}"
+            GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags "${LDFLAGS}" -o "${OUT}/praxis" ./cmd/praxis
+            tar -czf "${DIST}/praxis_${GOOS}_${GOARCH}.tar.gz" -C "${OUT}" praxis
+        done
+        echo "Generating checksums..."
+        cd "${DIST}" && shasum -a 256 *.tar.gz > checksums.txt
+    else
+        echo "Building ${SERVICE} (linux/amd64)..."
+        GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o "${DIST}/${SERVICE}" "./cmd/${SERVICE}"
+    fi
+
+    echo ""
+    echo "Release ${SERVICE} ${VERSION} built successfully:"
+    echo "  Artifacts: ${DIST}/"
+
+# Tag a single service and push to GitHub
+# Usage: just release-service praxis-network v0.2.1
+# Creates tag: praxis-network/v0.2.1
+release-service SERVICE VERSION: (_validate-service SERVICE) (_validate-version VERSION)
+    #!/bin/sh
+    set -e
+    TAG="{{SERVICE}}/{{VERSION}}"
+
+    # Verify tag doesn't already exist
+    if git rev-parse "${TAG}" >/dev/null 2>&1; then
+        echo "ERROR: tag ${TAG} already exists"
+        exit 1
+    fi
+
+    # Verify we're on main
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$branch" != "main" ]; then
+        echo "ERROR: releases must be cut from main (currently on $branch)"
+        exit 1
+    fi
+
+    # Verify clean working tree
+    if ! git diff --quiet --exit-code || ! git diff --cached --quiet --exit-code; then
+        echo "ERROR: working tree has uncommitted changes"
+        exit 1
+    fi
+
+    echo "Creating release tag ${TAG}..."
+    git tag -a "${TAG}" -m "Release {{SERVICE}} {{VERSION}}"
+    echo "✓ Tag created"
+
+    echo "Pushing tag to origin..."
+    git push origin "${TAG}"
+    echo "✓ Tag pushed — GitHub Actions will create the release"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Go to https://github.com/shirvan/praxis/actions to monitor the build"
+    echo "  2. Once complete, edit the release at https://github.com/shirvan/praxis/releases/tag/${TAG}"
     echo "     to add release notes describing what changed."
 
 # ─── Cleanup ────────────────────────────────────────────────
