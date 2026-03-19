@@ -28,6 +28,21 @@ The orchestrator consists of five Restate services, all hosted in the `praxis-co
 | `DeploymentIndex` | Virtual Object | `"global"` (fixed) | Listing index for all deployments |
 | `DeploymentEvents` | Virtual Object | `<deploymentKey>` | Append-only event stream |
 
+```mermaid
+graph LR
+    CS["Command Service"] -->|"Submit"| DW["DeploymentWorkflow<br/>(per generation)"]
+    CS -->|"Submit"| DDW["DeploymentDeleteWorkflow<br/>(per generation)"]
+    DW -->|"Read/Write"| DS["DeploymentStateObj<br/>(per deployment)"]
+    DDW -->|"Read/Write"| DS
+    DW -->|"Append"| DE["DeploymentEvents<br/>(per deployment)"]
+    DDW -->|"Append"| DE
+    DW -->|"Upsert"| DI["DeploymentIndex<br/>(global singleton)"]
+    DDW -->|"Upsert"| DI
+    CLI["CLI"] -->|"Read"| DS
+    CLI -->|"Poll"| DE
+    CLI -->|"List"| DI
+```
+
 ### Why Separate Workflows and State
 
 Restate Workflows are run-once-per-key — a workflow key can only execute one `Run` once. Deployments need re-apply semantics (apply the same stack again with updated specs). The solution:
@@ -38,6 +53,7 @@ Restate Workflows are run-once-per-key — a workflow key can only execute one `
 - Both the current and historical workflows share access to the same DeploymentState
 
 This separation also means:
+
 - Direct reads (CLI `get`, `list`) query DeploymentState without coupling to workflow internals
 - Apply and delete workflows both read/write the same state object
 - State survives workflow completion
@@ -74,27 +90,23 @@ type PlanResource struct {
 
 The workflow uses an **eager dispatch** strategy — resources start as soon as their specific dependencies are met, not when an entire tier completes:
 
-```
-1. Build dependency graph from PlanResources
-2. Initialize: all resources pending, nothing running or complete
-3. Loop:
-   a. Check for cancellation
-   b. Find pending resources whose dependencies are ALL completed
-   c. For each ready resource:
-      - Hydrate spec: evaluate dispatch-time CEL expressions with collected outputs
-      - Decode spec via provider adapter → typed Go struct
-      - Dispatch Provision call via adapter → returns a Restate future
-   d. Wait for any in-flight resource to complete (restate.WaitFirst)
-   e. On success:
-      - Collect outputs, normalize via adapter
-      - Store outputs in DeploymentState (for downstream hydration)
-      - Record event
-   f. On failure:
-      - Mark resource as Error
-      - Mark all transitive dependents as Skipped
-      - Continue (don't halt the whole deployment)
-   g. When no resources are pending or running: done
-4. Finalize deployment as Complete, Failed, or Cancelled
+```mermaid
+flowchart TD
+    A["Build dependency graph"] --> B["Initialize: all resources pending"]
+    B --> C{"Cancelled?"}
+    C -->|Yes| Final
+    C -->|No| D{"Pending resources<br/>with all deps met?"}
+    D -->|Yes| E["Hydrate spec via CEL<br/>Decode via adapter"]
+    E --> F["Dispatch Provision<br/>(returns Restate future)"]
+    F --> G["WaitFirst on<br/>in-flight resources"]
+    D -->|No| H{"Any in-flight?"}
+    H -->|Yes| G
+    H -->|No| Final["Finalize: Complete,<br/>Failed, or Cancelled"]
+    G --> I{"Result?"}
+    I -->|Success| J["Collect outputs<br/>Store in DeploymentState<br/>Record event"]
+    I -->|Failure| K["Mark resource as Error<br/>Skip transitive dependents"]
+    J --> C
+    K --> C
 ```
 
 ### Dispatch-Time CEL Hydration
@@ -126,13 +138,18 @@ This is different from template-time CEL (pass 1), which stringifies results. Th
 
 The eager scheduler uses Restate's `WaitFirst` to wait on multiple in-flight Provision calls simultaneously. Consider a template with three resources:
 
-```
-  bucket (no deps)       sg (no deps)
-                           ↑
-                       logBucket (depends on sg)
+```mermaid
+graph TD
+    bucket["bucket<br/>(no deps)"] ~~~ sg["sg<br/>(no deps)"]
+    sg --> logBucket["logBucket<br/>(depends on sg)"]
+
+    style bucket fill:#4CAF50,color:#fff
+    style sg fill:#4CAF50,color:#fff
+    style logBucket fill:#2196F3,color:#fff
 ```
 
 Execution:
+
 1. `bucket` and `sg` dispatch in parallel (both have no dependencies)
 2. `WaitFirst` returns whichever completes first
 3. When `sg` completes → `logBucket` becomes ready, gets hydrated and dispatched
@@ -155,6 +172,7 @@ The `DeploymentDeleteWorkflow` handles deployment teardown:
 7. Finalize deployment as Deleted or Failed
 
 Delete is a separate workflow from apply because:
+
 - Both are long-running operations that benefit from Restate's durable execution
 - Both need their own workflow key (run-once-per-key semantics)
 - They share the same DeploymentState for consistent lifecycle tracking
@@ -165,18 +183,31 @@ Delete is a separate workflow from apply because:
 
 ### Lifecycle
 
-```
-DeploymentStatus:
-  Pending → Running → Complete / Failed / Cancelled
-                ↓
-             Deleting → Deleted
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Running
+    Running --> Complete
+    Running --> Failed
+    Running --> Cancelled
+    Running --> Deleting
+    Deleting --> Deleted
+    Deleted --> [*]
 ```
 
 ### Resource Lifecycle Within a Deployment
 
-```
-DeploymentResourceStatus:
-  Pending → Provisioning → Ready / Error / Skipped → Deleting → Deleted
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Provisioning
+    Provisioning --> Ready
+    Provisioning --> Error
+    Provisioning --> Skipped
+    Ready --> Deleting
+    Error --> Deleting
+    Deleting --> Deleted
+    Deleted --> [*]
 ```
 
 - **Pending** — queued, dependencies not yet met

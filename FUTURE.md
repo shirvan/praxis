@@ -43,6 +43,27 @@ Extend the driver ecosystem to cover the top ~20% of AWS services by real-world 
 
 Centralized AWS credential management as a Restate Virtual Object. Replaces the current model where each driver independently loads credentials via the default SDK chain. All AWS authentication — static credentials, IAM role assumption, cross-account STS sessions, and credential rotation — flows through a single service that vends short-lived, scoped credentials to drivers and Core components on demand.
 
+```mermaid
+flowchart TD
+    D1["Driver A"] -->|"GetCredentials(account)"| Auth["Auth Service<br/>(Virtual Object<br/>per account-alias)"]
+    D2["Driver B"] -->|"GetCredentials(account)"| Auth
+    Core["Praxis Core"] -->|"GetCredentials(account)"| Auth
+
+    Auth --> Cache{"Session cached<br/>and valid?"}
+    Cache -->|Yes| Return["Return cached credentials"]
+    Cache -->|No| Resolve{"Credential source?"}
+
+    Resolve -->|STS| STS["AssumeRole<br/>(restate.Run)"]
+    Resolve -->|SSO| SSO["IAM Identity Center"]
+    Resolve -->|Static| Static["Env vars<br/>(LocalStack)"]
+    Resolve -->|Default| SDK["AWS SDK chain"]
+
+    STS --> Return
+    SSO --> Return
+    Static --> Return
+    SDK --> Return
+```
+
 **Technical approach:** A Restate Virtual Object keyed by account-alias (e.g. `prod-us`, `staging`, `shared-services`). Each key encapsulates the credential state for one AWS account/role pair. Drivers request credentials by calling `Auth.GetCredentials(accountAlias)` via Restate RPC; the service returns a cached STS session or assumes a fresh role if the session is expired or missing.
 
 **Credential sources (priority order):**
@@ -94,6 +115,27 @@ A bring-your-own-API AI assistant that is Praxis-aware. The agent understands Pr
 
 **Supported providers:** Ollama (local), OpenAI API, Claude API. Users configure their preferred provider and API key; Praxis routes requests accordingly.
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent as Agent Service<br/>(Restate)
+    participant LLM
+    participant API as Praxis Core APIs
+
+    User->>Agent: praxis ask "why did my deploy fail?"
+    Agent->>LLM: Prompt + tool definitions
+    LLM-->>Agent: Call getDeploymentStatus(key)
+    Agent->>API: getDeploymentStatus
+    API-->>Agent: Status + error details
+    Agent->>LLM: Tool result
+    LLM-->>Agent: Call getReconcileHistory(resource)
+    Agent->>API: getReconcileHistory
+    API-->>Agent: History entries
+    Agent->>LLM: Tool result
+    LLM-->>Agent: Final explanation
+    Agent-->>User: "Deploy failed because sg-xyz was<br/>deleted externally. Re-apply to fix."
+```
+
 **Technical approach:** A Restate service that wraps LLM API calls in durable execution. The agent is given tool definitions that map to Praxis Core's internal APIs — `getDeploymentStatus`, `listResources`, `getReconcileHistory`, `getDrift`, `explainDAG`, etc. On each user prompt, the agent calls the LLM with the tool schema; the LLM decides which tools to invoke; results are fed back for a final response. Ollama runs locally (no network), OpenAI and Claude are external API calls wrapped in `restate.Run` for journaling. The agent can be exposed via the CLI (`praxis ask "why did my last deploy fail?"`).
 
 ---
@@ -125,6 +167,19 @@ Allow one deployment to reference the outputs of another deployment. A "networki
 ## Rollbacks
 
 Revert a deployment to a previous known-good state when provisioning fails or on user request.
+
+```mermaid
+flowchart TD
+    subgraph Auto["Automatic (on failure)"]
+        F["Provisioning fails"] --> L["Read ordered<br/>resource list"]
+        L --> R1["Iterate in reverse<br/>calling Delete on each"]
+    end
+
+    subgraph Manual["User-initiated"]
+        U["praxis rollback stack<br/>--to deployment-id"] --> D["Diff current state vs<br/>target deployment record"]
+        D --> R2["Apply inverse changes"]
+    end
+```
 
 **Technical approach:** The Deployment Orchestrator already maintains the ordered list of provisioned resources. On failure, rollback iterates that list in reverse and calls `Delete` on each resource. For user-initiated rollbacks (`praxis rollback <stack> --to <deployment-id>`), Core diffs the current state against the target deployment record and applies the inverse changes. Deployment History provides the state snapshots needed for this.
 

@@ -116,45 +116,37 @@ Key elements:
 
 Template evaluation runs as a sequential pipeline in the Command Service:
 
-```
-Template Source (inline CUE or registry reference)
-  │
-  ▼
-1. CUE Parse + Schema Unification
-   Loads template, injects user variables, unifies against provider schemas
-   (schemas/aws/s3/s3.cue, schemas/aws/ec2/sg.cue).
-   CUE interpolation resolves. Defaults apply. Constraints validate.
-   CEL placeholders survive as opaque strings.
-  │
-  ▼
-2. Policy Unification
-   Global and template-scoped CUE policies are unified with the template.
-   Violations (e.g., encryption must be enabled) produce policy-specific errors.
-  │
-  ▼
-3. SSM Parameter Resolution
-   Scans JSON specs for ssm:// references, batch-resolves them via AWS SSM
-   GetParameters. Journaled through restate.Run() for exactly-once semantics.
-  │
-  ▼
-4. CEL Pass 1 — Variable Expressions
-   Evaluates ${cel:variables.*} expressions against the variables map.
-   Expressions referencing resources.* are skipped (deferred to dispatch time).
-  │
-  ▼
-5. DAG Construction
-   Parses remaining ${cel:resources.<name>.outputs.*} patterns.
-   Builds dependency edges. Constructs DAG. Detects cycles.
-  │
-  ▼
-6. Compiled Template
-   → Apply: submit to DeploymentWorkflow
-   → Plan: diff each resource against current driver state
+```mermaid
+flowchart TD
+    A["Template Source<br/>(inline CUE or registry ref)"] --> B["1. CUE Parse + Schema Unification<br/>Load template, inject variables,<br/>unify against provider schemas.<br/>CUE interpolation resolves. Defaults apply."]
+    B --> C["2. Policy Unification<br/>Global and template-scoped CUE policies<br/>unified with the template."]
+    C --> D["3. SSM Parameter Resolution<br/>Scan specs for ssm:// references,<br/>batch-resolve via AWS SSM.<br/>Journaled through restate.Run()"]
+    D --> E["4. CEL Pass 1 - Variable Expressions<br/>Evaluate cel:variables.* expressions.<br/>Skip cel:resources.* (deferred)"]
+    E --> F["5. DAG Construction<br/>Parse cel:resources references.<br/>Build dependency edges. Detect cycles."]
+    F --> G{"Mode?"}
+    G -->|Apply| H["Submit to<br/>DeploymentWorkflow"]
+    G -->|Plan| I["Diff each resource<br/>against current driver state"]
 ```
 
 ### Two-Phase CEL
 
 CEL evaluation is explicitly split into two passes:
+
+```mermaid
+flowchart LR
+    subgraph Pass1["Pass 1: Template Time"]
+        V["variables.*<br/>expressions"] --> S1["Stringified<br/>& substituted"]
+    end
+
+    subgraph Pass2["Pass 2: Dispatch Time"]
+        R["resources.*.outputs.*<br/>expressions"] --> S2["Type-preserving<br/>substitution"]
+    end
+
+    Pass1 -->|"Pipeline completes,<br/>workflow starts"| Pass2
+
+    style Pass1 fill:#E3F2FD,color:#000
+    style Pass2 fill:#E8F5E9,color:#000
+```
 
 **Pass 1 (Template Time):** Resolves `variables.*` expressions during pipeline evaluation. Results are stringified and substituted back into the JSON specs.
 
@@ -278,7 +270,7 @@ Two Restate Virtual Objects in `internal/core/registry/`:
 
 ### Registration
 
-```
+```text
 POST to TemplateRegistry/{name}/Register
   → Validates CUE source
   → Computes SHA-256 digest
@@ -396,10 +388,16 @@ Inline templates are subject to global policies only (there is no template name 
 
 The engine uses a baseline-comparison approach:
 
-1. Evaluate the template **without** policies → baseline errors
-2. Unify each policy with the template
-3. Re-evaluate with all policies unified
-4. Errors present in the policy evaluation but absent from the baseline → **policy violations**
+```mermaid
+flowchart TD
+    A["Evaluate template<br/>WITHOUT policies"] --> B["Baseline errors"]
+    C["Unify each policy<br/>with the template"] --> D["Re-evaluate with<br/>all policies unified"]
+    D --> E["Policy errors"]
+    B --> F{"Errors in policy eval<br/>absent from baseline?"}
+    E --> F
+    F -->|Yes| G["Policy violation detected<br/>(with offending policy name)"]
+    F -->|No| H["No violations"]
+```
 
 Each violation carries the offending policy name for clear attribution.
 
@@ -459,12 +457,22 @@ The primary user-facing path for deploying infrastructure is the **Deploy** API.
 
 ### How It Works
 
-```
-Operator ──→ praxis template register stack1.cue
-             (registers CUE source + extracts variable schema)
+```mermaid
+sequenceDiagram
+    participant OP as Operator
+    participant TR as Template Registry
+    participant U as User
+    participant CS as Command Service
+    participant WF as Deployment Workflow
 
-User     ──→ praxis deploy stack1 --var name=orders-api --var env=prod
-             (validates variables → compiles template → submits workflow)
+    OP->>TR: praxis template register stack1.cue
+    Note over TR: Store CUE source +<br/>extract variable schema
+
+    U->>CS: praxis deploy stack1 --var name=orders-api
+    CS->>TR: Fetch variable schema
+    CS->>CS: Preflight validation
+    CS->>CS: Compile template (full CUE pipeline)
+    CS->>WF: Submit workflow
 ```
 
 ### Deploy Request
@@ -585,7 +593,8 @@ praxis template describe service-stack
 ```
 
 Output:
-```
+
+```text
 Template:    service-stack
 Digest:      a1b2c3d4...
 
@@ -665,6 +674,15 @@ curl -X POST http://localhost:8080/PraxisCommandService/Apply \
 ```
 
 ### 5. Pipeline Runs
+
+```mermaid
+flowchart LR
+    A["CUE evaluation<br/>variables injected"] --> B["Policy<br/>unification"]
+    B --> C["SSM resolution<br/>(skipped)"]
+    C --> D["CEL pass 1<br/>(skipped)"]
+    D --> E["DAG construction<br/>logBucket depends on sg"]
+    E --> F["bucket + sg dispatch first<br/>logBucket waits for sg"]
+```
 
 1. **CUE evaluation** — variables injected, interpolation resolves (`orders-api-prod-assets`), schemas validate, defaults apply (`versioning: true`, `encryption.enabled: true`)
 2. **Policy unification** — global policies checked (e.g., encryption required)

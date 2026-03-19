@@ -1,43 +1,32 @@
-<p align="center">
-  <h1 align="center">Praxis</h1>
-  <p align="center">
-    <strong>Declarative infrastructure automation — without the cluster.</strong>
-  </p>
-</p>
+# Praxis
 
-<p align="center">
-  <a href="#why-praxis">Why Praxis</a> &bull;
-  <a href="#quickstart">Quickstart</a> &bull;
-  <a href="#documentation">Docs</a> &bull;
-  <a href="FUTURE.md">Roadmap</a>
-</p>
+**Declarative infrastructure automation — without the cluster.**
+
+[Why Praxis](#why-praxis) · [Quickstart](#quickstart) · [Docs](#documentation) · [Roadmap](FUTURE.md)
 
 ---
 
-> Praxis is very much in **alpha** and not ready for any sort of real world use.
+## >>> Praxis is very much in active development and not ready for any sort of real world use. <<<
 
 Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers — continuous reconciliation, drift correction, dependency-aware orchestration — but **without requiring a Kubernetes cluster to run it**.
 
 Powered by [Restate](https://restate.dev) for durable execution, Praxis models every cloud resource as a stateful Virtual Object with exactly-once lifecycle guarantees. Define what you want in [CUE](https://cuelang.org/) templates, and Praxis converges reality to match.
 
-```
-┌──────────────┐     ┌──────────────┐     ┌───────────────┐
-│  Praxis CLI  │────▶│ Praxis Core  │────▶│ Restate       │
-│              │     │  commands,   │     │ durable       │
-│              │     │  workflows,  │     │ execution     │
-│              │     │  templates   │     │ engine        │
-└──────────────┘     └──────────────┘     └───────┬───────┘
-                                                  │
-                                          ┌───────┴───────┐
-                                          │ Driver Packs  │
-                                          │ Storage │     │
-                                          │ Network │     │
-                                          │ Compute │     │
-                                          └───────┬───────┘
-                                                  │
-                                          ┌───────┴───────┐
-                                          │   AWS APIs    │
-                                          └───────────────┘
+```mermaid
+graph TD
+    CLI["Praxis CLI"] --> Core["Praxis Core<br/>commands, workflows, templates"]
+    Core --> Restate["Restate<br/>durable execution engine"]
+    Restate --> Drivers
+
+    subgraph Drivers["Driver Packs"]
+        Storage
+        Network
+        Compute
+    end
+
+    Storage --> AWS["AWS APIs"]
+    Network --> AWS
+    Compute --> AWS
 ```
 
 ---
@@ -57,7 +46,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 ### What Praxis Does Differently
 
 | | Terraform | Crossplane | Praxis |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Execution model** | Plan → Apply (imperative, manual) | Continuous reconciliation | Continuous reconciliation |
 | **Runtime requirement** | CLI + state backend | Kubernetes cluster | Restate server (single binary) |
 | **Drift detection** | Manual (`terraform plan`) | Automatic | Automatic |
@@ -152,7 +141,7 @@ praxis apply webapp.cue --account local --var env=dev --key my-webapp --wait
 
 ### Plan Output
 
-```
+```text
 Praxis will perform the following actions:
 
   # S3Bucket "my-bucket" will be updated in-place
@@ -182,7 +171,7 @@ See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for read
 ## Documentation
 
 | Document | Audience | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | [Architecture](docs/ARCHITECTURE.md) | Everyone | How Praxis works — Restate-powered core, modular drivers, design tradeoffs |
 | [Drivers](docs/DRIVERS.md) | Contributors | Driver model, contract, state management, reconciliation, building new drivers |
 | [Orchestrator](docs/ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete flow |

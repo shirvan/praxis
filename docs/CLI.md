@@ -43,7 +43,7 @@ The `--account` flag is available on commands that touch provider APIs (`apply`,
 
 Deploy infrastructure from a pre-registered CUE template. This is the primary user-facing command — no CUE knowledge required.
 
-```
+```bash
 praxis deploy <template-name> [flags]
 ```
 
@@ -104,7 +104,7 @@ Manage CUE templates in the Praxis registry. Templates must be registered before
 
 Register or update a CUE template from a file.
 
-```
+```bash
 praxis template register <file.cue> [flags]
 ```
 
@@ -134,13 +134,13 @@ On registration, Praxis extracts the variable schema from the CUE `variables:` b
 
 List all registered templates.
 
-```
+```bash
 praxis template list
 ```
 
 **Output:**
 
-```
+```text
 NAME          DESCRIPTION                        UPDATED
 ----          -----------                        -------
 stack1        Service stack with S3 and SG       2026-03-15 10:30:00 UTC
@@ -151,13 +151,13 @@ vpc-baseline  VPC baseline with public subnets   2026-03-14 09:00:00 UTC
 
 Show template details including the extracted variable schema.
 
-```
+```bash
 praxis template describe <name>
 ```
 
 **Output:**
 
-```
+```text
 Template:    stack1
 Description: Service stack with S3 and SG
 Digest:      a1b2c3d4...
@@ -175,7 +175,7 @@ Variables:
 
 Remove a registered template.
 
-```
+```bash
 praxis template delete <name>
 ```
 
@@ -185,8 +185,7 @@ praxis template delete <name>
 
 Evaluate a CUE template and submit it to the Praxis orchestrator for provisioning. This is the operator/developer path — for user-facing deployments, see `deploy`.
 
-
-```
+```bash
 praxis apply <template.cue> [flags]
 ```
 
@@ -236,7 +235,7 @@ Perform a dry-run evaluation of a CUE template. Runs the full template pipeline 
 
 No resources are provisioned — this is a read-only operation.
 
-```
+```bash
 praxis plan <template.cue> [flags]
 ```
 
@@ -268,7 +267,7 @@ praxis plan webapp.cue -o json
 
 The plan displays each resource with a change symbol and field-level diffs:
 
-```
+```text
 + my-bucket (S3Bucket)
     + bucket_name = "my-bucket"
     + tags = {"env": "staging"}
@@ -288,7 +287,7 @@ Symbols: `+` create, `~` update, `-` delete. A summary line follows with the tot
 
 Retrieve the current state of a deployment or individual resource.
 
-```
+```bash
 praxis get <Kind>/<Key>
 ```
 
@@ -316,7 +315,7 @@ praxis get Deployment/my-webapp -o json
 
 **Deployment Output:**
 
-```
+```text
 Deployment: my-webapp
 Status:     Complete
 Template:   webapp.cue
@@ -335,7 +334,7 @@ Outputs:
 
 **Resource Output:**
 
-```
+```text
 Resource:   S3Bucket/my-bucket
 Status:     Ready
 Mode:       managed
@@ -350,7 +349,7 @@ For resources with errors, the full error text is displayed below the summary ta
 
 List known resources of a given type. Currently supports deployments.
 
-```
+```bash
 praxis list <resource-type>
 ```
 
@@ -365,7 +364,7 @@ praxis list deployments -o json
 
 **Output:**
 
-```
+```text
 KEY          STATUS     RESOURCES  CREATED                   UPDATED
 ---          ------     ---------  -------                   -------
 my-webapp    Complete   3          2025-01-15 10:30:00 UTC   2025-01-15 10:31:45 UTC
@@ -378,7 +377,7 @@ staging-app  Applying   2          2025-01-15 11:00:00 UTC   2025-01-15 11:00:05
 
 Tear down a deployment and all its resources in reverse dependency order.
 
-```
+```bash
 praxis delete Deployment/<key> [flags]
 ```
 
@@ -413,7 +412,7 @@ The same timeout behavior as `apply --wait` applies: exit code **2** on timeout,
 
 Adopt an existing cloud resource under Praxis management without recreating it.
 
-```
+```bash
 praxis import <Kind> [flags]
 ```
 
@@ -443,7 +442,7 @@ The `--observe` flag imports the resource in **observed mode** — Praxis tracks
 
 **Output:**
 
-```
+```text
 Key:    my-existing-bucket
 Status: Ready
 Outputs:
@@ -457,7 +456,7 @@ Outputs:
 
 Stream deployment progress events in real time by polling the event timeline.
 
-```
+```bash
 praxis observe Deployment/<key> [flags]
 ```
 
@@ -483,7 +482,7 @@ praxis observe Deployment/my-webapp -o json
 
 **Output:**
 
-```
+```text
 Observing deployment my-webapp...
 
 [2025-01-15 10:30:05 UTC] Applying my-bucket/S3Bucket: Provisioning started
@@ -501,11 +500,11 @@ The command exits automatically when the deployment reaches a terminal state (Co
 
 Print the CLI binary version and build date.
 
-```
+```bash
 praxis version
 ```
 
-```
+```text
 praxis v0.1.0 (built 2025-01-15T10:00:00Z)
 ```
 

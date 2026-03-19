@@ -6,6 +6,26 @@ This guide is for platform engineers who deploy, configure, and maintain a Praxi
 
 Praxis consists of three service tiers, all fronted by a Restate server:
 
+```mermaid
+graph TD
+    CLI["CLI / API"] --> RS["Restate Server<br/>state, journals, timers"]
+
+    RS --> Core["Praxis Core<br/>commands, templates,<br/>orchestrator"]
+    RS --> SP["Storage Pack<br/>(S3, ...)"]
+    RS --> NP["Network Pack<br/>(SG, VPC, ...)"]
+    RS --> CP["Compute Pack<br/>(EC2, ...)"]
+
+    SP --> AWS["AWS APIs"]
+    NP --> AWS
+    CP --> AWS
+
+    style RS fill:#FF9800,color:#fff
+    style Core fill:#2196F3,color:#fff
+    style SP fill:#4CAF50,color:#fff
+    style NP fill:#4CAF50,color:#fff
+    style CP fill:#4CAF50,color:#fff
+```
+
 | Component          | Description                                          | Scaling                                    |
 |--------------------|------------------------------------------------------|--------------------------------------------|
 | **Restate Server** | Durable execution engine — state, journals, timers   | Single instance (or HA cluster)            |
@@ -281,12 +301,18 @@ For Praxis services, verify registration via `just rs-services` or `just doctor`
 
 Every managed resource follows this state machine:
 
-```
-Pending → Provisioning → Ready ⟲ (reconcile every 5 min)
-                           ↓
-                         Error ← external drift / failures
-                           ↓
-Ready → Deleting → Deleted
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Provisioning
+    Provisioning --> Ready
+    Ready --> Ready : reconcile every 5 min
+    Provisioning --> Error
+    Ready --> Error : external drift / failures
+    Error --> Ready : re-reconcile
+    Ready --> Deleting
+    Deleting --> Deleted
+    Deleted --> [*]
 ```
 
 ### Status Meanings
@@ -325,6 +351,19 @@ If a resource is deleted outside Praxis, the driver transitions to `Error` statu
 ## State & Backups
 
 Praxis stores **zero state locally**. All durable state — Virtual Object key-value pairs, invocation journals, timer schedules — lives inside Restate. This is what makes every Praxis service stateless and freely replaceable.
+
+```mermaid
+graph LR
+    subgraph Restate["Restate"]
+        VO["Virtual Object State<br/>specs, outputs, status"]
+        IJ["Invocation Journals<br/>durable replay"]
+        TM["Timers<br/>reconcile schedules"]
+        PR["Promise Results<br/>workflow resolutions"]
+    end
+
+    Restate -->|"Periodic snapshots"| S3["S3 Bucket<br/>(backup store)"]
+    S3 -->|"Restore"| Restate
+```
 
 ### What Restate Stores
 
@@ -365,7 +404,7 @@ There is nothing to back up on the Praxis side. Back up Restate's S3 bucket and 
 
 ### Unknown account
 
-```
+```text
 unknown account "production"
 ```
 

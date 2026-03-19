@@ -1,6 +1,6 @@
 # Developer Guide
 
-This guide is for contributors developing the Praxis codebase — adding features, writing drivers, fixing bugs, and running tests.
+This guide is for contributors developing the Praxis codebase. Adding features, writing drivers, fixing bugs, and running tests.
 
 Praxis development benefits from scoping the imagination sandbox of the LLM Agents to pre-defined rules of Restate and Go, with heuristics of Praxis architecture. This off-loads much of the complex work to Restate while allowing for very flexible systems, planned and implemented by Agents.
 
@@ -13,7 +13,7 @@ Praxis development benefits from scoping the imagination sandbox of the LLM Agen
 
 ## Directory Structure
 
-```
+```text
 cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
@@ -126,6 +126,28 @@ just ci
 
 ### Testing Strategy
 
+```mermaid
+graph TD
+    subgraph L3["Layer 3: End-to-End Tests"]
+        E2E["Full deployment lifecycle<br/>Testcontainers: Restate + LocalStack"]
+    end
+
+    subgraph L2["Layer 2: Driver Integration Tests"]
+        DIT["Driver CRUD against LocalStack<br/>Testcontainers: LocalStack only"]
+    end
+
+    subgraph L1["Layer 1: Unit Tests (Pure Logic)"]
+        UT["DAG, CEL, drift detection,<br/>templates, diff, adapters<br/>No Docker required"]
+    end
+
+    L3 ~~~ L2
+    L2 ~~~ L1
+
+    style L1 fill:#4CAF50,color:#fff
+    style L2 fill:#FF9800,color:#fff
+    style L3 fill:#F44336,color:#fff
+```
+
 #### Layer 1: Unit Tests (Pure Logic)
 
 No AWS or Restate required. Tests the most complex logic in isolation:
@@ -142,6 +164,7 @@ No AWS or Restate required. Tests the most complex logic in isolation:
 Driver CRUD operations tested against LocalStack via Testcontainers. No real AWS required.
 
 Per driver:
+
 - Provision (create, idempotency, update)
 - Import (managed and observed modes)
 - Delete (resource removed, tombstone preserved)
@@ -159,7 +182,7 @@ Each driver is a **Restate Virtual Object** managing the lifecycle of a single c
 
 ### File Layout
 
-```
+```text
 internal/drivers/<kind>/
 ├── types.go       # Spec, Outputs, ObservedState, State structs
 ├── aws.go         # AWS SDK wrapper behind a testable interface
@@ -236,6 +259,16 @@ Rate limiting is built into the AWS wrapper layer — drivers never touch the li
 
 ### Adding a New Driver
 
+```mermaid
+flowchart TD
+    A["1. Create driver package<br/>internal/drivers/kind/"] --> B["2. Bind to domain pack<br/>cmd/praxis-pack/main.go"]
+    B --> C["3. Create CUE schema<br/>schemas/aws/service/kind.cue"]
+    C --> D["4. Add provider adapter<br/>internal/core/provider/"]
+    D --> E["5. Register in adapter registry"]
+    E --> F["6. Wire Docker + Justfile<br/>(if new pack)"]
+    F --> G["7. Write unit + integration tests"]
+```
+
 1. Create `internal/drivers/<kind>/` with types, aws wrapper, drift detection, and driver
 2. Add the driver to the appropriate domain pack entry point (e.g., add a VPC driver to `cmd/praxis-network/main.go` via an additional `.Bind()` call)
 3. Create CUE schema in `schemas/aws/<service>/<kind>.cue`
@@ -262,7 +295,7 @@ The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which do
 Praxis uses [semver](https://semver.org/) with this convention:
 
 | Level | Purpose | Example |
-|-------|---------|---------|
+| --- | --- | --- |
 | **Major** | Big architecture changes (shared, post-1.0.0) | `v1.0.0` → `v2.0.0` |
 | **Minor** | Driver-level releases, new features | `v0.1.0` → `v0.2.0` |
 | **Patch** | Hotfixes and patches | `v0.1.0` → `v0.1.1` |
@@ -270,6 +303,22 @@ Praxis uses [semver](https://semver.org/) with this convention:
 Releases are **manual** — you control what version ships and with what notes. No automated release-on-push.
 
 ### Release Workflow
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant GH as GitHub Actions
+    participant GHCR as ghcr.io
+    participant Rel as GitHub Releases
+
+    Dev->>Dev: just release-preflight v0.1.0
+    Note over Dev: lint, test, build
+    Dev->>GH: just release v0.1.0 (tag + push)
+    GH->>GH: lint, test, cross-compile CLI
+    GH->>GHCR: Push Docker images
+    GH->>Rel: Create draft release + tarballs
+    Dev->>Rel: Edit notes and publish
+```
 
 ```bash
 # 1. Run pre-release checks (lint, test, build)

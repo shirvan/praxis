@@ -26,7 +26,7 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 Each Virtual Object holds:
 
 | Field | Description |
-|-------|-------------|
+| --- | --- |
 | **Desired State** | The user's declared configuration (from template evaluation) |
 | **Observed State** | What actually exists in the cloud provider |
 | **Outputs** | Values produced after provisioning (ARNs, endpoints, IDs) |
@@ -46,7 +46,7 @@ Every driver MUST implement these six handlers:
 These run one-at-a-time per object key. While a `Provision` is running for `my-bucket`, no other exclusive handler can execute on `my-bucket`.
 
 | Handler | Signature | Purpose |
-|---------|-----------|---------|
+| --- | --- | --- |
 | `Provision` | `(ObjectContext, Spec) → (Outputs, error)` | Idempotent create-or-converge. If the resource exists and matches the spec, succeed. If it differs, converge. |
 | `Import` | `(ObjectContext, ImportRef) → (Outputs, error)` | Adopt an existing cloud resource. Captures observed state as desired baseline. |
 | `Delete` | `(ObjectContext) → error` | Remove the resource. Fail terminally if unsafe (e.g., non-empty bucket). |
@@ -57,7 +57,7 @@ These run one-at-a-time per object key. While a `Provision` is running for `my-b
 These can run concurrently and never block exclusive handlers.
 
 | Handler | Signature | Purpose |
-|---------|-----------|---------|
+| --- | --- | --- |
 | `GetStatus` | `(ObjectSharedContext) → (StatusResponse, error)` | Return lifecycle status, mode, generation. |
 | `GetOutputs` | `(ObjectSharedContext) → (Outputs, error)` | Return resource outputs (ARN, endpoint, etc.). |
 
@@ -91,20 +91,31 @@ Every driver follows this exact pattern. The concrete types (`S3BucketSpec`, `S3
 
 Provision follows a check-then-converge pattern:
 
-```
-1. Load existing state from Restate K/V (if any)
-2. Resolve account → AWS credentials via auth.Registry
-3. Check if resource exists in AWS (restate.Run → AWS Describe)
-4. If absent: create it (restate.Run → AWS Create)
-5. Apply full configuration (restate.Run → AWS Configure calls)
-6. Describe actual state (restate.Run → AWS Describe)
-7. Build outputs from observed state
-8. Write state (desired + observed + outputs + status=Ready)
-9. Schedule reconciliation timer
-10. Return outputs
+```mermaid
+flowchart TD
+    A["Load existing state
+    from Restate K/V"] --> B["Resolve account credentials
+    via auth.Registry"]
+    B --> C["Check if resource exists in AWS
+    (restate.Run)"]
+    C --> D{"Exists?"}
+    D -->|No| E["Create resource
+    (restate.Run)"]
+    D -->|Yes| F["Apply full configuration
+    (restate.Run)"]
+    E --> F
+    F --> G["Describe actual state
+    (restate.Run)"]
+    G --> H["Build outputs from
+    observed state"]
+    H --> I["Write state: desired + observed
+    + outputs + status=Ready"]
+    I --> J["Schedule reconciliation timer"]
+    J --> K["Return outputs"]
 ```
 
 Key properties:
+
 - **Idempotent** — calling Provision twice with the same spec produces the same result
 - **Convergent** — calling Provision with an updated spec adjusts the resource to match
 - **Crash-safe** — every AWS call is wrapped in `restate.Run()`, journaled by Restate. On replay, completed calls return their journaled result without re-executing.
@@ -116,6 +127,25 @@ Key properties:
 Reconciliation is Praxis's drift detection and correction mechanism. It replaces the polling-watch model used by Kubernetes controllers with Restate's durable timers.
 
 ### How It Works
+
+```mermaid
+flowchart TD
+    P["Provision or Reconcile
+    completes"] --> S["Schedule durable timer
+    (5 min delay)"]
+    S --> T["Timer fires"]
+    T --> D["Describe actual
+    cloud resource state"]
+    D --> C["Compare against
+    desired spec"]
+    C --> M{"Mode?"}
+    M -->|Managed| Fix["Correct drift
+    re-apply configuration"]
+    M -->|Observed| Report["Report drift
+    (Drift = true)"]
+    Fix --> S
+    Report --> S
+```
 
 1. After each Provision or Reconcile, the driver schedules a delayed self-invocation:
 
@@ -182,6 +212,7 @@ Users can later call Provision with a new spec to update the desired state, and 
 5. Do NOT schedule reconciliation
 
 Properties:
+
 - **Safe** — non-empty resources fail with a terminal error
 - **Idempotent** — deleting an already-deleted resource succeeds
 - **Tombstone** — `GetStatus` still returns meaningful data after deletion
@@ -193,7 +224,7 @@ Properties:
 Each driver owns its key format, producing the shortest natural key for its resource type:
 
 | Resource Type | Scope | Format | Example |
-|---------------|-------|--------|---------|
+| --- | --- | --- | --- |
 | S3Bucket | Global | `<name>` | `my-bucket` |
 | SecurityGroup | Custom (VPC-scoped) | `<vpcId>~<groupName>` | `vpc-123~web-sg` |
 | EC2Instance | Region | `<region>~<name>` | `us-east-1~web-server` |
@@ -203,7 +234,7 @@ The `~` separator is URL-safe and does not collide with characters valid in AWS 
 ### Key Scopes
 
 | Scope | Format | Description |
-|-------|--------|-------------|
+| --- | --- | --- |
 | **Global** | `<name>` | Resource name is globally unique (S3) |
 | **Region** | `<region>~<name>` | Resource name is unique within a region |
 | **Custom** | adapter-defined | Resource has domain-specific scoping (SecurityGroup = VPC) |
@@ -215,6 +246,18 @@ The CLI uses key scope metadata to assemble keys from user input and ambient con
 ## Error Classification
 
 Drivers must classify errors into two categories:
+
+```mermaid
+flowchart TD
+    E["Error occurs"] --> R{"Inside<br/>restate.Run()?"}
+    R -->|Yes| T{"Permanent failure?<br/>(validation, conflict,<br/>not-found, non-empty)"}
+    R -->|No| RET["Return error<br/>(Restate retries handler)"]
+    T -->|Yes| TE["restate.TerminalError<br/>Restate stops retrying"]
+    T -->|No| RE["Return fmt.Errorf<br/>Restate retries callback"]
+
+    style TE fill:#F44336,color:#fff
+    style RE fill:#FF9800,color:#fff
+```
 
 ### Terminal Errors (No Retry)
 
@@ -257,7 +300,7 @@ The concrete implementation translates to AWS SDK calls and provides error class
 All AWS API wrappers include a per-service token bucket rate limiter (from `internal/infra/ratelimit/`), wired transparently at construction time. Drivers never interact with the rate limiter directly — it sits inside the AWS wrapper layer.
 
 | Service | Default Rate | Burst |
-|---------|-------------|-------|
+| --- | --- | --- |
 | S3 (control plane) | 100 rps | 20 |
 | EC2 (describe/create) | 50 rps | 10 |
 
@@ -267,7 +310,7 @@ All AWS API wrappers include a per-service token bucket rate limiter (from `inte
 
 Each driver follows the same directory structure for its internal package:
 
-```
+```text
 internal/drivers/<kind>/
 ├── types.go       # Spec, Outputs, ObservedState, State structs
 ├── aws.go         # AWS SDK wrapper behind a testable interface
@@ -280,14 +323,14 @@ schemas/aws/<service>/<kind>.cue  # CUE schema for user-facing spec
 
 Drivers are deployed via **domain-grouped driver packs** — each pack is a binary that binds all related drivers to a single Restate server:
 
-```
+```text
 cmd/praxis-<pack>/
 ├── main.go        # Binds all drivers in this domain pack
 └── Dockerfile     # Multi-stage distroless build
 ```
 
 | Pack | Binary | Drivers |
-|------|--------|---------|
+| --- | --- | --- |
 | Storage | `cmd/praxis-storage/` | S3 (future: RDS, DynamoDB, SQS, SNS) |
 | Network | `cmd/praxis-network/` | SecurityGroup (future: VPC, ELB, Route 53) |
 | Compute | `cmd/praxis-compute/` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) |

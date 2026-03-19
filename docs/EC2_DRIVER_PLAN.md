@@ -22,7 +22,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Binary Entry Point & Dockerfile](#step-9--binary-entry-point--dockerfile)
+12. [Step 9 — Compute Driver Pack Entry Point & Dockerfile](#step-9--compute-driver-pack-entry-point--dockerfile)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -194,7 +194,7 @@ Plan-time resolution works as follows:
 
 Create or modify these files (✦ = new file, ✎ = modify existing):
 
-```
+```text
 ✦ internal/drivers/ec2/types.go           — Spec, Outputs, ObservedState, State structs
 ✦ internal/drivers/ec2/aws.go             — EC2API interface + realEC2API implementation
 ✦ internal/drivers/ec2/drift.go           — HasDrift(), ComputeFieldDiffs()
@@ -292,6 +292,7 @@ package ec2
 ```
 
 **Key decisions**:
+
 - `imageId` uses a regex to validate AMI ID format — this catches typos before hitting AWS.
 - `subnetId` is required (not optional) — all modern instances launch in a VPC subnet.
 - `rootVolume` is optional — AWS uses defaults if not specified.
@@ -403,6 +404,7 @@ type EC2InstanceState struct {
 ```
 
 **Why these fields**:
+
 - `Account` is passed through from the adapter for credential resolution (same as S3/SG).
 - `RootVolume` is a pointer so it can be nil (optional), unlike the SG rules which are slices.
 - `ObservedState.State` tracks the EC2 instance state machine (`running`, `stopped`, `terminated`).
@@ -2309,7 +2311,7 @@ Add these entries:
 
 1. **In `register` recipe** — add compute pack registration:
 
-```
+```bash
     @echo "Registering compute driver pack with Restate..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
@@ -2319,19 +2321,19 @@ Add these entries:
 
 2. **In `build` recipe** — add compute binary:
 
-```
+```bash
     go build -o bin/praxis-compute ./cmd/praxis-compute
 ```
 
 3. **In `restart` recipe** — add praxis-compute:
 
-```
+```bash
     docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute
 ```
 
 4. **Add driver test/log targets**:
 
-```
+```makefile
 # Run EC2 driver unit tests only
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
@@ -2345,11 +2347,6 @@ logs-drivers:
     docker compose logs -f praxis-storage praxis-network praxis-compute
 ```
 
-# Follow logs for all drivers together.
-logs-drivers:
-    docker compose logs -f praxis-s3 praxis-sg praxis-ec2
-```
-
 ---
 
 ## Step 11 — Unit Tests
@@ -2361,6 +2358,7 @@ Create a mock `EC2API` using testify/mock. Test each handler with mocked AWS res
 **Test cases to implement:**
 
 #### Provision Tests
+
 1. `TestProvision_CreatesNewInstance` — happy path: RunInstance succeeds, WaitUntilRunning succeeds, DescribeInstance returns outputs.
 2. `TestProvision_MissingImageIdFails` — returns terminal error 400.
 3. `TestProvision_MissingInstanceTypeFails` — returns terminal error 400.
@@ -2375,6 +2373,7 @@ Create a mock `EC2API` using testify/mock. Test each handler with mocked AWS res
 12. `TestProvision_MultipleConflictsFails` — `FindByManagedKey` returns ownership corruption error → terminal error 500.
 
 #### Import Tests
+
 13. `TestImport_ExistingInstance` — describes instance, synthesizes spec, returns outputs.
 14. `TestImport_TerminatedInstanceFails` — returns terminal error for terminated instance.
 15. `TestImport_NotFoundFails` — returns terminal error 404.
@@ -2382,12 +2381,14 @@ Create a mock `EC2API` using testify/mock. Test each handler with mocked AWS res
 17. `TestImport_ExplicitManagedMode` — import with `--mode managed` sets ModeManaged.
 
 #### Delete Tests
+
 18. `TestDelete_TerminatesInstance` — calls TerminateInstance, sets tombstone state (ModeManaged).
 19. `TestDelete_AlreadyGone` — IsNotFound returns success (idempotent).
 20. `TestDelete_NoInstanceProvisioned` — sets tombstone without API call.
 21. `TestDelete_ObservedModeBlocked` — Delete returns terminal error 409 for ModeObserved resources.
 
 #### Reconcile Tests
+
 22. `TestReconcile_NoDrift` — no changes when spec matches observed.
 23. `TestReconcile_DetectsInstanceTypeDrift` — drift=true, correcting=true in managed mode.
 24. `TestReconcile_DetectsTagDrift` — drift=true, tag correction applied.
@@ -2396,12 +2397,14 @@ Create a mock `EC2API` using testify/mock. Test each handler with mocked AWS res
 27. `TestReconcile_SkipsNonReadyStatus` — no-op for Pending/Provisioning/Deleting.
 
 #### Shared Handler Tests
+
 28. `TestGetStatus_ReturnsCurrentState` — reads state from K/V.
 29. `TestGetOutputs_ReturnsOutputs` — reads outputs from K/V.
 
 ### `internal/drivers/ec2/drift_test.go`
 
 Test cases:
+
 1. `TestHasDrift_NoDrift` — identical desired and observed returns false.
 2. `TestHasDrift_InstanceTypeChanged` — returns true.
 3. `TestHasDrift_SecurityGroupsChanged` — returns true.
@@ -2422,6 +2425,7 @@ Test cases:
 ### `internal/drivers/ec2/aws_test.go`
 
 Test error classification helpers:
+
 1. `TestIsNotFound_True` — various NotFound error shapes.
 2. `TestIsNotFound_False` — other error types.
 3. `TestIsInvalidParam_AmiNotFound` — InvalidAMIID.NotFound.
@@ -2436,6 +2440,7 @@ Test error classification helpers:
 ### `internal/core/provider/ec2_adapter_test.go`
 
 Test cases (follow `registry_test.go` patterns):
+
 1. `TestEC2Adapter_DecodeSpecAndBuildKey` — parses JSON doc, returns `region~name` key.
 2. `TestEC2Adapter_BuildImportKey` — returns `region~instanceId` key.
 3. `TestEC2Adapter_Kind` — returns `EC2Instance`.
@@ -2559,7 +2564,7 @@ The drift engine only checks **mutable attributes** to avoid false positives.
 
 **Immutable field changes in plan output**: When an immutable field changes between
 the desired spec and observed state, `ComputeFieldDiffs` reports it as a diff entry
-with the path suffixed with ` (immutable, ignored)`. This makes the change visible
+with the path suffixed with `(immutable, ignored)`. This makes the change visible
 in `praxis plan` output without triggering correction. The plan operation remains
 `OpUpdate` (not a new `OpReplace`) — replacement semantics are not implemented.
 The user sees what changed, but the driver does not act on immutable field changes.
@@ -2567,6 +2572,7 @@ The user sees what changed, but the driver does not act on immutable field chang
 ### 3. Tagging: Instance Only
 
 Tags apply to the **instance only**:
+
 - `RunInstance`: `TagSpecifications` with `ResourceType: instance` only.
 - `UpdateTags`: operates on the instance resource only.
 - CUE schema comment updated to say "tags applied to the instance only."
@@ -2581,6 +2587,7 @@ calls to every tag update.
 ### 4. Capacity Failures: 503, Not 400
 
 Capacity failures and input errors use separate status codes:
+
 - `IsInvalidParam` → `restate.TerminalError(err, 400)` — bad AMI, bad subnet, etc.
 - `IsInsufficientCapacity` → `restate.TerminalError(err, 503)` — AWS can't fulfill
   the request. This is a provider-side issue, not a user input issue.
@@ -2590,6 +2597,7 @@ Both are terminal (no retry), but the status code tells the caller what went wro
 ### 5. Instance Type Changes Are Disruptive
 
 Changing `instanceType` requires stopping the instance. The driver:
+
 1. Stops the instance
 2. Waits for stopped state
 3. Modifies the instance type
@@ -2721,12 +2729,13 @@ dual-control, the driver uses a `praxis:managed-key` resource tag:
 **Conflict response**: if `FindByManagedKey` finds a live instance claiming the same
 key, `Provision` returns a terminal error (409):
 
-```
+```text
 instance name "web-server" in this region is already managed by Praxis (instanceId: i-0abc123def456);
 remove the existing resource or use a different metadata.name
 ```
 
 **Scope of protection**:
+
 - ✅ Two templates in the *same* Praxis installation managing the same key → 409 on the second Provision
 - ✅ Wiped Praxis state + original instance still running with tag → 409 (prompts operator to import or restore)
 - ❌ Two *separate* Praxis installations (different Restate clusters) targeting the same region → not protected; tags from installation A are invisible to installation B's ownership policy

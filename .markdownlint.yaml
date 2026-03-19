@@ -1,0 +1,19 @@
+# Markdown lint configuration for Praxis docs
+# Run: npx markdownlint-cli2 "**/*.md" "#node_modules"
+
+# MD013: Line length — disabled; prose wraps naturally and tables/URLs
+# routinely exceed 80 chars in documentation.
+MD013: false
+
+# MD060: Table column style — disabled; pipe alignment is cosmetic
+# and varies with content width. Does not affect rendering.
+MD060: false
+
+# MD024: Allow duplicate headings in different sections
+# (e.g., "How It Works" appears in multiple contexts).
+MD024:
+  siblings_only: true
+
+# MD029: Ordered list prefix — disabled; numbered steps broken by code
+# fences and sub-headings produce false positives for sequential numbering.
+MD029: false

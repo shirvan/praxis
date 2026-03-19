@@ -1,8 +1,9 @@
-> ## Documentation Index
-> Fetch the complete documentation index at: https://docs.restate.dev/llms.txt
+# Documentation Index
+
+> Fetch the complete documentation index at: <https://docs.restate.dev/llms.txt>
 > Use this file to discover all available pages before exploring further.
 
-# Restate Go SDK Rules
+## Restate Go SDK Rules
 
 ## Core Concepts
 
@@ -396,6 +397,5 @@ restateingress.ServiceSend[string](
   restateClient, "MyService", "MyHandler").
   Send(context.Background(), "Hi", restate.WithDelay(1*time.Hour))
 ```
-
 
 Built with [Mintlify](https://mintlify.com).

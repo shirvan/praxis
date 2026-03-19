@@ -14,45 +14,29 @@ The result: a system with the same reconciliation semantics (drift detection, se
 
 ## System Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         USER / CLI / API                         │
-│                                                                  │
-│   praxis apply webapp.cue        praxis plan stack.cue           │
-│   praxis get S3Bucket/my-bucket  praxis delete my-stack          │
-│   praxis import S3Bucket --id x  praxis observe my-stack         │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │ HTTP/JSON via Restate ingress
-                           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                        PRAXIS CORE                               │
-│                                                                  │
-│  ┌─────────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
-│  │ Command Service │  │   Template   │  │    Deployment        │ │
-│  │ (Restate Basic  │  │   Engine     │  │    Orchestrator      │ │
-│  │  Service)       │  │ (CUE + CEL)  │  │ (Workflows + VOs)   │ │
-│  └────────┬────────┘  └──────────────┘  └──────────┬───────────┘ │
-│           │                                        │             │
-│  ┌────────┴──────────────────────────┐  ┌──────────┴───────────┐ │
-│  │ Template Registry + Policy Engine │  │ Deployment State,    │ │
-│  │ (Virtual Objects)                 │  │ Index, Events (VOs)  │ │
-│  └───────────────────────────────────┘  └──────────────────────┘ │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │ Restate RPC (durable, exactly-once)
-                           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                DRIVER PACKS (grouped by AWS domain)              │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │   Storage    │  │   Network    │  │   Compute    │           │
-│  │ (S3, RDS,   │  │ (SG, VPC,   │  │ (EC2, ASG,  │           │
-│  │  DynamoDB…) │  │  ELB, R53…) │  │  Lambda…)   │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │
-                    ┌──────┴──────┐
-                    │  AWS APIs   │
-                    └─────────────┘
+```mermaid
+graph TD
+    User["USER / CLI / API<br/>apply, plan, get, delete, import, observe"]
+
+    User -->|"HTTP/JSON via Restate ingress"| Core
+
+    subgraph Core["PRAXIS CORE"]
+        CS["Command Service<br/>(Restate Basic Service)"]
+        TE["Template Engine<br/>(CUE + CEL)"]
+        DO["Deployment Orchestrator<br/>(Workflows + VOs)"]
+        TR["Template Registry + Policy Engine<br/>(Virtual Objects)"]
+        DS["Deployment State, Index, Events<br/>(Virtual Objects)"]
+    end
+
+    Core -->|"Restate RPC - durable, exactly-once"| Drivers
+
+    subgraph Drivers["DRIVER PACKS (grouped by AWS domain)"]
+        Storage["Storage<br/>(S3, RDS, DynamoDB)"]
+        Network["Network<br/>(SG, VPC, ELB, R53)"]
+        Compute["Compute<br/>(EC2, ASG, Lambda)"]
+    end
+
+    Drivers --> AWS["AWS APIs"]
 ```
 
 ---
@@ -95,7 +79,7 @@ srv := server.NewRestate().
 ```
 
 | Pack | Container | Drivers | Rationale |
-|------|-----------|---------|----------|
+| --- | --- | --- | --- |
 | **Storage** | `praxis-storage` | S3 (future: RDS, DynamoDB, SQS, SNS) | Data stores and messaging |
 | **Network** | `praxis-network` | SecurityGroup, VPC (future: ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
 | **Compute** | `praxis-compute` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) | All compute lifecycle, similar IAM patterns |
@@ -124,6 +108,7 @@ The `praxis` CLI is a standalone Go binary built with Cobra. It talks directly t
 Kubernetes provides reconciliation, state management, and scheduling — but it requires operating a cluster (etcd, API server, controller manager, scheduler). For teams that already run Kubernetes, Crossplane is a natural choice. For teams that don't — or that want infrastructure management without cluster overhead — Praxis offers the same reconciliation model on a simpler runtime.
 
 Restate gives Praxis the properties typically associated with Kubernetes controllers:
+
 - **State management** → Virtual Object K/V store (vs etcd)
 - **Single-writer per resource** → Exclusive handlers (vs controller leader election)
 - **Crash recovery** → Journal replay (vs controller restart + re-list)
@@ -144,6 +129,7 @@ The tradeoff: CUE has a steeper learning curve than YAML. Praxis mitigates this 
 Praxis uses a centralized orchestrator in Core rather than distributed choreography between drivers. Core resolves the dependency graph, dispatches resources, collects outputs, and manages the deployment lifecycle.
 
 Benefits:
+
 - Drivers stay simple — they implement CRUD and know nothing about dependencies
 - Deployment state lives in one place for consistent observability
 - Failure handling is centralized — skip dependents, report clear errors
@@ -156,6 +142,7 @@ Tradeoff: Core is a coordination bottleneck. Every deployment flows through it. 
 Instead of a single driver service managing all instances of a resource type through a shared database, each resource instance is its own Virtual Object keyed by a natural identifier (e.g., `my-bucket` for S3).
 
 Benefits:
+
 - **Single-writer guarantee** — no distributed locking needed
 - **Built-in state** — no external database to operate
 - **Natural addressing** — `S3Bucket/my-bucket` maps directly to a Virtual Object key
@@ -168,6 +155,7 @@ Tradeoff: state lives in Restate's storage layer, not a traditional database. Re
 Instead of one container per resource type (which would mean 18+ containers at full AWS coverage) or a single monolithic driver process, Praxis groups drivers by AWS domain into a handful of **driver packs**. Each pack is a container hosting related Virtual Objects.
 
 Benefits:
+
 - **Scaling aligns with reality** — if someone is churning EC2 instances, they're probably also churning Auto Scaling groups and Lambda functions. Scale the compute pack, not five separate containers.
 - **Blast radius is contained** — a panic in the VPC driver doesn't take down S3. The grouping follows natural AWS API boundaries.
 - **Restate doesn't care** — Virtual Object keys are globally unique within Restate regardless of which endpoint serves them. The orchestrator dispatches by service name (e.g., `"EC2Instance"`), not by container.
@@ -184,23 +172,30 @@ Tradeoff: a bug in one driver within a pack affects all drivers in that pack. Th
 
 ### Apply (Provision)
 
-```
-1. User runs: praxis apply webapp.cue --account local --var env=dev --key my-stack
-2. CLI reads template file, sends ApplyRequest to Command Service via Restate ingress
-3. Command Service runs the template pipeline:
-   a. Resolve template source (inline or from registry)
-   b. Load policies (global + template-scoped)
-   c. CUE evaluation — validate against schemas, apply defaults, inject variables
-   d. SSM resolution — resolve secret references (journaled)
-   e. CEL pass 1 — resolve variables.* expressions
-   f. DAG construction — parse resource dependencies from CEL expressions
-4. Command Service initializes DeploymentState, submits DeploymentWorkflow
-5. Workflow runs eager scheduler:
-   a. Dispatch resources whose dependencies are met
-   b. Wait for any running resource to complete
-   c. Hydrate downstream specs with outputs (CEL pass 2)
-   d. Repeat until all resources are complete or failed
-6. CLI polls DeploymentState until terminal status
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant CS as Command Service
+    participant WF as Deployment Workflow
+    participant D as Drivers
+
+    User->>CLI: praxis apply webapp.cue
+    CLI->>CS: ApplyRequest via Restate ingress
+
+    Note over CS: Template pipeline:<br/>Resolve source, load policies,<br/>CUE eval, SSM resolve,<br/>CEL pass 1, build DAG
+
+    CS->>CS: Initialize DeploymentState
+    CS->>WF: Submit DeploymentWorkflow
+
+    loop Eager Scheduler
+        WF->>D: Dispatch ready resources
+        D-->>WF: Complete with outputs
+        WF->>WF: Hydrate downstream specs via CEL pass 2
+    end
+
+    CLI->>WF: Poll DeploymentState
+    WF-->>CLI: Terminal status
 ```
 
 ### Plan (Dry-Run)
@@ -209,39 +204,64 @@ Same as Apply through step 3, then diffs each resource spec against the driver's
 
 ### Delete
 
-```
-1. User runs: praxis delete Deployment/my-stack --yes
-2. Command Service reads DeploymentState, submits DeploymentDeleteWorkflow
-3. Delete workflow builds reverse dependency order from stored metadata
-4. Deletes resources in reverse topological order (parallel where safe)
-5. Finalizes DeploymentState as Deleted
+```mermaid
+sequenceDiagram
+    participant User
+    participant CS as Command Service
+    participant WF as Delete Workflow
+    participant D as Drivers
+
+    User->>CS: praxis delete Deployment/my-stack
+    CS->>CS: Read DeploymentState
+    CS->>WF: Submit DeploymentDeleteWorkflow
+    WF->>WF: Build reverse dependency order
+
+    loop Reverse topological order
+        WF->>D: Delete resource (parallel where safe)
+        D-->>WF: Deleted
+    end
+
+    WF->>WF: Finalize DeploymentState as Deleted
 ```
 
 ### Reconcile
 
-```
-1. Driver schedules a durable timer after each Provision or Reconcile (default: 5 min)
-2. Timer fires → Reconcile handler runs
-3. Driver describes actual cloud state, compares against desired spec
-4. Managed mode: corrects drift by re-applying configuration
-5. Observed mode: reports drift without correcting
-6. Schedules next timer
+```mermaid
+flowchart TD
+    A["Driver schedules durable timer
+    (default: 5 min)"] --> B["Timer fires"]
+    B --> C["Reconcile handler runs"]
+    C --> D["Describe actual cloud state"]
+    D --> E["Compare against desired spec"]
+    E --> F{"Mode?"}
+    F -->|Managed| G["Correct drift by
+    re-applying configuration"]
+    F -->|Observed| H["Report drift
+    without correcting"]
+    G --> I["Schedule next timer"]
+    H --> I
 ```
 
 ---
 
 ## Resource Lifecycle
 
-```
-Pending → Provisioning → Ready ⟲ (Reconcile loop)
-                            ↓
-                          Error ← drift / failures
-                            ↓
-Ready → Deleting → Deleted
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Provisioning
+    Provisioning --> Ready
+    Ready --> Ready : Reconcile loop
+    Provisioning --> Error
+    Ready --> Error : drift / failures
+    Error --> Ready : recovery
+    Ready --> Deleting
+    Deleting --> Deleted
+    Deleted --> [*]
 ```
 
 | Status | Description |
-|--------|-------------|
+| --- | --- |
 | `Pending` | Declared but not yet provisioned |
 | `Provisioning` | Provision handler is executing |
 | `Ready` | Exists and matches desired state |
@@ -252,7 +272,7 @@ Ready → Deleting → Deleted
 ### Resource Modes
 
 | Mode | Behavior |
-|------|----------|
+| --- | --- |
 | **Managed** | Full lifecycle — provision, reconcile, correct drift, delete |
 | **Observed** | Import-only — detect and report drift but never modify the resource |
 
