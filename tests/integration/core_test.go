@@ -324,13 +324,13 @@ resources: {
 }
 
 // multiResourceTemplate returns a CUE template with an S3 bucket and a
-// SecurityGroup. The bucket's tags reference the SG's outputs via a CEL
+// SecurityGroup. The bucket's tags reference the SG's outputs via an output
 // expression, creating a real dependency edge in the DAG.
 //
 // This validates:
 //   - DAG dependency parsing (the bucket depends on the SG)
 //   - Correct topological dispatch order (SG first, then bucket)
-//   - Dispatch-time CEL hydration of resources.*.outputs.* expressions
+//   - Dispatch-time hydration of resources.*.outputs.* expressions
 func multiResourceTemplate(bucketName, sgName, vpcId string) string {
 	return fmt.Sprintf(`
 resources: {
@@ -370,7 +370,7 @@ resources: {
 			}
 			tags: {
 				env:        "integration-test"
-				secGroupId: "${cel:resources.appSG.outputs.groupId}"
+				secGroupId: "${resources.appSG.outputs.groupId}"
 			}
 		}
 	}
@@ -393,7 +393,7 @@ resources: {
 		spec: {
 			region:     "us-east-1"
 			tags: {
-				dep: "${cel:resources.bucketB.outputs.bucketName}"
+				dep: "${resources.bucketB.outputs.bucketName}"
 			}
 		}
 	}
@@ -406,7 +406,7 @@ resources: {
 		spec: {
 			region:     "us-east-1"
 			tags: {
-				dep: "${cel:resources.bucketA.outputs.bucketName}"
+				dep: "${resources.bucketA.outputs.bucketName}"
 			}
 		}
 	}
@@ -619,14 +619,14 @@ func TestCore_Delete_ReverseOrder(t *testing.T) {
 }
 
 // TestCore_Apply_MultiResource_WithDependencies exercises the full DAG
-// orchestration path with cross-resource CEL dependencies:
+// orchestration path with cross-resource dependencies:
 //
 //  1. Submit a multi-resource template (SG + S3 bucket) where the bucket's
-//     tags reference the SG's outputs via CEL
+//     tags reference the SG's outputs via expressions
 //  2. Verify the workflow dispatches the SG first (it has no deps)
 //  3. Verify the bucket is dispatched second (it depends on the SG)
 //  4. Verify both resources exist in LocalStack
-//  5. Verify the bucket's tags contain the actual SG group ID (CEL hydration)
+//  5. Verify the bucket's tags contain the actual SG group ID (expression hydration)
 //  6. Verify outputs for both resources are recorded in deployment state
 func TestCore_Apply_MultiResource_WithDependencies(t *testing.T) {
 	env := setupCoreStack(t)
@@ -652,7 +652,7 @@ func TestCore_Apply_MultiResource_WithDependencies(t *testing.T) {
 	//   1. Builds a DAG: bucket depends on appSG
 	//   2. Dispatches appSG first (root of the DAG)
 	//   3. Collects SG outputs (groupId, vpcId, groupArn)
-	//   4. Hydrates the bucket's CEL expressions with SG outputs
+	//   4. Hydrates the bucket's expressions with SG outputs
 	//   5. Dispatches bucket with the hydrated spec
 	//   6. Collects bucket outputs
 	//   7. Finalizes as Complete
@@ -683,10 +683,10 @@ func TestCore_Apply_MultiResource_WithDependencies(t *testing.T) {
 	require.NoError(t, err, "SG should exist in LocalStack")
 	require.Len(t, sgDesc.SecurityGroups, 1)
 
-	// --- Step 5: Verify CEL hydration in bucket tags ---
+	// --- Step 5: Verify expression hydration in bucket tags ---
 	//
 	// The bucket's `secGroupId` tag should contain the actual SG group ID,
-	// not the CEL placeholder string. This proves dispatch-time hydration
+	// not the expression placeholder string. This proves dispatch-time hydration
 	// worked correctly.
 	tagging, err := env.s3Client.GetBucketTagging(context.Background(), &s3sdk.GetBucketTaggingInput{
 		Bucket: &bucketName,
@@ -697,7 +697,7 @@ func TestCore_Apply_MultiResource_WithDependencies(t *testing.T) {
 		tagMap[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
 	assert.Equal(t, sgGroupId, tagMap["secGroupId"],
-		"bucket's secGroupId tag should equal the SG's actual groupId (CEL hydration)")
+		"bucket's secGroupId tag should equal the SG's actual groupId (expression hydration)")
 	assert.Equal(t, "integration-test", tagMap["env"],
 		"bucket's env tag should remain as-is")
 

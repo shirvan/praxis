@@ -35,7 +35,7 @@ func (*DeploymentWorkflow) ServiceName() string {
 // Run executes the deployment plan using eager dispatch:
 //
 //   - resources start as soon as their direct dependencies complete
-//   - outputs are fed back into dispatch-time CEL hydration
+//   - outputs are fed back into dispatch-time expression hydration
 //   - dependency failures mark downstream resources as Skipped
 //   - cancellation stops new dispatches but lets in-flight operations finish
 func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPlan) (DeploymentResult, error) {
@@ -120,7 +120,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			for _, name := range ready {
 				resource := exec.plan[name]
 
-				hydratedSpec, err := HydrateCEL(resource.Spec, resource.CELExpressions, exec.outputs, plan.Variables)
+				hydratedSpec, err := HydrateExprs(resource.Spec, resource.Expressions, exec.outputs)
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to hydrate spec: %v", err)); err != nil {
 						return DeploymentResult{}, err

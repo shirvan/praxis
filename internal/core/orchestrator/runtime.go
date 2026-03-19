@@ -215,12 +215,12 @@ func graphFromPlanResources(resources []PlanResource) (*dag.Graph, error) {
 			spec = json.RawMessage(`{}`)
 		}
 		nodes = append(nodes, &types.ResourceNode{
-			Name:           resource.Name,
-			Kind:           resource.Kind,
-			Key:            resource.Key,
-			Spec:           spec,
-			Dependencies:   resource.Dependencies,
-			CELExpressions: resource.CELExpressions,
+			Name:         resource.Name,
+			Kind:         resource.Kind,
+			Key:          resource.Key,
+			Spec:         spec,
+			Dependencies: resource.Dependencies,
+			Expressions:  resource.Expressions,
 		})
 	}
 	return dag.NewGraph(nodes)

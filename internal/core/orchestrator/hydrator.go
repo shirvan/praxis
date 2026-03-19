@@ -1,7 +1,7 @@
 // Package orchestrator contains generic orchestration helpers shared by the
-// future workflow implementation.
+// deployment workflow implementation.
 //
-// The typed CEL hydrator is implemented here because it is part of the
+// The typed expression hydrator is implemented here because it is part of the
 // cross-package contract between DAG parsing, deployment state, and driver
 // dispatch.
 package orchestrator
@@ -12,54 +12,49 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/google/cel-go/cel"
-
 	"github.com/praxiscloud/praxis/internal/core/template"
 )
 
-// HydrateCEL evaluates dispatch-time CEL expressions against collected resource
-// outputs and optional variables, then writes the typed results back into the
-// JSON document at the recorded paths.
+// HydrateExprs resolves dispatch-time expressions against collected resource
+// outputs, then writes the typed results back into the JSON document at the
+// recorded paths.
 //
-// Unlike the template-time resolver, this function does not stringify the CEL
-// result before inserting it. That difference is the whole point: integers stay
-// integers, booleans stay booleans, arrays stay arrays, and so on.
-func HydrateCEL(
+// Expressions use dot-path syntax: resources.<name>.outputs.<field>.
+// Integers stay integers, booleans stay booleans, arrays stay arrays.
+func HydrateExprs(
 	spec json.RawMessage,
-	celExprs map[string]string,
+	exprs map[string]string,
 	outputs map[string]map[string]any,
-	variables map[string]any,
 ) (json.RawMessage, error) {
-	if len(celExprs) == 0 {
+	if len(exprs) == 0 {
 		return spec, nil
 	}
 
 	var root any
 	if err := json.Unmarshal(spec, &root); err != nil {
 		return nil, template.TemplateErrors{template.TemplateError{
-			Kind:    template.ErrCELUnresolved,
+			Kind:    template.ErrExprUnresolved,
 			Path:    "spec",
-			Message: fmt.Sprintf("invalid JSON document for CEL hydration: %v", err),
+			Message: fmt.Sprintf("invalid JSON document for expression hydration: %v", err),
 			Cause:   err,
 		}}
 	}
 
-	paths := make([]string, 0, len(celExprs))
-	for path := range celExprs {
+	paths := make([]string, 0, len(exprs))
+	for path := range exprs {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
 
 	var errs template.TemplateErrors
-	resources := buildCELResources(outputs)
 	for _, path := range paths {
-		expr := normalizeCELExpression(celExprs[path])
-		value, err := evalCELValue(expr, resources, variables)
+		expr := exprs[path]
+		value, err := resolveExpr(expr, outputs)
 		if err != nil {
 			errs = append(errs, template.TemplateError{
-				Kind:    classifyCELError(err),
+				Kind:    template.ErrExprUnresolved,
 				Path:    path,
-				Message: fmt.Sprintf("failed to hydrate CEL expression %q: %v", expr, err),
+				Message: fmt.Sprintf("failed to resolve expression %q: %v", expr, err),
 				Detail:  "Ensure every referenced dependency output exists before dispatching this resource.",
 				Cause:   err,
 			})
@@ -69,10 +64,10 @@ func HydrateCEL(
 		updated, setErr := setHydrationPath(root, path, value)
 		if setErr != nil {
 			errs = append(errs, template.TemplateError{
-				Kind:    template.ErrCELUnresolved,
+				Kind:    template.ErrExprUnresolved,
 				Path:    path,
 				Message: fmt.Sprintf("failed to write hydrated value: %v", setErr),
-				Detail:  "Ensure CELExpressions contains valid JSON paths for the rendered resource document.",
+				Detail:  "Ensure Expressions contains valid JSON paths for the rendered resource document.",
 				Cause:   setErr,
 			})
 			continue
@@ -83,7 +78,7 @@ func HydrateCEL(
 	marshaled, err := json.Marshal(root)
 	if err != nil {
 		errs = append(errs, template.TemplateError{
-			Kind:    template.ErrCELUnresolved,
+			Kind:    template.ErrExprUnresolved,
 			Path:    "spec",
 			Message: fmt.Sprintf("failed to marshal hydrated JSON document: %v", err),
 			Cause:   err,
@@ -96,66 +91,26 @@ func HydrateCEL(
 	return marshaled, nil
 }
 
-func normalizeCELExpression(expr string) string {
-	trimmed := strings.TrimSpace(expr)
-	trimmed = strings.TrimPrefix(trimmed, "${cel:")
-	trimmed = strings.TrimSuffix(trimmed, "}")
-	return strings.TrimSpace(trimmed)
-}
+// resolveExpr walks a dot-path expression like "resources.sg.outputs.groupId"
+// against the collected outputs map.
+func resolveExpr(expr string, outputs map[string]map[string]any) (any, error) {
+	parts := strings.Split(expr, ".")
+	// Expected form: resources.<name>.outputs.<field>
+	if len(parts) < 4 || parts[0] != "resources" || parts[2] != "outputs" {
+		return nil, fmt.Errorf("unsupported expression format: %q", expr)
+	}
+	resourceName := parts[1]
+	fieldName := parts[3]
 
-func buildCELResources(outputs map[string]map[string]any) map[string]any {
-	resources := make(map[string]any, len(outputs))
-	for name, outputMap := range outputs {
-		resources[name] = map[string]any{
-			"outputs": outputMap,
-		}
+	outputMap, ok := outputs[resourceName]
+	if !ok {
+		return nil, fmt.Errorf("resource %q not found in outputs", resourceName)
 	}
-	return resources
-}
-
-func evalCELValue(expr string, resources map[string]any, variables map[string]any) (any, error) {
-	env, err := cel.NewEnv(
-		cel.Variable("resources", cel.DynType),
-		cel.Variable("variables", cel.DynType),
-	)
-	if err != nil {
-		return nil, err
+	value, ok := outputMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("output %q not found for resource %q", fieldName, resourceName)
 	}
-
-	ast, issues := env.Parse(expr)
-	if issues != nil && issues.Err() != nil {
-		return nil, issues.Err()
-	}
-	checked, issues := env.Check(ast)
-	if issues != nil && issues.Err() != nil {
-		return nil, issues.Err()
-	}
-	program, err := env.Program(checked)
-	if err != nil {
-		return nil, err
-	}
-	value, _, err := program.Eval(map[string]any{
-		"resources": resources,
-		"variables": variables,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return value.Value(), nil
-}
-
-func classifyCELError(err error) template.TemplateErrorKind {
-	if err == nil {
-		return template.ErrCELEval
-	}
-	message := err.Error()
-	if strings.Contains(message, "undeclared reference") || strings.Contains(message, "no such key") || strings.Contains(message, "not found") {
-		return template.ErrCELUnresolved
-	}
-	if strings.Contains(message, "Syntax error") {
-		return template.ErrCELParse
-	}
-	return template.ErrCELEval
+	return value, nil
 }
 
 func setHydrationPath(root any, path string, value any) (any, error) {

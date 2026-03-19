@@ -221,7 +221,7 @@ type S3BucketOutputs struct {
 }
 ```
 
-Outputs are referenced by dependent resources via CEL expressions:
+Outputs are referenced by dependent resources via output expressions:
 `${ resources.bucket.outputs.arn }`, `${ resources.bucket.outputs.domainName }`.
 
 ### ObservedState

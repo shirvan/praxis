@@ -39,7 +39,7 @@ internal/
     config/                    # Configuration loading
     dag/                       # Dependency graph engine (pure Go)
       graph.go                 # DAG construction, cycle detection
-      parser.go                # CEL expression reference extraction
+      parser.go                # Expression reference extraction
       scheduler.go             # Topological sort + eager dispatch
     diff/                      # Plan diff engine
     orchestrator/              # Restate deployment workflows
@@ -48,7 +48,7 @@ internal/
       deployment_state.go      # DeploymentState Virtual Object
       index.go                 # DeploymentIndex Virtual Object
       events.go                # DeploymentEvents Virtual Object
-      hydrator.go              # Dispatch-time CEL hydration
+      hydrator.go              # Dispatch-time expression hydration
     provider/                  # Driver adapter registry
       registry.go              # Kind → service name mapping
       keys.go                  # Canonical resource key generation
@@ -63,7 +63,6 @@ internal/
       restate_ssm.go           # Restate-journaled SSM wrapper
     template/                  # Template engine
       engine.go                # CUE evaluation pipeline
-      cel.go                   # Template-time CEL resolver
   drivers/                     # Resource driver implementations
     contract.go                # Driver service contract docs
     state.go                   # Shared constants (StateKey, ReconcileInterval)
@@ -137,7 +136,7 @@ graph TD
     end
 
     subgraph L1["Layer 1: Unit Tests (Pure Logic)"]
-        UT["DAG, CEL, drift detection,<br/>templates, diff, adapters<br/>No Docker required"]
+        UT["DAG, drift detection,<br/>templates, diff, adapters<br/>No Docker required"]
     end
 
     L3 ~~~ L2
@@ -153,7 +152,7 @@ graph TD
 No AWS or Restate required. Tests the most complex logic in isolation:
 
 - DAG construction, cycle detection, topological ordering
-- CEL reference parsing, typed hydration
+- Expression reference parsing, typed hydration
 - Drift detection per driver (pure function comparison)
 - Template evaluation, schema validation
 - Plan diff rendering

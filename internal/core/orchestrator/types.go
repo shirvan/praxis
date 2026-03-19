@@ -48,7 +48,7 @@ type DeploymentPlan struct {
 	// dependency metadata.
 	Resources []PlanResource `json:"resources"`
 
-	// Variables is the template-level variable map. The dispatch-time CEL
+	// Variables is the template-level variable map. The dispatch-time expression
 	// hydrator receives it alongside collected dependency outputs.
 	Variables map[string]any `json:"variables,omitempty"`
 
@@ -75,16 +75,16 @@ type PlanResource struct {
 	Key string `json:"key"`
 
 	// Spec is the fully rendered resource document. It may still contain
-	// unresolved dispatch-time CEL expressions until dependencies complete.
+	// unresolved dispatch-time expressions until dependencies complete.
 	Spec json.RawMessage `json:"spec"`
 
 	// Dependencies lists template-local resources that must complete before this
 	// resource can be hydrated and dispatched.
 	Dependencies []string `json:"dependencies"`
 
-	// CELExpressions records the exact JSON paths that need dispatch-time CEL
+	// Expressions records the exact JSON paths that need dispatch-time
 	// hydration from dependency outputs.
-	CELExpressions map[string]string `json:"celExpressions,omitempty"`
+	Expressions map[string]string `json:"expressions,omitempty"`
 }
 
 // DeploymentState is the durable per-deployment lifecycle record stored in the

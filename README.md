@@ -52,8 +52,8 @@ None of them let you declare infrastructure, have it continuously converged, and
 | **Drift detection** | Manual (`terraform plan`) | Automatic | Automatic |
 | **Execution guarantee** | None (can leave partial state) | At-least-once | **Exactly-once** (journaled) |
 | **Crash recovery** | Manual intervention | Controller restart + re-reconcile | Automatic journal replay |
-| **Dependency resolution** | Provider-determined | Composition functions | DAG from CEL expressions |
-| **Template language** | HCL | YAML + Compositions | CUE + CEL |
+| **Dependency resolution** | Provider-determined | Composition functions | DAG from output expressions |
+| **Template language** | HCL | YAML + Compositions | CUE |
 | **Extension model** | Go providers (complex SDK) | Go controllers (complex SDK) | Restate Virtual Objects (simple handler interface) |
 
 ### Key Capabilities
@@ -64,13 +64,13 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **Single-Writer Guarantee.** Each resource is a Restate Virtual Object with exclusive handler execution. No racing updates, no distributed locks, no optimistic concurrency conflicts.
 
-**Dependency-Aware Orchestration.** Templates declare cross-resource dependencies via CEL expressions. The orchestrator builds a DAG and dispatches resources with maximum parallelism as dependencies complete.
+**Dependency-Aware Orchestration.** Templates declare cross-resource dependencies via output expressions (`${resources.<name>.outputs.<field>}`). The orchestrator builds a DAG and dispatches resources with maximum parallelism as dependencies complete.
 
 **Plan Before Apply.** Preview exactly what would change before committing — per-field diffs for every resource, just like `terraform plan`.
 
 **Import Existing Resources.** Adopt cloud resources already running in your account. Praxis captures their current state as a baseline and begins managing or observing them.
 
-**CUE + CEL Templates.** Platform teams define typed, validated templates in CUE. End users fill in variables. CEL expressions wire resource outputs into downstream specs. Policy constraints enforce organizational standards via CUE unification.
+**CUE Templates.** Platform teams define typed, validated templates in CUE. End users fill in variables. Output expressions wire resource outputs into downstream specs. Policy constraints enforce organizational standards via CUE unification.
 
 **Lightweight Operations.** The entire stack runs in Docker Compose. No etcd, no API server, no cluster to maintain. Drivers are grouped by AWS domain into independent driver packs that register with Restate.
 
@@ -161,7 +161,7 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 - **Drivers:** S3 Bucket, Security Group, EC2 Instance, VPC
 - **Accounts:** One operator-defined account per deployed stack
 - **Deployment:** Docker Compose reference stack (LocalStack for local dev)
-- **Templates:** CUE schemas with CEL expressions, template registry with variable schema extraction, policy enforcement
+- **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
 - **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`
 
 See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for ready-to-use templates.
@@ -175,7 +175,7 @@ See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for read
 | [Architecture](docs/ARCHITECTURE.md) | Everyone | How Praxis works — Restate-powered core, modular drivers, design tradeoffs |
 | [Drivers](docs/DRIVERS.md) | Contributors | Driver model, contract, state management, reconciliation, building new drivers |
 | [Orchestrator](docs/ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete flow |
-| [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE + CEL template system, two-phase evaluation, registry, policy enforcement |
+| [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE template system, expression evaluation, registry, policy enforcement |
 | [CLI Reference](docs/CLI.md) | Users | All commands, account selection, output formats, timeouts |
 | [Operator Guide](docs/OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |

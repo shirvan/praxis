@@ -69,12 +69,7 @@ func (s *PraxisCommandService) compileTemplate(
 		return nil, restate.TerminalError(err, 400)
 	}
 
-	phaseOneSpecs, err := template.NewCELResolver(variables).Resolve(ssmResolvedSpecs)
-	if err != nil {
-		return nil, restate.TerminalError(err, 400)
-	}
-
-	nodes, err := s.buildResourceNodes(phaseOneSpecs)
+	nodes, err := s.buildResourceNodes(ssmResolvedSpecs)
 	if err != nil {
 		return nil, restate.TerminalError(err, 400)
 	}
@@ -84,14 +79,14 @@ func (s *PraxisCommandService) compileTemplate(
 		return nil, restate.TerminalError(fmt.Errorf("invalid deployment graph: %w", err), 400)
 	}
 
-	rendered, err := renderResolvedTemplate(phaseOneSpecs, sensitive)
+	rendered, err := renderResolvedTemplate(ssmResolvedSpecs, sensitive)
 	if err != nil {
 		return nil, restate.TerminalError(err, 500)
 	}
 
 	return &compiledTemplate{
 		TemplatePath:  templatePath,
-		Specs:         phaseOneSpecs,
+		Specs:         ssmResolvedSpecs,
 		Nodes:         nodes,
 		Graph:         graph,
 		PlanResources: planResourcesFromGraph(nodes, graph),
@@ -274,18 +269,18 @@ func (s *PraxisCommandService) buildResourceNodes(specs map[string]json.RawMessa
 			return nil, fmt.Errorf("resource %q: build canonical key: %w", name, err)
 		}
 
-		deps, celExprs, err := dag.ParseDependencies(name, raw)
+		deps, exprs, err := dag.ParseDependencies(name, raw)
 		if err != nil {
 			return nil, fmt.Errorf("resource %q: parse dependencies: %w", name, err)
 		}
 
 		nodes = append(nodes, &types.ResourceNode{
-			Name:           name,
-			Kind:           kind,
-			Key:            key,
-			Spec:           raw,
-			Dependencies:   deps,
-			CELExpressions: celExprs,
+			Name:         name,
+			Kind:         kind,
+			Key:          key,
+			Spec:         raw,
+			Dependencies: deps,
+			Expressions:  exprs,
 		})
 	}
 
@@ -306,13 +301,13 @@ func planResourcesFromGraph(nodes []*types.ResourceNode, graph *dag.Graph) []orc
 	for _, name := range graph.TopologicalOrder() {
 		node := byName[name]
 		resources = append(resources, orchestrator.PlanResource{
-			Name:           node.Name,
-			Kind:           node.Kind,
-			DriverService:  node.Kind,
-			Key:            node.Key,
-			Spec:           node.Spec,
-			Dependencies:   append([]string(nil), node.Dependencies...),
-			CELExpressions: cloneStringMap(node.CELExpressions),
+			Name:          node.Name,
+			Kind:          node.Kind,
+			DriverService: node.Kind,
+			Key:           node.Key,
+			Spec:          node.Spec,
+			Dependencies:  append([]string(nil), node.Dependencies...),
+			Expressions:   cloneStringMap(node.Expressions),
 		})
 	}
 

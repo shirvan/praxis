@@ -355,7 +355,7 @@ type RootVolumeSpec struct {
 }
 
 // EC2InstanceOutputs is produced after provisioning and stored in Restate K/V.
-// Dependent resources reference these via CEL (e.g., "${ resources.web.outputs.instanceId }").
+// Dependent resources reference these via output expressions (e.g., "${ resources.web.outputs.instanceId }").
 type EC2InstanceOutputs struct {
     InstanceId       string `json:"instanceId"`
     PrivateIpAddress string `json:"privateIpAddress"`

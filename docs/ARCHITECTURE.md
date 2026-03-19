@@ -22,7 +22,7 @@ graph TD
 
     subgraph Core["PRAXIS CORE"]
         CS["Command Service<br/>(Restate Basic Service)"]
-        TE["Template Engine<br/>(CUE + CEL)"]
+        TE["Template Engine<br/>(CUE + output expressions)"]
         DO["Deployment Orchestrator<br/>(Workflows + VOs)"]
         TR["Template Registry + Policy Engine<br/>(Virtual Objects)"]
         DS["Deployment State, Index, Events<br/>(Virtual Objects)"]
@@ -60,7 +60,7 @@ Praxis does not use Restate as a simple message broker. It uses Restate as the *
 The central coordination service. It hosts:
 
 - **Command Service** — a Restate Basic Service that receives user commands (apply, plan, delete, import) and orchestrates the response. Evaluates templates, builds dependency graphs, and submits deployment workflows.
-- **Template Engine** — validates and evaluates CUE templates, resolves CEL expressions, enforces policy constraints, and resolves SSM secret references.
+- **Template Engine** — validates and evaluates CUE templates, resolves output expressions, enforces policy constraints, and resolves SSM secret references.
 - **Deployment Orchestrator** — Restate Workflows that execute apply and delete operations. The scheduler dispatches resources in dependency order with maximum parallelism.
 - **Template Registry** — a Virtual Object that stores registered templates with metadata, digest tracking, and shallow rollback.
 - **Policy Registry** — a Virtual Object that stores CUE-based policy constraints scoped globally or per template.
@@ -116,11 +116,11 @@ Restate gives Praxis the properties typically associated with Kubernetes control
 
 The tradeoff: Restate is a younger project than Kubernetes with a smaller ecosystem. Praxis bets that for the infrastructure management use case, the simplicity advantage outweighs the ecosystem breadth.
 
-### Why CUE + CEL Instead of HCL or YAML
+### Why CUE Instead of HCL or YAML
 
 CUE merges types, constraints, defaults, and values into a single lattice. A CUE schema is also a validator, a default provider, and a composition target — all in one language. This means platform teams can define rich, validated templates that end users fill in without learning the full language.
 
-CEL provides a safe, non-Turing-complete expression language for runtime references — wiring one resource's outputs into another's inputs. It's the same expression language used by Kubernetes, kro, and Google Cloud IAM.
+Cross-resource references use a simple `${resources.<name>.outputs.<field>}` syntax that the orchestrator resolves at dispatch time as outputs become available. No external expression language is needed — the dot-path format maps directly to the output data structure.
 
 The tradeoff: CUE has a steeper learning curve than YAML. Praxis mitigates this by having platform teams write CUE templates while end users mostly interact through CLI variables and pre-registered templates.
 
@@ -183,7 +183,7 @@ sequenceDiagram
     User->>CLI: praxis apply webapp.cue
     CLI->>CS: ApplyRequest via Restate ingress
 
-    Note over CS: Template pipeline:<br/>Resolve source, load policies,<br/>CUE eval, SSM resolve,<br/>CEL pass 1, build DAG
+    Note over CS: Template pipeline:<br/>Resolve source, load policies,<br/>CUE eval, SSM resolve,<br/>build DAG
 
     CS->>CS: Initialize DeploymentState
     CS->>WF: Submit DeploymentWorkflow
@@ -191,7 +191,7 @@ sequenceDiagram
     loop Eager Scheduler
         WF->>D: Dispatch ready resources
         D-->>WF: Complete with outputs
-        WF->>WF: Hydrate downstream specs via CEL pass 2
+        WF->>WF: Hydrate downstream specs via expressions
     end
 
     CLI->>WF: Poll DeploymentState
@@ -291,7 +291,7 @@ stateDiagram-v2
 
 - [Drivers](DRIVERS.md) — how drivers work, how to build one
 - [Orchestrator](ORCHESTRATOR.md) — deployment workflows, DAG scheduling, state management
-- [Templates](TEMPLATES.md) — CUE + CEL template system, registry, policies
+- [Templates](TEMPLATES.md) — CUE template system, registry, policies
 - [CLI](CLI.md) — command reference and usage patterns
 - [Operators](OPERATORS.md) — deployment, configuration, monitoring
 - [Developers](DEVELOPERS.md) — building, testing, contributing

@@ -68,7 +68,7 @@ resources: {
 }
 
 // multiResourceTemplateWithVariables returns a CUE template with variables
-// and two resources (S3 + SG) where the bucket depends on the SG via CEL.
+// and two resources (S3 + SG) where the bucket depends on the SG via expressions.
 func multiResourceTemplateWithVariables() string {
 	return `
 variables: {
@@ -116,7 +116,7 @@ resources: {
 			tags: {
 				app:        variables.name
 				env:        variables.environment
-				secGroupId: "${cel:resources.appSG.outputs.groupId}"
+				secGroupId: "${resources.appSG.outputs.groupId}"
 			}
 		}
 	}
@@ -328,7 +328,7 @@ func TestDeploy_PlanDeploy_DryRun(t *testing.T) {
 }
 
 // TestDeploy_MultiResource_WithDependencies exercises Deploy with a
-// multi-resource template that has cross-resource CEL dependencies.
+// multi-resource template that has cross-resource dependencies.
 func TestDeploy_MultiResource_WithDependencies(t *testing.T) {
 	env := setupCoreStack(t)
 	name := uniqueName(t, "depmr")
@@ -375,7 +375,7 @@ func TestDeploy_MultiResource_WithDependencies(t *testing.T) {
 	require.Contains(t, state.Resources, "bucket")
 	assert.Equal(t, types.DeploymentResourceReady, state.Resources["bucket"].Status)
 
-	// Verify CEL hydration: bucket tags should contain the SG's actual groupId
+	// Verify hydration: bucket tags should contain the SG's actual groupId
 	expectedBucket := fmt.Sprintf("%s-dev-assets", name)
 	sgGroupId, ok := state.Outputs["appSG"]["groupId"].(string)
 	require.True(t, ok && sgGroupId != "", "SG should have a groupId output")
@@ -389,7 +389,7 @@ func TestDeploy_MultiResource_WithDependencies(t *testing.T) {
 		tagMap[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
 	assert.Equal(t, sgGroupId, tagMap["secGroupId"],
-		"bucket's secGroupId tag should contain the SG's actual groupId (CEL hydration)")
+		"bucket's secGroupId tag should contain the SG's actual groupId (expression hydration)")
 }
 
 // TestDeploy_VariableSchemaExtraction verifies that registering a template

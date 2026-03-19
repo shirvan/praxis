@@ -6,13 +6,13 @@
 
 ## Overview
 
-Praxis uses a dual-language template system: **CUE** for schema definition, validation, composition, and defaults, and **CEL** for runtime expressions that wire resource outputs into downstream specs.
+Praxis uses **CUE** for schema definition, validation, composition, defaults, and variable injection. Cross-resource dependencies are expressed with `${resources.<name>.outputs.<field>}` output expressions that resolve at dispatch time when dependency outputs become available.
 
 Platform teams write CUE templates that define typed, validated resource compositions. End users fill in variables via CLI flags or value files. Praxis evaluates the template, resolves dependencies, and hands the result to the [orchestrator](ORCHESTRATOR.md) for execution.
 
 ---
 
-## Why CUE + CEL
+## Why CUE
 
 ### CUE (Configure, Unify, Execute)
 
@@ -23,22 +23,22 @@ CUE merges types, constraints, defaults, and values into a single lattice. A CUE
 - **Deep Go integration** — CUE is implemented in Go with a rich API
 - **Non-Turing-complete** — safe for untrusted user input
 
-### CEL (Common Expression Language)
+### Output Expressions
 
-CEL is a lightweight, non-Turing-complete expression language for runtime references:
+Cross-resource references use a simple `${resources.<name>.outputs.<field>}` syntax:
 
-- **Familiar syntax** — looks like C/Java/Go expressions
-- **Proven in the ecosystem** — used by Kubernetes, kro, Google Cloud IAM
-- **Predictable performance** — linear-time evaluation, no unbounded loops
+- **Familiar interpolation** — standard `${...}` placeholder syntax
+- **Dot-path resolution** — walks the resource output map directly, no expression language overhead
+- **Type-preserving** — integers stay integers, booleans stay booleans
 - **Natural for dependency references** — express that resource B needs an output from resource A
 
-### Two Languages, Two Roles
+### Two Evaluation Phases
 
-| Concern | Language | When | Example |
+| Concern | Mechanism | When | Example |
 |---------|----------|------|---------|
 | Schema, constraints, defaults | CUE | Template authoring | `versioning: bool \| *true` |
 | Variable injection | CUE interpolation | Template evaluation | `"\(variables.name)-bucket"` |
-| Cross-resource references | CEL | Dispatch time | `${cel:resources.sg.outputs.groupId}` |
+| Cross-resource references | Output expressions | Dispatch time | `${resources.sg.outputs.groupId}` |
 | Secret references | SSM protocol | Template evaluation | `ssm:///praxis/prod/db-password` |
 
 ---
@@ -96,7 +96,7 @@ resources: {
             tags: {
                 app:           variables.name
                 env:           variables.environment
-                securityGroup: "${cel:resources.sg.outputs.groupId}"
+                securityGroup: "${resources.sg.outputs.groupId}"
             }
         }
     }
@@ -108,7 +108,7 @@ Key elements:
 - **CUE constraints** — `string & =~"..."` enforces naming patterns at validation time
 - **CUE unification** — `s3.#S3Bucket &` validates resources against provider schemas
 - **CUE interpolation** — `\(variables.name)` resolves during CUE evaluation
-- **CEL placeholders** — `${cel:resources.sg.outputs.groupId}` remain as strings until the dependency completes at dispatch time
+- **Output expression placeholders** — `${resources.sg.outputs.groupId}` remain as strings until the dependency completes at dispatch time
 
 ---
 
@@ -121,38 +121,20 @@ flowchart TD
     A["Template Source<br/>(inline CUE or registry ref)"] --> B["1. CUE Parse + Schema Unification<br/>Load template, inject variables,<br/>unify against provider schemas.<br/>CUE interpolation resolves. Defaults apply."]
     B --> C["2. Policy Unification<br/>Global and template-scoped CUE policies<br/>unified with the template."]
     C --> D["3. SSM Parameter Resolution<br/>Scan specs for ssm:// references,<br/>batch-resolve via AWS SSM.<br/>Journaled through restate.Run()"]
-    D --> E["4. CEL Pass 1 - Variable Expressions<br/>Evaluate cel:variables.* expressions.<br/>Skip cel:resources.* (deferred)"]
-    E --> F["5. DAG Construction<br/>Parse cel:resources references.<br/>Build dependency edges. Detect cycles."]
-    F --> G{"Mode?"}
-    G -->|Apply| H["Submit to<br/>DeploymentWorkflow"]
-    G -->|Plan| I["Diff each resource<br/>against current driver state"]
+    D --> E["4. DAG Construction<br/>Parse ${resources.*} references.<br/>Build dependency edges. Detect cycles."]
+    E --> F{"Mode?"}
+    F -->|Apply| G["Submit to<br/>DeploymentWorkflow"]
+    F -->|Plan| H["Diff each resource<br/>against current driver state"]
 ```
 
-### Two-Phase CEL
+### Dispatch-Time Expression Resolution
 
-CEL evaluation is explicitly split into two passes:
+Output expressions are resolved at dispatch time as resource outputs become available:
 
-```mermaid
-flowchart LR
-    subgraph Pass1["Pass 1: Template Time"]
-        V["variables.*<br/>expressions"] --> S1["Stringified<br/>& substituted"]
-    end
+- **Template time:** The DAG parser extracts `${resources.<name>.outputs.<field>}` patterns from JSON specs and records them as dependency edges. The expressions remain as literal strings in the spec.
+- **Dispatch time:** When a dependency completes and its outputs are available, `HydrateExprs` resolves each expression by walking the dot path through the output map and writes the **typed** result back into the JSON document — strings stay strings, integers stay integers, booleans stay booleans.
 
-    subgraph Pass2["Pass 2: Dispatch Time"]
-        R["resources.*.outputs.*<br/>expressions"] --> S2["Type-preserving<br/>substitution"]
-    end
-
-    Pass1 -->|"Pipeline completes,<br/>workflow starts"| Pass2
-
-    style Pass1 fill:#E3F2FD,color:#000
-    style Pass2 fill:#E8F5E9,color:#000
-```
-
-**Pass 1 (Template Time):** Resolves `variables.*` expressions during pipeline evaluation. Results are stringified and substituted back into the JSON specs.
-
-**Pass 2 (Dispatch Time):** Resolves `resources.<name>.outputs.*` expressions as dependency outputs become available during workflow execution. Results preserve their original types — integers stay integers, booleans stay booleans. See [Orchestrator: Dispatch-Time CEL Hydration](ORCHESTRATOR.md#dispatch-time-cel-hydration).
-
-This split exists because variable values are known at evaluation time, but resource outputs only exist after provisioning.
+This split exists because resource outputs only exist after provisioning. Variable values are known at evaluation time and are resolved by CUE interpolation (`\(variables.name)`).
 
 ---
 
@@ -418,7 +400,7 @@ A Restate Virtual Object keyed by scope identifier:
 
 | Mode | Runs | Skips | Use Case |
 |------|------|-------|----------|
-| **Static** | CUE parse, schema unification, policy unification, variable shape check | SSM, CEL, DAG | Fast preflight |
+| **Static** | CUE parse, schema unification, policy unification, variable shape check | SSM, DAG | Fast preflight |
 | **Full** | Complete evaluation pipeline | Workflow submission | Deep preflight without provisioning |
 
 ---
@@ -562,7 +544,7 @@ resources: {
         spec: {
             region: "us-east-1"
             tags: {
-                securityGroup: "${cel:resources.sg.outputs.groupId}"
+                securityGroup: "${resources.sg.outputs.groupId}"
             }
         }
     }
@@ -679,16 +661,14 @@ curl -X POST http://localhost:8080/PraxisCommandService/Apply \
 flowchart LR
     A["CUE evaluation<br/>variables injected"] --> B["Policy<br/>unification"]
     B --> C["SSM resolution<br/>(skipped)"]
-    C --> D["CEL pass 1<br/>(skipped)"]
-    D --> E["DAG construction<br/>logBucket depends on sg"]
-    E --> F["bucket + sg dispatch first<br/>logBucket waits for sg"]
+    C --> D["DAG construction<br/>logBucket depends on sg"]
+    D --> E["bucket + sg dispatch first<br/>logBucket waits for sg"]
 ```
 
 1. **CUE evaluation** — variables injected, interpolation resolves (`orders-api-prod-assets`), schemas validate, defaults apply (`versioning: true`, `encryption.enabled: true`)
 2. **Policy unification** — global policies checked (e.g., encryption required)
 3. **SSM resolution** — no SSM refs in this template, skip
-4. **CEL pass 1** — no `variables.*` CEL expressions, skip
-5. **DAG construction** — `logBucket` depends on `sg` (detected from CEL expression). No cycles.
+4. **DAG construction** — `logBucket` depends on `sg` (detected from output expression). No cycles.
 
 Result: `bucket` and `sg` dispatch first (no dependencies). `logBucket` waits for `sg`.
 
@@ -696,7 +676,7 @@ Result: `bucket` and `sg` dispatch first (no dependencies). `logBucket` waits fo
 
 - `bucket` and `sg` provision in parallel
 - `sg` completes → outputs include `groupId: "sg-0ff1ce"`
-- `logBucket` hydrated: `"${cel:resources.sg.outputs.groupId}"` → `"sg-0ff1ce"`
+- `logBucket` hydrated: `"${resources.sg.outputs.groupId}"` → `"sg-0ff1ce"`
 - `logBucket` provisioned with concrete spec
 - All done → deployment Complete
 
@@ -706,7 +686,7 @@ Result: `bucket` and `sg` dispatch first (no dependencies). `logBucket` waits fo
 
 | Package | Files | Purpose |
 |---------|-------|---------|
-| `internal/core/template/` | `engine.go`, `cel.go`, `schema.go`, `validate_vars.go`, `errors.go` | CUE evaluation, CEL resolution, variable schema extraction and validation |
+| `internal/core/template/` | `engine.go`, `schema.go`, `validate_vars.go`, `errors.go` | CUE evaluation, variable schema extraction and validation |
 | `internal/core/registry/` | `template_registry.go`, `template_index.go`, `policy_registry.go`, `constants.go` | Template and policy Restate Virtual Objects |
 | `internal/core/command/` | `pipeline.go`, `handlers_apply.go`, `handlers_deploy.go`, `handlers_plan_deploy.go`, `handlers_template.go`, `handlers_policy.go` | Template pipeline, deploy/apply handlers, CRUD pass-through |
 | `internal/core/resolver/` | `ssm.go`, `restate_ssm.go` | SSM parameter resolution |

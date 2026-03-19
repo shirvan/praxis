@@ -323,7 +323,7 @@ type VPCSpec struct {
 }
 
 // VPCOutputs is produced after provisioning and stored in Restate K/V.
-// Dependent resources reference these via CEL (e.g., "${ resources.my-vpc.outputs.vpcId }").
+// Dependent resources reference these via output expressions (e.g., "${ resources.my-vpc.outputs.vpcId }").
 type VPCOutputs struct {
     VpcId              string `json:"vpcId"`
     ARN                string `json:"arn,omitempty"`
@@ -1261,7 +1261,7 @@ func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutpu
 > because it requires an STS call for the account ID), the VPC driver constructs
 > the ARN immediately because `DescribeVpcs` returns `OwnerId` (the AWS account
 > ID). The ARN format for VPCs is deterministic:
-> `arn:aws:ec2:<region>:<account-id>:vpc/<vpc-id>`. Downstream CEL expressions
+> `arn:aws:ec2:<region>:<account-id>:vpc/<vpc-id>`. Downstream expressions
 > like `${resources.my-vpc.outputs.arn}` work from the first provision.
 
 ### Import Handler
@@ -2434,7 +2434,7 @@ account ID via STS), the VPC driver constructs the ARN at provision time because
 
 **ARN format**: `arn:aws:ec2:<region>:<account-id>:vpc/<vpc-id>`
 
-This means `${resources.my-vpc.outputs.arn}` is available for downstream CEL
+This means `${resources.my-vpc.outputs.arn}` is available for downstream
 expressions from the first provision. No STS `GetCallerIdentity` call needed.
 
 ### 9. VPC State Machine
@@ -2570,7 +2570,7 @@ resources: {
         }
 
         spec: {
-            region:             "${cel:variables.region}"
+            region:             "\(variables.region)"
             cidrBlock:          "10.0.0.0/16"
             enableDnsHostnames: true
             enableDnsSupport:   true
@@ -2615,8 +2615,8 @@ resources: {
         kind:       "SecurityGroup"
         metadata: name: "web-sg"
         spec: {
-            // VPC ID resolved from the VPC resource outputs via CEL
-            vpcId:       "${cel:resources.my-vpc.outputs.vpcId}"
+            // VPC ID resolved from the VPC resource outputs
+            vpcId:       "${resources.my-vpc.outputs.vpcId}"
             groupName:   "web-sg"
             description: "Web server security group"
             ingressRules: [{

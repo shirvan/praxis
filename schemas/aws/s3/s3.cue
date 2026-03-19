@@ -23,7 +23,7 @@ package s3
     }
 
     // Outputs are populated by the driver after provisioning.
-    // These fields are referenced in CEL expressions by dependent resources.
+    // These fields are referenced in output expressions by dependent resources.
     // Optional at template time — the driver fills them after Provision.
     outputs?: {
         arn:        string

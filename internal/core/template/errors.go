@@ -12,9 +12,9 @@ type TemplateErrorKind int
 const (
 	ErrCUELoad         TemplateErrorKind = iota // File not found, parse error, import failure
 	ErrCUEValidation                            // Constraint violation (pattern, type, required field)
-	ErrCELParse                                 // CEL syntax error
-	ErrCELEval                                  // CEL runtime error (missing variable, type mismatch)
-	ErrCELUnresolved                            // Reference to unavailable output
+	ErrExprParse                                // Expression syntax error
+	ErrExprEval                                 // Expression runtime error (missing variable, type mismatch)
+	ErrExprUnresolved                           // Reference to unavailable output
 	ErrResolve                                  // SSM resolution failure
 	ErrPolicyViolation                          // Policy constraint not satisfied
 )
@@ -22,9 +22,9 @@ const (
 var kindNames = [...]string{
 	"CUELoad",
 	"CUEValidation",
-	"CELParse",
-	"CELEval",
-	"CELUnresolved",
+	"ExprParse",
+	"ExprEval",
+	"ExprUnresolved",
 	"Resolve",
 	"PolicyViolation",
 }

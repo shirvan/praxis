@@ -13,7 +13,7 @@ import (
 // newPlanCmd builds the `praxis plan` subcommand.
 //
 // Plan performs a dry-run evaluation of a CUE template. It runs the full
-// template pipeline (CUE evaluation, SSM resolution, template-time CEL, DAG
+// template pipeline (CUE evaluation, SSM resolution, DAG
 // construction) and then compares the desired state against current driver
 // state to produce a diff.
 //
@@ -47,7 +47,7 @@ Template variables are passed with --var key=value:
     praxis plan webapp.cue --var env=staging
 
 Use --show-rendered to also display the fully-evaluated template JSON,
-which is useful for debugging variable resolution and CEL expressions.`,
+which is useful for debugging variable resolution and output expressions.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templatePath := args[0]

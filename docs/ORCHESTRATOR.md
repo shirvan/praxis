@@ -71,7 +71,7 @@ type DeploymentPlan struct {
     Key          string            // stable deployment identifier
     Account      string            // resolved AWS account name
     Resources    []PlanResource    // rendered resources with dependency metadata
-    Variables    map[string]any    // template variables for dispatch-time CEL
+    Variables    map[string]any    // template variables
     CreatedAt    time.Time
     TemplatePath string            // "inline://template.cue" or "registry://<name>"
 }
@@ -80,9 +80,9 @@ type PlanResource struct {
     Name           string              // template-local name (e.g., "bucket", "sg")
     Kind           string              // resource type (e.g., "S3Bucket")
     Key            string              // canonical Restate object key
-    Spec           json.RawMessage     // rendered JSON, may have unresolved CEL
+    Spec           json.RawMessage     // rendered JSON, may have unresolved expressions
     Dependencies   []string            // template-local names this depends on
-    CELExpressions map[string]string   // JSON path → CEL expression for dispatch-time hydration
+    Expressions    map[string]string   // JSON path → expression for dispatch-time hydration
 }
 ```
 
@@ -96,7 +96,7 @@ flowchart TD
     B --> C{"Cancelled?"}
     C -->|Yes| Final
     C -->|No| D{"Pending resources<br/>with all deps met?"}
-    D -->|Yes| E["Hydrate spec via CEL<br/>Decode via adapter"]
+    D -->|Yes| E["Hydrate spec via expressions<br/>Decode via adapter"]
     E --> F["Dispatch Provision<br/>(returns Restate future)"]
     F --> G["WaitFirst on<br/>in-flight resources"]
     D -->|No| H{"Any in-flight?"}
@@ -109,15 +109,15 @@ flowchart TD
     K --> C
 ```
 
-### Dispatch-Time CEL Hydration
+### Dispatch-Time Expression Hydration
 
-Templates can express cross-resource dependencies with CEL:
+Templates can express cross-resource dependencies with output expressions:
 
 ```cue
 logBucket: s3.#S3Bucket & {
     spec: {
         tags: {
-            securityGroup: "${cel:resources.sg.outputs.groupId}"
+            securityGroup: "${resources.sg.outputs.groupId}"
         }
     }
 }
@@ -125,14 +125,14 @@ logBucket: s3.#S3Bucket & {
 
 At template evaluation time, the DAG parser extracts these expressions and records them as dependency edges. The expressions themselves are left as strings in the resource spec.
 
-When the dependency completes and its outputs are available, `HydrateCEL` evaluates the expression and writes the **typed** result back into the JSON document:
+When the dependency completes and its outputs are available, `HydrateExprs` resolves each expression by walking the dot path (`resources.<name>.outputs.<field>`) through the output map and writes the **typed** result back into the JSON document:
 
 - Strings stay strings
 - Integers stay integers
 - Booleans stay booleans
 - Arrays stay arrays
 
-This is different from template-time CEL (pass 1), which stringifies results. The hydrator preserves types so drivers receive specs with correct JSON types.
+This is different from template-time variable injection (CUE interpolation), which stringifies results. The hydrator preserves types so drivers receive specs with correct JSON types.
 
 ### Parallel Dispatch
 
@@ -306,7 +306,7 @@ The dependency graph engine (`internal/core/dag/`) is a **pure Go library** with
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Parser | `parser.go` | Extracts `${cel:resources.<name>.outputs.*}` patterns from JSON specs → dependency edges |
+| Parser | `parser.go` | Extracts `${resources.<name>.outputs.*}` patterns from JSON specs → dependency edges |
 | Graph | `graph.go` | DAG construction, cycle detection (DFS), topological ordering |
 | Scheduler | `scheduler.go` | Runtime dispatch queries: `Ready()` and `AffectedByFailure()` |
 

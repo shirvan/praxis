@@ -4,7 +4,7 @@ import "time"
 
 // ResourceOutputs is a generic map of output key-value pairs produced by
 // a driver after provisioning. Core collects these and uses them to
-// hydrate CEL expressions in dependent resources.
+// hydrate expressions in dependent resources.
 //
 // Each driver also defines its own strongly-typed outputs struct
 // (for example, S3BucketOutputs and SecurityGroupOutputs) and returns that
@@ -113,7 +113,7 @@ type DeploymentResource struct {
 
 	// Outputs contains the generic, normalized driver outputs after successful
 	// provisioning. These values are also the source material for dispatch-time
-	// CEL hydration in dependent resources.
+	// expression hydration in dependent resources.
 	Outputs map[string]any `json:"outputs,omitempty"`
 
 	// Error stores the terminal failure message, if any. It is intentionally a

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseDependencies_NoCELExpressions(t *testing.T) {
+func TestParseDependencies_NoExpressions(t *testing.T) {
 	spec := json.RawMessage(`{"spec":{"name":"assets","count":1}}`)
 
 	deps, exprs, err := ParseDependencies("bucket", spec)
@@ -18,7 +18,7 @@ func TestParseDependencies_NoCELExpressions(t *testing.T) {
 }
 
 func TestParseDependencies_SingleDependency(t *testing.T) {
-	spec := json.RawMessage(`{"spec":{"groupId":"${cel:resources.sg.outputs.groupId}"}}`)
+	spec := json.RawMessage(`{"spec":{"groupId":"${resources.sg.outputs.groupId}"}}`)
 
 	deps, exprs, err := ParseDependencies("bucket", spec)
 	require.NoError(t, err)
@@ -31,8 +31,8 @@ func TestParseDependencies_SingleDependency(t *testing.T) {
 func TestParseDependencies_MultipleReferencesToSameResource_Deduplicated(t *testing.T) {
 	spec := json.RawMessage(`{
 		"spec": {
-			"sourceGroup": "${cel:resources.sg.outputs.groupId}",
-			"ruleIds": "${cel:resources.sg.outputs.ruleIds}"
+			"sourceGroup": "${resources.sg.outputs.groupId}",
+			"ruleIds": "${resources.sg.outputs.ruleIds}"
 		}
 	}`)
 
@@ -48,8 +48,8 @@ func TestParseDependencies_MultipleReferencesToSameResource_Deduplicated(t *test
 func TestParseDependencies_MultipleResources_Sorted(t *testing.T) {
 	spec := json.RawMessage(`{
 		"spec": {
-			"groupId": "${cel:resources.sg.outputs.groupId}",
-			"subnetId": "${cel:resources.vpc.outputs.subnetId}"
+			"groupId": "${resources.sg.outputs.groupId}",
+			"subnetId": "${resources.vpc.outputs.subnetId}"
 		}
 	}`)
 
@@ -61,7 +61,7 @@ func TestParseDependencies_MultipleResources_Sorted(t *testing.T) {
 func TestParseDependencies_NestedExpressionAcrossResources(t *testing.T) {
 	spec := json.RawMessage(`{
 		"spec": {
-			"pair": "${cel:[resources.sg.outputs.groupId, resources.vpc.outputs.vpcId]}"
+			"pair": "${[resources.sg.outputs.groupId, resources.vpc.outputs.vpcId]}"
 		}
 	}`)
 
@@ -74,7 +74,7 @@ func TestParseDependencies_NestedExpressionAcrossResources(t *testing.T) {
 }
 
 func TestParseDependencies_VariablesOnlyExpression_Ignored(t *testing.T) {
-	spec := json.RawMessage(`{"spec":{"region":"${cel:variables.region}"}}`)
+	spec := json.RawMessage(`{"spec":{"region":"us-east-1"}}`)
 
 	deps, exprs, err := ParseDependencies("bucket", spec)
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestParseDependencies_VariablesOnlyExpression_Ignored(t *testing.T) {
 }
 
 func TestParseDependencies_SelfReference_ReturnsError(t *testing.T) {
-	spec := json.RawMessage(`{"spec":{"groupId":"${cel:resources.sg.outputs.groupId}"}}`)
+	spec := json.RawMessage(`{"spec":{"groupId":"${resources.sg.outputs.groupId}"}}`)
 
 	deps, exprs, err := ParseDependencies("sg", spec)
 	require.Error(t, err)
@@ -96,9 +96,9 @@ func TestParseDependencies_ArrayPathsIncludeIndexes(t *testing.T) {
 	spec := json.RawMessage(`{
 		"spec": {
 			"securityGroupIds": [
-				"${cel:resources.sg.outputs.primaryId}",
+				"${resources.sg.outputs.primaryId}",
 				"literal",
-				"${cel:resources.other.outputs.secondaryId}"
+				"${resources.other.outputs.secondaryId}"
 			]
 		}
 	}`)
@@ -113,7 +113,7 @@ func TestParseDependencies_ArrayPathsIncludeIndexes(t *testing.T) {
 }
 
 func TestParseDependencies_MixedInterpolation_ReturnsError(t *testing.T) {
-	spec := json.RawMessage(`{"spec":{"name":"sg-${cel:resources.sg.outputs.groupId}"}}`)
+	spec := json.RawMessage(`{"spec":{"name":"sg-${resources.sg.outputs.groupId}"}}`)
 
 	deps, exprs, err := ParseDependencies("bucket", spec)
 	require.Error(t, err)

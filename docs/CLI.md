@@ -231,7 +231,7 @@ The `--key` flag enables idempotent re-apply: submitting the same template with 
 
 ## plan
 
-Perform a dry-run evaluation of a CUE template. Runs the full template pipeline (CUE evaluation, SSM resolution, template-time CEL, DAG construction) and compares desired state against current driver state to produce a diff.
+Perform a dry-run evaluation of a CUE template. Runs the full template pipeline (CUE evaluation, SSM resolution, DAG construction) and compares desired state against current driver state to produce a diff.
 
 No resources are provisioned — this is a read-only operation.
 

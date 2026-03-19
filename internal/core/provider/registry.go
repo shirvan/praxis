@@ -52,7 +52,7 @@ type Adapter interface {
 	Delete(ctx restate.Context, key string) (DeleteInvocation, error)
 
 	// NormalizeOutputs converts a concrete driver output struct into the generic
-	// output map used by deployment state, the CLI, and CEL hydration.
+	// output map used by deployment state, the CLI, and expression hydration.
 	NormalizeOutputs(raw any) (map[string]any, error)
 
 	// Plan compares the desired driver spec with current provider state and

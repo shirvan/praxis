@@ -7,7 +7,7 @@ import "github.com/praxiscloud/praxis/pkg/types"
 
 // S3BucketSpec is the desired state for an S3 bucket.
 // This is what Core sends to the Provision handler after hydrating
-// CEL expressions and resolving SSM references.
+// output expressions and resolving SSM references.
 //
 // Fields map 1:1 to the #S3Bucket CUE schema in schemas/aws/s3/s3.cue.
 type S3BucketSpec struct {
@@ -46,7 +46,7 @@ type EncryptionSpec struct {
 }
 
 // S3BucketOutputs is produced after provisioning and stored in Restate's K/V store.
-// Dependent resources reference these values via CEL expressions
+// Dependent resources reference these values via output expressions
 // (e.g., "${ resources.bucket.outputs.arn }").
 type S3BucketOutputs struct {
 	// ARN is the Amazon Resource Name for the bucket.
