@@ -1,8 +1,4 @@
-# EC2 Instance Driver — Implementation Plan (v2)
-
-> **Status: ✓ COMPLETED** — This plan has been fully implemented. All files referenced
-> below exist in the repository. This document is retained as a reference guide for
-> building future drivers.
+# EC2 Instance Driver — Implementation Plan
 
 > Target: A Restate Virtual Object driver that manages EC2 instances, following the
 > exact patterns established by the S3 Bucket and Security Group drivers.
@@ -16,7 +12,7 @@
 ## Table of Contents
 
 1. [Overview & Scope](#1-overview--scope)
-2. [Key Strategy (v2)](#2-key-strategy-v2)
+2. [Key Strategy](#2-key-strategy)
 3. [File Inventory](#3-file-inventory)
 4. [Step 1 — CUE Schema](#step-1--cue-schema)
 5. [Step 2 — AWS Client Factory](#step-2--aws-client-factory)
@@ -31,7 +27,7 @@
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
 16. [EC2-Specific Design Decisions](#ec2-specific-design-decisions)
-17. [Open Questions (resolved)](#open-questions-resolved)
+17. [Design Decisions (Resolved)](#design-decisions-resolved)
 18. [Checklist](#checklist)
 
 ---
@@ -39,9 +35,9 @@
 ## 1. Overview & Scope
 
 The EC2 driver manages the lifecycle of EC2 **instances** only. AMIs, EBS volumes,
-key pairs, launch templates, and Elastic IPs are listed in the FUTURE.md roster but
-should be implemented as separate drivers (or handled within compound templates that
-compose multiple resource types). This plan focuses exclusively on EC2 instances.
+key pairs, launch templates, and Elastic IPs are separate drivers (or handled
+within compound templates that compose multiple resource types). This document
+focuses exclusively on EC2 instances.
 
 The driver follows the established Virtual Object contract:
 
@@ -56,19 +52,17 @@ The driver follows the established Virtual Object contract:
 
 ---
 
-## 2. Key Strategy (v2)
+## 2. Key Strategy
 
-### Problem Statement (what v1 got wrong)
+### Why `region~metadata.name`, not `region~instanceId`
 
-The v1 plan said the key was `region~instanceId` where `instanceId` is assigned by
-AWS at launch time. It then said the adapter builds the key from `metadata.name` for
-initial dispatch. These two statements are contradictory: a Restate Virtual Object
-key is immutable once created, and there is no rename path. The pipeline in
-`pipeline.go:272` calls `adapter.BuildKey()` before dispatch and passes the returned
-key to `workflow.go:147` for `Provision`, and later to `handlers_resource.go:62` for
-`Delete` and `Import`. The key must be the **same** at every stage.
-
-### Resolution: `region~metadata.name` is the permanent key
+A Restate Virtual Object key is immutable once created, and there is no rename path.
+Using `region~instanceId` would be impossible because the instance ID is assigned by
+AWS at launch time — it is unavailable when `BuildKey` runs at plan/dispatch time.
+The pipeline in `pipeline.go:272` calls `adapter.BuildKey()` before dispatch and
+passes the returned key to `workflow.go:147` for `Provision`, and later to
+`handlers_resource.go:62` for `Delete` and `Import`. The key must be the **same** at
+every stage.
 
 The Virtual Object key is always `region~metadata.name`. This matches how the
 existing wiring works:
@@ -88,8 +82,8 @@ identity handle.
 
 ### Constraint: metadata.name must be unique within a region
 
-The v1 plan noted that instance names are only unique within region+subnet, but
-the key drops subnet. This is intentional — we require `metadata.name` to be
+Instance names in AWS are only unique within region+subnet, but the key drops
+subnet. This is intentional — `metadata.name` must be
 region-unique for managed EC2 resources. Justification:
 
 - S3 requires globally unique bucket names. SG requires VPC-unique group names.
@@ -132,8 +126,7 @@ time using an AWS resource tag:
 
 This is the *minimum viable conflict policy*. Cross-deployment ownership
 (e.g., two separate Praxis installations managing the same region) is not
-protected; that requires a centralised lock, which is out of scope here.
-See FUTURE.md for global ownership policy.
+protected; that requires a centralised lock, which is out of scope.
 
 ### Import semantics: separate lifecycle track
 
@@ -156,9 +149,8 @@ with the existing architecture where S3 `BuildImportKey` returns the bucket name
 
 ### Plan-time instance resolution
 
-The v1 plan had `FindInstanceByName` returning the first match from a Name-tag
-query. This is unreliable: Name tags are mutable and not unique. The v2 plan
-changes plan-time resolution:
+The driver does not search by Name tag — Name tags are mutable and not unique.
+Plan-time resolution works as follows:
 
 1. **Preferred path**: The adapter's `Plan()` method reads the Virtual Object's
    stored state via `GetOutputs` (a shared handler, non-blocking). If the VO has
@@ -167,9 +159,9 @@ changes plan-time resolution:
 2. **Fallback for new resources**: If `GetOutputs` returns empty (no instance
    provisioned yet), the plan reports `OpCreate`. No AWS describe needed.
 
-3. **`FindInstanceByName` is removed** from the EC2API interface. It was a
-   best-effort search over mutable tags, not a durable identity. Instance
-   identity after provisioning comes from the stored instance ID.
+3. **No `FindInstanceByName`**: The EC2API interface does not include a
+   Name-tag search method. Instance identity after provisioning comes from
+   the stored instance ID.
 
 > **Product decision — state-driven plan contract**: Plan returns `OpCreate`
 > whenever there is no Praxis-owned Virtual Object state for this key, regardless
@@ -213,12 +205,12 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/ec2_adapter.go   — EC2Adapter implementing provider.Adapter
 ✦ internal/core/provider/ec2_adapter_test.go — Unit tests for EC2 adapter
 ✦ schemas/aws/ec2/ec2.cue                 — CUE schema for EC2Instance resource
-✦ cmd/praxis-ec2/main.go                  — Binary entry point
-✦ cmd/praxis-ec2/Dockerfile               — Multi-stage Docker build
+✦ cmd/praxis-compute/main.go              — Compute driver pack entry point (EC2 bound here)
+✦ cmd/praxis-compute/Dockerfile           — Multi-stage Docker build
 ✦ tests/integration/ec2_driver_test.go    — Integration tests (Testcontainers + LocalStack)
 ✎ internal/core/provider/registry.go      — Add NewEC2Adapter to NewRegistry()
 ✎ internal/infra/awsclient/client.go      — Already has NewEC2Client() — NO changes needed
-✎ docker-compose.yaml                     — Add praxis-ec2 service
+✎ docker-compose.yaml                     — Add praxis-compute service
 ✎ justfile                                — Add ec2 build/test/register targets
 ```
 
@@ -282,8 +274,7 @@ package ec2
         // monitoring enables detailed CloudWatch monitoring (1-minute intervals).
         monitoring: bool | *false
 
-        // tags applied to the instance only.
-        // Root volume tagging is a future enhancement (see Design Decisions §3).
+        // Tags applied to the instance only. Root volume tagging is not supported (see Design Decisions §3).
         tags: [string]: string
     }
 
@@ -484,9 +475,9 @@ type EC2API interface {
 }
 ```
 
-**Removed from v1**: `FindInstanceByName` — this was a best-effort search over mutable
-Name tags and not a durable identity. Plan-time resolution now reads the stored instance
-ID from the Virtual Object via `GetOutputs` (see Key Strategy §2).
+The interface does not include a `FindInstanceByName` method — Name-tag searches are
+mutable and non-unique. Plan-time resolution reads the stored instance ID from the
+Virtual Object via `GetOutputs` (see Key Strategy §2).
 
 ### realEC2API Implementation
 
@@ -537,11 +528,8 @@ func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec) (str
         }
     }
     if spec.RootVolume != nil {
-        // ASSUMPTION: "/dev/xvda" is the root device name for Amazon Linux AMIs.
-        // Ubuntu uses "/dev/sda1", other AMIs may differ. For this iteration we
-        // hardcode the Amazon Linux default. A future enhancement could query the
-        // AMI's root device name via DescribeImages and use it here. See Design
-        // Decisions §11.
+        // Root device name is "/dev/xvda" (Amazon Linux default).
+        // See Design Decisions §11 for AMI-family considerations.
         input.BlockDeviceMappings = []ec2types.BlockDeviceMapping{{
             DeviceName: aws.String("/dev/xvda"),
             Ebs: &ec2types.EbsBlockDevice{
@@ -558,7 +546,7 @@ func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec) (str
     }
 
     // Apply tags at launch to the instance only.
-    // Root volume tagging is deferred to a future iteration — see Design Decisions §3.
+    // Tags apply to the instance only — see Design Decisions §3.
     // Always include the praxis:managed-key ownership tag (see Design Decisions §10).
     ec2Tags := []ec2types.Tag{{
         Key:   aws.String("praxis:managed-key"),
@@ -668,12 +656,11 @@ func (r *realEC2API) TerminateInstance(ctx context.Context, instanceId string) e
 
 > **Crash-recovery note**: `WaitUntilRunning` blocks for up to 5 minutes inside a
 > single `restate.Run()` call. If the service crashes mid-wait, Restate replays the
-> entire wait from scratch (the waiter result was never journaled). This is acceptable
-> for a first iteration — the waiter is idempotent and the 5-minute budget is
-> generous. A more resilient alternative would replace the SDK waiter with a polling
-> loop using `restate.Sleep()` between describe calls, so each describe result is
-> individually journaled and replays skip already-completed polls. This optimisation
-> is deferred unless wait-time reliability becomes an issue in practice.
+> entire wait from scratch (the waiter result was never journaled). The waiter is
+> idempotent and the 5-minute budget is generous, so replay overhead is negligible.
+> An alternative design would replace the SDK waiter with a polling loop using
+> `restate.Sleep()` between describe calls, journaling each describe result
+> individually so replays skip already-completed polls.
 
 ```go
 func (r *realEC2API) WaitUntilRunning(ctx context.Context, instanceId string) error {
@@ -767,7 +754,7 @@ func (r *realEC2API) UpdateMonitoring(ctx context.Context, instanceId string, en
 #### `UpdateTags`
 
 Follow the same pattern as the SG driver: delete all existing tags, then create new ones.
-Tags are applied to the **instance only** — root volume retagging is deferred (see Design Decisions §3).
+Tags are applied to the **instance only** — root volume tagging is not supported (see Design Decisions §3).
 
 ```go
 func (r *realEC2API) UpdateTags(ctx context.Context, instanceId string, tags map[string]string) error {
@@ -832,7 +819,7 @@ func (r *realEC2API) UpdateTags(ctx context.Context, instanceId string, tags map
 
 Add these at the bottom of `aws.go`. Follow the exact pattern from the S3/SG drivers.
 
-**Error code mapping** (v2 fix: capacity failures use 503, not 400):
+**Error code mapping:**
 
 | Classification | HTTP Status | Meaning |
 |---|---|---|
@@ -1442,12 +1429,10 @@ func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2Instanc
         PrivateIpAddress: observed.PrivateIpAddress,
         PublicIpAddress:  observed.PublicIpAddress,
         PrivateDnsName:   observed.PrivateDnsName,
-        // ARN is deferred: constructing a correct ARN requires the AWS account
-        // ID, which needs an STS GetCallerIdentity call. This is out of scope
-        // for the initial implementation. The field is left empty here; the
-        // adapter's NormalizeOutputs omits it when empty. A follow-up iteration
-        // will add account-ID resolution to the auth.Registry and populate
-        // the ARN at provisioning time (tracked in FUTURE.md).
+        // ARN is not populated: constructing a correct ARN requires the AWS
+        // account ID (via STS GetCallerIdentity), which the auth.Registry does
+        // not currently resolve. The adapter's NormalizeOutputs omits it when
+        // empty. See FUTURE.md for account-ID resolution.
         ARN:              "",
         State:            observed.State,
         SubnetId:         observed.SubnetId,
@@ -1520,7 +1505,7 @@ func (d *EC2InstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
         PrivateIpAddress: observed.PrivateIpAddress,
         PublicIpAddress:  observed.PublicIpAddress,
         PrivateDnsName:   observed.PrivateDnsName,
-        // ARN deferred — see Provision handler comment.
+        // ARN not populated — see Provision handler comment.
         ARN:              "",
         State:            observed.State,
         SubnetId:         observed.SubnetId,
@@ -1846,7 +1831,7 @@ func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 
 // apiForAccount follows the SG driver's (EC2API, string, error) signature (not S3's
 // (S3API, error)) because EC2 needs the resolved region for the Import handler's
-// specFromObserved and for future ARN construction.
+// specFromObserved and for ARN construction when account-ID resolution is available.
 func (d *EC2InstanceDriver) apiForAccount(account string) (EC2API, string, error) {
     if d == nil || d.auth == nil || d.apiFactory == nil {
         return nil, "", fmt.Errorf("EC2InstanceDriver is not configured with an auth registry")
@@ -1872,7 +1857,7 @@ EC2 driver. Follows the exact pattern of `s3_adapter.go` and `sg_adapter.go`.
 
 EC2 instances use `KeyScopeRegion`. The key format is `region~metadata.name`.
 Both `BuildKey` (template path) and `BuildImportKey` (import path) produce keys
-in this format. See [Key Strategy §2](#2-key-strategy-v2) for the full rationale.
+in this format. See [Key Strategy §2](#2-key-strategy) for the full rationale.
 
 - `BuildKey`: `region~metadata.name` — template declares both values.
 - `BuildImportKey`: `region~resourceID` — import uses instance ID as the name
@@ -2039,8 +2024,6 @@ func (a *EC2Adapter) Plan(ctx restate.Context, key string, account string, desir
     // Plan-time resolution: read the stored instance ID from the Virtual Object's
     // outputs via the shared GetOutputs handler (non-blocking, concurrent-safe).
     // If the VO has no outputs, the instance hasn't been provisioned yet → OpCreate.
-    // This replaces the v1 approach of searching by Name tag, which was unreliable.
-    //
     // IMPORTANT: GetOutputs is a Restate Virtual Object call — it MUST be invoked
     // directly on the Restate context (ctx), NOT inside a restate.Run() callback.
     // restate.Run() is for non-Restate side effects (AWS API calls, HTTP, etc.).
@@ -2232,17 +2215,18 @@ func NewRegistry() *Registry {
 }
 ```
 
-Also add the import for the `ec2` package if the linter doesn't auto-add it.
-Note: the `ec2` package is NOT imported directly in `registry.go` — it's only
-used via the adapter. The adapter file (`ec2_adapter.go`) handles the import.
+The `ec2` package is not imported directly in `registry.go` — it is only used via
+the adapter. The adapter file (`ec2_adapter.go`) handles the import.
 
 ---
 
-## Step 9 — Binary Entry Point & Dockerfile
+## Step 9 — Compute Driver Pack Entry Point & Dockerfile
 
 ### Entry Point
 
-**File**: `cmd/praxis-ec2/main.go`
+**File**: `cmd/praxis-compute/main.go`
+
+The EC2 driver is added to the **compute** driver pack. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so the compute pack hosts all compute-related drivers (EC2, and in the future Auto Scaling, Lambda, ECS, EKS).
 
 ```go
 package main
@@ -2261,14 +2245,13 @@ import (
 
 func main() {
     cfg := config.Load()
-    drv := ec2.NewEC2InstanceDriver(cfg.Auth())
 
     srv := server.NewRestate().
-        Bind(restate.Reflect(drv))
+        Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth())))
 
-    slog.Info("starting EC2 driver", "addr", cfg.ListenAddr)
+    slog.Info("starting compute driver pack", "addr", cfg.ListenAddr)
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
-        slog.Error("EC2 driver exited", "err", err.Error())
+        slog.Error("compute driver pack exited", "err", err.Error())
         os.Exit(1)
     }
 }
@@ -2276,7 +2259,7 @@ func main() {
 
 ### Dockerfile
 
-**File**: `cmd/praxis-ec2/Dockerfile`
+**File**: `cmd/praxis-compute/Dockerfile`
 
 ```dockerfile
 FROM golang:1.25-alpine AS build
@@ -2284,11 +2267,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /praxis-ec2 ./cmd/praxis-ec2
+RUN CGO_ENABLED=0 go build -o /praxis-compute ./cmd/praxis-compute
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /praxis-ec2 /praxis-ec2
-ENTRYPOINT ["/praxis-ec2"]
+COPY --from=build /praxis-compute /praxis-compute
+ENTRYPOINT ["/praxis-compute"]
 ```
 
 ---
@@ -2297,14 +2280,14 @@ ENTRYPOINT ["/praxis-ec2"]
 
 ### docker-compose.yaml — **MODIFY**
 
-Add a `praxis-ec2` service block after the existing `praxis-sg` service. Follow the exact same pattern.
+Add a `praxis-compute` service block (the compute driver pack). This hosts the EC2 driver and will host future compute drivers (Auto Scaling, Lambda, etc.).
 
 ```yaml
-  praxis-ec2:
+  praxis-compute:
     build:
       context: .
-      dockerfile: cmd/praxis-ec2/Dockerfile
-    container_name: praxis-ec2
+      dockerfile: cmd/praxis-compute/Dockerfile
+    container_name: praxis-compute
     env_file:
       - .env
     depends_on:
@@ -2318,32 +2301,32 @@ Add a `praxis-ec2` service block after the existing `praxis-sg` service. Follow 
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 ```
 
-**Note**: S3 uses host port 9081, SG uses 9082, Core uses 9083. EC2 gets 9084.
+**Note**: Storage pack uses host port 9081, Network pack uses 9082, Core uses 9083. Compute pack gets 9084.
 
 ### justfile — **MODIFY**
 
 Add these entries:
 
-1. **In `register` recipe** — add EC2 registration:
+1. **In `register` recipe** — add compute pack registration:
 
 ```
-    @echo "Registering EC2 driver with Restate..."
+    @echo "Registering compute driver pack with Restate..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-ec2:9080"}' | jq .
-    @echo "✓ EC2 driver registered"
+        -d '{"uri": "http://praxis-compute:9080"}' | jq .
+    @echo "✓ Compute driver pack registered"
 ```
 
-2. **In `build` recipe** — add EC2 binary:
+2. **In `build` recipe** — add compute binary:
 
 ```
-    go build -o bin/praxis-ec2 ./cmd/praxis-ec2
+    go build -o bin/praxis-compute ./cmd/praxis-compute
 ```
 
-3. **In `restart` recipe** — add praxis-ec2:
+3. **In `restart` recipe** — add praxis-compute:
 
 ```
-    docker compose up -d --build praxis-core praxis-s3 praxis-sg praxis-ec2
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute
 ```
 
 4. **Add driver test/log targets**:
@@ -2353,9 +2336,14 @@ Add these entries:
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
 
-# Follow logs for the EC2 driver only.
-logs-ec2:
-    docker compose logs -f praxis-ec2
+# Follow logs for the compute driver pack.
+logs-compute:
+    docker compose logs -f praxis-compute
+
+# Follow logs for all driver packs together.
+logs-drivers:
+    docker compose logs -f praxis-storage praxis-network praxis-compute
+```
 
 # Follow logs for all drivers together.
 logs-drivers:
@@ -2536,10 +2524,10 @@ differently. Integration tests should focus on the core CRUD lifecycle and tag d
 
 ## EC2-Specific Design Decisions
 
-### 1. Key Strategy: `region~metadata.name` (v2)
+### 1. Key Strategy: `region~metadata.name`
 
-See [Key Strategy §2](#2-key-strategy-v2) for the full analysis, including the v1
-problem statement, import semantics, and plan-time resolution. Summary:
+See [Key Strategy §2](#2-key-strategy) for the full analysis, including the
+rationale, import semantics, and plan-time resolution. Summary:
 
 - **The Virtual Object key is `region~metadata.name`**, always and permanently.
 - Template authors **must** give each instance a unique name within its region.
@@ -2565,7 +2553,7 @@ same key. There is no rename path for a VO.
 | `keyName` | **No** | Requires new instance (replacement) | **No** |
 | `userData` | Partial | Only on stopped instances | **No** |
 | `rootVolume.sizeGiB` | **No** | Requires volume modification (out of scope) | **No** |
-| `iamInstanceProfile` | Partial | Can associate/disassociate | **No** (future) |
+| `iamInstanceProfile` | Partial | Can associate/disassociate | **No** |
 
 The drift engine only checks **mutable attributes** to avoid false positives.
 
@@ -2573,35 +2561,26 @@ The drift engine only checks **mutable attributes** to avoid false positives.
 the desired spec and observed state, `ComputeFieldDiffs` reports it as a diff entry
 with the path suffixed with ` (immutable, ignored)`. This makes the change visible
 in `praxis plan` output without triggering correction. The plan operation remains
-`OpUpdate` (not a new `OpReplace`) — replacement semantics are a future feature.
-This is the "unsupported change" model: the user sees what they asked for, but the
-driver will not act on it until replacement is implemented.
+`OpUpdate` (not a new `OpReplace`) — replacement semantics are not implemented.
+The user sees what changed, but the driver does not act on immutable field changes.
 
-### 3. Tagging: Instance Only (v2 fix)
+### 3. Tagging: Instance Only
 
-The v1 plan said tags apply to "the instance and its root volume" in the CUE schema,
-but the launch path only tagged the instance, and the update path only retagged the
-instance. This was an inconsistency.
-
-**Resolution**: For this iteration, tags apply to the **instance only**:
+Tags apply to the **instance only**:
 - `RunInstance`: `TagSpecifications` with `ResourceType: instance` only.
 - `UpdateTags`: operates on the instance resource only.
 - CUE schema comment updated to say "tags applied to the instance only."
-- Root volume tagging is deferred to a future iteration (tracked in FUTURE.md).
+- Root volume tagging is not supported (tracked in FUTURE.md).
 
 Rationale: Volume tagging at create time requires a second `TagSpecification` entry
 (ResourceType: volume), which is straightforward. But volume retagging requires
 discovering the root volume ID via DescribeInstances → BlockDeviceMappings → EBS
 VolumeId, then calling CreateTags on that volume. This adds complexity and extra API
-calls to every tag update. Better to ship instance tagging first and add volume
-tagging when there is user demand.
+calls to every tag update.
 
-### 4. Capacity Failures: 503, Not 400 (v2 fix)
+### 4. Capacity Failures: 503, Not 400
 
-The v1 plan grouped `IsInsufficientCapacity` with `IsInvalidParam` under status 400.
-This made AWS supply constraints look like user input errors.
-
-**Resolution**: Separate error codes:
+Capacity failures and input errors use separate status codes:
 - `IsInvalidParam` → `restate.TerminalError(err, 400)` — bad AMI, bad subnet, etc.
 - `IsInsufficientCapacity` → `restate.TerminalError(err, 503)` — AWS can't fulfill
   the request. This is a provider-side issue, not a user input issue.
@@ -2617,20 +2596,19 @@ Changing `instanceType` requires stopping the instance. The driver:
 4. Starts the instance
 
 This causes **downtime**. The current `FieldDiff` shape (path, old value, new value)
-does not carry a "disruptive" flag. For this iteration, the plan output includes the
-diff as a normal `OpUpdate` field diff. The driver logs a warning before stopping.
+does not carry a "disruptive" flag. The plan output includes the diff as a normal
+`OpUpdate` field diff. The driver logs a warning before stopping.
 
-**Future**: Extend `types.FieldDiff` with an optional `Disruptive bool` field and
-surface it in CLI output (e.g., "~ instanceType: t3.micro => t3.large ⚠ disruptive").
-This is tracked separately — it requires changes to the shared diff model in
-`pkg/types/diff.go` and CLI formatting in `internal/cli/plan.go`.
+Extending `types.FieldDiff` with an optional `Disruptive bool` field to surface
+disruptive changes in CLI output (e.g., "~ instanceType: t3.micro => t3.large ⚠ disruptive")
+requires changes to the shared diff model in `pkg/types/diff.go` and CLI
+formatting in `internal/cli/plan.go`.
 
 ### 6. No Auto-Termination Protection
 
 The Delete handler directly terminates instances. It does NOT check for
 termination protection. If termination protection is enabled, AWS returns an
 `OperationNotPermitted` error, which the driver surfaces as a terminal error.
-Future work could add automatic disable-protection-then-terminate flow.
 
 ### 7. UserData Limitations
 
@@ -2759,7 +2737,7 @@ so drift correction never removes the ownership signal.
 
 ---
 
-### 11. Root Device Name: `/dev/xvda` Assumption
+### 11. Root Device Name: `/dev/xvda`
 
 The `RunInstance` implementation hardcodes the root device name to `/dev/xvda` in
 `BlockDeviceMappings`. This is the default for Amazon Linux, Amazon Linux 2, and
@@ -2777,13 +2755,13 @@ For this iteration, operators must use Amazon Linux or Debian AMIs when specifyi
 `rootVolume`. If `rootVolume` is omitted (the common case — AWS applies sensible
 defaults), the hardcoded device name is never sent and the AMI family doesn't matter.
 
-**Future enhancement**: Call `DescribeImages` to resolve the AMI's actual root device
-name before building `BlockDeviceMappings`. This adds one API call per provision but
-makes the driver AMI-family-agnostic. Tracked in FUTURE.md.
+Calling `DescribeImages` to resolve the AMI's actual root device name before building
+`BlockDeviceMappings` would add one API call per provision but make the driver
+AMI-family-agnostic. Tracked in FUTURE.md.
 
 ---
 
-## Open Questions (resolved)
+## Design Decisions (Resolved)
 
 1. **Do you want Plan to detect unmanaged-but-existing instances at all?**
    No. The contract is *create unless Praxis already owns state for this key*.
@@ -2818,12 +2796,9 @@ makes the driver AMI-family-agnostic. Tracked in FUTURE.md.
    This is an explicit contract: Observed mode guarantees the driver will never
    mutate or destroy the underlying AWS resource.
 
-   **Note on existing drivers**: the S3 and SG drivers currently do **not** check
-   `state.Mode` in their Delete handlers. This is an oversight — Observed-mode
-   resources in those drivers can be deleted without a guard. The EC2 driver
-   establishes the correct pattern. Backporting the mode guard to S3 and SG should
-   be tracked as a follow-up task (it is a one-line check at the top of each Delete
-   handler).
+   **Note**: the S3 and SG drivers do not check `state.Mode` in their Delete
+   handlers. The EC2 driver establishes the correct pattern. Backporting the mode
+   guard to S3 and SG is tracked in FUTURE.md.
 
 5. **When state exists but DescribeInstance returns not-found during Plan, should we
    return OpCreate unconditionally or a more explicit "resource missing" signal?**
@@ -2841,32 +2816,30 @@ makes the driver AMI-family-agnostic. Tracked in FUTURE.md.
 
 ## Checklist
 
-Use this to track implementation progress:
-
-- [ ] **Schema**: `schemas/aws/ec2/ec2.cue` created
-- [ ] **Types**: `internal/drivers/ec2/types.go` created with Spec, Outputs, ObservedState, State
-- [ ] **AWS API**: `internal/drivers/ec2/aws.go` created with EC2API interface + realEC2API
-- [ ] **Drift**: `internal/drivers/ec2/drift.go` created with HasDrift, ComputeFieldDiffs
-- [ ] **Driver**: `internal/drivers/ec2/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/ec2_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated with EC2 adapter
-- [ ] **Entry point**: `cmd/praxis-ec2/main.go` created
-- [ ] **Dockerfile**: `cmd/praxis-ec2/Dockerfile` created
-- [ ] **Docker Compose**: `docker-compose.yaml` updated with praxis-ec2 service
-- [ ] **Justfile**: Updated with ec2 build/test/register/log targets
-- [ ] **Unit tests (drift)**: `internal/drivers/ec2/drift_test.go` created
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/ec2/aws_test.go` created (includes FindByManagedKey)
-- [ ] **Unit tests (driver)**: `internal/drivers/ec2/driver_test.go` created with mocked AWS (includes conflict+import-mode tests)
-- [ ] **Unit tests (adapter)**: `internal/core/provider/ec2_adapter_test.go` created
-- [ ] **Integration tests**: `tests/integration/ec2_driver_test.go` created
-- [ ] **Conflict check**: `FindByManagedKey` in EC2API interface + realEC2API implementation (with multi-match corruption error)
-- [ ] **Ownership tag**: `praxis:managed-key` written by `RunInstance`; preserved by `UpdateTags`
-- [ ] **Import default mode**: `defaultEC2ImportMode` returns ModeObserved when unspecified
-- [ ] **Delete mode guard**: Delete handler blocks termination for ModeObserved resources (409)
-- [ ] **ARN population**: Deferred — requires STS `GetCallerIdentity` for account ID (tracked in FUTURE.md)
-- [ ] **Root device name**: Hardcoded to `/dev/xvda` (Amazon Linux) — document assumption, defer AMI lookup
-- [ ] **Backport Delete mode guard**: Add `state.Mode` check to S3 and SG Delete handlers (follow-up)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/ec2/... ./internal/core/provider/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestEC2 -tags=integration`
-- [ ] **Docker stack runs**: `just up` registers EC2 driver with Restate
+- [x] **Schema**: `schemas/aws/ec2/ec2.cue` created
+- [x] **Types**: `internal/drivers/ec2/types.go` created with Spec, Outputs, ObservedState, State
+- [x] **AWS API**: `internal/drivers/ec2/aws.go` created with EC2API interface + realEC2API
+- [x] **Drift**: `internal/drivers/ec2/drift.go` created with HasDrift, ComputeFieldDiffs
+- [x] **Driver**: `internal/drivers/ec2/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/ec2_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated with EC2 adapter
+- [x] **Entry point**: EC2 driver bound in `cmd/praxis-compute/main.go`
+- [x] **Dockerfile**: `cmd/praxis-compute/Dockerfile` created
+- [x] **Docker Compose**: `docker-compose.yaml` updated with praxis-compute service
+- [x] **Justfile**: Updated with ec2 build/test/register/log targets
+- [x] **Unit tests (drift)**: `internal/drivers/ec2/drift_test.go` created
+- [x] **Unit tests (aws helpers)**: `internal/drivers/ec2/aws_test.go` created (includes FindByManagedKey)
+- [x] **Unit tests (driver)**: `internal/drivers/ec2/driver_test.go` created with mocked AWS (includes conflict+import-mode tests)
+- [x] **Unit tests (adapter)**: `internal/core/provider/ec2_adapter_test.go` created
+- [x] **Integration tests**: `tests/integration/ec2_driver_test.go` created
+- [x] **Conflict check**: `FindByManagedKey` in EC2API interface + realEC2API implementation (with multi-match corruption error)
+- [x] **Ownership tag**: `praxis:managed-key` written by `RunInstance`; preserved by `UpdateTags`
+- [x] **Import default mode**: `defaultEC2ImportMode` returns ModeObserved when unspecified
+- [x] **Delete mode guard**: Delete handler blocks termination for ModeObserved resources (409)
+- [x] **ARN population**: Not populated — requires STS `GetCallerIdentity` for account ID (tracked in FUTURE.md)
+- [x] **Root device name**: Hardcoded to `/dev/xvda` (Amazon Linux) — see Design Decisions §11
+- [x] **Backport Delete mode guard**: Add `state.Mode` check to S3 and SG Delete handlers (tracked in FUTURE.md)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/ec2/... ./internal/core/provider/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestEC2 -tags=integration`
+- [x] **Docker stack runs**: `just up` registers compute driver pack (including EC2) with Restate

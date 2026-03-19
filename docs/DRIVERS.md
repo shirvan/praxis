@@ -6,7 +6,9 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. Each driver is a standalone Restate Virtual Object service — an independent binary that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+
+Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts both the SecurityGroup and VPC drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
 Drivers are intentionally simple. They know how to create, read, update, delete, and reconcile one type of resource. They have zero knowledge of other drivers, dependency graphs, or deployment workflows. All coordination happens in [Core's orchestrator](ORCHESTRATOR.md).
 
@@ -262,7 +264,7 @@ All AWS API wrappers include a per-service token bucket rate limiter (from `inte
 
 ## Driver File Layout
 
-Each driver follows the same directory structure:
+Each driver follows the same directory structure for its internal package:
 
 ```
 internal/drivers/<kind>/
@@ -272,12 +274,22 @@ internal/drivers/<kind>/
 ├── driver.go      # Restate Virtual Object with lifecycle handlers
 └── drift_test.go  # Drift detection tests
 
-cmd/praxis-<kind>/
-├── main.go        # Binary entrypoint
-└── Dockerfile     # Multi-stage distroless build
-
 schemas/aws/<service>/<kind>.cue  # CUE schema for user-facing spec
 ```
+
+Drivers are deployed via **domain-grouped driver packs** — each pack is a binary that binds all related drivers to a single Restate server:
+
+```
+cmd/praxis-<pack>/
+├── main.go        # Binds all drivers in this domain pack
+└── Dockerfile     # Multi-stage distroless build
+```
+
+| Pack | Binary | Drivers |
+|------|--------|---------|
+| Storage | `cmd/praxis-storage/` | S3 (future: RDS, DynamoDB, SQS, SNS) |
+| Network | `cmd/praxis-network/` | SecurityGroup (future: VPC, ELB, Route 53) |
+| Compute | `cmd/praxis-compute/` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) |
 
 ---
 

@@ -41,12 +41,13 @@ The result: a system with the same reconciliation semantics (drift detection, se
                            │ Restate RPC (durable, exactly-once)
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                   DRIVER SERVICES (per resource type)            │
+│                DRIVER PACKS (grouped by AWS domain)              │
 │                                                                  │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐                 │
-│  │ S3 Driver  │  │ SG Driver  │  │ EC2 Driver │                 │
-│  │ (container)│  │ (container)│  │ (container) │                │
-│  └────────────┘  └────────────┘  └────────────┘                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
+│  │   Storage    │  │   Network    │  │   Compute    │           │
+│  │ (S3, RDS,   │  │ (SG, VPC,   │  │ (EC2, ASG,  │           │
+│  │  DynamoDB…) │  │  ELB, R53…) │  │  Lambda…)   │           │
+│  └──────────────┘  └──────────────┘  └──────────────┘           │
 └──────────────────────────┬───────────────────────────────────────┘
                            │
                     ┌──────┴──────┐
@@ -83,18 +84,32 @@ The central coordination service. It hosts:
 
 Core runs as a single container. All its Restate services register under one deployment endpoint.
 
-### Driver Services
+### Driver Packs
 
-Each cloud resource type is managed by a dedicated driver service — a standalone container hosting Restate Virtual Objects. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. Each driver:
+Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Restate Virtual Objects. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls:
 
-- Runs independently with its own deployment lifecycle
-- Registers with Restate as a separate service
+```go
+srv := server.NewRestate().
+    Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
+    Bind(restate.Reflect(vpc.NewVPCDriver(auth)))
+```
+
+| Pack | Container | Drivers | Rationale |
+|------|-----------|---------|----------|
+| **Storage** | `praxis-storage` | S3 (future: RDS, DynamoDB, SQS, SNS) | Data stores and messaging |
+| **Network** | `praxis-network` | SecurityGroup (future: VPC, ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
+| **Compute** | `praxis-compute` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) | All compute lifecycle, similar IAM patterns |
+| **Identity** | `praxis-identity` | *(future: IAM, KMS, Secrets Manager, ACM)* | Security-sensitive, low churn |
+| **Observability** | `praxis-observability` | *(future: CloudWatch)* | Optional, many users skip it |
+
+Each driver within a pack:
+
 - Implements a standard handler contract: `Provision`, `Import`, `Delete`, `Reconcile`, `GetStatus`, `GetOutputs`
 - Stores all resource state in Restate's built-in K/V store
 - Handles its own rate limiting for AWS API calls
 - Has zero knowledge of other drivers, dependency graphs, or deployments
 
-This design makes drivers simple to build, test, and deploy. A driver is ~500 lines of Go implementing six handlers around an AWS SDK wrapper.
+Grouping by domain provides meaningful selectivity (don't need networking? don't run `praxis-network`) while keeping the system operationally manageable as the driver count grows. Restate doesn't care which container serves a Virtual Object — it routes by service name, not endpoint. Moving a driver between packs is a deployment-time decision, not a code change.
 
 ### CLI
 
@@ -148,15 +163,20 @@ Benefits:
 
 Tradeoff: state lives in Restate's storage layer, not a traditional database. Restate supports S3-backed snapshots for disaster recovery.
 
-### Why Separate Binaries per Driver
+### Why Domain-Grouped Driver Packs
 
-Each driver is a standalone binary and container rather than plugins loaded into a monolithic process. This means:
-- Deploy only the drivers you need
-- Update one driver without restarting others
-- Independent scaling per resource type
-- Fault isolation — one driver crashing doesn't affect others
+Instead of one container per resource type (which would mean 18+ containers at full AWS coverage) or a single monolithic driver process, Praxis groups drivers by AWS domain into a handful of **driver packs**. Each pack is a container hosting related Virtual Objects.
 
-Tradeoff: more containers to manage than a single process. Docker Compose and similar tools make this manageable.
+Benefits:
+- **Scaling aligns with reality** — if someone is churning EC2 instances, they're probably also churning Auto Scaling groups and Lambda functions. Scale the compute pack, not five separate containers.
+- **Blast radius is contained** — a panic in the VPC driver doesn't take down S3. The grouping follows natural AWS API boundaries.
+- **Restate doesn't care** — Virtual Object keys are globally unique within Restate regardless of which endpoint serves them. The orchestrator dispatches by service name (e.g., `"EC2Instance"`), not by container.
+- **Operations stay manageable** — 5–6 services instead of 20+. Docker Compose stays readable, health checks stay simple.
+- **Users still pick and choose** — don't need networking? Don't run `praxis-network`. Nobody runs SG without VPC anyway.
+
+The driver code itself remains fully modular — each driver is its own Go package with its own types, AWS wrapper, and drift detection. Only the binary entry points group them together.
+
+Tradeoff: a bug in one driver within a pack affects all drivers in that pack. This is acceptable because drivers in the same domain share AWS SDK clients and failure patterns — a networking API outage affects all networking drivers regardless of deployment topology.
 
 ---
 

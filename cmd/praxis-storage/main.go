@@ -9,19 +9,18 @@ import (
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/drivers/sg"
+	"github.com/praxiscloud/praxis/internal/drivers/s3"
 )
 
 func main() {
 	cfg := config.Load()
-	drv := sg.NewSecurityGroupDriver(cfg.Auth())
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(drv))
+		Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth())))
 
-	slog.Info("starting SG driver", "addr", cfg.ListenAddr)
+	slog.Info("starting storage driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
-		slog.Error("SG driver exited", "err", err.Error())
+		slog.Error("storage driver pack exited", "err", err.Error())
 		os.Exit(1)
 	}
 }

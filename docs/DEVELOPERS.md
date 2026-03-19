@@ -2,6 +2,8 @@
 
 This guide is for contributors developing the Praxis codebase — adding features, writing drivers, fixing bugs, and running tests.
 
+Praxis development benefits from scoping the imagination sandbox of the LLM Agents to pre-defined rules of Restate and Go, with heuristics of Praxis architecture. This off-loads much of the complex work to Restate while allowing for very flexible systems, planned and implemented by Agents.
+
 ## Prerequisites
 
 - [Go](https://go.dev/) >= 1.25
@@ -15,8 +17,9 @@ This guide is for contributors developing the Praxis codebase — adding feature
 cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
-  praxis-s3/                   # S3 driver binary
-  praxis-sg/                   # Security Group driver binary
+  praxis-storage/              # Storage driver pack (S3, future: RDS, DynamoDB...)
+  praxis-network/              # Network driver pack (SG, future: VPC, ELB...)
+  praxis-compute/              # Compute driver pack (EC2, future: ASG, Lambda...)
 
 internal/
   cli/                         # CLI command implementations
@@ -164,8 +167,8 @@ internal/drivers/<kind>/
 ├── driver_test.go # Unit tests
 └── drift_test.go  # Drift detection tests
 
-cmd/praxis-<kind>/
-├── main.go        # Binary entrypoint
+cmd/praxis-<pack>/
+├── main.go        # Binds all drivers in this domain pack
 └── Dockerfile     # Multi-stage distroless build
 
 schemas/aws/<service>/<kind>.cue  # CUE schema for user-facing spec
@@ -233,18 +236,18 @@ Rate limiting is built into the AWS wrapper layer — drivers never touch the li
 ### Adding a New Driver
 
 1. Create `internal/drivers/<kind>/` with types, aws wrapper, drift detection, and driver
-2. Create `cmd/praxis-<kind>/main.go` and `Dockerfile`
+2. Add the driver to the appropriate domain pack entry point (e.g., add a VPC driver to `cmd/praxis-network/main.go` via an additional `.Bind()` call)
 3. Create CUE schema in `schemas/aws/<service>/<kind>.cue`
 4. Add provider adapter in `internal/core/provider/` (adapter + registry entry + key scope)
-5. Add to `docker-compose.yaml` (service + registration)
-6. Add `just` recipes for the new driver
+5. Update `docker-compose.yaml` registration if the driver pack is new
+6. Add `just` recipes for the new driver's tests
 7. Write unit tests (drift, spec synthesis) and integration tests
 
 ### Reference Implementations
 
 Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), and EC2 driver (`internal/drivers/ec2/`) — every pattern described here is demonstrated in those implementations.
 
-The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which walks through the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision. It is kept in the repo as a reference for how to plan and build a new driver from scratch.
+The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which documents the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision.
 
 ## Code Style
 
@@ -255,10 +258,47 @@ The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which wa
 
 ## Release
 
+Praxis uses [semver](https://semver.org/) with this convention:
+
+| Level | Purpose | Example |
+|-------|---------|---------|
+| **Major** | Big architecture changes (shared, post-1.0.0) | `v1.0.0` → `v2.0.0` |
+| **Minor** | Driver-level releases, new features | `v0.1.0` → `v0.2.0` |
+| **Patch** | Hotfixes and patches | `v0.1.0` → `v0.1.1` |
+
+Releases are **manual** — you control what version ships and with what notes. No automated release-on-push.
+
+### Release Workflow
+
 ```bash
-# Build release artifacts for a given version
+# 1. Run pre-release checks (lint, test, build)
+just release-preflight v0.1.0
+
+# 2. Tag and push — triggers GitHub Actions to build artifacts and create a draft release
 just release v0.1.0
+
+# 3. Go to GitHub Releases, edit the draft, add release notes, and publish
 ```
+
+### What Happens
+
+1. `just release v0.1.0` validates the version, checks for a clean working tree on `main`, creates an annotated git tag, and pushes it.
+2. GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) runs: lint → test → cross-compile CLI (darwin/arm64, darwin/amd64, linux/amd64) → create a **draft** GitHub Release with tarballs and checksums attached.
+3. Docker images for all services (`praxis-core`, `praxis-storage`, `praxis-network`, `praxis-compute`) are built and pushed to `ghcr.io/shirvan/praxis-*`.
+4. You edit the draft release on GitHub to add your release notes, then publish.
+
+### Local-Only Build (No Tag)
+
+```bash
+# Build release artifacts locally without tagging (for inspection)
+just release-build v0.1.0
+```
+
+This runs the `release-build` recipe which cross-compiles the CLI and service binaries into `dist/v0.1.0/`.
+
+### CI
+
+A separate CI workflow ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs lint, format check, tests, and build on every push to `main` and on pull requests.
 
 ## License
 

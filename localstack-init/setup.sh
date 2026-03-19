@@ -1,5 +1,5 @@
 #!/bin/bash
-# hack/localstack-init/setup.sh
+# localstack-init/setup.sh
 # Runs when LocalStack container starts (mounted to /etc/localstack/init/ready.d/).
 # Seeds test parameters and resources.
 

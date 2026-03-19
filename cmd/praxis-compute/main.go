@@ -5,24 +5,22 @@ import (
 	"log/slog"
 	"os"
 
+	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/drivers/s3"
-
-	restate "github.com/restatedev/sdk-go"
+	"github.com/praxiscloud/praxis/internal/drivers/ec2"
 )
 
 func main() {
 	cfg := config.Load()
-	drv := s3.NewS3BucketDriver(cfg.Auth())
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(drv))
+		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth())))
 
-	slog.Info("starting S3 driver", "addr", cfg.ListenAddr)
+	slog.Info("starting compute driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
-		slog.Error("S3 driver exited", "err", err.Error())
+		slog.Error("compute driver pack exited", "err", err.Error())
 		os.Exit(1)
 	}
 }

@@ -21,7 +21,6 @@
 //
 // Prerequisites:
 //   - Docker must be running (Testcontainers starts Restate and LocalStack)
-//   - The LocalStack init script in hack/localstack-init/setup.sh must exist
 package integration
 
 import (

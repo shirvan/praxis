@@ -64,10 +64,10 @@ wait-stack:
     done
     echo
 
-# Rebuild and restart the core + driver services, then re-register them.
+# Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-s3 praxis-ec2 praxis-sg
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute
     just wait-stack
     just register
 
@@ -79,47 +79,47 @@ status:
 logs:
     docker compose logs -f praxis-core
 
-# Follow logs for the S3 driver only.
-logs-s3:
-    docker compose logs -f praxis-s3
+# Follow logs for the storage driver pack (S3).
+logs-storage:
+    docker compose logs -f praxis-storage
 
-# Follow logs for the SG driver only.
-logs-sg:
-    docker compose logs -f praxis-sg
+# Follow logs for the network driver pack (SG, VPC).
+logs-network:
+    docker compose logs -f praxis-network
 
-# Follow logs for the EC2 driver only.
-logs-ec2:
-    docker compose logs -f praxis-ec2
+# Follow logs for the compute driver pack (EC2).
+logs-compute:
+    docker compose logs -f praxis-compute
 
-# Follow logs for both drivers together.
+# Follow logs for all driver packs together.
 logs-drivers:
-    docker compose logs -f praxis-s3 praxis-ec2 praxis-sg
+    docker compose logs -f praxis-storage praxis-network praxis-compute
 
 # Follow logs for all services
 logs-all:
     docker compose logs -f
 
-# Register all services with Restate (drivers + core).
+# Register all services with Restate (driver packs + core).
 #
 # The admin API registration step is intentionally kept explicit in the justfile
 # instead of being hidden in a shell script. That keeps local troubleshooting
 # easy and gives AI agents a single canonical place to learn the deployment URIs.
 register:
-    @echo "Registering S3 driver with Restate..."
+    @echo "Registering storage driver pack with Restate..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-s3:9080"}' | jq .
-    @echo "✓ S3 driver registered"
-    @echo "Registering EC2 driver with Restate..."
+        -d '{"uri": "http://praxis-storage:9080"}' | jq .
+    @echo "✓ Storage driver pack registered"
+    @echo "Registering network driver pack with Restate..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-ec2:9080"}' | jq .
-    @echo "✓ EC2 driver registered"
-    @echo "Registering SG driver with Restate..."
+        -d '{"uri": "http://praxis-network:9080"}' | jq .
+    @echo "✓ Network driver pack registered"
+    @echo "Registering compute driver pack with Restate..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-sg:9080"}' | jq .
-    @echo "✓ SG driver registered"
+        -d '{"uri": "http://praxis-compute:9080"}' | jq .
+    @echo "✓ Compute driver pack registered"
     @echo "Registering Praxis Core (command service + orchestrator)..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
@@ -128,13 +128,13 @@ register:
 
 # ─── Build ──────────────────────────────────────────────────
 
-# Build everything: CLI, Core, and drivers
+# Build everything: CLI, Core, and driver packs
 build:
     go build -o bin/praxis ./cmd/praxis
     go build -o bin/praxis-core ./cmd/praxis-core
-    go build -o bin/praxis-s3 ./cmd/praxis-s3
-    go build -o bin/praxis-ec2 ./cmd/praxis-ec2
-    go build -o bin/praxis-sg ./cmd/praxis-sg
+    go build -o bin/praxis-storage ./cmd/praxis-storage
+    go build -o bin/praxis-network ./cmd/praxis-network
+    go build -o bin/praxis-compute ./cmd/praxis-compute
 
 # Build CLI binary only
 build-cli:
@@ -289,9 +289,121 @@ doctor:
 
 # ─── Release ────────────────────────────────────────────────
 
-# Build release artifacts for the given version
-release VERSION:
-    hack/release.sh {{VERSION}}
+# Semver convention:
+#   Major — big architecture changes (shared, post-1.0.0)
+#   Minor — driver-level releases / new features
+#   Patch — hotfixes and patches
+#
+# Release workflow:
+#   1. just release-preflight v0.1.0   — validate, test, build locally
+#   2. just release v0.1.0             — tag + push → triggers GitHub Actions release
+#
+# GitHub Actions builds the artifacts and creates the GitHub Release.
+# You write the release notes in the GitHub UI (or pass --notes to gh).
+
+# Validate version format (vMAJOR.MINOR.PATCH)
+_validate-version VERSION:
+    #!/bin/sh
+    echo "{{VERSION}}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$' \
+        || (echo "Invalid version: {{VERSION}}. Must match vMAJOR.MINOR.PATCH[-prerelease]" && exit 1)
+    echo "✓ Version {{VERSION}} is valid semver"
+
+# Run pre-release checks: lint, unit tests, build all binaries
+release-preflight VERSION: (_validate-version VERSION)
+    @echo "═══ Pre-release checks for {{VERSION}} ═══"
+    @echo ""
+    @echo "→ Checking working tree is clean..."
+    @git diff --quiet --exit-code || (echo "ERROR: working tree has uncommitted changes" && exit 1)
+    @git diff --cached --quiet --exit-code || (echo "ERROR: index has staged changes" && exit 1)
+    @echo "✓ Working tree clean"
+    @echo ""
+    @echo "→ Running lint..."
+    just lint
+    @echo ""
+    @echo "→ Running unit tests..."
+    just test
+    @echo ""
+    @echo "→ Building all binaries..."
+    just build
+    @echo ""
+    @echo "✓ Pre-release checks passed for {{VERSION}}"
+    @echo "  Run 'just release {{VERSION}}' to tag and push."
+
+# Build release artifacts locally (for inspection before tagging)
+release-build VERSION: (_validate-version VERSION)
+    #!/bin/sh
+    set -eu
+    VERSION="{{VERSION}}"
+    DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    DIST="dist/${VERSION}"
+    LDFLAGS="-X github.com/praxiscloud/praxis/internal/cli.version=${VERSION} \
+             -X github.com/praxiscloud/praxis/internal/cli.buildDate=${DATE}"
+
+    mkdir -p "${DIST}"
+
+    echo "Building CLI binaries..."
+    for GOOS_GOARCH in darwin/arm64 darwin/amd64 linux/amd64; do
+        GOOS="${GOOS_GOARCH%/*}"
+        GOARCH="${GOOS_GOARCH#*/}"
+        OUT="${DIST}/praxis_${GOOS}_${GOARCH}"
+        mkdir -p "${OUT}"
+        echo "  ${GOOS}/${GOARCH}"
+        GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags "${LDFLAGS}" -o "${OUT}/praxis" ./cmd/praxis
+        tar -czf "${DIST}/praxis_${GOOS}_${GOARCH}.tar.gz" -C "${OUT}" praxis
+    done
+
+    echo "Building service binaries (linux/amd64)..."
+    mkdir -p "${DIST}/linux_amd64"
+    for SVC in praxis-core praxis-storage praxis-network praxis-compute; do
+        echo "  ${SVC}"
+        GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o "${DIST}/linux_amd64/${SVC}" "./cmd/${SVC}"
+    done
+
+    echo "Generating checksums..."
+    cd "${DIST}" && shasum -a 256 *.tar.gz > checksums.txt
+
+    echo ""
+    echo "Release ${VERSION} built successfully:"
+    echo "  CLI tarballs:  ${DIST}/praxis_*.tar.gz"
+    echo "  Services:      ${DIST}/linux_amd64/"
+    echo "  Checksums:     ${DIST}/checksums.txt"
+
+# Tag the release and push to GitHub — triggers the release workflow
+release VERSION: (_validate-version VERSION)
+    #!/bin/sh
+    set -e
+
+    # Verify tag doesn't already exist
+    if git rev-parse "{{VERSION}}" >/dev/null 2>&1; then
+        echo "ERROR: tag {{VERSION}} already exists"
+        exit 1
+    fi
+
+    # Verify we're on main
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$branch" != "main" ]; then
+        echo "ERROR: releases must be cut from main (currently on $branch)"
+        exit 1
+    fi
+
+    # Verify clean working tree
+    if ! git diff --quiet --exit-code || ! git diff --cached --quiet --exit-code; then
+        echo "ERROR: working tree has uncommitted changes"
+        exit 1
+    fi
+
+    echo "Creating release tag {{VERSION}}..."
+    git tag -a "{{VERSION}}" -m "Release {{VERSION}}"
+    echo "✓ Tag created"
+
+    echo "Pushing tag to origin..."
+    git push origin "{{VERSION}}"
+    echo "✓ Tag pushed — GitHub Actions will create the release"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Go to https://github.com/shirvan/praxis/actions to monitor the build"
+    echo "  2. Once complete, edit the release at https://github.com/shirvan/praxis/releases/tag/{{VERSION}}"
+    echo "     to add release notes describing what changed."
 
 # ─── Cleanup ────────────────────────────────────────────────
 

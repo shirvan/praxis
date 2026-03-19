@@ -1,0 +1,42 @@
+# CI workflow — runs on every push and pull request to main.
+# Uses `just` for all steps to stay consistent with local development.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          just lint
+
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Unit tests
+        run: just test
+
+      - name: Build
+        run: just build

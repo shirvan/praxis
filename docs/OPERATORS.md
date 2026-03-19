@@ -10,22 +10,123 @@ Praxis consists of three service tiers, all fronted by a Restate server:
 |--------------------|------------------------------------------------------|--------------------------------------------|
 | **Restate Server** | Durable execution engine — state, journals, timers   | Single instance (or HA cluster)            |
 | **Praxis Core**    | Command service, template engine, orchestrator       | Stateless; scale horizontally              |
-| **Driver Services**| One binary per resource type (S3, SecurityGroup, EC2)| Stateless; scale horizontally per type     |
+| **Driver Packs**   | Domain-grouped drivers (storage, network, compute)   | Stateless; scale horizontally per domain   |
 
 Every component is shipped as a Docker image. The reference topology is captured in [docker-compose.yaml](../docker-compose.yaml).
 
+### Decoupled Architecture
+
+Every Praxis component is fully decoupled. Restate, Praxis Core, and each driver are independent processes that communicate exclusively through Restate's invocation protocol. There is no shared memory, no sidecar coupling, and no requirement that any two components run on the same host, in the same cluster, or even in the same region.
+
+This means:
+
+- **Restate can run anywhere**: self-hosted on a VM, as a container in your cluster, or on [Restate Cloud](https://restate.dev/cloud/) as a fully managed service. Praxis services only need HTTP connectivity to Restate's ingress and admin endpoints.
+- **Each driver pack is independently deployable**: The storage pack can run on a different machine (or in a different cloud) from the network pack. Add a new driver to the appropriate pack without touching other packs. Remove a pack by deregistering it from Restate.
+- **Praxis Core is stateless**: It holds no local state — all durable state lives in Restate. Run one replica or ten; Restate routes invocations.
+- **Drivers are stateless**: All resource state (desired spec, observed state, outputs, status) is stored in Restate Virtual Objects. Driver processes can be replaced, restarted, or scaled without data loss.
+
+The only coupling point is Restate itself, which acts as the message bus, state store, and timer service. As long as every Praxis component can reach Restate over HTTP, the topology is arbitrary.
+
+### Restate Hosting Options
+
+| Option | Description | Best For |
+|---|---|---|
+| **Single instance** | One Restate container (the docker-compose default) | Local dev, small deployments |
+| **HA cluster** | Multi-node Restate with replicated log storage | Production self-hosted deployments |
+| **Restate Cloud** | Fully managed Restate — no infrastructure to operate | Production with minimal ops overhead |
+
+For self-hosted HA, Restate stores its log and state snapshots in an object store (S3). See [State & Backups](#state--backups) for details.
+
+For Restate Cloud, replace the Restate admin/ingress URLs in your configuration with the cloud-provided endpoints. All Praxis services register against Restate Cloud the same way they register against a local instance — the protocol is identical.
+
 ### Port Map (Reference Stack)
 
-| Service      | Container Port | Host Port | Purpose              |
-|--------------|---------------|-----------|----------------------|
-| Restate      | 8080          | 8080      | Ingress (CLI + API)  |
-| Restate      | 9070          | 9070      | Admin API            |
-| Restate      | 9071          | 9071      | Metrics              |
-| Praxis Core  | 9080          | 9083      | Restate endpoint     |
-| S3 Driver    | 9080          | 9081      | Restate endpoint     |
-| SG Driver    | 9080          | 9082      | Restate endpoint     |
-| EC2 Driver   | 9080          | 9084      | Restate endpoint     |
-| LocalStack   | 4566          | 4566      | Mock AWS (local dev) |
+| Service           | Container Port | Host Port | Purpose              |
+|-------------------|---------------|-----------|----------------------|
+| Restate           | 8080          | 8080      | Ingress (CLI + API)  |
+| Restate           | 9070          | 9070      | Admin API            |
+| Restate           | 9071          | 9071      | Metrics              |
+| Praxis Core       | 9080          | 9083      | Restate endpoint     |
+| Storage Pack      | 9080          | 9081      | Restate endpoint     |
+| Network Pack      | 9080          | 9082      | Restate endpoint     |
+| Compute Pack      | 9080          | 9084      | Restate endpoint     |
+| LocalStack        | 4566          | 4566      | Mock AWS (local dev) |
+
+### Kubernetes Example
+
+In production, each Praxis service runs as a separate Kubernetes Deployment behind an Ingress (or directly reachable by Restate via cluster DNS). Restate itself can be Restate Cloud or a self-hosted StatefulSet.
+
+The example below deploys the storage driver pack and registers it with Restate Cloud. The same pattern applies to every other driver pack and Praxis Core.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praxis-storage
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: praxis-storage
+  template:
+    metadata:
+      labels:
+        app: praxis-storage
+    spec:
+      containers:
+        - name: praxis-storage
+          image: ghcr.io/shirvan/praxis-storage:latest
+          ports:
+            - containerPort: 9080
+          env:
+            - name: PRAXIS_LISTEN_ADDR
+              value: "0.0.0.0:9080"
+          envFrom:
+            - secretRef:
+                name: praxis-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: praxis-storage
+spec:
+  selector:
+    app: praxis-storage
+  ports:
+    - port: 9080
+      targetPort: 9080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: praxis-storage
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: praxis-storage.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: praxis-storage
+                port:
+                  number: 9080
+```
+
+Register the driver pack with Restate Cloud (or any Restate instance):
+
+```bash
+curl -X POST https://<restate-cloud-admin>/deployments \
+  -H 'content-type: application/json' \
+  -H 'Authorization: Bearer <api-token>' \
+  -d '{"uri": "https://praxis-storage.example.com"}'
+```
+
+Repeat for each driver pack and Praxis Core. Each gets its own Deployment, Service, and Ingress — fully independent scaling and rollout.
 
 ## Quick Start (Local Development)
 
@@ -67,10 +168,10 @@ just doctor       # Fast endpoint + registration sanity check
 
 ```bash
 just logs         # Follow Praxis Core logs
-just logs-s3      # Follow S3 driver logs
-just logs-sg      # Follow SG driver logs
-just logs-ec2     # Follow EC2 driver logs
-just logs-drivers # Follow all driver logs together
+just logs-storage # Follow Storage driver pack logs
+just logs-network # Follow Network driver pack logs
+just logs-compute # Follow Compute driver pack logs
+just logs-drivers # Follow all driver pack logs together
 just logs-all     # Follow all service logs
 ```
 
@@ -128,20 +229,20 @@ just register
 For manual registration or debugging:
 
 ```bash
-# Register S3 driver
+# Register Storage driver pack
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
-  -d '{"uri": "http://praxis-s3:9080"}'
+  -d '{"uri": "http://praxis-storage:9080"}'
 
-# Register SG driver
+# Register Network driver pack
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
-  -d '{"uri": "http://praxis-sg:9080"}'
+  -d '{"uri": "http://praxis-network:9080"}'
 
-# Register EC2 driver
+# Register Compute driver pack
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
-  -d '{"uri": "http://praxis-ec2:9080"}'
+  -d '{"uri": "http://praxis-compute:9080"}'
 
 # Register Praxis Core
 curl -X POST http://localhost:9070/deployments \
@@ -220,6 +321,45 @@ The reconcile loop survives process restarts — Restate's durable timers ensure
 ### External Deletion
 
 If a resource is deleted outside Praxis, the driver transitions to `Error` status with a descriptive message. It does **not** re-provision automatically — an operator must explicitly re-apply to recreate the resource.
+
+## State & Backups
+
+Praxis stores **zero state locally**. All durable state — Virtual Object key-value pairs, invocation journals, timer schedules — lives inside Restate. This is what makes every Praxis service stateless and freely replaceable.
+
+### What Restate Stores
+
+| Data | Purpose |
+|---|---|
+| Virtual Object state | Desired spec, observed state, outputs, status, generation counters for every managed resource |
+| Invocation journals | Step-by-step execution log for durable replay on failure |
+| Timers | Scheduled reconciliation callbacks (one per managed resource) |
+| Promise results | Workflow promise resolutions |
+
+### Backup Strategy
+
+Restate persists its log and periodic state snapshots to an S3-compatible object store. This is Restate's built-in durability mechanism — not a Praxis feature, but the foundation Praxis depends on.
+
+For **self-hosted Restate** (single instance or HA cluster), configure the snapshot and log storage backend to write to S3:
+
+```toml
+# restate.toml (relevant excerpt)
+[worker.snapshots]
+destination = "s3://my-restate-snapshots/praxis/"
+```
+
+Restate automatically takes periodic snapshots of Virtual Object state and trims the write-ahead log. On recovery, Restate restores from the latest snapshot and replays any remaining log entries.
+
+For **Restate Cloud**, snapshot storage and replication are managed by the service — no operator configuration needed.
+
+### Recovery Model
+
+Because Praxis services are stateless:
+
+1. **Lost a driver container?** Start a new one and re-register it. Restate replays any in-flight invocations from the journal.
+2. **Lost Praxis Core?** Same — start a new one. All template and deployment state is in Restate.
+3. **Lost Restate?** Restore from S3 snapshots. Restate recovers all Virtual Object state, pending timers, and in-flight journals. Praxis services resume exactly where they left off.
+
+There is nothing to back up on the Praxis side. Back up Restate's S3 bucket and you have the entire system state.
 
 ## Troubleshooting
 
