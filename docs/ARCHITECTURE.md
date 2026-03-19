@@ -97,7 +97,7 @@ srv := server.NewRestate().
 | Pack | Container | Drivers | Rationale |
 |------|-----------|---------|----------|
 | **Storage** | `praxis-storage` | S3 (future: RDS, DynamoDB, SQS, SNS) | Data stores and messaging |
-| **Network** | `praxis-network` | SecurityGroup (future: VPC, ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
+| **Network** | `praxis-network` | SecurityGroup, VPC (future: ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
 | **Compute** | `praxis-compute` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) | All compute lifecycle, similar IAM patterns |
 | **Identity** | `praxis-identity` | *(future: IAM, KMS, Secrets Manager, ACM)* | Security-sensitive, low churn |
 | **Observability** | `praxis-observability` | *(future: CloudWatch)* | Optional, many users skip it |

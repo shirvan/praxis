@@ -6,7 +6,7 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
 Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts both the SecurityGroup and VPC drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
@@ -21,6 +21,7 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 - S3 Bucket: `my-bucket` (bucket names are globally unique)
 - SecurityGroup: `vpc-123~web-sg` (VPC-scoped, using `~` as separator)
 - EC2 Instance: `us-east-1~web-server` (region-scoped, using `~` as separator)
+- VPC: `us-east-1~main-vpc` (region-scoped, using `~` as separator)
 
 Each Virtual Object holds:
 

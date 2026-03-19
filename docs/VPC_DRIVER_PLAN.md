@@ -1,8 +1,7 @@
 # VPC Driver — Implementation Plan
 
-> **Status: NOT STARTED** — This plan is a comprehensive blueprint for implementing
-> the VPC driver. All code snippets are reference implementations; the actual code
-> should follow these patterns precisely.
+> **Status: IMPLEMENTED** — The VPC driver has been fully implemented following this plan.
+> All core files, unit tests, integration tests, and wiring are in place.
 
 > Target: A Restate Virtual Object driver that manages AWS VPCs, following the
 > exact patterns established by the S3 Bucket, Security Group, and EC2 Instance

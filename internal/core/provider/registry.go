@@ -115,6 +115,7 @@ func NewRegistry() *Registry {
 		NewS3AdapterWithRegistry(accounts),
 		NewEC2AdapterWithRegistry(accounts),
 		NewSecurityGroupAdapterWithRegistry(accounts),
+		NewVPCAdapterWithRegistry(accounts),
 	)
 }
 

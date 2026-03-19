@@ -18,7 +18,7 @@ cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
   praxis-storage/              # Storage driver pack (S3, future: RDS, DynamoDB...)
-  praxis-network/              # Network driver pack (SG, future: VPC, ELB...)
+  praxis-network/              # Network driver pack (SG, VPC, future: ELB...)
   praxis-compute/              # Compute driver pack (EC2, future: ASG, Lambda...)
 
 internal/
@@ -111,6 +111,7 @@ just test-core       # Command service + DAG + orchestrator
 just test-cli        # CLI
 just test-s3         # S3 driver
 just test-sg         # SG driver
+just test-vpc        # VPC driver
 just test-template   # Template engine + resolver
 
 # Lint

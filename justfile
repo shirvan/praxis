@@ -174,6 +174,10 @@ test-ec2:
 test-sg:
     go test ./internal/drivers/sg/... -v -count=1 -race
 
+# Run VPC driver unit tests only
+test-vpc:
+    go test ./internal/drivers/vpc/... -v -count=1 -race
+
 # Run template engine + resolver unit tests
 test-template:
     go test ./internal/core/template/... ./internal/core/resolver/... -v -count=1 -race
@@ -223,6 +227,18 @@ test-ec2-integration:
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-ec2-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run VPC integration tests (requires Docker — Testcontainers + LocalStack)
+test-vpc-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestVPC -v -count=1 -tags=integration -timeout=5m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-vpc-integration] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"

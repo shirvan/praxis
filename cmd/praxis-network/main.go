@@ -10,13 +10,15 @@ import (
 
 	"github.com/praxiscloud/praxis/internal/core/config"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
+	"github.com/praxiscloud/praxis/internal/drivers/vpc"
 )
 
 func main() {
 	cfg := config.Load()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth())))
+		Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
+		Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
 
 	slog.Info("starting network driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

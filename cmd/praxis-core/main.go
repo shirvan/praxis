@@ -30,6 +30,7 @@ func main() {
 		provider.NewS3AdapterWithRegistry(accounts),
 		provider.NewEC2AdapterWithRegistry(accounts),
 		provider.NewSecurityGroupAdapterWithRegistry(accounts),
+		provider.NewVPCAdapterWithRegistry(accounts),
 	)
 
 	srv := server.NewRestate().
