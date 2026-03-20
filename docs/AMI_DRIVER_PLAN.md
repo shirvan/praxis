@@ -1,7 +1,5 @@
 # AMI Driver — Implementation Plan
 
-> **Status: Implemented.** All checklist items complete.
-
 > Target: A Restate Virtual Object driver that manages Amazon Machine Images (AMIs),
 > following the exact patterns established by the S3, Security Group, EC2, VPC, EBS,
 > Elastic IP, Key Pair, and Launch Template drivers.
