@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/praxiscloud/praxis/internal/core/jsonpath"
 	"github.com/praxiscloud/praxis/internal/core/template"
 )
 
@@ -61,7 +62,7 @@ func HydrateExprs(
 			continue
 		}
 
-		updated, setErr := setHydrationPath(root, path, value)
+		updated, setErr := jsonpath.Set(root, path, value)
 		if setErr != nil {
 			errs = append(errs, template.TemplateError{
 				Kind:    template.ErrExprUnresolved,
@@ -111,71 +112,4 @@ func resolveExpr(expr string, outputs map[string]map[string]any) (any, error) {
 		return nil, fmt.Errorf("output %q not found for resource %q", fieldName, resourceName)
 	}
 	return value, nil
-}
-
-func setHydrationPath(root any, path string, value any) (any, error) {
-	if path == "" {
-		return value, nil
-	}
-	segments := strings.Split(path, ".")
-	updated, err := setHydrationPathRecursive(root, segments, value)
-	if err != nil {
-		return nil, err
-	}
-	return updated, nil
-}
-
-func setHydrationPathRecursive(current any, segments []string, value any) (any, error) {
-	if len(segments) == 0 {
-		return value, nil
-	}
-
-	segment := segments[0]
-	if index, ok := parseHydrationIndex(segment); ok {
-		list, ok := current.([]any)
-		if !ok {
-			return nil, fmt.Errorf("segment %q expected array, got %T", segment, current)
-		}
-		if index < 0 || index >= len(list) {
-			return nil, fmt.Errorf("array index %d out of range", index)
-		}
-		next, err := setHydrationPathRecursive(list[index], segments[1:], value)
-		if err != nil {
-			return nil, err
-		}
-		list[index] = next
-		return list, nil
-	}
-
-	object, ok := current.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("segment %q expected object, got %T", segment, current)
-	}
-	nextCurrent, ok := object[segment]
-	if !ok {
-		return nil, fmt.Errorf("segment %q not found", segment)
-	}
-	next, err := setHydrationPathRecursive(nextCurrent, segments[1:], value)
-	if err != nil {
-		return nil, err
-	}
-	object[segment] = next
-	return object, nil
-}
-
-func parseHydrationIndex(segment string) (int, bool) {
-	if segment == "" {
-		return 0, false
-	}
-	for _, r := range segment {
-		if r < '0' || r > '9' {
-			return 0, false
-		}
-	}
-	var index int
-	_, err := fmt.Sscanf(segment, "%d", &index)
-	if err != nil {
-		return 0, false
-	}
-	return index, true
 }

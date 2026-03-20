@@ -167,9 +167,7 @@ func newTemplateDescribeCmd(flags *rootFlags) *cobra.Command {
 						def = fmt.Sprintf("%v", field.Default)
 					}
 					constraint := "-"
-					if field.Constraint != "" {
-						constraint = field.Constraint
-					} else if len(field.Enum) > 0 {
+					if len(field.Enum) > 0 {
 						constraint = strings.Join(field.Enum, " | ")
 					}
 					required := "no"

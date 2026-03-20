@@ -11,6 +11,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/praxiscloud/praxis/internal/core/dag"
+	"github.com/praxiscloud/praxis/internal/core/jsonpath"
 	"github.com/praxiscloud/praxis/internal/core/orchestrator"
 	"github.com/praxiscloud/praxis/internal/core/registry"
 	"github.com/praxiscloud/praxis/internal/core/resolver"
@@ -392,7 +393,7 @@ func maskSensitiveValues(resourceName string, value any, sensitive *resolver.Sen
 			continue
 		}
 		resourcePath := strings.TrimPrefix(fullPath, prefix)
-		updated, err := setJSONPathValue(decoded, resourcePath, "***")
+		updated, err := jsonpath.Set(decoded, resourcePath, "***")
 		if err != nil {
 			return nil, err
 		}
@@ -400,69 +401,6 @@ func maskSensitiveValues(resourceName string, value any, sensitive *resolver.Sen
 	}
 
 	return decoded, nil
-}
-
-func setJSONPathValue(root any, path string, value any) (any, error) {
-	if path == "" {
-		return value, nil
-	}
-	segments := strings.Split(path, ".")
-	updated, err := setJSONPathRecursive(root, segments, value)
-	if err != nil {
-		return nil, err
-	}
-	return updated, nil
-}
-
-func setJSONPathRecursive(current any, segments []string, value any) (any, error) {
-	if len(segments) == 0 {
-		return value, nil
-	}
-
-	segment := segments[0]
-	switch typed := current.(type) {
-	case map[string]any:
-		next, ok := typed[segment]
-		if !ok {
-			return nil, fmt.Errorf("JSON path segment %q not found", segment)
-		}
-		updated, err := setJSONPathRecursive(next, segments[1:], value)
-		if err != nil {
-			return nil, err
-		}
-		typed[segment] = updated
-		return typed, nil
-	case []any:
-		index, err := parseArrayIndex(segment)
-		if err != nil {
-			return nil, err
-		}
-		if index < 0 || index >= len(typed) {
-			return nil, fmt.Errorf("JSON path index %d out of range", index)
-		}
-		updated, err := setJSONPathRecursive(typed[index], segments[1:], value)
-		if err != nil {
-			return nil, err
-		}
-		typed[index] = updated
-		return typed, nil
-	default:
-		return nil, fmt.Errorf("JSON path segment %q expected container, got %T", segment, current)
-	}
-}
-
-func parseArrayIndex(segment string) (int, error) {
-	value := 0
-	if segment == "" {
-		return 0, fmt.Errorf("empty array index")
-	}
-	for _, r := range segment {
-		if !unicode.IsDigit(r) {
-			return 0, fmt.Errorf("non-numeric array index %q", segment)
-		}
-		value = value*10 + int(r-'0')
-	}
-	return value, nil
 }
 
 func resourceKind(raw json.RawMessage) (string, error) {

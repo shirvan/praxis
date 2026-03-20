@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/praxiscloud/praxis/internal/core/jsonpath"
 	"github.com/praxiscloud/praxis/internal/core/template"
 )
 
@@ -166,7 +167,7 @@ func resolveSSMReferences(
 			})
 			continue
 		}
-		updated, setErr := setJSONPathValue(decoded[occurrence.ResourceName], occurrence.JSONPath, resolvedValue)
+		updated, setErr := jsonpath.Set(decoded[occurrence.ResourceName], occurrence.JSONPath, resolvedValue)
 		if setErr != nil {
 			errs = append(errs, template.TemplateError{
 				Kind:    template.ErrResolve,
@@ -247,73 +248,6 @@ func appendJSONPath(path, part string) string {
 		return part
 	}
 	return path + "." + part
-}
-
-func setJSONPathValue(root any, path string, value any) (any, error) {
-	if path == "" {
-		return value, nil
-	}
-	segments := strings.Split(path, ".")
-	updated, err := setJSONPathValueRecursive(root, segments, value)
-	if err != nil {
-		return nil, err
-	}
-	return updated, nil
-}
-
-func setJSONPathValueRecursive(current any, segments []string, value any) (any, error) {
-	if len(segments) == 0 {
-		return value, nil
-	}
-
-	segment := segments[0]
-	if index, ok := parseArrayIndex(segment); ok {
-		list, ok := current.([]any)
-		if !ok {
-			return nil, fmt.Errorf("path segment %q expected array, got %T", segment, current)
-		}
-		if index < 0 || index >= len(list) {
-			return nil, fmt.Errorf("array index %d out of range at segment %q", index, segment)
-		}
-		next, err := setJSONPathValueRecursive(list[index], segments[1:], value)
-		if err != nil {
-			return nil, err
-		}
-		list[index] = next
-		return list, nil
-	}
-
-	object, ok := current.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("path segment %q expected object, got %T", segment, current)
-	}
-	nextCurrent, ok := object[segment]
-	if !ok {
-		return nil, fmt.Errorf("path segment %q not found", segment)
-	}
-	next, err := setJSONPathValueRecursive(nextCurrent, segments[1:], value)
-	if err != nil {
-		return nil, err
-	}
-	object[segment] = next
-	return object, nil
-}
-
-func parseArrayIndex(segment string) (int, bool) {
-	if segment == "" {
-		return 0, false
-	}
-	for _, r := range segment {
-		if r < '0' || r > '9' {
-			return 0, false
-		}
-	}
-	var index int
-	_, err := fmt.Sscanf(segment, "%d", &index)
-	if err != nil {
-		return 0, false
-	}
-	return index, true
 }
 
 func (r *SSMResolver) batchFetchMap(ctx context.Context, paths []string) (map[string]string, error) {

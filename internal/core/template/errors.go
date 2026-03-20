@@ -12,8 +12,6 @@ type TemplateErrorKind int
 const (
 	ErrCUELoad         TemplateErrorKind = iota // File not found, parse error, import failure
 	ErrCUEValidation                            // Constraint violation (pattern, type, required field)
-	ErrExprParse                                // Expression syntax error
-	ErrExprEval                                 // Expression runtime error (missing variable, type mismatch)
 	ErrExprUnresolved                           // Reference to unavailable output
 	ErrResolve                                  // SSM resolution failure
 	ErrPolicyViolation                          // Policy constraint not satisfied
@@ -22,8 +20,6 @@ const (
 var kindNames = [...]string{
 	"CUELoad",
 	"CUEValidation",
-	"ExprParse",
-	"ExprEval",
 	"ExprUnresolved",
 	"Resolve",
 	"PolicyViolation",
