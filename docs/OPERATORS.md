@@ -13,7 +13,7 @@ graph TD
     RS --> Core["Praxis Core<br/>commands, templates,<br/>orchestrator"]
     RS --> SP["Storage Pack<br/>(S3, ...)"]
     RS --> NP["Network Pack<br/>(SG, VPC, ...)"]
-    RS --> CP["Compute Pack<br/>(EC2, ...)"]
+    RS --> CP["Compute Pack<br/>(AMI, EC2, ...)"]
 
     SP --> AWS["AWS APIs"]
     NP --> AWS

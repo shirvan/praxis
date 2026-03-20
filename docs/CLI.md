@@ -297,6 +297,8 @@ The argument uses `Kind/Key` format. Supported kinds:
 - `S3Bucket/<key>` — Single S3 bucket resource status
 - `SecurityGroup/<key>` — Single security group status
 - `EC2Instance/<key>` — Single EC2 instance status
+- `VPC/<key>` — Single VPC status
+- `AMI/<key>` — Single AMI resource status
 
 **Examples:**
 
@@ -518,7 +520,7 @@ Resources are identified by `Kind/Key` pairs. The CLI automatically resolves key
 |----------|-----------------|-------------------|---------------------------|
 | Global   | `S3Bucket`      | Name as-is        | `my-bucket`               |
 | Custom   | `SecurityGroup` | User-supplied key  | `vpc-123~web-sg`          |
-| Region   | (future kinds)  | `region~name`      | `us-east-1~my-resource`   |
+| Region   | `EC2Instance`, `VPC`, `AMI` | `region~name` | `us-east-1~web-server` |
 
 When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain a `~` separator, the CLI prepends the region for region-scoped resources. Global and custom-scoped resources are passed through unchanged.
 

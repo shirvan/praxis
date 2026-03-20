@@ -170,6 +170,10 @@ test-s3:
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
 
+# Run AMI driver unit tests only
+test-ami:
+    go test ./internal/drivers/ami/... -v -count=1 -race
+
 # Run SG driver unit tests only
 test-sg:
     go test ./internal/drivers/sg/... -v -count=1 -race
@@ -227,6 +231,18 @@ test-ec2-integration:
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-ec2-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run AMI integration tests (requires Docker — Testcontainers + LocalStack)
+test-ami-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestAMI -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-ami-integration] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"
