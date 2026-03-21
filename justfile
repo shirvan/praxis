@@ -170,6 +170,10 @@ test-s3:
 test-ebs:
     go test ./internal/drivers/ebs/... -v -count=1 -race
 
+# Run EIP driver unit tests only
+test-eip:
+    go test ./internal/drivers/eip/... -v -count=1 -race
+
 # Run EC2 driver unit tests only
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
@@ -275,6 +279,18 @@ test-ebs-integration:
     done
     wait "$pid"
 
+# Run EIP integration tests (requires Docker — Testcontainers + LocalStack)
+test-eip-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestEIP -v -count=1 -tags=integration -timeout=5m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-eip-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
 # Run template integration tests (requires Docker — LocalStack SSM)
 test-template-integration:
     #!/bin/sh
@@ -319,6 +335,10 @@ ls-s3:
 # List EBS volumes in LocalStack
 ls-ebs:
     aws --endpoint-url=http://localhost:4566 ec2 describe-volumes --query 'Volumes[].{VolumeId:VolumeId,State:State,Size:Size,AZ:AvailabilityZone,Type:VolumeType}' --output table
+
+# List Elastic IP allocations in LocalStack
+ls-eip:
+    aws --endpoint-url=http://localhost:4566 ec2 describe-addresses --query 'Addresses[].{AllocationId:AllocationId,PublicIp:PublicIp,AssociationId:AssociationId,InstanceId:InstanceId,Domain:Domain}' --output table
 
 # ─── Restate Helpers ────────────────────────────────────────
 

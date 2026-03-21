@@ -16,18 +16,24 @@ type mockAMIAPI struct {
 	describeByID map[string]ami.ObservedState
 }
 
-func (m *mockAMIAPI) RegisterImage(context.Context, ami.AMISpec) (string, error)                 { return "", nil }
-func (m *mockAMIAPI) CopyImage(context.Context, ami.AMISpec) (string, error)                     { return "", nil }
-func (m *mockAMIAPI) DescribeImage(_ context.Context, imageId string) (ami.ObservedState, error) { return m.describeByID[imageId], nil }
-func (m *mockAMIAPI) DescribeImageByName(context.Context, string) (ami.ObservedState, error)     { return ami.ObservedState{}, nil }
-func (m *mockAMIAPI) DeregisterImage(context.Context, string) error                               { return nil }
-func (m *mockAMIAPI) UpdateTags(context.Context, string, map[string]string) error                 { return nil }
-func (m *mockAMIAPI) ModifyDescription(context.Context, string, string) error                     { return nil }
-func (m *mockAMIAPI) ModifyLaunchPermissions(context.Context, string, *ami.LaunchPermsSpec) error { return nil }
-func (m *mockAMIAPI) EnableDeprecation(context.Context, string, string) error                     { return nil }
-func (m *mockAMIAPI) DisableDeprecation(context.Context, string) error                            { return nil }
-func (m *mockAMIAPI) WaitUntilAvailable(context.Context, string, time.Duration) error             { return nil }
-func (m *mockAMIAPI) FindByManagedKey(context.Context, string) (string, error)                    { return "", nil }
+func (m *mockAMIAPI) RegisterImage(context.Context, ami.AMISpec) (string, error) { return "", nil }
+func (m *mockAMIAPI) CopyImage(context.Context, ami.AMISpec) (string, error)     { return "", nil }
+func (m *mockAMIAPI) DescribeImage(_ context.Context, imageId string) (ami.ObservedState, error) {
+	return m.describeByID[imageId], nil
+}
+func (m *mockAMIAPI) DescribeImageByName(context.Context, string) (ami.ObservedState, error) {
+	return ami.ObservedState{}, nil
+}
+func (m *mockAMIAPI) DeregisterImage(context.Context, string) error               { return nil }
+func (m *mockAMIAPI) UpdateTags(context.Context, string, map[string]string) error { return nil }
+func (m *mockAMIAPI) ModifyDescription(context.Context, string, string) error     { return nil }
+func (m *mockAMIAPI) ModifyLaunchPermissions(context.Context, string, *ami.LaunchPermsSpec) error {
+	return nil
+}
+func (m *mockAMIAPI) EnableDeprecation(context.Context, string, string) error         { return nil }
+func (m *mockAMIAPI) DisableDeprecation(context.Context, string) error                { return nil }
+func (m *mockAMIAPI) WaitUntilAvailable(context.Context, string, time.Duration) error { return nil }
+func (m *mockAMIAPI) FindByManagedKey(context.Context, string) (string, error)        { return "", nil }
 
 func TestAMIAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewAMIAdapter()

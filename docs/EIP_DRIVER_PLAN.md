@@ -1,6 +1,6 @@
 # Elastic IP Driver — Implementation Plan
 
-> **Status: Not yet implemented.** This document is a plan only.
+> **Status: Implemented.** All checklist items verified, build passes, unit tests pass.
 
 > Target: A Restate Virtual Object driver that manages Elastic IP addresses,
 > following the exact patterns established by the S3, Security Group, EC2, VPC,
@@ -896,25 +896,25 @@ guard (409).
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/ec2/eip.cue` created
-- [ ] **Types**: `internal/drivers/eip/types.go` created
-- [ ] **AWS API**: `internal/drivers/eip/aws.go` created
-- [ ] **Drift**: `internal/drivers/eip/drift.go` created
-- [ ] **Driver**: `internal/drivers/eip/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/eip_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: EIP driver bound in `cmd/praxis-network/main.go`
-- [ ] **Justfile**: Updated with eip targets
-- [ ] **Unit tests (drift)**: `internal/drivers/eip/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/eip/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/eip/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/eip_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/eip_driver_test.go`
-- [ ] **Conflict check**: `FindByManagedKey` in EIPAPI interface
-- [ ] **Ownership tag**: `praxis:managed-key` written by `AllocateAddress`
-- [ ] **Import default mode**: `ModeObserved` when unspecified
-- [ ] **Delete mode guard**: Delete handler blocks release for ModeObserved (409)
-- [ ] **Delete association guard**: Delete handler returns 409 for associated EIPs
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/eip/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestEIP -tags=integration`
+- [x] **Schema**: `schemas/aws/ec2/eip.cue` created
+- [x] **Types**: `internal/drivers/eip/types.go` created
+- [x] **AWS API**: `internal/drivers/eip/aws.go` created
+- [x] **Drift**: `internal/drivers/eip/drift.go` created
+- [x] **Driver**: `internal/drivers/eip/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/eip_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: EIP driver bound in `cmd/praxis-network/main.go`
+- [x] **Justfile**: Updated with eip targets
+- [x] **Unit tests (drift)**: `internal/drivers/eip/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/eip/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/eip/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/eip_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/eip_driver_test.go`
+- [x] **Conflict check**: `FindByManagedKey` in EIPAPI interface
+- [x] **Ownership tag**: `praxis:managed-key` written by `AllocateAddress`
+- [x] **Import default mode**: `ModeObserved` when unspecified
+- [x] **Delete mode guard**: Delete handler blocks release for ModeObserved (409)
+- [x] **Delete association guard**: Delete handler returns 409 for associated EIPs
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/eip/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestEIP -tags=integration`

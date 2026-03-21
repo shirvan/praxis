@@ -8,7 +8,7 @@
 
 ## High-Priority AWS Driver Expansion
 
-Extend the driver ecosystem to cover the top ~20% of AWS services by real-world usage (guided by Terraform AWS provider adoption). S3, Security Group, EC2, VPC, AMI, and EBS drivers already ship; the following represent the most commonly provisioned resource types and should be prioritized before niche or multi-cloud drivers.
+Extend the driver ecosystem to cover the top ~20% of AWS services by real-world usage (guided by Terraform AWS provider adoption). S3, Security Group, EC2, VPC, AMI, EBS, and Elastic IP drivers already ship; the following represent the most commonly provisioned resource types and should be prioritized before niche or multi-cloud drivers.
 
 **Drivers to implement (roughly by Terraform usage frequency):**
 

@@ -69,6 +69,9 @@ internal/
     state.go                   # Shared constants (StateKey, ReconcileInterval)
     s3/                        # S3 bucket driver
     sg/                        # Security Group driver
+    ec2/                       # EC2 instance driver
+    vpc/                       # VPC driver
+    eip/                       # Elastic IP driver
     ami/                       # AMI driver
     ebs/                       # EBS volume driver
   infra/
@@ -81,6 +84,7 @@ schemas/aws/                   # CUE schemas per provider/service
   s3/s3.cue
   ec2/sg.cue
   ec2/ami.cue
+  ec2/eip.cue
   ebs/ebs.cue
 
 tests/integration/             # Integration tests (Testcontainers)
@@ -118,6 +122,7 @@ just test-sg         # SG driver
 just test-vpc        # VPC driver
 just test-ami        # AMI driver
 just test-ebs        # EBS driver
+just test-eip        # EIP driver
 just test-template   # Template engine + resolver
 
 # Lint
@@ -285,7 +290,7 @@ flowchart TD
 
 ### Reference Implementations
 
-Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), AMI driver (`internal/drivers/ami/`), and EBS driver (`internal/drivers/ebs/`) — every pattern described here is demonstrated in those implementations.
+Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), VPC driver (`internal/drivers/vpc/`), EIP driver (`internal/drivers/eip/`), AMI driver (`internal/drivers/ami/`), and EBS driver (`internal/drivers/ebs/`) — every pattern described here is demonstrated in those implementations.
 
 The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which documents the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision.
 

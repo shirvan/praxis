@@ -9,6 +9,7 @@ import (
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/praxiscloud/praxis/internal/core/config"
+	"github.com/praxiscloud/praxis/internal/drivers/eip"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
 	"github.com/praxiscloud/praxis/internal/drivers/vpc"
 )
@@ -17,6 +18,7 @@ func main() {
 	cfg := config.Load()
 
 	srv := server.NewRestate().
+		Bind(restate.Reflect(eip.NewElasticIPDriver(cfg.Auth()))).
 		Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
 		Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
 

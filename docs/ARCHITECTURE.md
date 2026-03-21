@@ -32,7 +32,7 @@ graph TD
 
     subgraph Drivers["DRIVER PACKS (grouped by AWS domain)"]
         Storage["Storage<br/>(S3, EBS, RDS, DynamoDB)"]
-        Network["Network<br/>(SG, VPC, ELB, R53)"]
+        Network["Network<br/>(SG, VPC, EIP, ELB, R53)"]
         Compute["Compute<br/>(AMI, EC2, ASG, Lambda)"]
     end
 
@@ -81,7 +81,7 @@ srv := server.NewRestate().
 | Pack | Container | Drivers | Rationale |
 | --- | --- | --- | --- |
 | **Storage** | `praxis-storage` | S3, EBS (future: RDS, DynamoDB, SQS, SNS) | Data stores and messaging |
-| **Network** | `praxis-network` | SecurityGroup, VPC (future: ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
+| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP (future: ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
 | **Compute** | `praxis-compute` | AMI, EC2 (future: Auto Scaling, Lambda, ECS, EKS) | All compute lifecycle, similar IAM patterns |
 | **Identity** | `praxis-identity` | *(future: IAM, KMS, Secrets Manager, ACM)* | Security-sensitive, low churn |
 | **Observability** | `praxis-observability` | *(future: CloudWatch)* | Optional, many users skip it |
