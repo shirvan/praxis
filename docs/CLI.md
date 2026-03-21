@@ -299,6 +299,7 @@ The argument uses `Kind/Key` format. Supported kinds:
 - `EC2Instance/<key>` — Single EC2 instance status
 - `VPC/<key>` — Single VPC status
 - `AMI/<key>` — Single AMI resource status
+- `EBSVolume/<key>` — Single EBS volume status
 
 **Examples:**
 
@@ -436,6 +437,9 @@ praxis import S3Bucket --id my-existing-bucket --region us-east-1
 # Import a security group
 praxis import SecurityGroup --id sg-0abc123 --region us-east-1
 
+# Import an EBS volume
+praxis import EBSVolume --id vol-0abc123 --region us-east-1
+
 # Import in observed mode (read-only tracking)
 praxis import S3Bucket --id my-bucket --region us-west-2 --observe
 ```
@@ -520,7 +524,7 @@ Resources are identified by `Kind/Key` pairs. The CLI automatically resolves key
 |----------|-----------------|-------------------|---------------------------|
 | Global   | `S3Bucket`      | Name as-is        | `my-bucket`               |
 | Custom   | `SecurityGroup` | User-supplied key  | `vpc-123~web-sg`          |
-| Region   | `EC2Instance`, `VPC`, `AMI` | `region~name` | `us-east-1~web-server` |
+| Region   | `EC2Instance`, `VPC`, `AMI`, `EBSVolume` | `region~name` | `us-east-1~web-server` |
 
 When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain a `~` separator, the CLI prepends the region for region-scoped resources. Global and custom-scoped resources are passed through unchanged.
 

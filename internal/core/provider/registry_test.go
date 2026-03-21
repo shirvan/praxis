@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/praxiscloud/praxis/internal/drivers/ami"
+	"github.com/praxiscloud/praxis/internal/drivers/ebs"
 	"github.com/praxiscloud/praxis/internal/drivers/ec2"
 	"github.com/praxiscloud/praxis/internal/drivers/s3"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
@@ -220,6 +221,13 @@ func TestRegistry_Get_EC2Instance(t *testing.T) {
 	adapter, err := registry.Get("EC2Instance")
 	require.NoError(t, err)
 	assert.Equal(t, ec2.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_EBSVolume(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("EBSVolume")
+	require.NoError(t, err)
+	assert.Equal(t, ebs.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_AMI(t *testing.T) {

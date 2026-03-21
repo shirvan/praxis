@@ -17,7 +17,7 @@ Praxis development benefits from scoping the imagination sandbox of the LLM Agen
 cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
-  praxis-storage/              # Storage driver pack (S3, future: RDS, DynamoDB...)
+  praxis-storage/              # Storage driver pack (S3, EBS, future: RDS, DynamoDB...)
   praxis-network/              # Network driver pack (SG, VPC, future: ELB...)
   praxis-compute/              # Compute driver pack (AMI, EC2, future: ASG, Lambda...)
 
@@ -70,6 +70,7 @@ internal/
     s3/                        # S3 bucket driver
     sg/                        # Security Group driver
     ami/                       # AMI driver
+    ebs/                       # EBS volume driver
   infra/
     awsclient/                 # Shared AWS client setup
     ratelimit/                 # Token bucket rate limiter
@@ -80,6 +81,7 @@ schemas/aws/                   # CUE schemas per provider/service
   s3/s3.cue
   ec2/sg.cue
   ec2/ami.cue
+  ebs/ebs.cue
 
 tests/integration/             # Integration tests (Testcontainers)
 ```
@@ -115,6 +117,7 @@ just test-s3         # S3 driver
 just test-sg         # SG driver
 just test-vpc        # VPC driver
 just test-ami        # AMI driver
+just test-ebs        # EBS driver
 just test-template   # Template engine + resolver
 
 # Lint
@@ -282,7 +285,7 @@ flowchart TD
 
 ### Reference Implementations
 
-Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), and AMI driver (`internal/drivers/ami/`) — every pattern described here is demonstrated in those implementations.
+Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), AMI driver (`internal/drivers/ami/`), and EBS driver (`internal/drivers/ebs/`) — every pattern described here is demonstrated in those implementations.
 
 The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which documents the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision.
 

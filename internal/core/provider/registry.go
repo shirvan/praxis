@@ -113,6 +113,7 @@ func NewRegistry() *Registry {
 	accounts := auth.LoadFromEnv()
 	return NewRegistryWithAdapters(
 		NewS3AdapterWithRegistry(accounts),
+		NewEBSAdapterWithRegistry(accounts),
 		NewAMIAdapterWithRegistry(accounts),
 		NewEC2AdapterWithRegistry(accounts),
 		NewSecurityGroupAdapterWithRegistry(accounts),

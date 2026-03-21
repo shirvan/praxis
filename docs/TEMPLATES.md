@@ -235,6 +235,40 @@ Each driver ships a CUE schema that defines the valid shape of that resource typ
 
 Templates unify against these schemas via CUE's `&` operator. Invalid specs fail at evaluation time with path-specific error messages.
 
+### EBS Volume Schema (`schemas/aws/ebs/ebs.cue`)
+
+```cue
+#EBSVolume: {
+    apiVersion: "praxis.io/v1"
+    kind:       "EBSVolume"
+    metadata: {
+        name: string & =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
+        labels: [string]: string
+    }
+    spec: {
+        region:           string
+        availabilityZone: string
+        volumeType:       "gp2" | "gp3" | "io1" | "io2" | "st1" | "sc1" | *"gp3"
+        sizeGiB:          int & >=1 & <=16384 | *20
+        iops?:            int & >=100
+        throughput?:      int & >=125 & <=1000
+        encrypted:        bool | *true
+        kmsKeyId?:        string
+        snapshotId?:      string & =~"^snap-[a-f0-9]{8,17}$"
+        tags: [string]: string
+    }
+    outputs?: {
+        volumeId:         string
+        arn?:             string
+        availabilityZone: string
+        state:            string
+        sizeGiB:          int
+        volumeType:       string
+        encrypted:        bool
+    }
+}
+```
+
 ---
 
 ## Template Registry
@@ -691,5 +725,5 @@ Result: `bucket` and `sg` dispatch first (no dependencies). `logBucket` waits fo
 | `internal/core/command/` | `pipeline.go`, `handlers_apply.go`, `handlers_deploy.go`, `handlers_plan_deploy.go`, `handlers_template.go`, `handlers_policy.go` | Template pipeline, deploy/apply handlers, CRUD pass-through |
 | `internal/core/resolver/` | `ssm.go`, `restate_ssm.go` | SSM parameter resolution |
 | `internal/core/dag/` | `parser.go`, `graph.go`, `scheduler.go` | Dependency extraction, DAG, scheduling |
-| `schemas/aws/` | `s3/s3.cue`, `ec2/sg.cue` | Provider schemas |
+| `schemas/aws/` | `s3/s3.cue`, `ec2/sg.cue`, `ebs/ebs.cue` | Provider schemas |
 | `pkg/types/` | `template.go`, `policy.go`, `contract.go` | Shared request/response types |

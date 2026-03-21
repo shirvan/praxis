@@ -1,7 +1,5 @@
 # EBS Volume Driver — Implementation Plan
 
-> **Status: Not yet implemented.** This document is a plan only.
-
 > Target: A Restate Virtual Object driver that manages EBS volumes, following the
 > exact patterns established by the S3 Bucket, Security Group, EC2 Instance, and
 > VPC drivers.
@@ -1157,25 +1155,25 @@ destructive and unrecoverable (unless snapshots exist). The Delete mode guard
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/ebs/ebs.cue` created
-- [ ] **Types**: `internal/drivers/ebs/types.go` created
-- [ ] **AWS API**: `internal/drivers/ebs/aws.go` created
-- [ ] **Drift**: `internal/drivers/ebs/drift.go` created
-- [ ] **Driver**: `internal/drivers/ebs/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/ebs_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: EBS driver bound in `cmd/praxis-storage/main.go`
-- [ ] **Justfile**: Updated with ebs targets
-- [ ] **Unit tests (drift)**: `internal/drivers/ebs/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/ebs/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/ebs/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/ebs_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/ebs_driver_test.go`
-- [ ] **Conflict check**: `FindByManagedKey` in EBSAPI interface
-- [ ] **Ownership tag**: `praxis:managed-key` written by `CreateVolume`
-- [ ] **Import default mode**: `ModeObserved` when unspecified
-- [ ] **Delete mode guard**: Delete handler blocks deletion for ModeObserved (409)
-- [ ] **Delete volume-in-use guard**: Delete handler returns 409 for attached volumes
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/ebs/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestEBS -tags=integration`
+- [x] **Schema**: `schemas/aws/ebs/ebs.cue` created
+- [x] **Types**: `internal/drivers/ebs/types.go` created
+- [x] **AWS API**: `internal/drivers/ebs/aws.go` created
+- [x] **Drift**: `internal/drivers/ebs/drift.go` created
+- [x] **Driver**: `internal/drivers/ebs/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/ebs_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: EBS driver bound in `cmd/praxis-storage/main.go`
+- [x] **Justfile**: Updated with ebs targets
+- [x] **Unit tests (drift)**: `internal/drivers/ebs/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/ebs/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/ebs/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/ebs_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/ebs_driver_test.go`
+- [x] **Conflict check**: `FindByManagedKey` in EBSAPI interface
+- [x] **Ownership tag**: `praxis:managed-key` written by `CreateVolume`
+- [x] **Import default mode**: `ModeObserved` when unspecified
+- [x] **Delete mode guard**: Delete handler blocks deletion for ModeObserved (409)
+- [x] **Delete volume-in-use guard**: Delete handler returns 409 for attached volumes
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/ebs/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestEBS -tags=integration`

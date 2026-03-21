@@ -11,7 +11,7 @@ graph TD
     CLI["CLI / API"] --> RS["Restate Server<br/>state, journals, timers"]
 
     RS --> Core["Praxis Core<br/>commands, templates,<br/>orchestrator"]
-    RS --> SP["Storage Pack<br/>(S3, ...)"]
+    RS --> SP["Storage Pack<br/>(S3, EBS, ...)"]
     RS --> NP["Network Pack<br/>(SG, VPC, ...)"]
     RS --> CP["Compute Pack<br/>(AMI, EC2, ...)"]
 

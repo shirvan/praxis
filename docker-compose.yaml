@@ -6,9 +6,9 @@
 # - Restate is the public ingress and durable execution runtime.
 # - praxis-core hosts the command service, workflows, and read models.
 # - Driver packs group related drivers by AWS domain:
-#   - praxis-storage: S3 (future: RDS, DynamoDB, SQS, SNS)
-#   - praxis-network: SecurityGroup (future: VPC, ELB, Route 53, CloudFront, API GW)
-#   - praxis-compute: EC2 (future: Auto Scaling, Lambda, ECS, EKS)
+#   - praxis-storage: S3, EBS (future: RDS, DynamoDB, SQS, SNS)
+#   - praxis-network: SecurityGroup, VPC (future: ELB, Route 53, CloudFront, API GW)
+#   - praxis-compute: AMI, EC2 (future: Auto Scaling, Lambda, ECS, EKS)
 #
 # The stack is intentionally explicit rather than clever. The goal is that a
 # human operator or an AI agent can read this file and understand the topology,

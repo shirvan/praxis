@@ -166,6 +166,10 @@ test-cli:
 test-s3:
     go test ./internal/drivers/s3/... -v -count=1 -race
 
+# Run EBS driver unit tests only
+test-ebs:
+    go test ./internal/drivers/ebs/... -v -count=1 -race
+
 # Run EC2 driver unit tests only
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
@@ -259,6 +263,18 @@ test-vpc-integration:
     done
     wait "$pid"
 
+# Run EBS integration tests (requires Docker — Testcontainers + LocalStack)
+test-ebs-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestEBS -v -count=1 -tags=integration -timeout=5m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-ebs-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
 # Run template integration tests (requires Docker — LocalStack SSM)
 test-template-integration:
     #!/bin/sh
@@ -299,6 +315,10 @@ ci: lint test test-integration
 # List S3 buckets in LocalStack
 ls-s3:
     aws --endpoint-url=http://localhost:4566 s3 ls
+
+# List EBS volumes in LocalStack
+ls-ebs:
+    aws --endpoint-url=http://localhost:4566 ec2 describe-volumes --query 'Volumes[].{VolumeId:VolumeId,State:State,Size:Size,AZ:AvailabilityZone,Type:VolumeType}' --output table
 
 # ─── Restate Helpers ────────────────────────────────────────
 
