@@ -1,7 +1,5 @@
 # Elastic IP Driver — Implementation Plan
 
-> **Status: Implemented.** All checklist items verified, build passes, unit tests pass.
-
 > Target: A Restate Virtual Object driver that manages Elastic IP addresses,
 > following the exact patterns established by the S3, Security Group, EC2, VPC,
 > and EBS drivers.

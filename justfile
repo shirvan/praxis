@@ -174,6 +174,10 @@ test-ebs:
 test-eip:
     go test ./internal/drivers/eip/... -v -count=1 -race
 
+# Run KeyPair driver unit tests only
+test-keypair:
+    go test ./internal/drivers/keypair/... -v -count=1 -race
+
 # Run EC2 driver unit tests only
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
@@ -291,6 +295,18 @@ test-eip-integration:
     done
     wait "$pid"
 
+# Run KeyPair integration tests (requires Docker — Testcontainers + LocalStack)
+test-keypair-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestKeyPair -v -count=1 -tags=integration -timeout=3m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-keypair-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
 # Run template integration tests (requires Docker — LocalStack SSM)
 test-template-integration:
     #!/bin/sh
@@ -339,6 +355,10 @@ ls-ebs:
 # List Elastic IP allocations in LocalStack
 ls-eip:
     aws --endpoint-url=http://localhost:4566 ec2 describe-addresses --query 'Addresses[].{AllocationId:AllocationId,PublicIp:PublicIp,AssociationId:AssociationId,InstanceId:InstanceId,Domain:Domain}' --output table
+
+# List EC2 key pairs in LocalStack
+ls-keypair:
+    aws --endpoint-url=http://localhost:4566 ec2 describe-key-pairs --query 'KeyPairs[].{KeyName:KeyName,KeyPairId:KeyPairId,KeyType:KeyType,KeyFingerprint:KeyFingerprint}' --output table
 
 # ─── Restate Helpers ────────────────────────────────────────
 

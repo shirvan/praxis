@@ -19,7 +19,7 @@ cmd/
   praxis-core/                 # Core command/orchestration service
   praxis-storage/              # Storage driver pack (S3, EBS, future: RDS, DynamoDB...)
   praxis-network/              # Network driver pack (SG, VPC, future: ELB...)
-  praxis-compute/              # Compute driver pack (AMI, EC2, future: ASG, Lambda...)
+  praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, future: ASG, Lambda...)
 
 internal/
   cli/                         # CLI command implementations
@@ -74,6 +74,7 @@ internal/
     eip/                       # Elastic IP driver
     ami/                       # AMI driver
     ebs/                       # EBS volume driver
+    keypair/                   # Key Pair driver
   infra/
     awsclient/                 # Shared AWS client setup
     ratelimit/                 # Token bucket rate limiter
@@ -85,6 +86,7 @@ schemas/aws/                   # CUE schemas per provider/service
   ec2/sg.cue
   ec2/ami.cue
   ec2/eip.cue
+  ec2/keypair.cue
   ebs/ebs.cue
 
 tests/integration/             # Integration tests (Testcontainers)
@@ -290,7 +292,7 @@ flowchart TD
 
 ### Reference Implementations
 
-Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), VPC driver (`internal/drivers/vpc/`), EIP driver (`internal/drivers/eip/`), AMI driver (`internal/drivers/ami/`), and EBS driver (`internal/drivers/ebs/`) — every pattern described here is demonstrated in those implementations.
+Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), VPC driver (`internal/drivers/vpc/`), EIP driver (`internal/drivers/eip/`), AMI driver (`internal/drivers/ami/`), EBS driver (`internal/drivers/ebs/`), and KeyPair driver (`internal/drivers/keypair/`) — every pattern described here is demonstrated in those implementations.
 
 The EC2 driver was built from [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md), which documents the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision.
 

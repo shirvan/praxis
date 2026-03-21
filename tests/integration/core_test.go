@@ -48,6 +48,7 @@ import (
 	"github.com/praxiscloud/praxis/internal/core/provider"
 	"github.com/praxiscloud/praxis/internal/core/registry"
 	driverec2 "github.com/praxiscloud/praxis/internal/drivers/ec2"
+	driverkeypair "github.com/praxiscloud/praxis/internal/drivers/keypair"
 	drivers3 "github.com/praxiscloud/praxis/internal/drivers/s3"
 	driversg "github.com/praxiscloud/praxis/internal/drivers/sg"
 	"github.com/praxiscloud/praxis/internal/infra/awsclient"
@@ -101,6 +102,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	// --- Typed drivers ---
 	s3Driver := drivers3.NewS3BucketDriver(accounts)
 	ec2Driver := driverec2.NewEC2InstanceDriver(accounts)
+	keyPairDriver := driverkeypair.NewKeyPairDriver(accounts)
 	sgDriver := driversg.NewSecurityGroupDriver(accounts)
 
 	// --- Provider adapter registry ---
@@ -111,6 +113,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	providers := provider.NewRegistryWithAdapters(
 		provider.NewS3AdapterWithRegistry(accounts),
 		provider.NewEC2AdapterWithRegistry(accounts),
+		provider.NewKeyPairAdapterWithRegistry(accounts),
 		provider.NewSecurityGroupAdapterWithRegistry(accounts),
 	)
 
@@ -156,6 +159,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 		// Typed drivers — the workflows call these via Restate service-to-service
 		restate.Reflect(s3Driver),
 		restate.Reflect(ec2Driver),
+		restate.Reflect(keyPairDriver),
 		restate.Reflect(sgDriver),
 	)
 

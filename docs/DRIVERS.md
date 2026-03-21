@@ -6,7 +6,7 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
 Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, and ElasticIP drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
@@ -24,6 +24,7 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 - VPC: `us-east-1~main-vpc` (region-scoped, using `~` as separator)
 - AMI: `us-east-1~my-ami` (region-scoped, using `~` as separator)
 - EBS Volume: `us-east-1~data-vol` (region-scoped, using `~` as separator)
+- KeyPair: `us-east-1~my-keypair` (region-scoped, using `~` as separator)
 
 Each Virtual Object holds:
 
@@ -234,6 +235,7 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | ElasticIP | Region | `<region>~<name>` | `us-east-1~web-eip` |
 | AMI | Region | `<region>~<amiName>` | `us-east-1~my-ami` |
 | EBSVolume | Region | `<region>~<name>` | `us-east-1~data-vol` |
+| KeyPair | Region | `<region>~<keyName>` | `us-east-1~my-keypair` |
 
 The `~` separator is URL-safe and does not collide with characters valid in AWS resource names.
 

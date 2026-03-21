@@ -29,6 +29,7 @@ func main() {
 	providers := provider.NewRegistryWithAdapters(
 		provider.NewS3AdapterWithRegistry(accounts),
 		provider.NewEC2AdapterWithRegistry(accounts),
+		provider.NewKeyPairAdapterWithRegistry(accounts),
 		provider.NewSecurityGroupAdapterWithRegistry(accounts),
 		provider.NewVPCAdapterWithRegistry(accounts),
 	)

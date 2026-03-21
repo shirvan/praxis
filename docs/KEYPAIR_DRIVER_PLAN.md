@@ -1,7 +1,5 @@
 # Key Pair Driver — Implementation Plan
 
-> **Status: Not yet implemented.** This document is a plan only.
-
 > Target: A Restate Virtual Object driver that manages EC2 key pairs, following the
 > exact patterns established by the S3, Security Group, EC2, VPC, EBS, and Elastic
 > IP drivers.
@@ -946,24 +944,24 @@ The driver does NOT check for in-use instances before deleting.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/ec2/keypair.cue` created
-- [ ] **Types**: `internal/drivers/keypair/types.go` created
-- [ ] **AWS API**: `internal/drivers/keypair/aws.go` created
-- [ ] **Drift**: `internal/drivers/keypair/drift.go` created
-- [ ] **Driver**: `internal/drivers/keypair/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/keypair_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: KeyPair driver bound in `cmd/praxis-compute/main.go`
-- [ ] **Justfile**: Updated with keypair targets
-- [ ] **Unit tests (drift)**: `internal/drivers/keypair/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/keypair/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/keypair/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/keypair_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/keypair_driver_test.go`
-- [ ] **Private key not persisted**: Zeroed before `restate.Set()`, returned in response only
-- [ ] **Duplicate detection**: `IsDuplicate` error → terminal 409
-- [ ] **Import default mode**: `ModeManaged` (lightweight metadata resource)
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/keypair/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestKeyPair -tags=integration`
+- [x] **Schema**: `schemas/aws/ec2/keypair.cue` created
+- [x] **Types**: `internal/drivers/keypair/types.go` created
+- [x] **AWS API**: `internal/drivers/keypair/aws.go` created
+- [x] **Drift**: `internal/drivers/keypair/drift.go` created
+- [x] **Driver**: `internal/drivers/keypair/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/keypair_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: KeyPair driver bound in `cmd/praxis-compute/main.go`
+- [x] **Justfile**: Updated with keypair targets
+- [x] **Unit tests (drift)**: `internal/drivers/keypair/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/keypair/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/keypair/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/keypair_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/keypair_driver_test.go`
+- [x] **Private key not persisted**: Zeroed before `restate.Set()`, returned in response only
+- [x] **Duplicate detection**: `IsDuplicate` error → terminal 409
+- [x] **Import default mode**: `ModeManaged` (lightweight metadata resource)
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/keypair/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestKeyPair -tags=integration`
