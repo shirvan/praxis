@@ -6,9 +6,9 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
-Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, ElasticIP, and InternetGateway drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
+Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, ElasticIP, InternetGateway, and NetworkACL drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
 Drivers are intentionally simple. They know how to create, read, update, delete, and reconcile one type of resource. They have zero knowledge of other drivers, dependency graphs, or deployment workflows. All coordination happens in [Core's orchestrator](ORCHESTRATOR.md).
 
@@ -20,6 +20,7 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 
 - S3 Bucket: `my-bucket` (bucket names are globally unique)
 - SecurityGroup: `vpc-123~web-sg` (VPC-scoped, using `~` as separator)
+- NetworkACL: `vpc-123~web-nacl` (VPC-scoped, using `~` as separator)
 - EC2 Instance: `us-east-1~web-server` (region-scoped, using `~` as separator)
 - VPC: `us-east-1~main-vpc` (region-scoped, using `~` as separator)
 - InternetGateway: `us-east-1~web-igw` (region-scoped, using `~` as separator)
@@ -231,6 +232,7 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | --- | --- | --- | --- |
 | S3Bucket | Global | `<name>` | `my-bucket` |
 | SecurityGroup | Custom (VPC-scoped) | `<vpcId>~<groupName>` | `vpc-123~web-sg` |
+| NetworkACL | Custom (VPC-scoped) | `<vpcId>~<name>` | `vpc-123~web-nacl` |
 | EC2Instance | Region | `<region>~<name>` | `us-east-1~web-server` |
 | VPC | Region | `<region>~<name>` | `us-east-1~main-vpc` |
 | ElasticIP | Region | `<region>~<name>` | `us-east-1~web-eip` |
@@ -247,7 +249,7 @@ The `~` separator is URL-safe and does not collide with characters valid in AWS 
 | --- | --- | --- |
 | **Global** | `<name>` | Resource name is globally unique (S3) |
 | **Region** | `<region>~<name>` | Resource name is unique within a region |
-| **Custom** | adapter-defined | Resource has domain-specific scoping (SecurityGroup = VPC) |
+| **Custom** | adapter-defined | Resource has domain-specific scoping (SecurityGroup, NetworkACL = VPC) |
 
 The CLI uses key scope metadata to assemble keys from user input and ambient context (e.g., `PRAXIS_REGION`).
 
@@ -341,9 +343,9 @@ cmd/praxis-<pack>/
 
 | Pack | Binary | Drivers |
 | --- | --- | --- |
-| Storage | `cmd/praxis-storage/` | S3 (future: RDS, DynamoDB, SQS, SNS) |
-| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway (future: ELB, Route 53) |
-| Compute | `cmd/praxis-compute/` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) |
+| Storage | `cmd/praxis-storage/` | S3, EBS (future: RDS, DynamoDB, SQS, SNS) |
+| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL (future: Subnet, RouteTable, NatGateway, ELB, Route 53) |
+| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2 (future: Auto Scaling, Lambda, ECS, EKS) |
 
 ---
 
@@ -387,3 +389,67 @@ Manages AWS EC2 Security Groups. Spec fields: `groupName`, `description`, `vpcId
 Outputs: `groupId`, `groupArn`, `groupName`, `vpcId`.
 
 Key: `<vpcId>~<groupName>`. Scope: Custom.
+
+### NetworkACL
+
+Manages AWS Network ACLs (stateless subnet-level firewalls). Spec fields: `region`, `vpcId`, `ingressRules`, `egressRules`, `subnetAssociations`, `tags`.
+
+Outputs: `networkAclId`, `vpcId`, `isDefault`, `ingressRules`, `egressRules`, `associations`.
+
+Key: `<vpcId>~<name>`. Scope: Custom.
+
+### VPC
+
+Manages AWS Virtual Private Clouds. Spec fields: `region`, `cidrBlock`, `enableDnsSupport`, `enableDnsHostnames`, `tags`.
+
+Outputs: `vpcId`, `arn`, `cidrBlock`, `state`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### ElasticIP
+
+Manages AWS Elastic IP addresses. Spec fields: `region`, `domain`, `tags`.
+
+Outputs: `allocationId`, `publicIp`, `domain`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### InternetGateway
+
+Manages AWS Internet Gateways. Spec fields: `region`, `vpcId`, `tags`.
+
+Outputs: `internetGatewayId`, `vpcId`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### EC2Instance
+
+Manages AWS EC2 instances. Spec fields: `region`, `imageId`, `instanceType`, `subnetId`, `securityGroupIds`, `keyName`, `tags`.
+
+Outputs: `instanceId`, `publicIp`, `privateIp`, `state`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### AMI
+
+Manages Amazon Machine Images (lookup/import only). Spec fields: `region`, `amiName`, `tags`.
+
+Outputs: `imageId`, `name`, `state`.
+
+Key: `<region>~<amiName>`. Scope: Region.
+
+### EBSVolume
+
+Manages AWS EBS volumes. Spec fields: `region`, `availabilityZone`, `size`, `volumeType`, `iops`, `throughput`, `encrypted`, `tags`.
+
+Outputs: `volumeId`, `arn`, `availabilityZone`, `size`, `state`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### KeyPair
+
+Manages EC2 key pairs. Spec fields: `region`, `keyName`, `keyType`, `tags`.
+
+Outputs: `keyPairId`, `keyFingerprint`, `keyName`.
+
+Key: `<region>~<keyName>`. Scope: Region.

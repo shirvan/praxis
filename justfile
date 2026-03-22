@@ -178,6 +178,10 @@ test-eip:
 test-igw:
     go test ./internal/drivers/igw/... -v -count=1 -race
 
+# Run NetworkACL driver unit tests only
+test-nacl:
+    go test ./internal/drivers/nacl/... -v -count=1 -race
+
 # Run KeyPair driver unit tests only
 test-keypair:
     go test ./internal/drivers/keypair/... -v -count=1 -race
@@ -247,6 +251,18 @@ test-igw-integration:
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-igw-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run NetworkACL integration tests (requires Docker — Testcontainers + LocalStack)
+test-nacl-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestNACL -v -count=1 -tags=integration -timeout=5m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-nacl-integration] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"

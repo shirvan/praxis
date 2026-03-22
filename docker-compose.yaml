@@ -18,7 +18,9 @@ services:
   # --- Infrastructure -------------------------------------------------------
 
   localstack:
-    image: localstack/localstack:4.4.0
+    # Pinned to 4.14.0 — last community edition before LocalStack's
+    # March 2026 license change (":latest" now requires auth token).
+    image: localstack/localstack:4.14.0
     container_name: praxis-localstack
     ports:
       - "4566:4566"
@@ -39,7 +41,7 @@ services:
   # Runs once and exits; every service that depends on localstack-init is
   # guaranteed the seed data exists before it starts.
   localstack-init:
-    image: localstack/localstack:4.4.0
+    image: localstack/localstack:4.14.0
     container_name: praxis-localstack-init
     depends_on:
       localstack:

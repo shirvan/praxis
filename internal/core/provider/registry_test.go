@@ -8,6 +8,7 @@ import (
 	"github.com/praxiscloud/praxis/internal/drivers/ebs"
 	"github.com/praxiscloud/praxis/internal/drivers/ec2"
 	"github.com/praxiscloud/praxis/internal/drivers/eip"
+	"github.com/praxiscloud/praxis/internal/drivers/nacl"
 	"github.com/praxiscloud/praxis/internal/drivers/s3"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
 
@@ -250,6 +251,13 @@ func TestRegistry_Get_SecurityGroup(t *testing.T) {
 	adapter, err := registry.Get("SecurityGroup")
 	require.NoError(t, err)
 	assert.Equal(t, "SecurityGroup", adapter.Kind())
+}
+
+func TestRegistry_Get_NetworkACL(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("NetworkACL")
+	require.NoError(t, err)
+	assert.Equal(t, nacl.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_NilSafety(t *testing.T) {

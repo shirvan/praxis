@@ -7,6 +7,12 @@ dist/
 *.so
 *.dylib
 
+/praxis
+/praxis-core
+/praxis-compute
+/praxis-network
+/praxis-storage
+
 # Test binary
 *.test
 

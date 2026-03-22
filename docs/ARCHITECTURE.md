@@ -76,6 +76,7 @@ Drivers are grouped by AWS domain into **driver packs** — each pack is a singl
 srv := server.NewRestate().
     Bind(restate.Reflect(eip.NewElasticIPDriver(auth))).
     Bind(restate.Reflect(igw.NewIGWDriver(auth))).
+    Bind(restate.Reflect(nacl.NewNetworkACLDriver(auth))).
     Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
     Bind(restate.Reflect(vpc.NewVPCDriver(auth)))
 ```
@@ -83,7 +84,7 @@ srv := server.NewRestate().
 | Pack | Container | Drivers | Rationale |
 | --- | --- | --- | --- |
 | **Storage** | `praxis-storage` | S3, EBS (future: RDS, DynamoDB, SQS, SNS) | Data stores and messaging |
-| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway (future: ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
+| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL (future: Subnet, RouteTable, NatGateway, VPCPeering, ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
 | **Compute** | `praxis-compute` | AMI, KeyPair, EC2 (future: Auto Scaling, Lambda, ECS, EKS) | All compute lifecycle, similar IAM patterns |
 | **Identity** | `praxis-identity` | *(future: IAM, KMS, Secrets Manager, ACM)* | Security-sensitive, low churn |
 | **Observability** | `praxis-observability` | *(future: CloudWatch)* | Optional, many users skip it |

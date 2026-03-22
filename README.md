@@ -158,7 +158,7 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 ## Current Scope (0.1.0)
 
 - **Cloud:** AWS
-- **Drivers:** S3 Bucket, Security Group, EC2 Instance, VPC, Elastic IP, AMI, EBS Volume, Key Pair, Internet Gateway
+- **Drivers:** S3 Bucket, Security Group, EC2 Instance, VPC, Elastic IP, AMI, EBS Volume, Key Pair, Internet Gateway, Network ACL
 - **Accounts:** One operator-defined account per deployed stack
 - **Deployment:** Docker Compose reference stack (LocalStack for local dev)
 - **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
