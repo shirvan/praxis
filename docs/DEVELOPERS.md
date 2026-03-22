@@ -18,7 +18,7 @@ cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
   praxis-storage/              # Storage driver pack (S3, EBS, future: RDS, DynamoDB...)
-  praxis-network/              # Network driver pack (SG, VPC, future: ELB...)
+  praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, future: ELB...)
   praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, future: ASG, Lambda...)
 
 internal/
@@ -55,6 +55,7 @@ internal/
       s3_adapter.go            # S3 adapter
       sg_adapter.go            # SG adapter
       ami_adapter.go           # AMI adapter
+      igw_adapter.go           # IGW adapter
     registry/                  # Template + policy registries
       template_registry.go     # Restate VO for template storage
       policy_registry.go       # Restate VO for policy storage
@@ -72,6 +73,7 @@ internal/
     ec2/                       # EC2 instance driver
     vpc/                       # VPC driver
     eip/                       # Elastic IP driver
+    igw/                       # Internet Gateway driver
     ami/                       # AMI driver
     ebs/                       # EBS volume driver
     keypair/                   # Key Pair driver
@@ -88,6 +90,7 @@ schemas/aws/                   # CUE schemas per provider/service
   ec2/eip.cue
   ec2/keypair.cue
   ebs/ebs.cue
+  igw/igw.cue
 
 tests/integration/             # Integration tests (Testcontainers)
 ```

@@ -6,9 +6,9 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
-Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, and ElasticIP drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
+Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, ElasticIP, and InternetGateway drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
 Drivers are intentionally simple. They know how to create, read, update, delete, and reconcile one type of resource. They have zero knowledge of other drivers, dependency graphs, or deployment workflows. All coordination happens in [Core's orchestrator](ORCHESTRATOR.md).
 
@@ -22,6 +22,7 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 - SecurityGroup: `vpc-123~web-sg` (VPC-scoped, using `~` as separator)
 - EC2 Instance: `us-east-1~web-server` (region-scoped, using `~` as separator)
 - VPC: `us-east-1~main-vpc` (region-scoped, using `~` as separator)
+- InternetGateway: `us-east-1~web-igw` (region-scoped, using `~` as separator)
 - AMI: `us-east-1~my-ami` (region-scoped, using `~` as separator)
 - EBS Volume: `us-east-1~data-vol` (region-scoped, using `~` as separator)
 - KeyPair: `us-east-1~my-keypair` (region-scoped, using `~` as separator)
@@ -233,6 +234,7 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | EC2Instance | Region | `<region>~<name>` | `us-east-1~web-server` |
 | VPC | Region | `<region>~<name>` | `us-east-1~main-vpc` |
 | ElasticIP | Region | `<region>~<name>` | `us-east-1~web-eip` |
+| InternetGateway | Region | `<region>~<name>` | `us-east-1~web-igw` |
 | AMI | Region | `<region>~<amiName>` | `us-east-1~my-ami` |
 | EBSVolume | Region | `<region>~<name>` | `us-east-1~data-vol` |
 | KeyPair | Region | `<region>~<keyName>` | `us-east-1~my-keypair` |
@@ -340,7 +342,7 @@ cmd/praxis-<pack>/
 | Pack | Binary | Drivers |
 | --- | --- | --- |
 | Storage | `cmd/praxis-storage/` | S3 (future: RDS, DynamoDB, SQS, SNS) |
-| Network | `cmd/praxis-network/` | SecurityGroup (future: VPC, ELB, Route 53) |
+| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway (future: ELB, Route 53) |
 | Compute | `cmd/praxis-compute/` | EC2 (future: Auto Scaling, Lambda, ECS, EKS) |
 
 ---

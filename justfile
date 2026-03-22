@@ -174,6 +174,10 @@ test-ebs:
 test-eip:
     go test ./internal/drivers/eip/... -v -count=1 -race
 
+# Run IGW driver unit tests only
+test-igw:
+    go test ./internal/drivers/igw/... -v -count=1 -race
+
 # Run KeyPair driver unit tests only
 test-keypair:
     go test ./internal/drivers/keypair/... -v -count=1 -race
@@ -231,6 +235,18 @@ test-sg-integration:
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-sg-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run IGW integration tests (requires Docker — Testcontainers + LocalStack)
+test-igw-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestIGW -v -count=1 -tags=integration -timeout=5m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-igw-integration] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"

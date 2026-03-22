@@ -301,6 +301,7 @@ The argument uses `Kind/Key` format. Supported kinds:
 - `ElasticIP/<key>` — Single Elastic IP resource status
 - `AMI/<key>` — Single AMI resource status
 - `EBSVolume/<key>` — Single EBS volume status
+- `InternetGateway/<key>` — Single Internet Gateway status
 
 **Examples:**
 
@@ -443,6 +444,9 @@ praxis import EBSVolume --id vol-0abc123 --region us-east-1
 
 # Import an Elastic IP
 praxis import ElasticIP --id eipalloc-0abc123 --region us-east-1
+
+# Import an existing Internet Gateway
+praxis import InternetGateway --id igw-0abc123 --region us-east-1
 
 # Import in observed mode (read-only tracking)
 praxis import S3Bucket --id my-bucket --region us-west-2 --observe
