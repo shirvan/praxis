@@ -20,6 +20,10 @@ services:
   localstack:
     # Pinned to 4.14.0 — last community edition before LocalStack's
     # March 2026 license change (":latest" now requires auth token).
+    # I'm looking for good alternatives, but LocalStack is currently the only local AWS emulator that
+    # supports all the services Praxis needs with reasonable fidelity.
+    #
+    # If you are from AWS and reading this, I'd love a live environment I can test in without worrying about costs.
     image: localstack/localstack:4.14.0
     container_name: praxis-localstack
     ports:

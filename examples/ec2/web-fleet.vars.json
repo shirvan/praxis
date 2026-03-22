@@ -1,0 +1,8 @@
+{
+  "name": "storefront",
+  "environment": "prod",
+  "vpcId": "vpc-abc123",
+  "subnetIdA": "subnet-aaa111",
+  "subnetIdB": "subnet-bbb222",
+  "instanceType": "t3.small"
+}

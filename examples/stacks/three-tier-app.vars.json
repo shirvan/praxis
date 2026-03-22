@@ -1,0 +1,5 @@
+{
+  "name": "acme",
+  "environment": "prod",
+  "instanceType": "t3.medium"
+}

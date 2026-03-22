@@ -41,31 +41,14 @@ All drivers use `KeyScopeGlobal` — IAM is a global service, names are unique p
 
 ## 2. Relationships & Dependencies
 
-```
-                    ┌──────────────────┐
-                    │    IAM Policy     │
-                    │  (customer-mgd)   │
-                    └────────┬─────────┘
-                             │ ARN referenced by
-               ┌─────────────┼─────────────┐
-               ▼             ▼             ▼
-        ┌────────────┐ ┌──────────┐ ┌──────────┐
-        │  IAM Role  │ │ IAM User │ │ IAM Group│
-        └──────┬─────┘ └────┬─────┘ └────┬─────┘
-               │            │             │
-               │            │ groups[]    │
-               │            └─────────────┘
-               │            (user joins group)
-               ▼
-        ┌──────────────────┐
-        │ Instance Profile │
-        └────────┬─────────┘
-                 │ referenced by
-                 ▼
-        ┌──────────────────┐
-        │   EC2 Instance   │
-        │ (compute driver) │
-        └──────────────────┘
+```mermaid
+graph TD
+    Policy["IAM Policy<br/>(customer-managed)"] -->|ARN referenced by| Role["IAM Role"]
+    Policy -->|ARN referenced by| User["IAM User"]
+    Policy -->|ARN referenced by| Group["IAM Group"]
+    User -->|"groups[]"| Group
+    Role --> InstanceProfile["Instance Profile"]
+    InstanceProfile -->|referenced by| EC2["EC2 Instance<br/>(compute driver)"]
 ```
 
 ### Dependency Rules

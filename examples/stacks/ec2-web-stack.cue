@@ -9,13 +9,13 @@
 //
 // Usage:
 //   # Register
-//   praxis template register examples/ec2-web-stack.cue --description "Web server with VPC and security group"
+//   praxis template register examples/stacks/ec2-web-stack.cue --description "Web server with VPC and security group"
 //
 //   # Preview
-//   praxis deploy ec2-web-stack --account local -f examples/ec2-web-stack.vars.json --dry-run
+//   praxis deploy ec2-web-stack --account local -f examples/stacks/ec2-web-stack.vars.json --dry-run
 //
 //   # Deploy
-//   praxis deploy ec2-web-stack --account local -f examples/ec2-web-stack.vars.json --key web-dev --wait
+//   praxis deploy ec2-web-stack --account local -f examples/stacks/ec2-web-stack.vars.json --key web-dev --wait
 
 variables: {
 	name:         string & =~"^[a-z][a-z0-9-]{2,40}$"

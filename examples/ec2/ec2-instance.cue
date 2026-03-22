@@ -2,13 +2,13 @@
 //
 // Usage:
 //   # Register the template
-//   praxis template register examples/ec2-instance.cue --description "Single EC2 instance"
+//   praxis template register examples/ec2/ec2-instance.cue --description "Single EC2 instance"
 //
 //   # Preview the deployment
-//   praxis deploy ec2-instance --account local -f examples/ec2-instance.vars.json --dry-run
+//   praxis deploy ec2-instance --account local -f examples/ec2/ec2-instance.vars.json --dry-run
 //
 //   # Deploy
-//   praxis deploy ec2-instance --account local -f examples/ec2-instance.vars.json --key my-app-dev --wait
+//   praxis deploy ec2-instance --account local -f examples/ec2/ec2-instance.vars.json --key my-app-dev --wait
 
 variables: {
 	name:         string & =~"^[a-z][a-z0-9-]{2,40}$"

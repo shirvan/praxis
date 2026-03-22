@@ -1,0 +1,5 @@
+{
+  "name": "warehouse",
+  "environment": "prod",
+  "az": "us-east-1a"
+}
