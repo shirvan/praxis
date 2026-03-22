@@ -73,6 +73,52 @@ func validateType(name string, field types.VariableField, val any) error {
 		default:
 			return fmt.Errorf("variable %q: expected float, got %T", name, val)
 		}
+	case "list":
+		items, ok := val.([]any)
+		if !ok {
+			return fmt.Errorf("variable %q: expected list, got %T", name, val)
+		}
+		if field.Items != "" && field.Items != "any" {
+			for i, elem := range items {
+				if err := validateListElement(name, field.Items, i, elem); err != nil {
+					return err
+				}
+			}
+		}
+	case "struct":
+		if _, ok := val.(map[string]any); !ok {
+			return fmt.Errorf("variable %q: expected struct (object), got %T", name, val)
+		}
+	}
+	return nil
+}
+
+func validateListElement(varName, itemType string, index int, val any) error {
+	switch itemType {
+	case "string":
+		if _, ok := val.(string); !ok {
+			return fmt.Errorf("variable %q[%d]: expected string element, got %T", varName, index, val)
+		}
+	case "bool":
+		if _, ok := val.(bool); !ok {
+			return fmt.Errorf("variable %q[%d]: expected bool element, got %T", varName, index, val)
+		}
+	case "int":
+		switch val.(type) {
+		case int, int64, float64:
+		default:
+			return fmt.Errorf("variable %q[%d]: expected int element, got %T", varName, index, val)
+		}
+	case "float":
+		switch val.(type) {
+		case float64, int, int64:
+		default:
+			return fmt.Errorf("variable %q[%d]: expected float element, got %T", varName, index, val)
+		}
+	case "struct":
+		if _, ok := val.(map[string]any); !ok {
+			return fmt.Errorf("variable %q[%d]: expected struct element, got %T", varName, index, val)
+		}
 	}
 	return nil
 }

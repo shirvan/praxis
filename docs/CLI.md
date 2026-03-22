@@ -18,6 +18,7 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `delete`             | Both     | Tear down a deployment                           |
 | `import`             | Operators| Adopt an existing cloud resource                 |
 | `observe`            | Both     | Watch deployment progress in real time           |
+| `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
 
 ## Global Flags
@@ -507,6 +508,40 @@ Observing deployment my-webapp...
 ```
 
 The command exits automatically when the deployment reaches a terminal state (Complete, Failed, Deleted, or Cancelled). If the event stream is unavailable, it falls back to status polling.
+
+---
+
+## fmt
+
+Format CUE template files using the canonical CUE style. Files are formatted in place by default.
+
+```bash
+praxis fmt [files or directories...]
+```
+
+**Flags:**
+
+| Flag      | Default | Description                                              |
+|-----------|---------|----------------------------------------------------------|
+| `--check` | `false` | Check formatting without modifying files (exit 1 if any file would change) |
+
+**Examples:**
+
+```bash
+# Format all .cue files in the current directory (recursive)
+praxis fmt
+
+# Format specific files
+praxis fmt templates/vpc.cue templates/s3.cue
+
+# Format all .cue files under a directory
+praxis fmt schemas/
+
+# CI check — exits non-zero if any file needs formatting
+praxis fmt --check .
+```
+
+When no arguments are given, `fmt` defaults to the current directory and walks it recursively for `.cue` files. The `--check` flag is useful for CI gating — it lists unformatted files and exits with code 1 without modifying them.
 
 ---
 

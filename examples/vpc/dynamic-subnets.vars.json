@@ -1,0 +1,12 @@
+{
+  "name": "platform",
+  "environment": "prod",
+  "region": "us-east-1",
+  "vpcCidr": "10.0.0.0/16",
+  "subnets": [
+    { "suffix": "public-a",  "cidr": "10.0.1.0/24", "az": "us-east-1a", "public": true },
+    { "suffix": "public-b",  "cidr": "10.0.2.0/24", "az": "us-east-1b", "public": true },
+    { "suffix": "private-a", "cidr": "10.0.10.0/24", "az": "us-east-1a" },
+    { "suffix": "private-b", "cidr": "10.0.11.0/24", "az": "us-east-1b" }
+  ]
+}

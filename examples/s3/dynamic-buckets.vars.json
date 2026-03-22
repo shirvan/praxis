@@ -1,0 +1,6 @@
+{
+  "name": "orders-api",
+  "environment": "prod",
+  "buckets": ["assets", "uploads", "backups"],
+  "enableLogging": true
+}

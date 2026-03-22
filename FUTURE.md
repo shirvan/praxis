@@ -94,6 +94,81 @@ accounts:
 
 ---
 
+## Lifecycle Rules
+
+Resource-level lifecycle configuration for controlling update and delete behavior.
+
+**Technical approach:** Add an optional `lifecycle` block to resource definitions in CUE templates:
+
+```cue
+myBucket: s3.#S3Bucket & {
+    lifecycle: {
+        preventDestroy:      true
+        createBeforeDestroy: true
+        ignoreChanges:       ["tags.lastModified", "tags.updatedBy"]
+    }
+    spec: { ... }
+}
+```
+
+- **`preventDestroy`** — The orchestrator refuses to delete this resource (errors on `praxis delete` if the resource is included). Extends the existing observed-mode concept to managed resources.
+- **`createBeforeDestroy`** — When immutable field changes require recreation, the orchestrator provisions the replacement before deleting the old resource. Requires the driver contract to support provisioning a second instance with a temporary key, then swapping.
+- **`ignoreChanges`** — The plan diff engine and reconciliation loop skip the listed field paths when computing drift. Useful for tags managed by external systems (e.g., AWS Config, cost allocation tags).
+
+The lifecycle block is parsed during template evaluation and passed through as metadata alongside the resource spec. The orchestrator and plan diff engine read it to adjust their behavior.
+
+---
+
+## State Move & Rename
+
+Allow resources to be renamed or moved between deployments without destroying and recreating them.
+
+**Technical approach:** Add a `praxis state mv <source> <destination>` command. Source and destination use `Deployment/<key>/<resource-name>` format. The command updates the deployment state object to rename the resource entry and, if moving across deployments, removes it from the source and adds it to the destination. The underlying driver Virtual Object key does not change — only the deployment's mapping of template-local name → driver key is updated. This enables template refactoring (renaming a resource in CUE) without reprovisioning.
+
+---
+
+## Data Sources in Templates
+
+Reference existing cloud resources directly in CUE templates without managing them.
+
+**Technical approach:** Introduce a `data` block type alongside resource blocks in templates:
+
+```cue
+existingVpc: data.#Lookup & {
+    kind:   "VPC"
+    filter: {
+        tag: Name: "production-vpc"
+    }
+    region: "us-east-1"
+}
+
+webServer: ec2.#EC2Instance & {
+    spec: {
+        vpcId: "${data.existingVpc.outputs.vpcId}"
+    }
+}
+```
+
+During template evaluation, Core dispatches lookup queries to the appropriate driver's `Describe` or `Find` handler. The driver queries AWS using the filter criteria and returns outputs without taking ownership. Results are injected as read-only outputs available for expression hydration. This differs from `import --observe` in that data sources are ephemeral per-evaluation — they don't create persistent driver state.
+
+---
+
+## Provider Discovery (`praxis providers`)
+
+CLI command to list available drivers and their registration status.
+
+**Technical approach:** Add a `praxis providers` (or `praxis drivers`) command that queries the Restate admin API to enumerate registered services and their deployment status. Display driver name, resource kinds handled, service endpoint, and health. Useful for debugging ("is the lambda driver registered?") and discoverability as the driver ecosystem grows. The Restate admin API already exposes service registration metadata — the CLI formats and displays it.
+
+---
+
+## Workspaces
+
+Named environment groupings that bind a set of deployments with shared default configuration.
+
+**Technical approach:** Deployment keys already provide state isolation, but there is no grouping or environment-scoped defaults. Add a `praxis workspace` command family (`create`, `list`, `select`, `delete`). A workspace is a named context (e.g., `dev`, `staging`, `prod`) stored as a Restate Virtual Object that holds default variable overrides, account alias, and region. When a workspace is active, `apply`, `deploy`, and `plan` inherit its defaults — `--var`, `--account`, and `--region` flags override workspace values. Deployments created within a workspace are tagged with the workspace name for listing and filtering via `praxis list deployments --workspace prod`.
+
+---
+
 ## Notification Sinks & External Event Delivery
 
 Build external delivery and fan-out on top of the existing internal deployment event stream.

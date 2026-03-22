@@ -112,6 +112,303 @@ Key elements:
 
 ---
 
+## CUE Language Features
+
+Praxis templates support the full CUE language. The engine evaluates CUE to completion before extracting resources, so all CUE features resolve transparently. This section documents the features most useful for template authoring.
+
+### Variable Types
+
+Variables support all CUE types:
+
+```cue
+variables: {
+    // Scalar types
+    name:        string & =~"^[a-z][a-z0-9-]{2,40}$"
+    environment: "dev" | "staging" | "prod"   // disjunction (enum)
+    count:       int & >=1 & <=10
+    ratio:       float
+    debug:       bool | *false                // default value
+
+    // List types — for comprehension-driven templates
+    buckets: [...string]                      // list of strings
+    ports:   [...int]                         // list of ints
+    subnets: [...{                            // list of structs
+        suffix: string
+        cidr:   string
+        az:     string
+    }]
+
+    // Struct types
+    config: {
+        retries: int
+        timeout: string
+    }
+}
+```
+
+The variable schema system extracts types `"string"`, `"bool"`, `"int"`, `"float"`, `"list"`, and `"struct"`. For list variables, the element type is tracked in the `Items` field (e.g., `"string"`, `"int"`, `"struct"`).
+
+### Comprehensions (`for` loops)
+
+Generate resources dynamically from list variables:
+
+```cue
+variables: {
+    buckets: [...string]
+}
+
+resources: {
+    for _, name in variables.buckets {
+        "bucket-\(name)": {
+            apiVersion: "praxis.io/v1"
+            kind:       "S3Bucket"
+            metadata: name: "myapp-\(name)"
+            spec: {
+                region:     "us-east-1"
+                versioning: true
+                tags: purpose: name
+            }
+        }
+    }
+}
+```
+
+With `buckets: ["orders", "payments", "logs"]`, this generates three resources: `bucket-orders`, `bucket-payments`, `bucket-logs`.
+
+Comprehensions work with struct lists too:
+
+```cue
+variables: {
+    subnets: [...{suffix: string, cidr: string, az: string}]
+}
+
+resources: {
+    for _, sub in variables.subnets {
+        "subnet-\(sub.suffix)": {
+            apiVersion: "praxis.io/v1"
+            kind:       "Subnet"
+            metadata: name: "myapp-\(sub.suffix)"
+            spec: {
+                region:           "us-east-1"
+                vpcId:            "${resources.vpc.outputs.vpcId}"
+                cidrBlock:        sub.cidr
+                availabilityZone: sub.az
+            }
+        }
+    }
+}
+```
+
+Nested comprehensions produce a cross-product:
+
+```cue
+variables: {
+    envs: [...string]
+    svcs: [...string]
+}
+
+resources: {
+    for _, env in variables.envs
+    for _, svc in variables.svcs {
+        "\(svc)-\(env)": {
+            kind: "S3Bucket"
+            spec: { region: "us-east-1", bucketName: "\(svc)-\(env)" }
+        }
+    }
+}
+```
+
+With `envs: ["dev", "prod"]` and `svcs: ["api", "web"]`, this generates four resources.
+
+### Conditionals (`if` guards)
+
+Include resources only when a condition is met:
+
+```cue
+variables: {
+    enableLogging: bool | *false
+}
+
+resources: {
+    main: {
+        kind: "S3Bucket"
+        spec: { region: "us-east-1", bucketName: "main" }
+    }
+    if variables.enableLogging {
+        logs: {
+            kind: "S3Bucket"
+            spec: { region: "us-east-1", bucketName: "logs" }
+        }
+    }
+}
+```
+
+When `enableLogging` is `false`, CUE omits `logs` entirely — the engine never sees it.
+
+### Hidden Fields (`_helper`)
+
+Fields prefixed with `_` are invisible to the resource extractor. Use them for shared configuration:
+
+```cue
+variables: {
+    name:        string
+    environment: string
+}
+
+_naming: {
+    prefix: "\(variables.name)-\(variables.environment)"
+    region: "us-east-1"
+}
+
+resources: {
+    bucket: {
+        kind: "S3Bucket"
+        spec: {
+            region:     _naming.region
+            bucketName: "\(_naming.prefix)-data"
+        }
+    }
+}
+```
+
+`_naming` resolves during CUE evaluation but does not appear as a resource.
+
+### `let` Bindings
+
+Scoped aliases that reduce duplication:
+
+```cue
+resources: {
+    let prefix = "\(variables.name)-\(variables.environment)"
+
+    bucket: {
+        kind: "S3Bucket"
+        spec: { region: "us-east-1", bucketName: "\(prefix)-assets" }
+    }
+    logs: {
+        kind: "S3Bucket"
+        spec: { region: "us-east-1", bucketName: "\(prefix)-logs" }
+    }
+}
+```
+
+`let` bindings are evaluated away before JSON export. They don't appear in the output.
+
+### User-Defined Definitions (`#Name`)
+
+Create reusable building blocks inside a template:
+
+```cue
+variables: {
+    name: string
+    env:  string
+}
+
+#StandardTags: {
+    app:       variables.name
+    env:       variables.env
+    managedBy: "praxis"
+}
+
+resources: {
+    bucket: {
+        kind: "S3Bucket"
+        spec: {
+            region: "us-east-1"
+            tags:   #StandardTags
+        }
+    }
+}
+```
+
+Definitions (`#StandardTags`) are resolved by CUE and skipped by the resource extractor.
+
+### Struct Embedding
+
+Merge shared config into specs:
+
+```cue
+_baseSpec: {
+    region: "us-east-1"
+    tags: managedBy: "praxis"
+}
+
+resources: {
+    bucket: {
+        kind: "S3Bucket"
+        spec: {
+            _baseSpec
+            bucketName: "my-bucket"
+            versioning: true
+        }
+    }
+}
+```
+
+CUE merges the embedded struct's fields into the parent, producing a flat spec with `region`, `tags`, `bucketName`, and `versioning`.
+
+### CUE Standard Library
+
+CUE's built-in packages (`strings`, `list`, `math`, `regexp`, etc.) are available:
+
+```cue
+import "strings"
+
+variables: {
+    name: string
+}
+
+resources: {
+    bucket: {
+        kind: "S3Bucket"
+        spec: {
+            region:     "us-east-1"
+            bucketName: strings.ToLower(variables.name)
+        }
+    }
+}
+```
+
+Functions like `strings.ToLower()`, `strings.Replace()`, `strings.Join()`, `list.Sort()`, `math.Floor()` resolve at evaluation time. The result is a concrete value in the JSON output.
+
+### Pattern Constraints
+
+Apply constraints to all resources matching a pattern:
+
+```cue
+// All resources whose name starts with "prod-" must have encryption
+resources: [=~"^prod-"]: spec: encryption: enabled: true
+```
+
+This is the same mechanism used by [policies](#policy-as-code).
+
+### Feature Summary
+
+| CUE Feature | Status | Notes |
+|-------------|--------|-------|
+| Types, constraints, defaults | Works | `string`, `bool`, `int`, `float`, regex `=~`, bounds `>=`/`<=`, `*default` |
+| Disjunctions (enums) | Works | `"a" \| "b" \| "c"` — extracted as `Enum` in variable schema |
+| Definitions (`#Name`) | Works | Template-local schemas, skipped by resource extractor |
+| Unification (`&`) | Works | Core validation mechanism against provider schemas |
+| Optional fields (`field?:`) | Works | Used in schemas (`outputs?:`, `keyName?:`) |
+| Open/closed structs | Works | `close({...})` supported natively |
+| Pattern constraints | Works | `[=~"pattern"]: constraint` — used in policies |
+| Struct embedding | Works | Merge shared config into specs |
+| `for` comprehensions | Works | Generate N resources from list variables |
+| `if` conditionals | Works | Include/exclude resources based on variables |
+| `let` bindings | Works | Scoped aliases, invisible in output |
+| Hidden fields (`_name`) | Works | Template-local helpers, invisible in output |
+| Standard library | Works | `import "strings"`, `"list"`, `"math"`, etc. |
+| Nested comprehensions | Works | Cross-product generation |
+| Integer bounds | Works | `int & >=0 & <=65535` |
+| `null` | Works | JSON marshaling preserves it |
+| `or()` / `and()` builtins | Works | Computed disjunctions |
+| Field references | Works | `spec: vpcId: resources.vpc.spec.vpcId` for intra-template refs |
+
+**Not supported:** Multi-file templates (single-file is the design contract).
+
+---
+
 ## Evaluation Pipeline
 
 Template evaluation runs as a sequential pipeline in the Command Service:
@@ -126,6 +423,18 @@ flowchart TD
     F -->|Apply| G["Submit to<br/>DeploymentWorkflow"]
     F -->|Plan| H["Diff each resource<br/>against current driver state"]
 ```
+
+### How the Engine Handles CUE Features
+
+The engine calls `resourcesVal.Fields()` (without options) to iterate the `resources` block. This call returns only **regular exported fields**, which means:
+
+- **Definitions** (`#MyResource: { ... }`) — **skipped** by `Fields()`
+- **Hidden fields** (`_helper: expr`) — **skipped** by `Fields()`
+- **`let` bindings** — **evaluated away** before `Fields()` runs
+- **Comprehension-generated fields** — **expanded** by CUE before `Fields()` runs
+- **Conditionally omitted fields** — **absent** when the guard is false
+
+This `Fields()` behavior naturally separates "template machinery" from "resources to deploy."
 
 ### Dispatch-Time Expression Resolution
 
@@ -367,11 +676,11 @@ The schema is a JSON representation of each variable's type, constraints, and de
 
 ```go
 type VariableField struct {
-    Type       string   // "string", "bool", "int", "float"
-    Required   bool     // true if no default exists
-    Default    any      // default value if present
-    Constraint string   // CUE constraint expression (e.g., =~"^[a-z]...")
-    Enum       []string // allowed values for disjunctions
+    Type     string   // "string", "bool", "int", "float", "list", "struct"
+    Required bool     // true if no default exists
+    Default  any      // default value if present
+    Enum     []string // allowed values for disjunctions
+    Items    string   // element type for list variables (e.g., "string", "int", "struct")
 }
 
 type VariableSchema map[string]VariableField
@@ -384,6 +693,8 @@ variables: {
     name:        string & =~"^[a-z][a-z0-9-]{2,40}$"
     environment: "dev" | "staging" | "prod"
     vpcId:       string
+    buckets:     [...string]
+    config:      { retries: int, timeout: string }
 }
 ```
 
@@ -391,11 +702,15 @@ Produces this schema:
 
 ```json
 {
-  "name":        { "type": "string", "required": true, "constraint": "=~\"^[a-z][a-z0-9-]{2,40}$\"" },
+  "name":        { "type": "string", "required": true },
   "environment": { "type": "string", "required": true, "enum": ["dev", "staging", "prod"] },
-  "vpcId":       { "type": "string", "required": true }
+  "vpcId":       { "type": "string", "required": true },
+  "buckets":     { "type": "list",   "required": false, "items": "string" },
+  "config":      { "type": "struct", "required": true }
 }
 ```
+
+List variables (`[...T]`) default to `[]` in CUE, so they are not marked as required. Struct variables without defaults are required.
 
 The `GetVariableSchema` shared handler retrieves the schema without acquiring the object lock, making it efficient for preflight validation.
 
@@ -533,7 +848,7 @@ type DeployRequest struct {
 
 1. **Validate template name** — the template must exist in the registry
 2. **Fetch variable schema** — from `TemplateRegistry.GetVariableSchema` (shared handler, no lock)
-3. **Preflight validation** — check required variables, types, and enum constraints
+3. **Preflight validation** — check required variables, types, enum constraints, list element types, and struct shapes
 4. **Compile template** — full CUE evaluation pipeline with the registered source
 5. **Derive deployment key** — from request or auto-generated from template name + resources
 6. **Submit workflow** — same asynchronous orchestration as `Apply`
@@ -572,9 +887,11 @@ Both use the same underlying pipeline and orchestration. `Apply` is preserved fo
 
 ---
 
-## End-to-End Example
+## End-to-End Examples
 
-### 1. Platform Engineer Creates a Template
+### Static Template
+
+#### 1. Platform Engineer Creates a Template
 
 ```cue
 variables: {
@@ -612,7 +929,7 @@ resources: {
 }
 ```
 
-### 2. Operator Registers a Policy
+#### 2. Operator Registers a Policy
 
 ```cue
 // require-encryption.cue — enforce encryption on all S3 buckets
@@ -623,7 +940,7 @@ resources: [_]: spec: {
 
 Registered as a global policy, this unifies with every template. Any S3 bucket that sets `encryption: enabled: false` triggers a policy violation at evaluation time.
 
-### 3. Operator Registers the Template
+#### 3. Operator Registers the Template
 
 ```bash
 praxis template register service-stack.cue --name service-stack
@@ -648,7 +965,7 @@ Variables:
   vpcId         string  yes       -        -
 ```
 
-### 4. End User Deploys
+#### 4. End User Deploys
 
 Via the template-first Deploy command (recommended for end users):
 
@@ -716,7 +1033,7 @@ curl -X POST http://localhost:8080/PraxisCommandService/Apply \
   }'
 ```
 
-### 5. Pipeline Runs
+#### 5. Pipeline Runs
 
 ```mermaid
 flowchart LR
@@ -733,13 +1050,110 @@ flowchart LR
 
 Result: `bucket` and `sg` dispatch first (no dependencies). `logBucket` waits for `sg`.
 
-### 6. Orchestrator Executes
+#### 6. Orchestrator Executes
 
 - `bucket` and `sg` provision in parallel
 - `sg` completes → outputs include `groupId: "sg-0ff1ce"`
 - `logBucket` hydrated: `"${resources.sg.outputs.groupId}"` → `"sg-0ff1ce"`
 - `logBucket` provisioned with concrete spec
 - All done → deployment Complete
+
+### Dynamic Template (Comprehensions)
+
+#### 1. Platform Engineer Creates a Comprehension-Driven Template
+
+```cue
+variables: {
+    name:          string & =~"^[a-z][a-z0-9-]{2,40}$"
+    environment:   "dev" | "staging" | "prod"
+    buckets:       [...string]
+    enableLogging: bool | *false
+}
+
+_naming: {
+    prefix: "\(variables.name)-\(variables.environment)"
+}
+
+#StandardTags: {
+    app:       variables.name
+    env:       variables.environment
+    managedBy: "praxis"
+}
+
+resources: {
+    for _, suffix in variables.buckets {
+        "bucket-\(suffix)": {
+            apiVersion: "praxis.io/v1"
+            kind:       "S3Bucket"
+            metadata: name: "\(_naming.prefix)-\(suffix)"
+            spec: {
+                region:     "us-east-1"
+                versioning: true
+                encryption: { enabled: true, algorithm: "AES256" }
+                tags: #StandardTags & { purpose: suffix }
+            }
+        }
+    }
+
+    if variables.enableLogging {
+        "log-aggregator": {
+            apiVersion: "praxis.io/v1"
+            kind:       "S3Bucket"
+            metadata: name: "\(_naming.prefix)-logs"
+            spec: {
+                region:     "us-east-1"
+                versioning: false
+                encryption: { enabled: true, algorithm: "AES256" }
+                tags: #StandardTags & { purpose: "log-aggregation" }
+            }
+        }
+    }
+}
+```
+
+#### 2. Deploy
+
+```bash
+praxis deploy dynamic-buckets \
+    --var name=orders-api \
+    --var environment=prod \
+    --var buckets='["assets","uploads","backups"]' \
+    --var enableLogging=true \
+    --key orders-prod
+```
+
+Or with a vars file:
+
+```bash
+praxis deploy dynamic-buckets --account local -f vars.json --key orders-prod
+```
+
+```json
+{
+  "name": "orders-api",
+  "environment": "prod",
+  "buckets": ["assets", "uploads", "backups"],
+  "enableLogging": true
+}
+```
+
+#### 3. Pipeline Execution
+
+```mermaid
+flowchart LR
+    A["CUE evaluation<br/>variables injected,<br/>comprehensions expanded,<br/>conditionals resolved"] --> B["Policy<br/>unification"]
+    B --> C["SSM resolution<br/>(if any)"]
+    C --> D["DAG construction<br/>dependency edges from<br/>output expressions"]
+    D --> E["Dispatch resources<br/>in dependency order"]
+```
+
+1. **CUE evaluation** — variables injected, `for` loops expanded, `if` guards resolved, `_helpers` and `#definitions` computed, interpolation resolves, schemas validate, defaults apply
+2. **Policy unification** — global policies checked (e.g., encryption required)
+3. **SSM resolution** — scan for `ssm://` prefixes, batch-resolve
+4. **DAG construction** — detect `${resources.*}` references, build edges, detect cycles
+5. **Dispatch** — provision resources in parallel where dependencies allow
+
+Result: Four buckets provisioned — `bucket-assets`, `bucket-uploads`, `bucket-backups`, and `log-aggregator`. The template uses hidden fields (`_naming`), definitions (`#StandardTags`), a `for` comprehension, and an `if` conditional.
 
 ---
 

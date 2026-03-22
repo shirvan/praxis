@@ -35,10 +35,11 @@ type TemplateSummary struct {
 
 // VariableField describes one variable expected by a template.
 type VariableField struct {
-	Type     string   `json:"type"`              // "string", "bool", "int", "float"
+	Type     string   `json:"type"`              // "string", "bool", "int", "float", "list", "struct"
 	Required bool     `json:"required"`          // true if no default exists
 	Default  any      `json:"default,omitempty"` // default value if present
 	Enum     []string `json:"enum,omitempty"`    // allowed values for disjunctions
+	Items    string   `json:"items,omitempty"`   // element type for list variables (e.g., "string", "int", "struct")
 }
 
 // VariableSchema maps variable names to their field descriptors.

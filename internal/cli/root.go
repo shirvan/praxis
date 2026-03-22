@@ -14,6 +14,7 @@
 //   - list    — List active deployments
 //   - import  — Adopt an existing cloud resource
 //   - observe — Watch deployment progress in real time
+//   - fmt     — Format CUE template files
 //
 // The CLI supports two output formats:
 //
@@ -106,6 +107,7 @@ drift detection, dependency ordering, and lifecycle management.`,
 		newImportCmd(flags),
 		newObserveCmd(flags),
 		newTemplateCmd(flags),
+		newFmtCmd(),
 		newVersionCmd(),
 	)
 

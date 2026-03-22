@@ -42,15 +42,17 @@ praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.jso
 | Template | Description | Resources |
 |----------|-------------|-----------|
 | `basic-vpc` | Simple VPC with DNS support | VPC |
-| `multi-az-vpc` | Production VPC: 2-AZ public/private subnets, IGW, NAT, route tables | VPC → IGW → 4× Subnet → ElasticIP → NATGateway → 2× RouteTable |
-| `vpc-peering` | Two peered VPCs with cross-VPC routing | 2× VPC → VPCPeering → 2× Subnet → 2× RouteTable |
+| `multi-az-vpc` | Production VPC: 2-AZ public/private subnets, IGW, NAT, route tables | VPC -> IGW -> 4x Subnet -> ElasticIP -> NATGateway -> 2x RouteTable |
+| `vpc-peering` | Two peered VPCs with cross-VPC routing | 2x VPC -> VPCPeering -> 2x Subnet -> 2x RouteTable |
+| `dynamic-subnets` | Generate N subnets from a struct list variable | VPC -> Nx Subnet (comprehension) |
 
 ### S3 — `examples/s3/`
 
 | Template | Description | Resources |
 |----------|-------------|-----------|
-| `app-buckets` | Assets, logs, and backup buckets | 3× S3Bucket |
+| `app-buckets` | Assets, logs, and backup buckets | 3x S3Bucket |
 | `static-website` | S3 bucket for static site content | S3Bucket |
+| `dynamic-buckets` | Generate N buckets from a list variable + optional logging bucket | Nx S3Bucket (comprehension) |
 
 ### Stacks — `examples/stacks/`
 

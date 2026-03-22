@@ -225,6 +225,13 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 
 	for iter.Next() {
 		name := iter.Selector().String()
+		// Comprehension-generated fields use CUE string labels whose
+		// selector representation includes surrounding quotes.  Strip them
+		// so the resource map uses bare names (e.g. "bucket-orders", not
+		// "\"bucket-orders\"").
+		if len(name) >= 2 && name[0] == '"' && name[len(name)-1] == '"' {
+			name = name[1 : len(name)-1]
+		}
 		resVal := iter.Value()
 
 		kindVal := resVal.LookupPath(cue.ParsePath("kind"))

@@ -54,6 +54,28 @@ func analyzeVariableField(v cue.Value) types.VariableField {
 		f.Type = "int"
 	case cue.FloatKind, cue.NumberKind:
 		f.Type = "float"
+	case cue.ListKind:
+		f.Type = "list"
+		// Inspect element constraint via the list element type.
+		elemVal := v.LookupPath(cue.MakePath(cue.AnyIndex))
+		if elemVal.Exists() {
+			switch elemVal.IncompleteKind() {
+			case cue.StringKind:
+				f.Items = "string"
+			case cue.BoolKind:
+				f.Items = "bool"
+			case cue.IntKind:
+				f.Items = "int"
+			case cue.FloatKind, cue.NumberKind:
+				f.Items = "float"
+			case cue.StructKind:
+				f.Items = "struct"
+			default:
+				f.Items = "any"
+			}
+		}
+	case cue.StructKind:
+		f.Type = "struct"
 	default:
 		f.Type = "string"
 	}
@@ -104,6 +126,37 @@ func marshalDefault(v cue.Value) (any, error) {
 		return i, err
 	case cue.FloatKind, cue.NumberKind:
 		return v.Float64()
+	case cue.ListKind:
+		var result []any
+		iter, err := v.List()
+		if err != nil {
+			return nil, err
+		}
+		for iter.Next() {
+			elem, err := marshalDefault(iter.Value())
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, elem)
+		}
+		if result == nil {
+			result = []any{}
+		}
+		return result, nil
+	case cue.StructKind:
+		result := make(map[string]any)
+		iter, err := v.Fields()
+		if err != nil {
+			return nil, err
+		}
+		for iter.Next() {
+			val, err := marshalDefault(iter.Value())
+			if err != nil {
+				return nil, err
+			}
+			result[iter.Selector().String()] = val
+		}
+		return result, nil
 	default:
 		return nil, fmt.Errorf("unsupported kind %v", v.IncompleteKind())
 	}
