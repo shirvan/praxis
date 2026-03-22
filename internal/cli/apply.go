@@ -40,6 +40,13 @@ func newApplyCmd(flags *rootFlags) *cobra.Command {
 		timeout time.Duration
 		// account selects which configured AWS account to use for this apply.
 		account string
+		// autoApprove skips the confirmation prompt.
+		autoApprove bool
+		// targets limits the apply to the named resources and their transitive
+		// dependencies.
+		targets []string
+		// replace forces Delete→Provision on the named resources.
+		replace []string
 	)
 	account = flags.account
 
@@ -49,6 +56,10 @@ func newApplyCmd(flags *rootFlags) *cobra.Command {
 		Long: `Apply evaluates a CUE template, resolves variables and SSM parameters,
 builds the resource dependency graph, and submits the deployment to the
 Praxis orchestrator.
+
+Before provisioning, a plan diff is displayed showing what would change.
+You must confirm before changes are applied. Use --auto-approve to skip
+the prompt (useful for CI and scripting).
 
 The command returns immediately with the deployment key unless --wait is set,
 in which case it polls for completion.
@@ -80,11 +91,47 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 			client := flags.newClient()
 			ctx := context.Background()
 
+			// Run plan first to show what would change.
+			planResp, err := client.Plan(ctx, types.PlanRequest{
+				Template:  string(content),
+				Variables: variables,
+				Account:   account,
+				Targets:   targets,
+			})
+			if err != nil {
+				return err
+			}
+
+			// Display the plan diff.
+			if flags.outputFormat() != OutputJSON {
+				printPlan(planResp.Plan)
+			}
+
+			// If there are no changes, exit early.
+			if planResp.Plan == nil || !planResp.Plan.Summary.HasChanges() {
+				if flags.outputFormat() == OutputJSON {
+					return printJSON(planResp)
+				}
+				return nil
+			}
+
+			// Confirm with the user unless --auto-approve is set.
+			if !autoApprove {
+				fmt.Print("\nDo you want to apply these changes? (yes/no): ")
+				var confirm string
+				if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "yes" && confirm != "y") {
+					fmt.Println("Apply cancelled.")
+					return nil
+				}
+			}
+
 			resp, err := client.Apply(ctx, types.ApplyRequest{
 				Template:      string(content),
 				Variables:     variables,
 				DeploymentKey: deploymentKey,
 				Account:       account,
+				Targets:       targets,
+				Replace:       replace,
 			})
 			if err != nil {
 				return err
@@ -127,6 +174,9 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until deployment completes or fails")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when --wait is set")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait for completion (0 for no limit)")
+	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip the confirmation prompt")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
+	cmd.Flags().StringArrayVar(&replace, "replace", nil, "Force delete and re-provision of named resource (repeatable)")
 
 	return cmd
 }

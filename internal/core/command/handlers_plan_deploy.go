@@ -40,7 +40,7 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 		return PlanDeployResponse{}, restate.TerminalError(err, 400)
 	}
 
-	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, req.Variables, account.Name)
+	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, req.Variables, account.Name, req.Targets)
 	if err != nil {
 		return PlanDeployResponse{}, err
 	}

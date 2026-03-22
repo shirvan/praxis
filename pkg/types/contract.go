@@ -8,6 +8,8 @@ type ApplyRequest struct {
 	Variables     map[string]any `json:"variables,omitempty"`
 	DeploymentKey string         `json:"deploymentKey,omitempty"`
 	Account       string         `json:"account,omitempty"`
+	Targets       []string       `json:"targets,omitempty"`
+	Replace       []string       `json:"replace,omitempty"`
 }
 
 // ApplyResponse is returned immediately after an apply request is accepted.
@@ -24,6 +26,7 @@ type PlanRequest struct {
 	TemplateRef *TemplateRef   `json:"templateRef,omitempty"`
 	Variables   map[string]any `json:"variables,omitempty"`
 	Account     string         `json:"account,omitempty"`
+	Targets     []string       `json:"targets,omitempty"`
 }
 
 // PlanResponse contains the machine-readable plan result and rendered output.
@@ -145,6 +148,8 @@ type DeployRequest struct {
 	Variables     map[string]any `json:"variables,omitempty"`     // user-provided variables
 	DeploymentKey string         `json:"deploymentKey,omitempty"` // optional stable key
 	Account       string         `json:"account,omitempty"`       // AWS account override
+	Targets       []string       `json:"targets,omitempty"`       // limit to named resources + deps
+	Replace       []string       `json:"replace,omitempty"`       // force Delete→Provision on named resources
 }
 
 // DeployResponse is returned after a deploy request is accepted.
@@ -158,6 +163,7 @@ type PlanDeployRequest struct {
 	Template  string         `json:"template"`            // registered template name (required)
 	Variables map[string]any `json:"variables,omitempty"` // user-provided variables
 	Account   string         `json:"account,omitempty"`   // AWS account override
+	Targets   []string       `json:"targets,omitempty"`   // limit to named resources + deps
 }
 
 // PlanDeployResponse contains the plan result and rendered template.

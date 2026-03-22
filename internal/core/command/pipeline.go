@@ -44,6 +44,7 @@ func (s *PraxisCommandService) compileTemplate(
 	ref *types.TemplateRef,
 	variables map[string]any,
 	accountName string,
+	targets []string,
 ) (*compiledTemplate, error) {
 	source, templatePath, err := s.resolveTemplateSource(ctx, templateBody, ref)
 	if err != nil {
@@ -80,6 +81,27 @@ func (s *PraxisCommandService) compileTemplate(
 		return nil, restate.TerminalError(fmt.Errorf("invalid deployment graph: %w", err), 400)
 	}
 
+	// If targets are specified, reduce the graph to only the named resources
+	// and their transitive dependencies.
+	if len(targets) > 0 {
+		graph, err = graph.Subgraph(targets)
+		if err != nil {
+			return nil, restate.TerminalError(err, 400)
+		}
+		// Rebuild the node list to match the filtered graph.
+		filtered := make(map[string]bool, len(targets))
+		for _, name := range graph.TopologicalOrder() {
+			filtered[name] = true
+		}
+		filteredNodes := make([]*types.ResourceNode, 0, len(filtered))
+		for _, node := range nodes {
+			if filtered[node.Name] {
+				filteredNodes = append(filteredNodes, node)
+			}
+		}
+		nodes = filteredNodes
+	}
+
 	rendered, err := renderResolvedTemplate(ssmResolvedSpecs, sensitive)
 	if err != nil {
 		return nil, restate.TerminalError(err, 500)
@@ -105,6 +127,7 @@ func (s *PraxisCommandService) submitDeployment(
 	account string,
 	variables map[string]any,
 	compiled *compiledTemplate,
+	forceReplace []string,
 ) (string, types.DeploymentStatus, error) {
 	existingState, err := restate.Object[*orchestrator.DeploymentState](
 		ctx, orchestrator.DeploymentStateServiceName, deploymentKey, "GetState",
@@ -124,6 +147,20 @@ func (s *PraxisCommandService) submitDeployment(
 		return "", "", err
 	}
 
+	// Validate --replace resource names exist in the plan.
+	if len(forceReplace) > 0 {
+		planNames := make(map[string]bool, len(compiled.PlanResources))
+		for _, r := range compiled.PlanResources {
+			planNames[r.Name] = true
+		}
+		for _, name := range forceReplace {
+			if !planNames[name] {
+				return "", "", restate.TerminalError(
+					fmt.Errorf("--replace resource %q does not exist in the deployment", name), 400)
+			}
+		}
+	}
+
 	plan := orchestrator.DeploymentPlan{
 		Key:          deploymentKey,
 		Account:      account,
@@ -131,6 +168,7 @@ func (s *PraxisCommandService) submitDeployment(
 		Variables:    variables,
 		CreatedAt:    createdAt,
 		TemplatePath: compiled.TemplatePath,
+		ForceReplace: forceReplace,
 	}
 
 	generation, err := restate.WithRequestType[orchestrator.DeploymentPlan, int64](

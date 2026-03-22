@@ -94,6 +94,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	exec := newExecutionState(plan.Resources)
 	exec.loadOutputs(state.Outputs)
 
+	replaceSet := make(map[string]bool, len(plan.ForceReplace))
+	for _, name := range plan.ForceReplace {
+		replaceSet[name] = true
+	}
+
 	inFlight := make(map[string]provider.ProvisionInvocation)
 	cancellationRequested := false
 
@@ -142,6 +147,33 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						return DeploymentResult{}, err
 					}
 					continue
+				}
+
+				// Force replacement: delete the existing resource before re-provisioning.
+				if replaceSet[name] {
+					if err := appendEvent(ctx, plan.Key, DeploymentEvent{
+						DeploymentKey: plan.Key,
+						Status:        types.DeploymentRunning,
+						ResourceName:  name,
+						ResourceKind:  resource.Kind,
+						Message:       fmt.Sprintf("force-replacing %s: deleting before re-provision", name),
+					}); err != nil {
+						return DeploymentResult{}, err
+					}
+
+					delInvocation, err := adapter.Delete(ctx, resource.Key)
+					if err != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete dispatch failed: %v", err)); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+					if err := delInvocation.Done(); err != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete failed: %v", err)); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
 				}
 
 				invocation, err := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)

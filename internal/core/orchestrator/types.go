@@ -57,6 +57,10 @@ type DeploymentPlan struct {
 
 	// TemplatePath is preserved for operator visibility.
 	TemplatePath string `json:"templatePath,omitempty"`
+
+	// ForceReplace lists template-local resource names that should be deleted
+	// and re-provisioned regardless of plan diff results.
+	ForceReplace []string `json:"forceReplace,omitempty"`
 }
 
 // PlanResource is one resource entry inside a deployment plan.

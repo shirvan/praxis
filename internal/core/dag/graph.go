@@ -163,6 +163,36 @@ func (g *Graph) ReverseTopo() []string {
 	return order
 }
 
+// Subgraph returns a new Graph containing only the named targets and their
+// transitive dependencies. Every target must exist in the graph.
+func (g *Graph) Subgraph(targets []string) (*Graph, error) {
+	// Collect the closure: targets + all transitive deps.
+	include := make(map[string]bool, len(targets))
+	var walk func(string)
+	walk = func(name string) {
+		if include[name] {
+			return
+		}
+		include[name] = true
+		for _, dep := range g.edges[name] {
+			walk(dep)
+		}
+	}
+	for _, target := range targets {
+		if _, ok := g.nodes[target]; !ok {
+			return nil, fmt.Errorf("target resource %q does not exist in the graph", target)
+		}
+		walk(target)
+	}
+
+	// Build a new node slice from the closure.
+	nodes := make([]*types.ResourceNode, 0, len(include))
+	for name := range include {
+		nodes = append(nodes, g.nodes[name])
+	}
+	return NewGraph(nodes)
+}
+
 func (g *Graph) detectCycles() error {
 	const (
 		visitUnvisited = iota

@@ -30,6 +30,7 @@ func newPlanCmd(flags *rootFlags) *cobra.Command {
 		vars         []string
 		showRendered bool
 		account      string
+		targets      []string
 	)
 	account = flags.account
 
@@ -71,6 +72,7 @@ which is useful for debugging variable resolution and output expressions.`,
 				Template:  string(content),
 				Variables: variables,
 				Account:   account,
+				Targets:   targets,
 			})
 			if err != nil {
 				return err
@@ -98,6 +100,7 @@ which is useful for debugging variable resolution and output expressions.`,
 	cmd.Flags().StringArrayVar(&vars, "var", nil, "Template variable in key=value format (repeatable)")
 	cmd.Flags().StringVar(&account, "account", account, "AWS account name to use (env: PRAXIS_ACCOUNT)")
 	cmd.Flags().BoolVar(&showRendered, "show-rendered", false, "Also display the fully-evaluated template JSON")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
 
 	return cmd
 }

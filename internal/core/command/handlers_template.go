@@ -75,7 +75,7 @@ func (s *PraxisCommandService) ValidateTemplate(ctx restate.Context, req types.V
 		if err != nil {
 			return types.ValidateTemplateResponse{Valid: false, Errors: validationErrors(restate.TerminalError(err, 400))}, nil
 		}
-		_, err = s.compileTemplate(ctx, req.Source, req.TemplateRef, req.Variables, account.Name)
+		_, err = s.compileTemplate(ctx, req.Source, req.TemplateRef, req.Variables, account.Name, nil)
 		if err != nil {
 			return types.ValidateTemplateResponse{Valid: false, Errors: validationErrors(err)}, nil
 		}

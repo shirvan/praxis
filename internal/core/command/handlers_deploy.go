@@ -40,7 +40,7 @@ func (s *PraxisCommandService) Deploy(ctx restate.Context, req DeployRequest) (D
 	}
 
 	// Compile the template via the existing pipeline using a TemplateRef.
-	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, req.Variables, account.Name)
+	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, req.Variables, account.Name, req.Targets)
 	if err != nil {
 		return DeployResponse{}, err
 	}
@@ -54,7 +54,7 @@ func (s *PraxisCommandService) Deploy(ctx restate.Context, req DeployRequest) (D
 		}
 	}
 
-	key, status, err := s.submitDeployment(ctx, deploymentKey, account.Name, req.Variables, compiled)
+	key, status, err := s.submitDeployment(ctx, deploymentKey, account.Name, req.Variables, compiled, req.Replace)
 	if err != nil {
 		return DeployResponse{}, err
 	}

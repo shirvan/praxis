@@ -124,6 +124,89 @@ func TestNewGraph_DuplicateName_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate resource name")
 }
 
+func TestSubgraph_SingleTarget_IncludesTransitiveDeps(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("frontend", "api"),
+		newNode("api", "db"),
+		newNode("db"),
+		newNode("unrelated"),
+	)
+
+	sub, err := g.Subgraph([]string{"frontend"})
+	require.NoError(t, err)
+
+	order := sub.TopologicalOrder()
+	assert.Equal(t, []string{"db", "api", "frontend"}, order)
+}
+
+func TestSubgraph_MiddleTarget_IncludesDepsOnly(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("frontend", "api"),
+		newNode("api", "db"),
+		newNode("db"),
+	)
+
+	sub, err := g.Subgraph([]string{"api"})
+	require.NoError(t, err)
+
+	order := sub.TopologicalOrder()
+	assert.Equal(t, []string{"db", "api"}, order)
+}
+
+func TestSubgraph_MultipleTargets_Union(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("frontend", "api"),
+		newNode("api", "db"),
+		newNode("db"),
+		newNode("worker", "queue"),
+		newNode("queue"),
+	)
+
+	sub, err := g.Subgraph([]string{"frontend", "worker"})
+	require.NoError(t, err)
+
+	order := sub.TopologicalOrder()
+	assert.Equal(t, []string{"db", "api", "frontend", "queue", "worker"}, order)
+}
+
+func TestSubgraph_RootTarget_NoExtraDeps(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("frontend", "api"),
+		newNode("api"),
+	)
+
+	sub, err := g.Subgraph([]string{"api"})
+	require.NoError(t, err)
+
+	order := sub.TopologicalOrder()
+	assert.Equal(t, []string{"api"}, order)
+}
+
+func TestSubgraph_UnknownTarget_ReturnsError(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("db"),
+	)
+
+	_, err := g.Subgraph([]string{"nonexistent"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "target resource \"nonexistent\" does not exist")
+}
+
+func TestSubgraph_DiamondGraph_SharedDeps(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("app", "api", "worker"),
+		newNode("api", "db"),
+		newNode("worker", "db"),
+		newNode("db"),
+	)
+
+	sub, err := g.Subgraph([]string{"api", "worker"})
+	require.NoError(t, err)
+
+	order := sub.TopologicalOrder()
+	assert.Equal(t, []string{"db", "api", "worker"}, order)
+}
+
 func newTestGraph(t *testing.T, nodes ...*types.ResourceNode) *Graph {
 	t.Helper()
 	g, err := NewGraph(nodes)

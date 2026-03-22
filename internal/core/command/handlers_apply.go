@@ -14,7 +14,7 @@ func (s *PraxisCommandService) Apply(ctx restate.Context, req ApplyRequest) (App
 		return ApplyResponse{}, restate.TerminalError(err, 400)
 	}
 
-	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, req.Variables, account.Name)
+	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, req.Variables, account.Name, req.Targets)
 	if err != nil {
 		return ApplyResponse{}, err
 	}
@@ -27,7 +27,7 @@ func (s *PraxisCommandService) Apply(ctx restate.Context, req ApplyRequest) (App
 		}
 	}
 
-	key, status, err := s.submitDeployment(ctx, deploymentKey, account.Name, req.Variables, compiled)
+	key, status, err := s.submitDeployment(ctx, deploymentKey, account.Name, req.Variables, compiled, req.Replace)
 	if err != nil {
 		return ApplyResponse{}, err
 	}

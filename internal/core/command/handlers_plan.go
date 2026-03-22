@@ -14,7 +14,7 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 		return PlanResponse{}, restate.TerminalError(err, 400)
 	}
 
-	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, req.Variables, account.Name)
+	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, req.Variables, account.Name, req.Targets)
 	if err != nil {
 		return PlanResponse{}, err
 	}

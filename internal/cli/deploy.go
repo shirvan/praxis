@@ -34,6 +34,9 @@ func newDeployCmd(flags *rootFlags) *cobra.Command {
 		pollInterval  time.Duration
 		timeout       time.Duration
 		account       string
+		autoApprove   bool
+		targets       []string
+		replace       []string
 	)
 	account = flags.account
 
@@ -42,6 +45,10 @@ func newDeployCmd(flags *rootFlags) *cobra.Command {
 		Short: "Deploy infrastructure from a registered template",
 		Long: `Deploy provisions resources using a pre-registered CUE template.
 The template must have been registered by an operator using 'praxis template register'.
+
+Before provisioning, a plan diff is displayed showing what would change.
+You must confirm before changes are applied. Use --auto-approve to skip
+the prompt (useful for CI and scripting).
 
 Provide variables via --var flags or a JSON file with -f:
 
@@ -72,6 +79,7 @@ Use --dry-run to preview changes without provisioning:
 					Template:  templateName,
 					Variables: variables,
 					Account:   account,
+					Targets:   targets,
 				})
 				if err != nil {
 					return err
@@ -91,11 +99,47 @@ Use --dry-run to preview changes without provisioning:
 				return nil
 			}
 
+			// Run plan to show what would change before deploying.
+			planResp, err := client.PlanDeploy(ctx, types.PlanDeployRequest{
+				Template:  templateName,
+				Variables: variables,
+				Account:   account,
+				Targets:   targets,
+			})
+			if err != nil {
+				return err
+			}
+
+			// Display the plan diff.
+			if flags.outputFormat() != OutputJSON {
+				printPlan(planResp.Plan)
+			}
+
+			// If there are no changes, exit early.
+			if planResp.Plan == nil || !planResp.Plan.Summary.HasChanges() {
+				if flags.outputFormat() == OutputJSON {
+					return printJSON(planResp)
+				}
+				return nil
+			}
+
+			// Confirm with the user unless --auto-approve is set.
+			if !autoApprove {
+				fmt.Print("\nDo you want to apply these changes? (yes/no): ")
+				var confirm string
+				if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "yes" && confirm != "y") {
+					fmt.Println("Apply cancelled.")
+					return nil
+				}
+			}
+
 			resp, err := client.Deploy(ctx, types.DeployRequest{
 				Template:      templateName,
 				Variables:     variables,
 				DeploymentKey: deploymentKey,
 				Account:       account,
+				Targets:       targets,
+				Replace:       replace,
 			})
 			if err != nil {
 				return err
@@ -137,6 +181,9 @@ Use --dry-run to preview changes without provisioning:
 	cmd.Flags().BoolVar(&showRendered, "show-rendered", false, "Also display the fully-evaluated template JSON (with --dry-run)")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when --wait is set")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait for completion (0 for no limit)")
+	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip the confirmation prompt")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
+	cmd.Flags().StringArrayVar(&replace, "replace", nil, "Force delete and re-provision of named resource (repeatable)")
 
 	return cmd
 }
