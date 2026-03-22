@@ -398,6 +398,14 @@ Outputs: `networkAclId`, `vpcId`, `isDefault`, `ingressRules`, `egressRules`, `a
 
 Key: `<vpcId>~<name>`. Scope: Custom.
 
+### RouteTable
+
+Manages AWS VPC Route Tables with routes and subnet associations. Spec fields: `region`, `vpcId`, `routes` (destinationCidrBlock + one target: gatewayId, natGatewayId, vpcPeeringConnectionId, transitGatewayId, networkInterfaceId, vpcEndpointId), `associations` (subnetId), `tags`.
+
+Outputs: `routeTableId`, `vpcId`, `ownerId`, `routes`, `associations`.
+
+Key: `<vpcId>~<name>`. Scope: Custom.
+
 ### VPC
 
 Manages AWS Virtual Private Clouds. Spec fields: `region`, `cidrBlock`, `enableDnsSupport`, `enableDnsHostnames`, `tags`.

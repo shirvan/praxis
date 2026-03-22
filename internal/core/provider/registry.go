@@ -119,6 +119,7 @@ func NewRegistry() *Registry {
 		NewKeyPairAdapterWithRegistry(accounts),
 		NewEIPAdapterWithRegistry(accounts),
 		NewNetworkACLAdapterWithRegistry(accounts),
+		NewRouteTableAdapterWithRegistry(accounts),
 		NewSecurityGroupAdapterWithRegistry(accounts),
 		NewIGWAdapterWithRegistry(accounts),
 		NewVPCAdapterWithRegistry(accounts),

@@ -12,6 +12,7 @@ import (
 	"github.com/praxiscloud/praxis/internal/drivers/eip"
 	"github.com/praxiscloud/praxis/internal/drivers/igw"
 	"github.com/praxiscloud/praxis/internal/drivers/nacl"
+	"github.com/praxiscloud/praxis/internal/drivers/routetable"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
 	"github.com/praxiscloud/praxis/internal/drivers/vpc"
 )
@@ -23,6 +24,7 @@ func main() {
 		Bind(restate.Reflect(eip.NewElasticIPDriver(cfg.Auth()))).
 		Bind(restate.Reflect(igw.NewIGWDriver(cfg.Auth()))).
 		Bind(restate.Reflect(nacl.NewNetworkACLDriver(cfg.Auth()))).
+		Bind(restate.Reflect(routetable.NewRouteTableDriver(cfg.Auth()))).
 		Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
 		Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
 

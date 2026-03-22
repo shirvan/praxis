@@ -182,6 +182,10 @@ test-igw:
 test-nacl:
     go test ./internal/drivers/nacl/... -v -count=1 -race
 
+# Run RouteTable driver unit tests only
+test-routetable:
+    go test ./internal/drivers/routetable/... -v -count=1 -race
+
 # Run KeyPair driver unit tests only
 test-keypair:
     go test ./internal/drivers/keypair/... -v -count=1 -race

@@ -531,7 +531,7 @@ Resources are identified by `Kind/Key` pairs. The CLI automatically resolves key
 | Scope    | Kinds           | Key Format        | Example                   |
 |----------|-----------------|-------------------|---------------------------|
 | Global   | `S3Bucket`      | Name as-is        | `my-bucket`               |
-| Custom   | `SecurityGroup` | User-supplied key  | `vpc-123~web-sg`          |
+| Custom   | `SecurityGroup`, `NetworkACL`, `RouteTable` | User-supplied key  | `vpc-123~web-sg`          |
 | Region   | `EC2Instance`, `VPC`, `AMI`, `EBSVolume` | `region~name` | `us-east-1~web-server` |
 
 When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain a `~` separator, the CLI prepends the region for region-scoped resources. Global and custom-scoped resources are passed through unchanged.

@@ -41,6 +41,7 @@ outbound traffic with numbered rules evaluated in order.
 ### Why Network ACLs
 
 Network ACLs provide defense-in-depth for VPC security:
+
 - **Stateless filtering**: Unlike security groups (stateful), NACLs evaluate each
   packet independently — inbound and outbound rules are separate.
 - **Subnet-level control**: NACLs are associated with subnets, providing a broad
@@ -75,7 +76,7 @@ Network ACLs provide defense-in-depth for VPC security:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-nacl.outputs.networkAclId}  → Subnet associations (informational)
 ```
 
@@ -101,7 +102,7 @@ Same pattern: `praxis:managed-key = <vpcId~metadata.name>` written at creation.
 
 ## 3. File Inventory
 
-```
+```text
 ✦ internal/drivers/nacl/types.go             — Spec, Outputs, ObservedState, State
 ✦ internal/drivers/nacl/aws.go               — NetworkACLAPI interface + realNetworkACLAPI
 ✦ internal/drivers/nacl/drift.go             — HasDrift(), ComputeFieldDiffs()
@@ -214,6 +215,7 @@ package nacl
 ```
 
 **Key decisions**:
+
 - Rules are ordered by `ruleNumber`. The CUE schema validates 1-32766.
 - Protocol is a string (not int) to allow "-1" for all protocols and named
   protocols. The driver normalizes to protocol numbers internally.
@@ -400,6 +402,7 @@ set-based approach used by the Route Table driver (keyed on `destinationCidrBloc
 and the SG driver (keyed on rule identity).
 
 For each direction (ingress and egress):
+
 1. Build a map of desired rules keyed by `ruleNumber`.
 2. Build a map of observed rules keyed by `ruleNumber`.
 3. **Added**: rules in desired but not observed → `CreateEntry`.
@@ -410,6 +413,7 @@ For each direction (ingress and egress):
 
 The implicit deny-all rule (ruleNumber 32767, protocol -1, deny 0.0.0.0/0) is
 ALWAYS present and CANNOT be created, modified, or deleted. It is:
+
 - **Excluded from observed state**: `DescribeNetworkACL` filters it out.
 - **Excluded from drift detection**: The drift engine never sees it.
 - **Excluded from CUE schema validation**: ruleNumber max is 32766.
@@ -417,6 +421,7 @@ ALWAYS present and CANNOT be created, modified, or deleted. It is:
 ### Association Drift Detection
 
 Subnet associations are compared as sets:
+
 1. **Desired associations**: subnets listed in `spec.subnetAssociations`.
 2. **Observed associations**: subnets from `DescribeNetworkACL`.
 3. **Added**: subnets in desired but not observed → `ReplaceNetworkACLAssociation`.
@@ -517,7 +522,7 @@ Add `.Bind(restate.Reflect(nacl.NewNetworkACLDriver(cfg.Auth())))` to
 
 No Docker Compose changes. Justfile:
 
-```
+```makefile
 test-nacl:
     go test ./internal/drivers/nacl/... -v -count=1 -race
 ```
@@ -622,7 +627,7 @@ NACL rules are evaluated in numerical order (lowest first). The first rule that
 matches a packet is applied, and subsequent rules are skipped. This makes rule
 numbering critical:
 
-```
+```text
 Rule 100: ALLOW TCP 443 from 0.0.0.0/0     ← evaluated first
 Rule 200: DENY  TCP 443 from 10.0.0.0/8    ← never reached for 10.x traffic
           (because rule 100 already allowed it)
@@ -642,6 +647,7 @@ without an explicit NACL association, it's automatically associated with the
 default NACL.
 
 The driver:
+
 - **Import**: Supports importing the default NACL. Sets `isDefault: true` in
   outputs. Import mode is `ModeObserved`.
 - **Delete**: Blocks deletion of the default NACL with a terminal 409 error.
@@ -658,6 +664,7 @@ A subnet is ALWAYS associated with exactly one NACL. Changing a subnet's NACL
 is done via `ReplaceNetworkAclAssociation`, which atomically swaps the association.
 
 The driver manages subnet associations as a set:
+
 - **Association**: Call `ReplaceNetworkAclAssociation` to associate the subnet
   with this NACL (moving it from its current NACL).
 - **Disassociation**: Call `ReplaceNetworkAclAssociation` to move the subnet
@@ -672,6 +679,7 @@ The driver manages subnet associations as a set:
 
 Deleting a NACL requires all subnet associations to be removed first. The driver
 handles this automatically:
+
 1. Describe the NACL to get current associations.
 2. For each associated subnet, reassociate it to the VPC's default NACL.
 3. Delete the NACL.
@@ -689,6 +697,7 @@ Same add-before-remove strategy as the SG and Route Table drivers:
 4. **Remove stale rules**: `DeleteEntry` for rules in observed but not desired.
 
 This ordering ensures:
+
 - New allow rules are active before old ones are removed.
 - There's no transient deny-all window during rule updates.
 
@@ -697,12 +706,14 @@ Each rule operation is a separate `restate.Run()` call.
 ### 7. ICMP Rules
 
 NACL rules support ICMP with special semantics:
+
 - `protocol: "1"` (ICMP)
 - `fromPort`: ICMP type (-1 for all types)
 - `toPort`: ICMP code (-1 for all codes)
 
 Common ICMP rules:
-```
+
+```text
 Rule 110: ALLOW ICMP type -1 code -1 from 0.0.0.0/0   (all ICMP)
 Rule 120: ALLOW ICMP type 8  code -1 from 0.0.0.0/0   (echo request / ping)
 ```
