@@ -12,9 +12,12 @@ import (
 	"github.com/praxiscloud/praxis/internal/drivers/eip"
 	"github.com/praxiscloud/praxis/internal/drivers/igw"
 	"github.com/praxiscloud/praxis/internal/drivers/nacl"
+	"github.com/praxiscloud/praxis/internal/drivers/natgw"
 	"github.com/praxiscloud/praxis/internal/drivers/routetable"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
+	"github.com/praxiscloud/praxis/internal/drivers/subnet"
 	"github.com/praxiscloud/praxis/internal/drivers/vpc"
+	"github.com/praxiscloud/praxis/internal/drivers/vpcpeering"
 )
 
 func main() {
@@ -23,9 +26,12 @@ func main() {
 	srv := server.NewRestate().
 		Bind(restate.Reflect(eip.NewElasticIPDriver(cfg.Auth()))).
 		Bind(restate.Reflect(igw.NewIGWDriver(cfg.Auth()))).
+		Bind(restate.Reflect(natgw.NewNATGatewayDriver(cfg.Auth()))).
 		Bind(restate.Reflect(nacl.NewNetworkACLDriver(cfg.Auth()))).
 		Bind(restate.Reflect(routetable.NewRouteTableDriver(cfg.Auth()))).
 		Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
+		Bind(restate.Reflect(subnet.NewSubnetDriver(cfg.Auth()))).
+		Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(cfg.Auth()))).
 		Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
 
 	slog.Info("starting network driver pack", "addr", cfg.ListenAddr)

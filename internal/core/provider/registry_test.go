@@ -11,6 +11,7 @@ import (
 	"github.com/praxiscloud/praxis/internal/drivers/nacl"
 	"github.com/praxiscloud/praxis/internal/drivers/s3"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
+	"github.com/praxiscloud/praxis/internal/drivers/subnet"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -258,6 +259,13 @@ func TestRegistry_Get_NetworkACL(t *testing.T) {
 	adapter, err := registry.Get("NetworkACL")
 	require.NoError(t, err)
 	assert.Equal(t, nacl.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_Subnet(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("Subnet")
+	require.NoError(t, err)
+	assert.Equal(t, subnet.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_NilSafety(t *testing.T) {

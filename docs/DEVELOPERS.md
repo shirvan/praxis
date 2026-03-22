@@ -18,7 +18,7 @@ cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
   praxis-storage/              # Storage driver pack (S3, EBS, future: RDS, DynamoDB...)
-  praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, future: ELB...)
+  praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, future: ELB...)
   praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, future: ASG, Lambda...)
 
 internal/
@@ -56,6 +56,16 @@ internal/
       sg_adapter.go            # SG adapter
       ami_adapter.go           # AMI adapter
       igw_adapter.go           # IGW adapter
+      ebs_adapter.go           # EBS adapter
+      eip_adapter.go           # Elastic IP adapter
+      ec2_adapter.go           # EC2 adapter
+      keypair_adapter.go       # Key Pair adapter
+      vpc_adapter.go           # VPC adapter
+      nacl_adapter.go          # Network ACL adapter
+      routetable_adapter.go    # Route Table adapter
+      subnet_adapter.go        # Subnet adapter
+      natgw_adapter.go         # NAT Gateway adapter
+      vpcpeering_adapter.go    # VPC Peering adapter
     registry/                  # Template + policy registries
       template_registry.go     # Restate VO for template storage
       policy_registry.go       # Restate VO for policy storage
@@ -77,6 +87,11 @@ internal/
     ami/                       # AMI driver
     ebs/                       # EBS volume driver
     keypair/                   # Key Pair driver
+    nacl/                      # Network ACL driver
+    routetable/                # Route Table driver
+    subnet/                    # Subnet driver
+    natgw/                     # NAT Gateway driver
+    vpcpeering/                # VPC Peering Connection driver
   infra/
     awsclient/                 # Shared AWS client setup
     ratelimit/                 # Token bucket rate limiter
@@ -85,12 +100,19 @@ pkg/types/                     # Public shared types
 
 schemas/aws/                   # CUE schemas per provider/service
   s3/s3.cue
+  ec2/ec2.cue
   ec2/sg.cue
   ec2/ami.cue
   ec2/eip.cue
   ec2/keypair.cue
   ebs/ebs.cue
   igw/igw.cue
+  nacl/nacl.cue
+  routetable/routetable.cue
+  subnet/subnet.cue
+  natgw/natgw.cue
+  vpc/vpc.cue
+  vpcpeering/vpcpeering.cue
 
 tests/integration/             # Integration tests (Testcontainers)
 ```
@@ -129,6 +151,13 @@ just test-ami        # AMI driver
 just test-ebs        # EBS driver
 just test-eip        # EIP driver
 just test-template   # Template engine + resolver
+just test-igw        # IGW driver
+just test-nacl       # NACL driver
+just test-routetable # Route Table driver
+just test-subnet     # Subnet driver
+just test-natgw      # NAT Gateway driver
+just test-vpcpeering # VPC Peering driver
+just test-keypair    # Key Pair driver
 
 # Lint
 just lint

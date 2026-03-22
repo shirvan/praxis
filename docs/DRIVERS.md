@@ -344,7 +344,7 @@ cmd/praxis-<pack>/
 | Pack | Binary | Drivers |
 | --- | --- | --- |
 | Storage | `cmd/praxis-storage/` | S3, EBS (future: RDS, DynamoDB, SQS, SNS) |
-| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL (future: Subnet, RouteTable, NatGateway, ELB, Route 53) |
+| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering (future: ELB, Route 53) |
 | Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2 (future: Auto Scaling, Lambda, ECS, EKS) |
 
 ---
@@ -461,3 +461,27 @@ Manages EC2 key pairs. Spec fields: `region`, `keyName`, `keyType`, `tags`.
 Outputs: `keyPairId`, `keyFingerprint`, `keyName`.
 
 Key: `<region>~<keyName>`. Scope: Region.
+
+### Subnet
+
+Manages AWS VPC Subnets. Spec fields: `region`, `vpcId`, `cidrBlock`, `availabilityZone`, `mapPublicIpOnLaunch`, `tags`.
+
+Outputs: `subnetId`, `arn`, `vpcId`, `cidrBlock`, `availabilityZone`, `availabilityZoneId`, `mapPublicIpOnLaunch`, `state`, `ownerId`, `availableIpCount`.
+
+Key: `<vpcId>~<name>`. Scope: Custom.
+
+### NATGateway
+
+Manages AWS NAT Gateways. Spec fields: `region`, `subnetId`, `connectivityType`, `allocationId`, `tags`.
+
+Outputs: `natGatewayId`, `subnetId`, `vpcId`, `connectivityType`, `state`, `publicIp`, `privateIp`, `allocationId`, `networkInterfaceId`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### VPCPeeringConnection
+
+Manages AWS VPC Peering Connections. Spec fields: `region`, `requesterVpcId`, `accepterVpcId`, `autoAccept`, `requesterOptions`, `accepterOptions`, `tags`.
+
+Outputs: `vpcPeeringConnectionId`, `requesterVpcId`, `accepterVpcId`, `requesterCidrBlock`, `accepterCidrBlock`, `status`, `requesterOwnerId`, `accepterOwnerId`.
+
+Key: `<region>~<name>`. Scope: Region.

@@ -118,10 +118,13 @@ func NewRegistry() *Registry {
 		NewEC2AdapterWithRegistry(accounts),
 		NewKeyPairAdapterWithRegistry(accounts),
 		NewEIPAdapterWithRegistry(accounts),
+		NewNATGatewayAdapterWithRegistry(accounts),
 		NewNetworkACLAdapterWithRegistry(accounts),
 		NewRouteTableAdapterWithRegistry(accounts),
 		NewSecurityGroupAdapterWithRegistry(accounts),
+		NewSubnetAdapterWithRegistry(accounts),
 		NewIGWAdapterWithRegistry(accounts),
+		NewVPCPeeringAdapterWithRegistry(accounts),
 		NewVPCAdapterWithRegistry(accounts),
 	)
 }

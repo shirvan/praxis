@@ -178,6 +178,10 @@ test-eip:
 test-igw:
     go test ./internal/drivers/igw/... -v -count=1 -race
 
+# Run NATGateway driver unit tests only
+test-natgw:
+	go test ./internal/drivers/natgw/... -v -count=1 -race
+
 # Run NetworkACL driver unit tests only
 test-nacl:
     go test ./internal/drivers/nacl/... -v -count=1 -race
@@ -202,9 +206,29 @@ test-ami:
 test-sg:
     go test ./internal/drivers/sg/... -v -count=1 -race
 
+# Run Subnet driver unit tests only
+test-subnet:
+    go test ./internal/drivers/subnet/... -v -count=1 -race
+
 # Run VPC driver unit tests only
 test-vpc:
     go test ./internal/drivers/vpc/... -v -count=1 -race
+
+# Run VPC peering driver unit tests only
+test-vpcpeering:
+    go test ./internal/drivers/vpcpeering/... -v -count=1 -race
+
+# Run Subnet integration tests only
+test-subnet-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestSubnet -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-subnet-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
 
 # Run template engine + resolver unit tests
 test-template:
@@ -258,6 +282,18 @@ test-igw-integration:
         sleep "$heartbeat"
     done
     wait "$pid"
+
+# Run NATGateway integration tests (requires Docker — Testcontainers + LocalStack)
+test-natgw-integration:
+	#!/bin/sh
+	heartbeat={{test_heartbeat_seconds}}
+	go test ./tests/integration/ -run TestNATGW -v -count=1 -tags=integration -timeout=10m &
+	pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		echo "[test-natgw-integration] still running at $(date +%H:%M:%S)"
+		sleep "$heartbeat"
+	done
+	wait "$pid"
 
 # Run NetworkACL integration tests (requires Docker — Testcontainers + LocalStack)
 test-nacl-integration:
