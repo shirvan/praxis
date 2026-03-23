@@ -15,7 +15,7 @@ import (
 	"github.com/aws/smithy-go"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/infra/ratelimit"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
 type LambdaAPI interface {

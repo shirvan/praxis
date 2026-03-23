@@ -295,7 +295,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/acm` to `go.mod`.
 ```go
 package acmcert
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "ACMCertificate"
 
@@ -1273,10 +1273,10 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers/acmcert"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
-    "github.com/praxiscloud/praxis/pkg/types"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers/acmcert"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/pkg/types"
 )
 
 type ACMCertificateAdapter struct {

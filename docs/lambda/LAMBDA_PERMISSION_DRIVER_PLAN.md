@@ -235,7 +235,7 @@ Permission operations use the same Lambda API client. Reuses `NewLambdaClient()`
 ```go
 package lambdaperm
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "LambdaPermission"
 
@@ -837,7 +837,7 @@ Add `NewLambdaPermissionAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-compute/main.go` — **MODIFY**
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/lambdaperm"
+import "github.com/shirvan/praxis/internal/drivers/lambdaperm"
 
 Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(cfg.Auth())))
 ```

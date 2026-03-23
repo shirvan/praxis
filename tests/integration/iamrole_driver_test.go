@@ -17,9 +17,9 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
-	"github.com/praxiscloud/praxis/internal/drivers/iamrole"
-	"github.com/praxiscloud/praxis/internal/infra/awsclient"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/drivers/iamrole"
+	"github.com/shirvan/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 const lambdaAssumeRolePolicyDoc = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}`

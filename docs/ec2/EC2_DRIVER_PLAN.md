@@ -320,7 +320,7 @@ one package-level constant for `ServiceName`, typed spec/outputs/observed/state 
 ```go
 package ec2
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for EC2 instances.
 // This becomes the URL path component (e.g., /EC2Instance/<key>/Provision).
@@ -1207,10 +1207,10 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
-    "github.com/praxiscloud/praxis/pkg/types"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/pkg/types"
 )
 
 type EC2InstanceDriver struct {
@@ -1893,10 +1893,10 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers/ec2"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
-    "github.com/praxiscloud/praxis/pkg/types"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers/ec2"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/pkg/types"
 )
 
 // EC2Adapter adapts generic resource documents to the strongly typed EC2 instance driver.
@@ -2241,8 +2241,8 @@ import (
     restate "github.com/restatedev/sdk-go"
     "github.com/restatedev/sdk-go/server"
 
-    "github.com/praxiscloud/praxis/internal/core/config"
-    "github.com/praxiscloud/praxis/internal/drivers/ec2"
+    "github.com/shirvan/praxis/internal/core/config"
+    "github.com/shirvan/praxis/internal/drivers/ec2"
 )
 
 func main() {

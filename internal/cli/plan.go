@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // newPlanCmd builds the `praxis plan` subcommand.

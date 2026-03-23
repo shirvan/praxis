@@ -227,7 +227,7 @@ package sqs
 ```go
 package sqspolicy
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "SQSQueuePolicy"
 
@@ -888,7 +888,7 @@ Add `NewSQSQueuePolicyAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-storage/main.go` — **MODIFY**
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/sqspolicy"
+import "github.com/shirvan/praxis/internal/drivers/sqspolicy"
 
 Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(cfg.Auth())))
 ```

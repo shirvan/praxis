@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/route53record"
+	"github.com/shirvan/praxis/internal/drivers/route53record"
 )
 
 func TestRoute53RecordAdapter_DecodeSpecAndBuildKey(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/core/registry"
-	coretemplate "github.com/praxiscloud/praxis/internal/core/template"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/registry"
+	coretemplate "github.com/shirvan/praxis/internal/core/template"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // RegisterTemplate delegates template persistence to the registry object.

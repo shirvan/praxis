@@ -210,7 +210,7 @@ Uses the shared `NewRDSClient` from `internal/infra/awsclient/client.go`.
 ```go
 package dbparametergroup
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "DBParameterGroup"
 

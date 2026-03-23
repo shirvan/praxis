@@ -1,6 +1,6 @@
 package ec2
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for EC2 instances.
 const ServiceName = "EC2Instance"

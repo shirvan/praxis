@@ -1,6 +1,6 @@
 package lambdaperm
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "LambdaPermission"
 

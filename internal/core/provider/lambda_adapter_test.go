@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/lambda"
+	"github.com/shirvan/praxis/internal/drivers/lambda"
 )
 
 func TestLambdaAdapter_BuildKeyAndDecodeSpec(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/core/auth"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // Adapter bridges a template resource kind to an existing typed driver.

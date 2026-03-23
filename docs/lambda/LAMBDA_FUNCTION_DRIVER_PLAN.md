@@ -321,7 +321,7 @@ This follows the exact pattern of `NewEC2Client()` and `NewS3Client()`.
 ```go
 package lambda
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for Lambda Functions.
 const ServiceName = "LambdaFunction"
@@ -1135,7 +1135,7 @@ adapter list.
 Add Lambda Function driver binding:
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/lambda"
+import "github.com/shirvan/praxis/internal/drivers/lambda"
 
 srv := server.NewRestate().
     Bind(restate.Reflect(ami.NewAMIDriver(cfg.Auth()))).

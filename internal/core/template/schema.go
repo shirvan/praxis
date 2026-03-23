@@ -6,7 +6,7 @@ import (
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // ExtractVariableSchema parses CUE source and returns the variable schema.

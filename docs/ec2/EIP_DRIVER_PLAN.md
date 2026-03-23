@@ -225,7 +225,7 @@ methods on the EC2 SDK client. `NewEC2Client` already exists.
 ```go
 package eip
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "ElasticIP"
 

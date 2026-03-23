@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/iamrole"
+	"github.com/shirvan/praxis/internal/drivers/iamrole"
 )
 
 func TestIAMRoleAdapter_DecodeSpecAndBuildKey(t *testing.T) {

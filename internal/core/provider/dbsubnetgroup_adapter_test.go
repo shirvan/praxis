@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/dbsubnetgroup"
+	"github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
 )
 
 func TestDBSubnetGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // PolicyRegistry stores policy records keyed by scope identifier.

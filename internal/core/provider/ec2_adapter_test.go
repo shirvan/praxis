@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/ec2"
+	"github.com/shirvan/praxis/internal/drivers/ec2"
 )
 
 func TestEC2Adapter_BuildKeyAndDecodeSpec(t *testing.T) {

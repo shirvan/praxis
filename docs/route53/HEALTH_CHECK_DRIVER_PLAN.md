@@ -317,7 +317,7 @@ Hosted Zone and DNS Record drivers. No additional changes needed.
 ```go
 package route53healthcheck
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "Route53HealthCheck"
 

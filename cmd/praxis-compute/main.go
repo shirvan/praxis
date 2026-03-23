@@ -8,14 +8,14 @@ import (
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
-	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/drivers/ami"
-	"github.com/praxiscloud/praxis/internal/drivers/ec2"
-	"github.com/praxiscloud/praxis/internal/drivers/esm"
-	"github.com/praxiscloud/praxis/internal/drivers/keypair"
-	"github.com/praxiscloud/praxis/internal/drivers/lambda"
-	"github.com/praxiscloud/praxis/internal/drivers/lambdalayer"
-	"github.com/praxiscloud/praxis/internal/drivers/lambdaperm"
+	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/drivers/ami"
+	"github.com/shirvan/praxis/internal/drivers/ec2"
+	"github.com/shirvan/praxis/internal/drivers/esm"
+	"github.com/shirvan/praxis/internal/drivers/keypair"
+	"github.com/shirvan/praxis/internal/drivers/lambda"
+	"github.com/shirvan/praxis/internal/drivers/lambdalayer"
+	"github.com/shirvan/praxis/internal/drivers/lambdaperm"
 )
 
 func main() {

@@ -269,7 +269,7 @@ This follows the exact pattern of `NewEC2Client()`, `NewS3Client()`, etc.
 ```go
 package ecscluster
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for ECS Clusters.
 const ServiceName = "ECSCluster"

@@ -14,7 +14,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ruleCall struct {

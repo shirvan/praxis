@@ -8,12 +8,12 @@ import (
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
-	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/drivers/iamgroup"
-	"github.com/praxiscloud/praxis/internal/drivers/iaminstanceprofile"
-	"github.com/praxiscloud/praxis/internal/drivers/iampolicy"
-	"github.com/praxiscloud/praxis/internal/drivers/iamrole"
-	"github.com/praxiscloud/praxis/internal/drivers/iamuser"
+	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/drivers/iamgroup"
+	"github.com/shirvan/praxis/internal/drivers/iaminstanceprofile"
+	"github.com/shirvan/praxis/internal/drivers/iampolicy"
+	"github.com/shirvan/praxis/internal/drivers/iamrole"
+	"github.com/shirvan/praxis/internal/drivers/iamuser"
 )
 
 func main() {

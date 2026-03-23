@@ -19,8 +19,8 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
-	"github.com/praxiscloud/praxis/internal/drivers/s3"
-	"github.com/praxiscloud/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/internal/drivers/s3"
+	"github.com/shirvan/praxis/internal/infra/awsclient"
 )
 
 // localstackEndpoint is the URL for the LocalStack instance.

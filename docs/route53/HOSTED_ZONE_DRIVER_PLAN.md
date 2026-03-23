@@ -267,7 +267,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/route53` to `go.mod`.
 ```go
 package route53zone
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "Route53HostedZone"
 

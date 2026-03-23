@@ -12,12 +12,12 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/restatedev/sdk-go/server"
 
-	"github.com/praxiscloud/praxis/internal/core/command"
-	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/core/orchestrator"
-	"github.com/praxiscloud/praxis/internal/core/provider"
-	"github.com/praxiscloud/praxis/internal/core/registry"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/command"
+	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
+	"github.com/shirvan/praxis/internal/core/provider"
+	"github.com/shirvan/praxis/internal/core/registry"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // This binary exposes the full Praxis Core surface under one Restate-discoverable

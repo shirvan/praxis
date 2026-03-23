@@ -318,7 +318,7 @@ ESM operations use the same Lambda API client. Reuses `NewLambdaClient()`.
 ```go
 package esm
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "EventSourceMapping"
 
@@ -1163,7 +1163,7 @@ Add `NewEventSourceMappingAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-compute/main.go` — **MODIFY**
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/esm"
+import "github.com/shirvan/praxis/internal/drivers/esm"
 
 Bind(restate.Reflect(esm.NewEventSourceMappingDriver(cfg.Auth())))
 ```

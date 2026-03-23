@@ -10,8 +10,8 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/core/template"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/template"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // TemplateRegistry stores one durable record per template name.

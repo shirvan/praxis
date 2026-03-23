@@ -5,7 +5,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // TemplateIndex stores lightweight template summaries behind a fixed key.

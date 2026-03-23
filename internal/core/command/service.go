@@ -12,11 +12,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 
-	"github.com/praxiscloud/praxis/internal/core/auth"
-	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/core/provider"
-	"github.com/praxiscloud/praxis/internal/core/resolver"
-	"github.com/praxiscloud/praxis/internal/core/template"
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/core/provider"
+	"github.com/shirvan/praxis/internal/core/resolver"
+	"github.com/shirvan/praxis/internal/core/template"
 )
 
 // PraxisCommandService is the high-level command entry point for Praxis Core.

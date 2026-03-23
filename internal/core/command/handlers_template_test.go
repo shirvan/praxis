@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	coretemplate "github.com/praxiscloud/praxis/internal/core/template"
+	coretemplate "github.com/shirvan/praxis/internal/core/template"
 )
 
 func TestValidationErrors_FromTemplateErrors(t *testing.T) {

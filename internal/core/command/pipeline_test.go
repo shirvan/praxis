@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/core/dag"
-	"github.com/praxiscloud/praxis/internal/core/resolver"
-	"github.com/praxiscloud/praxis/internal/core/template"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/dag"
+	"github.com/shirvan/praxis/internal/core/resolver"
+	"github.com/shirvan/praxis/internal/core/template"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestResolveTemplateSource_Inline(t *testing.T) {

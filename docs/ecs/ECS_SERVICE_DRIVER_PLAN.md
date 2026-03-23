@@ -412,7 +412,7 @@ No additional client factory is needed — all ECS drivers share the same `ecs.C
 ```go
 package ecsservice
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for ECS Services.
 const ServiceName = "ECSService"

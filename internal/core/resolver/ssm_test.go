@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/core/template"
+	"github.com/shirvan/praxis/internal/core/template"
 )
 
 // mockSSMClient implements SSMClient for testing.

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/auroracluster"
+	"github.com/shirvan/praxis/internal/drivers/auroracluster"
 )
 
 func TestAuroraClusterAdapter_DecodeSpecAndBuildKey(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // DeploymentStateObj is the durable, per-deployment source of truth.

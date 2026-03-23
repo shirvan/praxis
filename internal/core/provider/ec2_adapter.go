@@ -8,10 +8,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/core/auth"
-	"github.com/praxiscloud/praxis/internal/drivers/ec2"
-	"github.com/praxiscloud/praxis/internal/infra/awsclient"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/drivers/ec2"
+	"github.com/shirvan/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 type EC2Adapter struct {

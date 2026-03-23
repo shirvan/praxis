@@ -5,7 +5,7 @@ package config
 import (
 	"os"
 
-	"github.com/praxiscloud/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/auth"
 )
 
 // Config holds all configuration for Praxis services.

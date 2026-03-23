@@ -15,7 +15,7 @@ import (
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/praxiscloud/praxis/internal/infra/ratelimit"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
 var errNotFound = errors.New("iam policy not found")

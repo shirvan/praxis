@@ -268,7 +268,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/ecr` to `go.mod`.
 ```go
 package ecrrepo
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "ECRRepository"
 
@@ -563,7 +563,7 @@ import (
     "fmt"
 
     restate "github.com/restatedev/sdk-go"
-    "github.com/praxiscloud/praxis/internal/drivers"
+    "github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift returns true if the desired spec differs from the observed state.
@@ -959,10 +959,10 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers/ecrrepo"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
-    "github.com/praxiscloud/praxis/pkg/types"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers/ecrrepo"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/pkg/types"
 )
 
 const ecrRepositoryKind = "ECRRepository"
@@ -1036,7 +1036,7 @@ func NewRegistry() *Registry {
 ```go
 import (
     // ... existing imports ...
-    ecrrepo "github.com/praxiscloud/praxis/internal/drivers/ecrrepo"
+    ecrrepo "github.com/shirvan/praxis/internal/drivers/ecrrepo"
 )
 
 srv := server.NewRestate().

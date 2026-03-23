@@ -106,10 +106,10 @@ import (
     restate "github.com/restatedev/sdk-go"
     server "github.com/restatedev/sdk-go/server"
 
-    "github.com/praxiscloud/praxis/internal/core/config"
-    "github.com/praxiscloud/praxis/internal/drivers/route53zone"
-    "github.com/praxiscloud/praxis/internal/drivers/route53record"
-    "github.com/praxiscloud/praxis/internal/drivers/route53healthcheck"
+    "github.com/shirvan/praxis/internal/core/config"
+    "github.com/shirvan/praxis/internal/drivers/route53zone"
+    "github.com/shirvan/praxis/internal/drivers/route53record"
+    "github.com/shirvan/praxis/internal/drivers/route53healthcheck"
 )
 
 func main() {

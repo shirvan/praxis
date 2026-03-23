@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/praxiscloud/praxis/internal/drivers/vpcpeering"
+	"github.com/shirvan/praxis/internal/drivers/vpcpeering"
 )
 
 func TestHasDrift_NoDrift(t *testing.T) {

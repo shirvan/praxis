@@ -340,7 +340,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/rds` to `go.mod`.
 ```go
 package rdsinstance
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "RDSInstance"
 

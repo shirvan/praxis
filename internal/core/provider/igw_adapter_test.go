@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/igw"
+	"github.com/shirvan/praxis/internal/drivers/igw"
 )
 
 func TestIGWAdapter_BuildKeyAndDecodeSpec(t *testing.T) {

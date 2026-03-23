@@ -8,13 +8,13 @@ import (
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
-	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/drivers/auroracluster"
-	"github.com/praxiscloud/praxis/internal/drivers/dbparametergroup"
-	"github.com/praxiscloud/praxis/internal/drivers/dbsubnetgroup"
-	"github.com/praxiscloud/praxis/internal/drivers/ebs"
-	"github.com/praxiscloud/praxis/internal/drivers/rdsinstance"
-	"github.com/praxiscloud/praxis/internal/drivers/s3"
+	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/drivers/auroracluster"
+	"github.com/shirvan/praxis/internal/drivers/dbparametergroup"
+	"github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
+	"github.com/shirvan/praxis/internal/drivers/ebs"
+	"github.com/shirvan/praxis/internal/drivers/rdsinstance"
+	"github.com/shirvan/praxis/internal/drivers/s3"
 )
 
 func main() {

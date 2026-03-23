@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/natgw"
+	"github.com/shirvan/praxis/internal/drivers/natgw"
 )
 
 func TestNATGatewayAdapter_DecodeSpecAndBuildKey(t *testing.T) {

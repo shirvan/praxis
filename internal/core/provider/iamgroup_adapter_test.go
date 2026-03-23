@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/iamgroup"
+	"github.com/shirvan/praxis/internal/drivers/iamgroup"
 )
 
 func TestIAMGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {

@@ -259,7 +259,7 @@ instance and EBS volume APIs. EBS operations (`CreateVolume`, `DescribeVolumes`,
 ```go
 package ebs
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for EBS volumes.
 const ServiceName = "EBSVolume"

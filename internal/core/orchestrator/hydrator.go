@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/praxiscloud/praxis/internal/core/jsonpath"
-	"github.com/praxiscloud/praxis/internal/core/template"
+	"github.com/shirvan/praxis/internal/core/jsonpath"
+	"github.com/shirvan/praxis/internal/core/template"
 )
 
 // HydrateExprs resolves dispatch-time expressions against collected resource

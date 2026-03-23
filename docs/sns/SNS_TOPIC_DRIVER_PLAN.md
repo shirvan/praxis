@@ -261,7 +261,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/sns` to `go.mod`.
 ```go
 package snstopic
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "SNSTopic"
 
@@ -1242,7 +1242,7 @@ Add `NewSNSTopicAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-storage/main.go` — **MODIFY**
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/snstopic"
+import "github.com/shirvan/praxis/internal/drivers/snstopic"
 
 Bind(restate.Reflect(snstopic.NewSNSTopicDriver(cfg.Auth())))
 ```

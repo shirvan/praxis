@@ -3,7 +3,7 @@ package command
 import (
 	restate "github.com/restatedev/sdk-go"
 
-	corediff "github.com/praxiscloud/praxis/internal/core/diff"
+	corediff "github.com/shirvan/praxis/internal/core/diff"
 )
 
 // Plan runs the full rendering and validation pipeline but stops before any

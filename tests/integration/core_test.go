@@ -42,17 +42,17 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
-	"github.com/praxiscloud/praxis/internal/core/command"
-	"github.com/praxiscloud/praxis/internal/core/config"
-	"github.com/praxiscloud/praxis/internal/core/orchestrator"
-	"github.com/praxiscloud/praxis/internal/core/provider"
-	"github.com/praxiscloud/praxis/internal/core/registry"
-	driverec2 "github.com/praxiscloud/praxis/internal/drivers/ec2"
-	driverkeypair "github.com/praxiscloud/praxis/internal/drivers/keypair"
-	drivers3 "github.com/praxiscloud/praxis/internal/drivers/s3"
-	driversg "github.com/praxiscloud/praxis/internal/drivers/sg"
-	"github.com/praxiscloud/praxis/internal/infra/awsclient"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/command"
+	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
+	"github.com/shirvan/praxis/internal/core/provider"
+	"github.com/shirvan/praxis/internal/core/registry"
+	driverec2 "github.com/shirvan/praxis/internal/drivers/ec2"
+	driverkeypair "github.com/shirvan/praxis/internal/drivers/keypair"
+	drivers3 "github.com/shirvan/praxis/internal/drivers/s3"
+	driversg "github.com/shirvan/praxis/internal/drivers/sg"
+	"github.com/shirvan/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // ---------------------------------------------------------------------------

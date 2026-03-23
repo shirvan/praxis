@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/core/dag"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/dag"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestExecutionState_ApplyFailurePropagatesSkippedDependents(t *testing.T) {

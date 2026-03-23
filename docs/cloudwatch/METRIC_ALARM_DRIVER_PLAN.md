@@ -314,7 +314,7 @@ package (not `cloudwatchlogs`).
 ```go
 package metricalarm
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for CloudWatch Metric Alarms.
 const ServiceName = "MetricAlarm"

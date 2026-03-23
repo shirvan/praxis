@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/ami"
+	"github.com/shirvan/praxis/internal/drivers/ami"
 )
 
 type mockAMIAPI struct {

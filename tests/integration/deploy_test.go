@@ -26,8 +26,8 @@ import (
 
 	"github.com/restatedev/sdk-go/ingress"
 
-	"github.com/praxiscloud/praxis/internal/core/command"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/command"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // ---------------------------------------------------------------------------

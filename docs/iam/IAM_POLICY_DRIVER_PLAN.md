@@ -196,7 +196,7 @@ No additional changes needed if the IAM Role driver has already been implemented
 ```go
 package iampolicy
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "IAMPolicy"
 

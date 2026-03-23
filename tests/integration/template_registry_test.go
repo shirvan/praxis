@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/core/command"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/command"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestTemplateRegistry_RegisterGetListAndApplyByRef(t *testing.T) {

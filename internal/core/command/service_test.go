@@ -3,7 +3,7 @@ package command
 import (
 	"testing"
 
-	"github.com/praxiscloud/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

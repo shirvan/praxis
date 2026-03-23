@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/praxiscloud/praxis/internal/drivers/sg"
+	"github.com/shirvan/praxis/internal/drivers/sg"
 )
 
 func TestNormalize_Empty(t *testing.T) {

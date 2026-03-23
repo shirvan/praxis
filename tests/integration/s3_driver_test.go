@@ -17,8 +17,8 @@ import (
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
 
-	"github.com/praxiscloud/praxis/internal/drivers/s3"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/drivers/s3"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // uniqueBucket generates a unique bucket name for each test to prevent collisions.

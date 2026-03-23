@@ -22,9 +22,9 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
-	"github.com/praxiscloud/praxis/internal/drivers/lambda"
-	"github.com/praxiscloud/praxis/internal/infra/awsclient"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/drivers/lambda"
+	"github.com/shirvan/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 const testLambdaRole = "arn:aws:iam::000000000000:role/lambda-role"

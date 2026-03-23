@@ -1,4 +1,4 @@
-module github.com/praxiscloud/praxis
+module github.com/shirvan/praxis
 
 go 1.25.0
 
@@ -14,6 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/rds v1.116.3
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.4
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.4
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.24
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.68.2
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.8
 	github.com/aws/smithy-go v1.24.2
@@ -39,7 +40,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.20 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.19 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.24 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.16 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

@@ -258,7 +258,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/iam` to `go.mod`.
 ```go
 package iamrole
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "IAMRole"
 

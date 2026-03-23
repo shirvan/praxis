@@ -11,7 +11,7 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/praxiscloud/praxis/internal/infra/ratelimit"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
 type KeyPairAPI interface {

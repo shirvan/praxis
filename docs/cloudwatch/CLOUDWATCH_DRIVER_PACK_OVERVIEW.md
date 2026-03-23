@@ -103,10 +103,10 @@ import (
     restate "github.com/restatedev/sdk-go"
     server "github.com/restatedev/sdk-go/server"
 
-    "github.com/praxiscloud/praxis/internal/core/config"
-    "github.com/praxiscloud/praxis/internal/drivers/loggroup"
-    "github.com/praxiscloud/praxis/internal/drivers/metricalarm"
-    "github.com/praxiscloud/praxis/internal/drivers/dashboard"
+    "github.com/shirvan/praxis/internal/core/config"
+    "github.com/shirvan/praxis/internal/drivers/loggroup"
+    "github.com/shirvan/praxis/internal/drivers/metricalarm"
+    "github.com/shirvan/praxis/internal/drivers/dashboard"
 )
 
 func main() {

@@ -240,7 +240,7 @@ Layer operations use the same Lambda API client as the function driver. The
 ```go
 package lambdalayer
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "LambdaLayer"
 
@@ -779,7 +779,7 @@ Add `NewLambdaLayerAdapterWithRegistry(accounts)` to the `NewRegistry()` functio
 Add Lambda Layer driver binding:
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/lambdalayer"
+import "github.com/shirvan/praxis/internal/drivers/lambdalayer"
 
 Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(cfg.Auth())))
 ```

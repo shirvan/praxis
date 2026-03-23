@@ -304,7 +304,7 @@ same client factory:
 ```go
 package ecrpolicy
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "ECRLifecyclePolicy"
 
@@ -794,9 +794,9 @@ import (
 
     "github.com/aws/aws-sdk-go-v2/aws"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers/ecrpolicy"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers/ecrpolicy"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
 )
 
 const ecrLifecyclePolicyKind = "ECRLifecyclePolicy"
@@ -887,7 +887,7 @@ func NewRegistry() *Registry {
 ```go
 import (
     // ... existing imports ...
-    ecrpolicy "github.com/praxiscloud/praxis/internal/drivers/ecrpolicy"
+    ecrpolicy "github.com/shirvan/praxis/internal/drivers/ecrpolicy"
 )
 
 srv := server.NewRestate().

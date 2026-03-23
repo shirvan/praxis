@@ -439,7 +439,7 @@ No additional client factory is needed.
 ```go
 package ecstaskdef
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for ECS Task Definitions.
 const ServiceName = "ECSTaskDefinition"

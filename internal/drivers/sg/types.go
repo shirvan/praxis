@@ -1,6 +1,6 @@
 package sg
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 type SecurityGroupSpec struct {
 	Account      string            `json:"account,omitempty"`

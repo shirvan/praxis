@@ -239,7 +239,7 @@ package nacl
 ```go
 package nacl
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "NetworkACL"
 

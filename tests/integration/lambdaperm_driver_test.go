@@ -19,9 +19,9 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
-	"github.com/praxiscloud/praxis/internal/drivers/lambdaperm"
-	"github.com/praxiscloud/praxis/internal/infra/awsclient"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/drivers/lambdaperm"
+	"github.com/shirvan/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 func uniqueStatementId(t *testing.T) string {

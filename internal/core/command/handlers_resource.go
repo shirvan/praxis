@@ -6,8 +6,8 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/core/orchestrator"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // DeleteDeployment validates a deployment delete request and hands the actual

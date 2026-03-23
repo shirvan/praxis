@@ -238,7 +238,7 @@ Subnet API calls use the same EC2 SDK client (`NewEC2Client`).
 ```go
 package subnet
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "Subnet"
 

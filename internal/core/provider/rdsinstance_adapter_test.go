@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/rdsinstance"
+	"github.com/shirvan/praxis/internal/drivers/rdsinstance"
 )
 
 func TestRDSInstanceAdapter_DecodeSpecAndBuildKey(t *testing.T) {

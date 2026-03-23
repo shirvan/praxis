@@ -12,7 +12,7 @@ import (
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/praxiscloud/praxis/internal/infra/ratelimit"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
 type RDSInstanceAPI interface {

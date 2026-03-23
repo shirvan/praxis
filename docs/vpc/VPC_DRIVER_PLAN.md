@@ -300,7 +300,7 @@ one package-level constant for `ServiceName`, typed spec/outputs/observed/state 
 ```go
 package vpc
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for VPCs.
 // This becomes the URL path component (e.g., /VPC/<key>/Provision).
@@ -1000,10 +1000,10 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
-    "github.com/praxiscloud/praxis/pkg/types"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/pkg/types"
 )
 
 type VPCDriver struct {
@@ -1698,10 +1698,10 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/praxiscloud/praxis/internal/core/auth"
-    "github.com/praxiscloud/praxis/internal/drivers/vpc"
-    "github.com/praxiscloud/praxis/internal/infra/awsclient"
-    "github.com/praxiscloud/praxis/pkg/types"
+    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/drivers/vpc"
+    "github.com/shirvan/praxis/internal/infra/awsclient"
+    "github.com/shirvan/praxis/pkg/types"
 )
 
 // VPCAdapter adapts generic resource documents to the strongly typed VPC driver.
@@ -2017,9 +2017,9 @@ import (
     restate "github.com/restatedev/sdk-go"
     "github.com/restatedev/sdk-go/server"
 
-    "github.com/praxiscloud/praxis/internal/core/config"
-    "github.com/praxiscloud/praxis/internal/drivers/sg"
-    "github.com/praxiscloud/praxis/internal/drivers/vpc"
+    "github.com/shirvan/praxis/internal/core/config"
+    "github.com/shirvan/praxis/internal/drivers/sg"
+    "github.com/shirvan/praxis/internal/drivers/vpc"
 )
 
 func main() {

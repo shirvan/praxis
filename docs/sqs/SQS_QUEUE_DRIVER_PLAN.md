@@ -320,7 +320,7 @@ This requires adding `github.com/aws/aws-sdk-go-v2/service/sqs` to `go.mod`.
 ```go
 package sqs
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "SQSQueue"
 
@@ -1399,7 +1399,7 @@ Add `NewSQSQueueAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-storage/main.go` — **MODIFY**
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/sqs"
+import "github.com/shirvan/praxis/internal/drivers/sqs"
 
 Bind(restate.Reflect(sqs.NewSQSQueueDriver(cfg.Auth())))
 ```

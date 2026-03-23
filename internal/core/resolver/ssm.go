@@ -10,8 +10,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"github.com/praxiscloud/praxis/internal/core/jsonpath"
-	"github.com/praxiscloud/praxis/internal/core/template"
+	"github.com/shirvan/praxis/internal/core/jsonpath"
+	"github.com/shirvan/praxis/internal/core/template"
 )
 
 const ssmBatchSize = 10

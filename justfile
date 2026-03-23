@@ -767,8 +767,8 @@ release-build VERSION: (_validate-version VERSION)
     VERSION="{{VERSION}}"
     DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     DIST="dist/${VERSION}"
-    LDFLAGS="-X github.com/praxiscloud/praxis/internal/cli.version=${VERSION} \
-             -X github.com/praxiscloud/praxis/internal/cli.buildDate=${DATE}"
+    LDFLAGS="-X github.com/shirvan/praxis/internal/cli.version=${VERSION} \
+             -X github.com/shirvan/praxis/internal/cli.buildDate=${DATE}"
 
     mkdir -p "${DIST}"
 
@@ -877,8 +877,8 @@ release-service-build SERVICE VERSION: (_validate-service SERVICE) (_validate-ve
     SERVICE="{{SERVICE}}"
     DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     DIST="dist/${SERVICE}/${VERSION}"
-    LDFLAGS="-X github.com/praxiscloud/praxis/internal/cli.version=${VERSION} \
-             -X github.com/praxiscloud/praxis/internal/cli.buildDate=${DATE}"
+    LDFLAGS="-X github.com/shirvan/praxis/internal/cli.version=${VERSION} \
+             -X github.com/shirvan/praxis/internal/cli.buildDate=${DATE}"
 
     mkdir -p "${DIST}"
 

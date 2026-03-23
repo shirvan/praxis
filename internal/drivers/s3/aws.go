@@ -11,7 +11,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/praxiscloud/praxis/internal/infra/ratelimit"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
 // S3API abstracts the AWS S3 SDK operations that the driver uses.

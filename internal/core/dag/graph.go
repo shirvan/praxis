@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // Graph is the canonical in-memory representation of a deployment dependency

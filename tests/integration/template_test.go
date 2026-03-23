@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/core/resolver"
+	"github.com/shirvan/praxis/internal/core/resolver"
 )
 
 func localstackSSMClient(t *testing.T) *ssm.Client {

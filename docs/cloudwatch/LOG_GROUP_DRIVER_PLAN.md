@@ -272,7 +272,7 @@ This follows the exact pattern of `NewEC2Client()` and `NewS3Client()`.
 ```go
 package loggroup
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for CloudWatch Log Groups.
 const ServiceName = "LogGroup"

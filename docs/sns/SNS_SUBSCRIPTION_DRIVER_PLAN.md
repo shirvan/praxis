@@ -273,7 +273,7 @@ package sns
 ```go
 package snssub
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "SNSSubscription"
 
@@ -1337,7 +1337,7 @@ Add `NewSNSSubscriptionAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-storage/main.go` — **MODIFY**
 
 ```go
-import "github.com/praxiscloud/praxis/internal/drivers/snssub"
+import "github.com/shirvan/praxis/internal/drivers/snssub"
 
 Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(cfg.Auth())))
 ```

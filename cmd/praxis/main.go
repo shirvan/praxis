@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/praxiscloud/praxis/internal/cli"
+	"github.com/shirvan/praxis/internal/cli"
 )
 
 func main() {

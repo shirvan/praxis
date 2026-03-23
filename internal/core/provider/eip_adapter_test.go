@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/eip"
+	"github.com/shirvan/praxis/internal/drivers/eip"
 )
 
 func TestEIPAdapter_DecodeSpecAndBuildKey(t *testing.T) {

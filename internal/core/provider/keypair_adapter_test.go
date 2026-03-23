@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/keypair"
+	"github.com/shirvan/praxis/internal/drivers/keypair"
 )
 
 func TestKeyPairAdapter_DecodeSpecAndBuildKey(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 const (

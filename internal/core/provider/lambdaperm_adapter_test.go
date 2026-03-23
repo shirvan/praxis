@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/lambdaperm"
+	"github.com/shirvan/praxis/internal/drivers/lambdaperm"
 )
 
 func TestLambdaPermissionAdapter_BuildKeyAndDecodeSpec(t *testing.T) {

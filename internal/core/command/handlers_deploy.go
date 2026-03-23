@@ -6,9 +6,9 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/praxiscloud/praxis/internal/core/registry"
-	"github.com/praxiscloud/praxis/internal/core/template"
-	"github.com/praxiscloud/praxis/pkg/types"
+	"github.com/shirvan/praxis/internal/core/registry"
+	"github.com/shirvan/praxis/internal/core/template"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // Deploy is the user-facing deployment entry point. It requires a pre-registered

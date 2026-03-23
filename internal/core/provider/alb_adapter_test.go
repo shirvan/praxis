@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/praxiscloud/praxis/internal/drivers/alb"
+	"github.com/shirvan/praxis/internal/drivers/alb"
 )
 
 func TestALBAdapter_DecodeSpecAndBuildKey(t *testing.T) {

@@ -192,7 +192,7 @@ Uses same IAM client as other IAM drivers. No changes needed.
 ```go
 package iaminstanceprofile
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 const ServiceName = "IAMInstanceProfile"
 

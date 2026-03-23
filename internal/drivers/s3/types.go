@@ -3,7 +3,7 @@
 // reconcile (drift detection and correction), and status/output queries.
 package s3
 
-import "github.com/praxiscloud/praxis/pkg/types"
+import "github.com/shirvan/praxis/pkg/types"
 
 // S3BucketSpec is the desired state for an S3 bucket.
 // This is what Core sends to the Provision handler after hydrating

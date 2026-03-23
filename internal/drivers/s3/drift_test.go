@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/praxiscloud/praxis/internal/drivers/s3"
+	"github.com/shirvan/praxis/internal/drivers/s3"
 )
 
 func TestHasDrift_NoDrift(t *testing.T) {
