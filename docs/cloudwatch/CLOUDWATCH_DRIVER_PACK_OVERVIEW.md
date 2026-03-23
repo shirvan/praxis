@@ -143,7 +143,7 @@ COPY --from=build /praxis-monitoring /praxis-monitoring
 ENTRYPOINT ["/praxis-monitoring"]
 ```
 
-### Port: 9087
+### Port: 9086
 
 | Pack | Port |
 |---|---|
@@ -152,8 +152,7 @@ ENTRYPOINT ["/praxis-monitoring"]
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
 | praxis-identity | 9085 |
-| praxis-dns | 9086 |
-| **praxis-monitoring** | **9087** |
+| **praxis-monitoring** | **9086** |
 
 ---
 
@@ -310,7 +309,7 @@ go mod tidy
       localstack-init:
         condition: service_completed_successfully
     ports:
-      - "9087:9080"
+      - "9086:9080"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 ```
@@ -369,17 +368,16 @@ logs-monitoring:
 Add all three adapters to `NewRegistry()`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // CloudWatch / Monitoring drivers
-    r.Register(NewLogGroupAdapterWithRegistry(accounts))
-    r.Register(NewMetricAlarmAdapterWithRegistry(accounts))
-    r.Register(NewDashboardAdapterWithRegistry(accounts))
-
-    return r
+        // CloudWatch / Monitoring drivers
+        NewLogGroupAdapterWithRegistry(accounts),
+        NewMetricAlarmAdapterWithRegistry(accounts),
+        NewDashboardAdapterWithRegistry(accounts),
+    )
 }
 ```
 

@@ -598,7 +598,7 @@ func NewListenerRuleAdapterWithRegistry(accounts *auth.Registry) *ListenerRuleAd
 
 func (a *ListenerRuleAdapter) Kind() string             { return "ListenerRule" }
 func (a *ListenerRuleAdapter) ServiceName() string      { return "ListenerRule" }
-func (a *ListenerRuleAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *ListenerRuleAdapter) Scope() KeyScope          { return KeyScopeRegion }
 ```
 
 ### Plan Method

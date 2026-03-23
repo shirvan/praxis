@@ -636,6 +636,42 @@ func (r *realTopicAPI) FindByManagedKey(ctx context.Context, managedKey string) 
 }
 ```
 
+#### `FindByName`
+
+```go
+func (r *realTopicAPI) FindByName(ctx context.Context, topicName string) (string, error) {
+    var nextToken *string
+    for {
+        out, err := r.client.ListTopics(ctx, &sns.ListTopicsInput{
+            NextToken: nextToken,
+        })
+        if err != nil {
+            return "", err
+        }
+
+        for _, topic := range out.Topics {
+            arn := aws.ToString(topic.TopicArn)
+            if extractTopicName(arn) == topicName {
+                return arn, nil
+            }
+        }
+
+        if out.NextToken == nil {
+            break
+        }
+        nextToken = out.NextToken
+    }
+    return "", nil
+}
+```
+
+> **ListTopics pagination**: `FindByName` paginates through all topics in the
+> account and region. Topic ARNs embed the topic name as the last colon-delimited
+> segment, so `extractTopicName` resolves the match without a per-topic
+> `GetTopicAttributes` call. For accounts with many topics (>100), this may be
+> slower than a tag-based lookup — in those cases, prefer using
+> `FindByManagedKey` when the managed key is known.
+
 ### Error Classification
 
 ```go
@@ -799,11 +835,26 @@ func ComputeFieldDiffs(desired SNSTopicSpec, observed ObservedState) []types.Fie
 
 ```go
 type SNSTopicDriver struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) TopicAPI
 }
 
 func NewSNSTopicDriver(accounts *auth.Registry) *SNSTopicDriver {
-    return &SNSTopicDriver{accounts: accounts}
+    return NewSNSTopicDriverWithFactory(accounts, func(cfg aws.Config) TopicAPI {
+        return NewTopicAPI(awsclient.NewSNSClient(cfg))
+    })
+}
+
+func NewSNSTopicDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) TopicAPI) *SNSTopicDriver {
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    if factory == nil {
+        factory = func(cfg aws.Config) TopicAPI {
+            return NewTopicAPI(awsclient.NewSNSClient(cfg))
+        }
+    }
+    return &SNSTopicDriver{accounts: accounts, apiFactory: factory}
 }
 
 func (SNSTopicDriver) ServiceName() string { return ServiceName }

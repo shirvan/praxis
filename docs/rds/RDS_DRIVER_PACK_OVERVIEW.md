@@ -343,18 +343,17 @@ logs-database:
 Add all four adapters to `NewRegistry()`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // RDS / Database drivers
-    r.Register(NewRDSInstanceAdapterWithRegistry(accounts))
-    r.Register(NewAuroraClusterAdapterWithRegistry(accounts))
-    r.Register(NewDBParameterGroupAdapterWithRegistry(accounts))
-    r.Register(NewDBSubnetGroupAdapterWithRegistry(accounts))
-
-    return r
+        // RDS / Database drivers
+        NewRDSInstanceAdapterWithRegistry(accounts),
+        NewAuroraClusterAdapterWithRegistry(accounts),
+        NewDBParameterGroupAdapterWithRegistry(accounts),
+        NewDBSubnetGroupAdapterWithRegistry(accounts),
+    )
 }
 ```
 

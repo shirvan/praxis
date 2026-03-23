@@ -1078,16 +1078,16 @@ type Route53HealthCheckAdapter struct {
     accounts *auth.Registry
 }
 
-func (a *Route53HealthCheckAdapter) Kind() string       { return "Route53HealthCheck" }
-func (a *Route53HealthCheckAdapter) Service() string    { return route53healthcheck.ServiceName }
-func (a *Route53HealthCheckAdapter) KeyScope() KeyScope  { return KeyScopeGlobal }
+func (a *Route53HealthCheckAdapter) Kind() string            { return "Route53HealthCheck" }
+func (a *Route53HealthCheckAdapter) ServiceName() string     { return route53healthcheck.ServiceName }
+func (a *Route53HealthCheckAdapter) Scope() KeyScope          { return KeyScopeGlobal }
 
-func (a *Route53HealthCheckAdapter) BuildKey(doc types.ResourceDocument) string {
-    return doc.Metadata.Name
+func (a *Route53HealthCheckAdapter) BuildKey(doc json.RawMessage) (string, error) {
+    return doc.Metadata.Name, nil
 }
 
-func (a *Route53HealthCheckAdapter) BuildImportKey(region, resourceID string) string {
-    return resourceID
+func (a *Route53HealthCheckAdapter) BuildImportKey(region, resourceID string) (string, error) {
+    return resourceID, nil
 }
 ```
 
@@ -1098,7 +1098,8 @@ func (a *Route53HealthCheckAdapter) BuildImportKey(region, resourceID string) st
 **File**: `internal/core/provider/registry.go`
 
 ```go
-r.Register(NewRoute53HealthCheckAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewRoute53HealthCheckAdapterWithRegistry(accounts),
 ```
 
 ---

@@ -95,6 +95,10 @@ docker-compose.yaml header already identifies SNS as a future praxis-storage ser
 srv := server.NewRestate().
     Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth()))).
     Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth()))).
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(cfg.Auth()))).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(cfg.Auth()))).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth()))).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(cfg.Auth()))).
     // SNS drivers
     Bind(restate.Reflect(snstopic.NewSNSTopicDriver(cfg.Auth()))).
     Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(cfg.Auth())))
@@ -110,7 +114,7 @@ Both SNS drivers use the SNS API client from `aws-sdk-go-v2/service/sns`. A new
 `NewSNSClient(cfg aws.Config) *sns.Client` factory is added to
 `internal/infra/awsclient/client.go`.
 
-The client is created per-account via the auth registry's `GetConfig(account)` method.
+The client is created per-account via the auth registry's `Resolve(account)` method.
 
 ```go
 func NewSNSClient(cfg aws.Config) *sns.Client {

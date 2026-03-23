@@ -705,11 +705,26 @@ func datapointsMatch(desired *int32, observed int32, evaluationPeriods int32) bo
 
 ```go
 type MetricAlarmDriver struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) MetricAlarmAPI
 }
 
 func NewMetricAlarmDriver(accounts *auth.Registry) *MetricAlarmDriver {
-    return &MetricAlarmDriver{accounts: accounts}
+    return NewMetricAlarmDriverWithFactory(accounts, func(cfg aws.Config) MetricAlarmAPI {
+        return NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg))
+    })
+}
+
+func NewMetricAlarmDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) MetricAlarmAPI) *MetricAlarmDriver {
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    if factory == nil {
+        factory = func(cfg aws.Config) MetricAlarmAPI {
+            return NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg))
+        }
+    }
+    return &MetricAlarmDriver{accounts: accounts, apiFactory: factory}
 }
 
 func (MetricAlarmDriver) ServiceName() string { return ServiceName }
@@ -984,31 +999,43 @@ func (d *MetricAlarmDriver) GetOutputs(ctx restate.ObjectSharedContext) (MetricA
 
 ```go
 type MetricAlarmAdapter struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) metricalarm.MetricAlarmAPI
 }
 
 func NewMetricAlarmAdapterWithRegistry(accounts *auth.Registry) *MetricAlarmAdapter {
-    return &MetricAlarmAdapter{accounts: accounts}
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    return &MetricAlarmAdapter{
+        accounts: accounts,
+        apiFactory: func(cfg aws.Config) metricalarm.MetricAlarmAPI {
+            return metricalarm.NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg))
+        },
+    }
 }
 
-func (a *MetricAlarmAdapter) Kind() string           { return "MetricAlarm" }
-func (a *MetricAlarmAdapter) Service() string         { return metricalarm.ServiceName }
-func (a *MetricAlarmAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *MetricAlarmAdapter) Kind() string        { return "MetricAlarm" }
+func (a *MetricAlarmAdapter) ServiceName() string { return metricalarm.ServiceName }
+func (a *MetricAlarmAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
-func (a *MetricAlarmAdapter) BuildKey(doc types.ResourceDoc) (string, error) {
-    region := doc.Spec["region"].(string)
-    name := doc.Metadata.Name
-    return region + "~" + name, nil
+func (a *MetricAlarmAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
+    var doc struct {
+        Metadata struct{ Name string `json:"name"` } `json:"metadata"`
+        Spec     struct{ Region string `json:"region"` } `json:"spec"`
+    }
+    if err := json.Unmarshal(resourceDoc, &doc); err != nil {
+        return "", fmt.Errorf("MetricAlarmAdapter.BuildKey: %w", err)
+    }
+    return JoinKey(doc.Spec.Region, doc.Metadata.Name), nil
 }
 
 func (a *MetricAlarmAdapter) BuildImportKey(region, resourceID string) (string, error) {
-    return region + "~" + resourceID, nil
+    return JoinKey(region, resourceID), nil
 }
 
-func (a *MetricAlarmAdapter) BuildSpec(doc types.ResourceDoc) (any, error) {
-    // Build MetricAlarmSpec from the resource document
-    // Map CUE spec fields to Go struct fields
-    return metricAlarmSpecFromDoc(doc), nil
+func (a *MetricAlarmAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
+    return decodeSpec[metricalarm.MetricAlarmSpec](resourceDoc)
 }
 ```
 
@@ -1019,7 +1046,8 @@ func (a *MetricAlarmAdapter) BuildSpec(doc types.ResourceDoc) (any, error) {
 **File**: `internal/core/provider/registry.go` — add to `NewRegistry()`:
 
 ```go
-r.Register(NewMetricAlarmAdapterWithRegistry(accounts))
+// Add to the NewRegistryWithAdapters(...) call:
+NewMetricAlarmAdapterWithRegistry(accounts),
 ```
 
 ---
@@ -1041,7 +1069,7 @@ srv := server.NewRestate().
 
 ### Docker Compose
 
-CloudWatch drivers are hosted in the `praxis-monitoring` service on port 9087.
+CloudWatch drivers are hosted in the `praxis-monitoring` service on port 9086.
 See the [pack overview](CLOUDWATCH_DRIVER_PACK_OVERVIEW.md) for the docker-compose
 service definition.
 

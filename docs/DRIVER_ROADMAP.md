@@ -52,12 +52,12 @@ This document tracks AWS driver coverage across Praxis releases. Driver priority
 
 ## 1.0
 
-Completes the services required for a standard web-application stack on AWS: TLS certificates, container registry, messaging, and observability. Introduces the **Observability** driver pack.
+Completes the services required for a standard web-application stack on AWS: TLS certificates, container registry, messaging, and observability. Introduces the **Monitoring** driver pack.
 
 | Driver | Description | Driver Pack |
 |---|---|---|
 | **ACM** | Certificates, DNS validation records | `praxis-network` |
-| **CloudWatch** | Log groups, metric alarms, dashboards | `praxis-observability` |
+| **CloudWatch** | Log groups, metric alarms, dashboards | `praxis-monitoring` |
 | **ECR** | Repositories, lifecycle policies | `praxis-compute` |
 | **SNS** | Topics, subscriptions | `praxis-storage` |
 | **SQS** | Queues, queue policies | `praxis-storage` |

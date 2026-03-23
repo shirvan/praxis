@@ -613,10 +613,10 @@ func NewALBAdapterWithRegistry(accounts *auth.Registry) *ALBAdapter {
 
 func (a *ALBAdapter) Kind() string                    { return "ALB" }
 func (a *ALBAdapter) ServiceName() string             { return "ALB" }
-func (a *ALBAdapter) KeyScope() types.KeyScope        { return types.KeyScopeRegion }
-func (a *ALBAdapter) BuildKey(doc types.ResourceDoc) (string, error)  { /* region~name */ }
+func (a *ALBAdapter) Scope() KeyScope                 { return KeyScopeRegion }
+func (a *ALBAdapter) BuildKey(doc json.RawMessage) (string, error)  { /* region~name */ }
 func (a *ALBAdapter) BuildImportKey(region, id string) string         { /* region~id */ }
-func (a *ALBAdapter) Plan(ctx context.Context, doc types.ResourceDoc) (types.PlanResult, error) { /* ... */ }
+func (a *ALBAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) { /* ... */ }
 ```
 
 ### Plan Method
@@ -635,7 +635,8 @@ The Plan method:
 Add `NewALBAdapterWithRegistry` to `internal/core/provider/registry.go`:
 
 ```go
-r.Register(NewALBAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewALBAdapterWithRegistry(accounts),
 ```
 
 ---

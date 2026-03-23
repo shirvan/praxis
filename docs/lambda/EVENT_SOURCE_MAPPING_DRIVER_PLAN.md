@@ -1085,9 +1085,9 @@ func NewEventSourceMappingAdapterWithRegistry(accounts *auth.Registry) *EventSou
 
 func (a *EventSourceMappingAdapter) Kind() string { return esm.ServiceName }
 
-func (a *EventSourceMappingAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *EventSourceMappingAdapter) Scope() KeyScope { return KeyScopeRegion }
 
-func (a *EventSourceMappingAdapter) BuildKey(doc types.ResourceDocument) (string, error) {
+func (a *EventSourceMappingAdapter) BuildKey(doc json.RawMessage) (string, error) {
     region, _ := jsonpath.String(doc.Spec, "region")
     functionName, _ := jsonpath.String(doc.Spec, "functionName")
     eventSourceArn, _ := jsonpath.String(doc.Spec, "eventSourceArn")
@@ -1104,7 +1104,7 @@ func (a *EventSourceMappingAdapter) BuildImportKey(region, resourceID string) (s
     return region + "~" + resourceID, nil
 }
 
-func (a *EventSourceMappingAdapter) Plan(ctx context.Context, doc types.ResourceDocument, currentOutputs map[string]any) (types.PlanResult, error) {
+func (a *EventSourceMappingAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
     spec, err := decodeSpec(doc)
     if err != nil {
         return types.PlanResult{}, err

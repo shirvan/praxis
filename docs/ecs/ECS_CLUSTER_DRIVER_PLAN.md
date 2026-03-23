@@ -891,9 +891,9 @@ func (a *ECSClusterAdapter) Kind() string { return "ECSCluster" }
 
 func (a *ECSClusterAdapter) ServiceName() string { return ecscluster.ServiceName }
 
-func (a *ECSClusterAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *ECSClusterAdapter) Scope() KeyScope { return KeyScopeRegion }
 
-func (a *ECSClusterAdapter) BuildKey(doc map[string]any) (string, error) {
+func (a *ECSClusterAdapter) BuildKey(doc json.RawMessage) (string, error) {
     region, _ := jsonpath.String(doc, "spec.region")
     name, _ := jsonpath.String(doc, "metadata.name")
     if region == "" || name == "" {
@@ -906,7 +906,7 @@ func (a *ECSClusterAdapter) BuildImportKey(region, resourceID string) (string, e
     return region + "~" + resourceID, nil
 }
 
-func (a *ECSClusterAdapter) BuildSpec(doc map[string]any) (any, error) {
+func (a *ECSClusterAdapter) DecodeSpec(doc json.RawMessage) (any, error) {
     // Extract fields from evaluated CUE doc, build ECSClusterSpec
     // ...
 }
@@ -925,7 +925,8 @@ func (a *ECSClusterAdapter) Plan(ctx context.Context, key string, doc map[string
 **File**: `internal/core/provider/registry.go` — add to `NewRegistry()`:
 
 ```go
-r.Register(NewECSClusterAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewECSClusterAdapterWithRegistry(accounts),
 ```
 
 ---

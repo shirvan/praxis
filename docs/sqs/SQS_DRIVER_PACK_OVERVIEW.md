@@ -92,6 +92,11 @@ that lists SQS under praxis-storage.
 // cmd/praxis-storage/main.go
 srv := server.NewRestate().
     Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth()))).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth()))).
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(cfg.Auth()))).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(cfg.Auth()))).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth()))).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(cfg.Auth()))).
     // SQS drivers
     Bind(restate.Reflect(sqs.NewSQSQueueDriver(cfg.Auth()))).
     Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(cfg.Auth())))
@@ -106,7 +111,7 @@ srv := server.NewRestate().
 Both drivers use the SQS API client from `aws-sdk-go-v2/service/sqs`. SQS has its
 own SDK client — it does not share the S3 or EC2 API surface.
 
-The client is created per-account via the auth registry's `GetConfig(account)` method.
+The client is created per-account via the auth registry's `Resolve(account)` method.
 
 ```go
 func NewSQSClient(cfg aws.Config) *sqs.Client {
@@ -260,16 +265,15 @@ ls-sqs:
 Add both adapters to `NewRegistry()`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // SQS drivers
-    r.Register(NewSQSQueueAdapterWithRegistry(accounts))
-    r.Register(NewSQSQueuePolicyAdapterWithRegistry(accounts))
-
-    return r
+        // SQS drivers
+        NewSQSQueueAdapterWithRegistry(accounts),
+        NewSQSQueuePolicyAdapterWithRegistry(accounts),
+    )
 }
 ```
 

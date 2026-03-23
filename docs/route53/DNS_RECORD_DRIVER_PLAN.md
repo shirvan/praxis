@@ -172,11 +172,11 @@ func (a *Route53RecordAdapter) BuildKey(doc types.ResourceDocument) string {
 ### BuildImportKey
 
 ```go
-func (a *Route53RecordAdapter) BuildImportKey(region, resourceID string) string {
+func (a *Route53RecordAdapter) BuildImportKey(region, resourceID string) (string, error) {
     // resourceID format: "<hostedZoneId>/<fqdn>/<type>" or
     //                    "<hostedZoneId>/<fqdn>/<type>/<setIdentifier>"
     // Converted to key format with ~ separator
-    return strings.ReplaceAll(resourceID, "/", "~")
+    return strings.ReplaceAll(resourceID, "/", "~"), nil
 }
 ```
 
@@ -1013,11 +1013,11 @@ type Route53RecordAdapter struct {
     accounts *auth.Registry
 }
 
-func (a *Route53RecordAdapter) Kind() string       { return "Route53Record" }
-func (a *Route53RecordAdapter) Service() string    { return route53record.ServiceName }
-func (a *Route53RecordAdapter) KeyScope() KeyScope  { return KeyScopeCustom }
+func (a *Route53RecordAdapter) Kind() string            { return "Route53Record" }
+func (a *Route53RecordAdapter) ServiceName() string     { return route53record.ServiceName }
+func (a *Route53RecordAdapter) Scope() KeyScope          { return KeyScopeCustom }
 
-func (a *Route53RecordAdapter) BuildKey(doc types.ResourceDocument) string {
+func (a *Route53RecordAdapter) BuildKey(doc json.RawMessage) (string, error) {
     hostedZoneId := extractString(doc.Spec, "hostedZoneId")
     name := extractString(doc.Spec, "name")
     recordType := extractString(doc.Spec, "type")
@@ -1027,11 +1027,11 @@ func (a *Route53RecordAdapter) BuildKey(doc types.ResourceDocument) string {
     if setId := extractString(doc.Spec, "setIdentifier"); setId != "" {
         key += "~" + setId
     }
-    return key
+    return key, nil
 }
 
-func (a *Route53RecordAdapter) BuildImportKey(region, resourceID string) string {
-    return strings.ReplaceAll(resourceID, "/", "~")
+func (a *Route53RecordAdapter) BuildImportKey(region, resourceID string) (string, error) {
+    return strings.ReplaceAll(resourceID, "/", "~"), nil
 }
 ```
 
@@ -1048,7 +1048,8 @@ computes field diffs. If no outputs exist, it reports `OpCreate`.
 **File**: `internal/core/provider/registry.go`
 
 ```go
-r.Register(NewRoute53RecordAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewRoute53RecordAdapterWithRegistry(accounts),
 ```
 
 ---

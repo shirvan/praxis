@@ -601,11 +601,26 @@ func retentionMatch(desired *int32, observed *int32) bool {
 
 ```go
 type LogGroupDriver struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) LogGroupAPI
 }
 
 func NewLogGroupDriver(accounts *auth.Registry) *LogGroupDriver {
-    return &LogGroupDriver{accounts: accounts}
+    return NewLogGroupDriverWithFactory(accounts, func(cfg aws.Config) LogGroupAPI {
+        return NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg))
+    })
+}
+
+func NewLogGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) LogGroupAPI) *LogGroupDriver {
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    if factory == nil {
+        factory = func(cfg aws.Config) LogGroupAPI {
+            return NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg))
+        }
+    }
+    return &LogGroupDriver{accounts: accounts, apiFactory: factory}
 }
 
 func (LogGroupDriver) ServiceName() string { return ServiceName }
@@ -950,38 +965,43 @@ func (d *LogGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (LogGroupOu
 
 ```go
 type LogGroupAdapter struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) loggroup.LogGroupAPI
 }
 
 func NewLogGroupAdapterWithRegistry(accounts *auth.Registry) *LogGroupAdapter {
-    return &LogGroupAdapter{accounts: accounts}
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    return &LogGroupAdapter{
+        accounts: accounts,
+        apiFactory: func(cfg aws.Config) loggroup.LogGroupAPI {
+            return loggroup.NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg))
+        },
+    }
 }
 
-func (a *LogGroupAdapter) Kind() string           { return "LogGroup" }
-func (a *LogGroupAdapter) Service() string         { return loggroup.ServiceName }
-func (a *LogGroupAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *LogGroupAdapter) Kind() string        { return "LogGroup" }
+func (a *LogGroupAdapter) ServiceName() string { return loggroup.ServiceName }
+func (a *LogGroupAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
-func (a *LogGroupAdapter) BuildKey(doc types.ResourceDoc) (string, error) {
-    region := doc.Spec["region"].(string)
-    name := doc.Metadata.Name
-    return region + "~" + name, nil
+func (a *LogGroupAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
+    var doc struct {
+        Metadata struct{ Name string `json:"name"` } `json:"metadata"`
+        Spec     struct{ Region string `json:"region"` } `json:"spec"`
+    }
+    if err := json.Unmarshal(resourceDoc, &doc); err != nil {
+        return "", fmt.Errorf("LogGroupAdapter.BuildKey: %w", err)
+    }
+    return JoinKey(doc.Spec.Region, doc.Metadata.Name), nil
 }
 
 func (a *LogGroupAdapter) BuildImportKey(region, resourceID string) (string, error) {
-    return region + "~" + resourceID, nil
+    return JoinKey(region, resourceID), nil
 }
 
-func (a *LogGroupAdapter) BuildSpec(doc types.ResourceDoc) (any, error) {
-    return LogGroupSpec{
-        Account:         doc.Spec["account"].(string),
-        Region:          doc.Spec["region"].(string),
-        LogGroupName:    doc.Metadata.Name,
-        LogGroupClass:   getStringDefault(doc.Spec, "logGroupClass", "STANDARD"),
-        RetentionInDays: getOptionalInt32(doc.Spec, "retentionInDays"),
-        KmsKeyId:        getStringDefault(doc.Spec, "kmsKeyId", ""),
-        Tags:            getStringMap(doc.Spec, "tags"),
-        ManagedKey:      region + "~" + doc.Metadata.Name,
-    }, nil
+func (a *LogGroupAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
+    return decodeSpec[loggroup.LogGroupSpec](resourceDoc)
 }
 ```
 
@@ -992,7 +1012,8 @@ func (a *LogGroupAdapter) BuildSpec(doc types.ResourceDoc) (any, error) {
 **File**: `internal/core/provider/registry.go` — add to `NewRegistry()`:
 
 ```go
-r.Register(NewLogGroupAdapterWithRegistry(accounts))
+// Add to the NewRegistryWithAdapters(...) call:
+NewLogGroupAdapterWithRegistry(accounts),
 ```
 
 ---
@@ -1014,7 +1035,7 @@ srv := server.NewRestate().
 
 ### Docker Compose
 
-CloudWatch drivers are hosted in the new `praxis-monitoring` service on port 9087.
+CloudWatch drivers are hosted in the new `praxis-monitoring` service on port 9086.
 See the [pack overview](CLOUDWATCH_DRIVER_PACK_OVERVIEW.md) for the docker-compose
 service definition.
 

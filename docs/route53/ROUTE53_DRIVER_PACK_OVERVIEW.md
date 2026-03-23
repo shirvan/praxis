@@ -351,17 +351,16 @@ logs-dns:
 Add all three adapters to `NewRegistry()`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // Route 53 drivers
-    r.Register(NewRoute53HostedZoneAdapterWithRegistry(accounts))
-    r.Register(NewRoute53RecordAdapterWithRegistry(accounts))
-    r.Register(NewRoute53HealthCheckAdapterWithRegistry(accounts))
-
-    return r
+        // Route 53 drivers
+        NewRoute53HostedZoneAdapterWithRegistry(accounts),
+        NewRoute53RecordAdapterWithRegistry(accounts),
+        NewRoute53HealthCheckAdapterWithRegistry(accounts),
+    )
 }
 ```
 

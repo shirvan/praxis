@@ -129,14 +129,6 @@ CLI command to list available drivers and their registration status.
 
 ---
 
-## Workspaces
-
-Named environment groupings that bind a set of deployments with shared default configuration.
-
-**Technical approach:** Deployment keys already provide state isolation, but there is no grouping or environment-scoped defaults. Add a `praxis workspace` command family (`create`, `list`, `select`, `delete`). A workspace is a named context (e.g., `dev`, `staging`, `prod`) stored as a Restate Virtual Object that holds default variable overrides, account alias, and region. When a workspace is active, `apply`, `deploy`, and `plan` inherit its defaults — `--var`, `--account`, and `--region` flags override workspace values. Deployments created within a workspace are tagged with the workspace name for listing and filtering via `praxis list deployments --workspace prod`.
-
----
-
 ## Notification Sinks & External Event Delivery
 
 Build external delivery and fan-out on top of the existing internal deployment event stream.

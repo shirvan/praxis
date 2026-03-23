@@ -911,19 +911,19 @@ type Route53HostedZoneAdapter struct {
     accounts *auth.Registry
 }
 
-func (a *Route53HostedZoneAdapter) Kind() string       { return "Route53HostedZone" }
-func (a *Route53HostedZoneAdapter) Service() string    { return route53zone.ServiceName }
-func (a *Route53HostedZoneAdapter) KeyScope() KeyScope  { return KeyScopeGlobal }
+func (a *Route53HostedZoneAdapter) Kind() string            { return "Route53HostedZone" }
+func (a *Route53HostedZoneAdapter) ServiceName() string     { return route53zone.ServiceName }
+func (a *Route53HostedZoneAdapter) Scope() KeyScope          { return KeyScopeGlobal }
 
-func (a *Route53HostedZoneAdapter) BuildKey(doc types.ResourceDocument) string {
+func (a *Route53HostedZoneAdapter) BuildKey(doc json.RawMessage) (string, error) {
     return doc.Metadata.Name
 }
 
-func (a *Route53HostedZoneAdapter) BuildImportKey(region, resourceID string) string {
-    return resourceID
+func (a *Route53HostedZoneAdapter) BuildImportKey(region, resourceID string) (string, error) {
+    return resourceID, nil
 }
 
-func (a *Route53HostedZoneAdapter) BuildSpec(doc types.ResourceDocument) (any, error) {
+func (a *Route53HostedZoneAdapter) DecodeSpec(doc json.RawMessage) (any, error) {
     spec := route53zone.HostedZoneSpec{
         Name:       doc.Metadata.Name,
         ManagedKey: doc.Metadata.Name,
@@ -946,7 +946,8 @@ outputs exist (new resource), it reports `OpCreate`.
 **File**: `internal/core/provider/registry.go`
 
 ```go
-r.Register(NewRoute53HostedZoneAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewRoute53HostedZoneAdapterWithRegistry(accounts),
 ```
 
 ---

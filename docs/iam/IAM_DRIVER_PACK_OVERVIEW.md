@@ -312,19 +312,18 @@ test-iaminstanceprofile:
 Add all five adapters to `NewRegistry()`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // IAM drivers
-    r.Register(NewIAMRoleAdapterWithRegistry(accounts))
-    r.Register(NewIAMPolicyAdapterWithRegistry(accounts))
-    r.Register(NewIAMUserAdapterWithRegistry(accounts))
-    r.Register(NewIAMGroupAdapterWithRegistry(accounts))
-    r.Register(NewIAMInstanceProfileAdapterWithRegistry(accounts))
-
-    return r
+        // IAM drivers
+        NewIAMRoleAdapterWithRegistry(accounts),
+        NewIAMPolicyAdapterWithRegistry(accounts),
+        NewIAMUserAdapterWithRegistry(accounts),
+        NewIAMGroupAdapterWithRegistry(accounts),
+        NewIAMInstanceProfileAdapterWithRegistry(accounts),
+    )
 }
 ```
 

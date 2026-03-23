@@ -313,17 +313,16 @@ build-compute:  # already exists — no changes needed
 All three adapters are registered in `internal/core/provider/registry.go`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // ECS drivers
-    r.Register(NewECSClusterAdapterWithRegistry(accounts))
-    r.Register(NewECSTaskDefinitionAdapterWithRegistry(accounts))
-    r.Register(NewECSServiceAdapterWithRegistry(accounts))
-
-    return r
+        // ECS drivers
+        NewECSClusterAdapterWithRegistry(accounts),
+        NewECSTaskDefinitionAdapterWithRegistry(accounts),
+        NewECSServiceAdapterWithRegistry(accounts),
+    )
 }
 ```
 

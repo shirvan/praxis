@@ -731,9 +731,9 @@ func NewLambdaLayerAdapterWithRegistry(accounts *auth.Registry) *LambdaLayerAdap
 
 func (a *LambdaLayerAdapter) Kind() string { return lambdalayer.ServiceName }
 
-func (a *LambdaLayerAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *LambdaLayerAdapter) Scope() KeyScope { return KeyScopeRegion }
 
-func (a *LambdaLayerAdapter) BuildKey(doc types.ResourceDocument) (string, error) {
+func (a *LambdaLayerAdapter) BuildKey(doc json.RawMessage) (string, error) {
     region, _ := jsonpath.String(doc.Spec, "region")
     name := doc.Metadata.Name
     if region == "" || name == "" {
@@ -746,7 +746,7 @@ func (a *LambdaLayerAdapter) BuildImportKey(region, resourceID string) (string, 
     return region + "~" + resourceID, nil
 }
 
-func (a *LambdaLayerAdapter) Plan(ctx context.Context, doc types.ResourceDocument, currentOutputs map[string]any) (types.PlanResult, error) {
+func (a *LambdaLayerAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
     spec, err := decodeSpec(doc)
     if err != nil {
         return types.PlanResult{}, err

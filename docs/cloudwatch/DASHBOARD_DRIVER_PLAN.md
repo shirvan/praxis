@@ -546,11 +546,26 @@ ignoring formatting differences.
 
 ```go
 type DashboardDriver struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) DashboardAPI
 }
 
 func NewDashboardDriver(accounts *auth.Registry) *DashboardDriver {
-    return &DashboardDriver{accounts: accounts}
+    return NewDashboardDriverWithFactory(accounts, func(cfg aws.Config) DashboardAPI {
+        return NewDashboardAPI(awsclient.NewCloudWatchClient(cfg))
+    })
+}
+
+func NewDashboardDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) DashboardAPI) *DashboardDriver {
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    if factory == nil {
+        factory = func(cfg aws.Config) DashboardAPI {
+            return NewDashboardAPI(awsclient.NewCloudWatchClient(cfg))
+        }
+    }
+    return &DashboardDriver{accounts: accounts, apiFactory: factory}
 }
 
 func (DashboardDriver) ServiceName() string { return ServiceName }
@@ -796,35 +811,43 @@ func (d *DashboardDriver) GetOutputs(ctx restate.ObjectSharedContext) (Dashboard
 
 ```go
 type DashboardAdapter struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) dashboard.DashboardAPI
 }
 
 func NewDashboardAdapterWithRegistry(accounts *auth.Registry) *DashboardAdapter {
-    return &DashboardAdapter{accounts: accounts}
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    return &DashboardAdapter{
+        accounts: accounts,
+        apiFactory: func(cfg aws.Config) dashboard.DashboardAPI {
+            return dashboard.NewDashboardAPI(awsclient.NewCloudWatchClient(cfg))
+        },
+    }
 }
 
-func (a *DashboardAdapter) Kind() string           { return "Dashboard" }
-func (a *DashboardAdapter) Service() string         { return dashboard.ServiceName }
-func (a *DashboardAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *DashboardAdapter) Kind() string        { return "Dashboard" }
+func (a *DashboardAdapter) ServiceName() string { return dashboard.ServiceName }
+func (a *DashboardAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
-func (a *DashboardAdapter) BuildKey(doc types.ResourceDoc) (string, error) {
-    region := doc.Spec["region"].(string)
-    name := doc.Metadata.Name
-    return region + "~" + name, nil
+func (a *DashboardAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
+    var doc struct {
+        Metadata struct{ Name string `json:"name"` } `json:"metadata"`
+        Spec     struct{ Region string `json:"region"` } `json:"spec"`
+    }
+    if err := json.Unmarshal(resourceDoc, &doc); err != nil {
+        return "", fmt.Errorf("DashboardAdapter.BuildKey: %w", err)
+    }
+    return JoinKey(doc.Spec.Region, doc.Metadata.Name), nil
 }
 
 func (a *DashboardAdapter) BuildImportKey(region, resourceID string) (string, error) {
-    return region + "~" + resourceID, nil
+    return JoinKey(region, resourceID), nil
 }
 
-func (a *DashboardAdapter) BuildSpec(doc types.ResourceDoc) (any, error) {
-    return DashboardSpec{
-        Account:       getStringDefault(doc.Spec, "account", ""),
-        Region:        doc.Spec["region"].(string),
-        DashboardName: doc.Metadata.Name,
-        DashboardBody: doc.Spec["dashboardBody"].(string),
-        ManagedKey:    doc.Spec["region"].(string) + "~" + doc.Metadata.Name,
-    }, nil
+func (a *DashboardAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
+    return decodeSpec[dashboard.DashboardSpec](resourceDoc)
 }
 ```
 
@@ -835,7 +858,8 @@ func (a *DashboardAdapter) BuildSpec(doc types.ResourceDoc) (any, error) {
 **File**: `internal/core/provider/registry.go` — add to `NewRegistry()`:
 
 ```go
-r.Register(NewDashboardAdapterWithRegistry(accounts))
+// Add to the NewRegistryWithAdapters(...) call:
+NewDashboardAdapterWithRegistry(accounts),
 ```
 
 ---
@@ -857,7 +881,7 @@ srv := server.NewRestate().
 
 ### Docker Compose
 
-CloudWatch drivers are hosted in the `praxis-monitoring` service on port 9087.
+CloudWatch drivers are hosted in the `praxis-monitoring` service on port 9086.
 See the [pack overview](CLOUDWATCH_DRIVER_PACK_OVERVIEW.md) for the docker-compose
 service definition.
 

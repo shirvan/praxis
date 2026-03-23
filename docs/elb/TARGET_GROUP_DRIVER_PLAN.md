@@ -541,7 +541,7 @@ func NewTargetGroupAdapterWithRegistry(accounts *auth.Registry) *TargetGroupAdap
 
 func (a *TargetGroupAdapter) Kind() string             { return "TargetGroup" }
 func (a *TargetGroupAdapter) ServiceName() string      { return "TargetGroup" }
-func (a *TargetGroupAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *TargetGroupAdapter) Scope() KeyScope          { return KeyScopeRegion }
 ```
 
 ### Plan Method

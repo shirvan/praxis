@@ -1182,9 +1182,9 @@ func (a *ECSTaskDefinitionAdapter) Kind() string { return "ECSTaskDefinition" }
 
 func (a *ECSTaskDefinitionAdapter) ServiceName() string { return ecstaskdef.ServiceName }
 
-func (a *ECSTaskDefinitionAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *ECSTaskDefinitionAdapter) Scope() KeyScope { return KeyScopeRegion }
 
-func (a *ECSTaskDefinitionAdapter) BuildKey(doc map[string]any) (string, error) {
+func (a *ECSTaskDefinitionAdapter) BuildKey(doc json.RawMessage) (string, error) {
     region, _ := jsonpath.String(doc, "spec.region")
     name, _ := jsonpath.String(doc, "metadata.name")
     if region == "" || name == "" {
@@ -1205,7 +1205,8 @@ func (a *ECSTaskDefinitionAdapter) BuildImportKey(region, resourceID string) (st
 **File**: `internal/core/provider/registry.go` — add to `NewRegistry()`:
 
 ```go
-r.Register(NewECSTaskDefinitionAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewECSTaskDefinitionAdapterWithRegistry(accounts),
 ```
 
 ---

@@ -383,7 +383,7 @@ func NewNLBAdapterWithRegistry(accounts *auth.Registry) *NLBAdapter {
 
 func (a *NLBAdapter) Kind() string             { return "NLB" }
 func (a *NLBAdapter) ServiceName() string      { return "NLB" }
-func (a *NLBAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *NLBAdapter) Scope() KeyScope          { return KeyScopeRegion }
 ```
 
 ---

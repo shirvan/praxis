@@ -304,19 +304,18 @@ logs-network:
 Add all five adapters to `NewRegistry()`:
 
 ```go
-func NewRegistry(accounts *auth.Registry) *Registry {
-    r := &Registry{adapters: make(map[string]Adapter)}
+func NewRegistry() *Registry {
+    accounts := auth.LoadFromEnv()
+    return NewRegistryWithAdapters(
+        // ... existing adapters ...
 
-    // ... existing adapters ...
-
-    // ELB drivers
-    r.Register(NewALBAdapterWithRegistry(accounts))
-    r.Register(NewNLBAdapterWithRegistry(accounts))
-    r.Register(NewTargetGroupAdapterWithRegistry(accounts))
-    r.Register(NewListenerAdapterWithRegistry(accounts))
-    r.Register(NewListenerRuleAdapterWithRegistry(accounts))
-
-    return r
+        // ELB drivers
+        NewALBAdapterWithRegistry(accounts),
+        NewNLBAdapterWithRegistry(accounts),
+        NewTargetGroupAdapterWithRegistry(accounts),
+        NewListenerAdapterWithRegistry(accounts),
+        NewListenerRuleAdapterWithRegistry(accounts),
+    )
 }
 ```
 

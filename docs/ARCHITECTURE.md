@@ -94,7 +94,7 @@ srv := server.NewRestate().
 | **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule | Networking and load balancing — VPC+SG+DNS+ELB almost always deploy together |
 | **Compute** | `praxis-compute` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping | Compute lifecycle |
 | **Identity** | `praxis-identity` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile | Security-sensitive, low churn |
-| **Observability** | `praxis-observability` | *(future: CloudWatch, CloudTrail)* | Logging, metrics, and audit — optional, many users skip it |
+| **Monitoring** | `praxis-monitoring` | *(future: CloudWatch, CloudTrail)* | Logging, metrics, and audit — optional, many users skip it |
 
 Each driver within a pack:
 

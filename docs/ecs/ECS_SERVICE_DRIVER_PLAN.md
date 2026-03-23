@@ -1596,9 +1596,9 @@ func (a *ECSServiceAdapter) Kind() string { return "ECSService" }
 
 func (a *ECSServiceAdapter) ServiceName() string { return ecsservice.ServiceName }
 
-func (a *ECSServiceAdapter) KeyScope() types.KeyScope { return types.KeyScopeRegion }
+func (a *ECSServiceAdapter) Scope() KeyScope { return KeyScopeRegion }
 
-func (a *ECSServiceAdapter) BuildKey(doc map[string]any) (string, error) {
+func (a *ECSServiceAdapter) BuildKey(doc json.RawMessage) (string, error) {
     region, _ := jsonpath.String(doc, "spec.region")
     cluster, _ := jsonpath.String(doc, "spec.cluster")
     name, _ := jsonpath.String(doc, "metadata.name")
@@ -1619,7 +1619,7 @@ func (a *ECSServiceAdapter) BuildImportKey(region, resourceID string) (string, e
     return region + "~" + cluster + "~" + svcName, nil
 }
 
-func (a *ECSServiceAdapter) BuildSpec(doc map[string]any) (any, error) {
+func (a *ECSServiceAdapter) DecodeSpec(doc json.RawMessage) (any, error) {
     // Extract fields from evaluated CUE doc, build ECSServiceSpec
     // ...
 }
@@ -1673,7 +1673,7 @@ field changes and returns `OpRecreate`:
 
 ```go
 func (a *ECSServiceAdapter) Plan(ctx context.Context, key string, doc map[string]any) (types.PlanOp, []types.FieldDiff, error) {
-    spec, err := a.BuildSpec(doc)
+    spec, err := a.DecodeSpec(doc)
     if err != nil {
         return types.OpNoop, nil, err
     }
@@ -1718,7 +1718,8 @@ func (a *ECSServiceAdapter) Plan(ctx context.Context, key string, doc map[string
 **File**: `internal/core/provider/registry.go` — add to `NewRegistry()`:
 
 ```go
-r.Register(NewECSServiceAdapterWithRegistry(accounts))
+// Added to NewRegistryWithAdapters() call:
+NewECSServiceAdapterWithRegistry(accounts),
 ```
 
 ---

@@ -1,6 +1,5 @@
 # SNS Subscription Driver — Implementation Plan
 
-> NYI
 > Target: A Restate Virtual Object driver that manages SNS Subscriptions, providing
 > full lifecycle management including creation, import, deletion, drift detection,
 > and drift correction for filter policies, delivery configuration, raw message
@@ -812,11 +811,26 @@ func ComputeFieldDiffs(desired SNSSubscriptionSpec, observed ObservedState) []ty
 
 ```go
 type SNSSubscriptionDriver struct {
-    accounts *auth.Registry
+    accounts   *auth.Registry
+    apiFactory func(aws.Config) SubscriptionAPI
 }
 
 func NewSNSSubscriptionDriver(accounts *auth.Registry) *SNSSubscriptionDriver {
-    return &SNSSubscriptionDriver{accounts: accounts}
+    return NewSNSSubscriptionDriverWithFactory(accounts, func(cfg aws.Config) SubscriptionAPI {
+        return NewSubscriptionAPI(awsclient.NewSNSClient(cfg))
+    })
+}
+
+func NewSNSSubscriptionDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) SubscriptionAPI) *SNSSubscriptionDriver {
+    if accounts == nil {
+        accounts = auth.LoadFromEnv()
+    }
+    if factory == nil {
+        factory = func(cfg aws.Config) SubscriptionAPI {
+            return NewSubscriptionAPI(awsclient.NewSNSClient(cfg))
+        }
+    }
+    return &SNSSubscriptionDriver{accounts: accounts, apiFactory: factory}
 }
 
 func (SNSSubscriptionDriver) ServiceName() string { return ServiceName }
