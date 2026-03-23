@@ -332,25 +332,33 @@ func (d *TargetGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (TargetG
 
 func (d *TargetGroupDriver) correctDrift(ctx restate.ObjectContext, api TargetGroupAPI, arn string, desired TargetGroupSpec, observed ObservedState) error {
 	if desired.HealthCheck != observed.HealthCheck {
-		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) { return restate.Void{}, api.ModifyTargetGroup(rc, arn, desired) })
+		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+			return restate.Void{}, api.ModifyTargetGroup(rc, arn, desired)
+		})
 		if err != nil {
 			return fmt.Errorf("modify health check: %w", err)
 		}
 	}
 	if desired.DeregistrationDelay != observed.DeregistrationDelay || !stickinessEqual(desired.Stickiness, observed.Stickiness) {
-		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) { return restate.Void{}, api.UpdateAttributes(rc, arn, desired) })
+		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+			return restate.Void{}, api.UpdateAttributes(rc, arn, desired)
+		})
 		if err != nil {
 			return fmt.Errorf("update attributes: %w", err)
 		}
 	}
 	if !targetsEqual(desired.Targets, observed.Targets) {
-		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) { return restate.Void{}, api.UpdateTargets(rc, arn, desired.Targets, observed.Targets) })
+		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+			return restate.Void{}, api.UpdateTargets(rc, arn, desired.Targets, observed.Targets)
+		})
 		if err != nil {
 			return fmt.Errorf("update targets: %w", err)
 		}
 	}
 	if !tagsMatch(desired.Tags, observed.Tags) {
-		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) { return restate.Void{}, api.UpdateTags(rc, arn, desired.Tags) })
+		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+			return restate.Void{}, api.UpdateTags(rc, arn, desired.Tags)
+		})
 		if err != nil {
 			return fmt.Errorf("update tags: %w", err)
 		}
@@ -442,11 +450,21 @@ func applyDefaults(spec TargetGroupSpec) TargetGroupSpec {
 }
 
 func validateSpec(spec TargetGroupSpec) error {
-	if spec.Region == "" { return fmt.Errorf("region is required") }
-	if spec.Name == "" { return fmt.Errorf("name is required") }
-	if spec.Protocol == "" { return fmt.Errorf("protocol is required") }
-	if spec.Port < 1 || spec.Port > 65535 { return fmt.Errorf("port must be between 1 and 65535") }
-	if spec.TargetType != "lambda" && spec.VpcId == "" { return fmt.Errorf("vpcId is required for non-lambda target groups") }
+	if spec.Region == "" {
+		return fmt.Errorf("region is required")
+	}
+	if spec.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if spec.Protocol == "" {
+		return fmt.Errorf("protocol is required")
+	}
+	if spec.Port < 1 || spec.Port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	if spec.TargetType != "lambda" && spec.VpcId == "" {
+		return fmt.Errorf("vpcId is required for non-lambda target groups")
+	}
 	for _, target := range spec.Targets {
 		if strings.TrimSpace(target.ID) == "" {
 			return fmt.Errorf("target id is required")

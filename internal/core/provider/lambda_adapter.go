@@ -35,9 +35,9 @@ func NewLambdaAdapterWithAPI(api lambda.LambdaAPI) *LambdaAdapter {
 	return &LambdaAdapter{staticPlanningAPI: api}
 }
 
-func (a *LambdaAdapter) Kind() string { return lambda.ServiceName }
+func (a *LambdaAdapter) Kind() string        { return lambda.ServiceName }
 func (a *LambdaAdapter) ServiceName() string { return lambda.ServiceName }
-func (a *LambdaAdapter) Scope() KeyScope { return KeyScopeRegion }
+func (a *LambdaAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
 func (a *LambdaAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)

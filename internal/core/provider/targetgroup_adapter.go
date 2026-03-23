@@ -20,7 +20,9 @@ type TargetGroupAdapter struct {
 	apiFactory        func(aws.Config) targetgroup.TargetGroupAPI
 }
 
-func NewTargetGroupAdapter() *TargetGroupAdapter { return NewTargetGroupAdapterWithRegistry(auth.LoadFromEnv()) }
+func NewTargetGroupAdapter() *TargetGroupAdapter {
+	return NewTargetGroupAdapterWithRegistry(auth.LoadFromEnv())
+}
 
 func NewTargetGroupAdapterWithRegistry(accounts *auth.Registry) *TargetGroupAdapter {
 	if accounts == nil {
@@ -38,9 +40,9 @@ func NewTargetGroupAdapterWithAPI(api targetgroup.TargetGroupAPI) *TargetGroupAd
 	return &TargetGroupAdapter{staticPlanningAPI: api}
 }
 
-func (a *TargetGroupAdapter) Kind() string { return targetgroup.ServiceName }
+func (a *TargetGroupAdapter) Kind() string        { return targetgroup.ServiceName }
 func (a *TargetGroupAdapter) ServiceName() string { return targetgroup.ServiceName }
-func (a *TargetGroupAdapter) Scope() KeyScope { return KeyScopeRegion }
+func (a *TargetGroupAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
 func (a *TargetGroupAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)

@@ -28,12 +28,14 @@ func NewLambdaPermissionAdapterWithRegistry(accounts *auth.Registry) *LambdaPerm
 	if accounts == nil {
 		accounts = auth.LoadFromEnv()
 	}
-	return &LambdaPermissionAdapter{auth: accounts, apiFactory: func(cfg aws.Config) lambdaperm.PermissionAPI { return lambdaperm.NewPermissionAPI(awsclient.NewLambdaClient(cfg)) }}
+	return &LambdaPermissionAdapter{auth: accounts, apiFactory: func(cfg aws.Config) lambdaperm.PermissionAPI {
+		return lambdaperm.NewPermissionAPI(awsclient.NewLambdaClient(cfg))
+	}}
 }
 
-func (a *LambdaPermissionAdapter) Kind() string { return lambdaperm.ServiceName }
+func (a *LambdaPermissionAdapter) Kind() string        { return lambdaperm.ServiceName }
 func (a *LambdaPermissionAdapter) ServiceName() string { return lambdaperm.ServiceName }
-func (a *LambdaPermissionAdapter) Scope() KeyScope { return KeyScopeRegion }
+func (a *LambdaPermissionAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
 func (a *LambdaPermissionAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)

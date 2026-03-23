@@ -14,9 +14,9 @@ type ListenerRuleSpec struct {
 }
 
 type RuleCondition struct {
-	Field             string            `json:"field"`
-	Values            []string          `json:"values,omitempty"`
-	HttpHeaderConfig  *HttpHeaderConfig `json:"httpHeaderConfig,omitempty"`
+	Field             string             `json:"field"`
+	Values            []string           `json:"values,omitempty"`
+	HttpHeaderConfig  *HttpHeaderConfig  `json:"httpHeaderConfig,omitempty"`
 	QueryStringConfig *QueryStringConfig `json:"queryStringConfig,omitempty"`
 }
 
