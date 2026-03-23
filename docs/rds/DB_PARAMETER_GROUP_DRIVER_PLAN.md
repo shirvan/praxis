@@ -1,6 +1,9 @@
 # DB Parameter Group Driver — Implementation Plan
 
-> NYI
+> **Implementation note:** This plan references a `praxis-database` driver pack.
+> The actual implementation places the DB Parameter Group driver in **`praxis-storage`**
+> (`cmd/praxis-storage/main.go`).
+
 > Target: A Restate Virtual Object driver that manages Amazon RDS DB Parameter
 > Groups and Aurora DB Cluster Parameter Groups, providing full lifecycle
 > management including creation, configuration, import, deletion, drift detection,
@@ -768,24 +771,24 @@ creation. No `WaitUntilAvailable` method is needed.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/rds/db_parameter_group.cue` created
-- [ ] **Types**: `internal/drivers/dbparametergroup/types.go` created
-- [ ] **AWS API**: `internal/drivers/dbparametergroup/aws.go` created
-- [ ] **Drift**: `internal/drivers/dbparametergroup/drift.go` created
-- [ ] **Driver**: `internal/drivers/dbparametergroup/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/dbparametergroup_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: `cmd/praxis-database/main.go` updated with binding
-- [ ] **Unit tests (drift)**: `internal/drivers/dbparametergroup/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/dbparametergroup/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/dbparametergroup/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/dbparametergroup_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/dbparametergroup_driver_test.go`
-- [ ] **Parameter batching**: 20-parameter batch limit implemented
-- [ ] **Reset-to-default**: Removed params reset correctly
-- [ ] **DB + Cluster type dispatch**: Both paths tested
-- [ ] **Import default mode**: `ModeObserved`
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/dbparametergroup/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestDBParameterGroup -tags=integration`
+- [x] **Schema**: `schemas/aws/rds/db_parameter_group.cue` created
+- [x] **Types**: `internal/drivers/dbparametergroup/types.go` created
+- [x] **AWS API**: `internal/drivers/dbparametergroup/aws.go` created
+- [x] **Drift**: `internal/drivers/dbparametergroup/drift.go` created
+- [x] **Driver**: `internal/drivers/dbparametergroup/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/dbparametergroup_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: `cmd/praxis-database/main.go` updated with binding
+- [x] **Unit tests (drift)**: `internal/drivers/dbparametergroup/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/dbparametergroup/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/dbparametergroup/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/dbparametergroup_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/dbparametergroup_driver_test.go`
+- [x] **Parameter batching**: 20-parameter batch limit implemented
+- [x] **Reset-to-default**: Removed params reset correctly
+- [x] **DB + Cluster type dispatch**: Both paths tested
+- [x] **Import default mode**: `ModeObserved`
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/dbparametergroup/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestDBParameterGroup -tags=integration`

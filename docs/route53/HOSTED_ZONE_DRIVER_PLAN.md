@@ -1,6 +1,12 @@
 # Route 53 Hosted Zone Driver — Implementation Plan
 
-> NYI
+> **Status: IMPLEMENTED** — Driver is fully implemented with unit tests,
+> integration tests, CUE schema, provider adapter, and registry integration.
+>
+> **Implementation note:** This plan references a `praxis-dns` driver pack.
+> The actual implementation places the Hosted Zone driver in **`praxis-network`**
+> (`cmd/praxis-network/main.go`).
+
 > Target: A Restate Virtual Object driver that manages Route 53 Hosted Zones,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for zone properties, VPC associations (private
@@ -1074,28 +1080,28 @@ enhancement. The driver does not create or manage KMS keys for DNSSEC.
 ## Checklist
 
 ### Schema
-- [ ] `schemas/aws/route53/hosted_zone.cue`
+- [x] `schemas/aws/route53/hosted_zone.cue`
 
 ### Driver
-- [ ] `internal/drivers/route53zone/types.go`
-- [ ] `internal/drivers/route53zone/aws.go`
-- [ ] `internal/drivers/route53zone/drift.go`
-- [ ] `internal/drivers/route53zone/driver.go`
-- [ ] `internal/drivers/route53zone/driver_test.go`
-- [ ] `internal/drivers/route53zone/aws_test.go`
-- [ ] `internal/drivers/route53zone/drift_test.go`
+- [x] `internal/drivers/route53zone/types.go`
+- [x] `internal/drivers/route53zone/aws.go`
+- [x] `internal/drivers/route53zone/drift.go`
+- [x] `internal/drivers/route53zone/driver.go`
+- [x] `internal/drivers/route53zone/driver_test.go`
+- [x] `internal/drivers/route53zone/aws_test.go`
+- [x] `internal/drivers/route53zone/drift_test.go`
 
 ### Adapter
-- [ ] `internal/core/provider/route53zone_adapter.go`
-- [ ] `internal/core/provider/route53zone_adapter_test.go`
+- [x] `internal/core/provider/route53zone_adapter.go`
+- [x] `internal/core/provider/route53zone_adapter_test.go`
 
 ### Registry
-- [ ] Adapter registered in `NewRegistry()`
+- [x] Adapter registered in `NewRegistry()`
 
 ### Integration Tests
-- [ ] `tests/integration/route53_hosted_zone_driver_test.go`
+- [x] `tests/integration/route53_hosted_zone_driver_test.go`
 
 ### Infrastructure
-- [ ] `internal/infra/awsclient/client.go` — `NewRoute53Client`
-- [ ] `cmd/praxis-dns/main.go` — `.Bind()` call
-- [ ] `cmd/praxis-dns/Dockerfile`
+- [x] `internal/infra/awsclient/client.go` — `NewRoute53Client`
+- [x] `cmd/praxis-dns/main.go` — `.Bind()` call
+- [x] `cmd/praxis-dns/Dockerfile`

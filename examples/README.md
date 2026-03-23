@@ -9,7 +9,9 @@ examples/
 ├── ec2/          EC2 instances, key pairs, EBS volumes
 ├── vpc/          VPCs, subnets, gateways, route tables, peering
 ├── s3/           S3 buckets
-└── stacks/       Multi-resource compositions (cross-domain)
+├── stacks/       Multi-resource compositions (cross-domain)
+├── policies/     Policy-as-code constraints (security, cost, network)
+└── ops/          Platform deployment (Kubernetes manifests, autoscaling)
 ```
 
 ## Quick Start
@@ -62,6 +64,53 @@ praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.jso
 | `three-tier-app` | Full three-tier: VPC, subnets, IGW, NAT, security groups, web + app servers, S3 | 13 resources |
 | `network-locked-app` | Defense-in-depth: VPC + NACL + SG + EC2 | VPC → Subnet → NetworkACL + SecurityGroup → EC2Instance |
 
+### Policies — `examples/policies/`
+
+Policies are CUE constraint files that enforce organizational rules across templates. They are applied during template evaluation — the engine unifies each policy with the template and reports violations as `PolicyViolation` errors.
+
+| Policy | Description | Enforces |
+|--------|-------------|----------|
+| `security-baseline` | Organization-wide security defaults | Encryption on S3 + EC2 root volumes, required `environment`/`app` tags |
+| `prod-guardrails` | Production environment guardrails | Monitoring on EC2, private + versioned S3, DNS on VPCs (name pattern: `*-prod`) |
+| `cost-controls` | Cost control limits | Approved EC2 instance types, root volume ≤500 GiB, no provisioned IOPS |
+| `network-hardening` | Network security hardening | Private-only S3 buckets, DNS support on all VPCs |
+
+#### Policy patterns
+
+Policies use CUE's pattern constraint syntax to target resources:
+
+```cue
+// Apply to ALL resources — universal constraint
+resources: [_]: spec: tags: { environment: string }
+
+// Apply to resources matching a name pattern
+resources: [=~"-prod"]: spec: monitoring: true
+
+// Apply conditionally by resource kind
+resources: [_]: {
+    kind: string
+    if kind == "S3Bucket" {
+        spec: encryption: enabled: true
+    }
+}
+```
+
+#### Usage
+
+```bash
+# Add a global policy (applies to all templates)
+praxis policy add --name security-baseline --scope global \
+  --source examples/policies/security-baseline.cue
+
+# Add a template-scoped policy (applies only to one template)
+praxis policy add --name prod-guardrails --scope template --template my-app \
+  --source examples/policies/prod-guardrails.cue
+
+# Validate a template against all active policies
+praxis template validate examples/ec2/ec2-instance.cue \
+  -f examples/ec2/ec2-instance.vars.json
+```
+
 ## Variables
 
 Each `.cue` template has a matching `.vars.json` file with sample variable values. Common variables:
@@ -73,3 +122,14 @@ Each `.cue` template has a matching `.vars.json` file with sample variable value
 ## Output Expressions
 
 Templates use `${resources.<name>.outputs.<field>}` to wire resources together. The orchestrator builds a DAG from these expressions and provisions resources in dependency order, resolving outputs at dispatch time.
+
+### Ops — `examples/ops/`
+
+Kubernetes manifests for deploying the Praxis platform itself.
+
+| Manifest | Description | Resources |
+|----------|-------------|-----------|
+| `k8s/praxis-full` | Full Praxis stack on K8s (Restate + Core + all driver packs) | Namespace, ConfigMap, StatefulSet, 5× Deployment + Service |
+| `k8s/praxis-autoscaling` | HPA configs to scale driver packs based on CPU demand | 4× HorizontalPodAutoscaler (network 1–8, compute 1–6, storage 1–4, iam 1–3) |
+
+See the [Operators Guide](../docs/OPERATORS.md) for full deployment instructions.

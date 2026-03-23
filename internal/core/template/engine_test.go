@@ -591,3 +591,227 @@ resources: {
 	tags := spec["tags"].(map[string]any)
 	assert.Equal(t, "praxis", tags["managedBy"])
 }
+
+// ── Example Policy Validation ───────────────────────────
+
+func TestEngine_ExamplePolicy_SecurityBaseline_Passes(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "security-baseline.cue"))
+	require.NoError(t, err)
+
+	specs, err := eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		metadata: { name: "assets-prod" }
+		spec: {
+			region:     "us-east-1"
+			encryption: enabled: true
+			tags: { environment: "prod", app: "myapp" }
+		}
+	}
+	server: {
+		kind: "EC2Instance"
+		metadata: { name: "web-prod" }
+		spec: {
+			region: "us-east-1"
+			imageId: "ami-0885b1f6bd170450c"
+			instanceType: "t3.small"
+			subnetId: "subnet-abc123"
+			rootVolume: { sizeGiB: 20, volumeType: "gp3", encrypted: true }
+			tags: { environment: "prod", app: "myapp" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "security-baseline",
+		Source: policy,
+	}}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, specs, "bucket")
+	assert.Contains(t, specs, "server")
+}
+
+func TestEngine_ExamplePolicy_SecurityBaseline_ViolatesEncryption(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "security-baseline.cue"))
+	require.NoError(t, err)
+
+	_, err = eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		metadata: { name: "assets-prod" }
+		spec: {
+			region:     "us-east-1"
+			encryption: enabled: false
+			tags: { environment: "prod", app: "myapp" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "security-baseline",
+		Source: policy,
+	}}, nil)
+	require.Error(t, err)
+
+	var tErrs TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, ErrPolicyViolation, tErrs[0].Kind)
+	assert.Equal(t, "security-baseline", tErrs[0].PolicyName)
+}
+
+func TestEngine_ExamplePolicy_SecurityBaseline_ViolatesMissingTags(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "security-baseline.cue"))
+	require.NoError(t, err)
+
+	_, err = eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		metadata: { name: "assets-prod" }
+		spec: {
+			region:     "us-east-1"
+			encryption: enabled: true
+			tags: { purpose: "assets" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "security-baseline",
+		Source: policy,
+	}}, nil)
+	require.Error(t, err)
+
+	var tErrs TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, ErrPolicyViolation, tErrs[0].Kind)
+}
+
+func TestEngine_ExamplePolicy_CostControls_Violation(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "cost-controls.cue"))
+	require.NoError(t, err)
+
+	_, err = eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	server: {
+		kind: "EC2Instance"
+		metadata: { name: "big-server" }
+		spec: {
+			region: "us-east-1"
+			imageId: "ami-0885b1f6bd170450c"
+			instanceType: "m5.4xlarge"
+			subnetId: "subnet-abc123"
+			rootVolume: { sizeGiB: 20, volumeType: "gp3", encrypted: true }
+			tags: { app: "myapp" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "cost-controls",
+		Source: policy,
+	}}, nil)
+	require.Error(t, err)
+
+	var tErrs TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, ErrPolicyViolation, tErrs[0].Kind)
+	assert.Equal(t, "cost-controls", tErrs[0].PolicyName)
+}
+
+func TestEngine_ExamplePolicy_ProdGuardrails_Passes(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "prod-guardrails.cue"))
+	require.NoError(t, err)
+
+	specs, err := eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	"web-prod": {
+		kind: "EC2Instance"
+		metadata: { name: "web-prod" }
+		spec: {
+			region: "us-east-1"
+			imageId: "ami-0885b1f6bd170450c"
+			instanceType: "t3.small"
+			subnetId: "subnet-abc123"
+			monitoring: true
+			rootVolume: { sizeGiB: 20, volumeType: "gp3", encrypted: true }
+			tags: { app: "myapp" }
+		}
+	}
+	"data-prod": {
+		kind: "S3Bucket"
+		metadata: { name: "data-prod" }
+		spec: {
+			region: "us-east-1"
+			acl: "private"
+			versioning: true
+			encryption: enabled: true
+			tags: { app: "myapp" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "prod-guardrails",
+		Source: policy,
+	}}, nil)
+	require.NoError(t, err)
+	assert.Len(t, specs, 2)
+}
+
+func TestEngine_ExamplePolicy_ProdGuardrails_ViolatesMonitoring(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "prod-guardrails.cue"))
+	require.NoError(t, err)
+
+	_, err = eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	"web-prod": {
+		kind: "EC2Instance"
+		metadata: { name: "web-prod" }
+		spec: {
+			region: "us-east-1"
+			imageId: "ami-0885b1f6bd170450c"
+			instanceType: "t3.small"
+			subnetId: "subnet-abc123"
+			monitoring: false
+			rootVolume: { sizeGiB: 20, volumeType: "gp3", encrypted: true }
+			tags: { app: "myapp" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "prod-guardrails",
+		Source: policy,
+	}}, nil)
+	require.Error(t, err)
+
+	var tErrs TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, ErrPolicyViolation, tErrs[0].Kind)
+}
+
+func TestEngine_ExamplePolicy_NetworkHardening_ViolatesPublicBucket(t *testing.T) {
+	eng := NewEngine("")
+	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "network-hardening.cue"))
+	require.NoError(t, err)
+
+	_, err = eng.EvaluateBytesWithPolicies([]byte(`
+resources: {
+	website: {
+		kind: "S3Bucket"
+		metadata: { name: "website-assets" }
+		spec: {
+			region: "us-east-1"
+			acl: "public-read"
+			encryption: enabled: true
+			tags: { app: "site" }
+		}
+	}
+}`), []PolicySource{{
+		Name:   "network-hardening",
+		Source: policy,
+	}}, nil)
+	require.Error(t, err)
+
+	var tErrs TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, ErrPolicyViolation, tErrs[0].Kind)
+	assert.Equal(t, "network-hardening", tErrs[0].PolicyName)
+}

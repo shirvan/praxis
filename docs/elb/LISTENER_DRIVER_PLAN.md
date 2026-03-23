@@ -1,6 +1,5 @@
 # Listener Driver — Implementation Plan
 
-> NYI
 > Target: A Restate Virtual Object driver that manages ELBv2 Listeners, providing
 > full lifecycle management including creation, import, deletion, drift detection,
 > and drift correction for port, protocol, SSL configuration, default actions, and
@@ -624,14 +623,14 @@ initial driver implementation supports only the primary certificate via
 
 ## Checklist
 
-- [ ] `schemas/aws/elb/listener.cue` created
-- [ ] `internal/drivers/listener/types.go` created
-- [ ] `internal/drivers/listener/aws.go` created
-- [ ] `internal/drivers/listener/drift.go` created
-- [ ] `internal/drivers/listener/driver.go` created
-- [ ] `internal/drivers/listener/driver_test.go` created
-- [ ] `internal/drivers/listener/aws_test.go` created
-- [ ] `internal/drivers/listener/drift_test.go` created
-- [ ] `internal/core/provider/listener_adapter.go` created
-- [ ] `internal/core/provider/registry.go` updated
-- [ ] `tests/integration/listener_driver_test.go` created
+- [x] `schemas/aws/elb/listener.cue` created
+- [x] `internal/drivers/listener/types.go` created
+- [x] `internal/drivers/listener/aws.go` created
+- [x] `internal/drivers/listener/drift.go` created
+- [x] `internal/drivers/listener/driver.go` created
+- [x] `internal/drivers/listener/driver_test.go` created
+- [x] `internal/drivers/listener/aws_test.go` created
+- [x] `internal/drivers/listener/drift_test.go` created
+- [x] `internal/core/provider/listener_adapter.go` created
+- [x] `internal/core/provider/registry.go` updated
+- [x] `tests/integration/listener_driver_test.go` created

@@ -76,68 +76,34 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 
 In production, each Praxis service runs as a separate Kubernetes Deployment behind an Ingress (or directly reachable by Restate via cluster DNS). Restate itself can be Restate Cloud or a self-hosted StatefulSet.
 
-The example below deploys the storage driver pack and registers it with Restate Cloud. The same pattern applies to every other driver pack and Praxis Core.
+Ready-to-use manifests live in [`examples/ops/k8s/`](../examples/ops/k8s/):
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: praxis-storage
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: praxis-storage
-  template:
-    metadata:
-      labels:
-        app: praxis-storage
-    spec:
-      containers:
-        - name: praxis-storage
-          image: ghcr.io/shirvan/praxis-storage:latest
-          ports:
-            - containerPort: 9080
-          env:
-            - name: PRAXIS_LISTEN_ADDR
-              value: "0.0.0.0:9080"
-          envFrom:
-            - secretRef:
-                name: praxis-aws-credentials
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: praxis-storage
-spec:
-  selector:
-    app: praxis-storage
-  ports:
-    - port: 9080
-      targetPort: 9080
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: praxis-storage
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: praxis-storage.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: praxis-storage
-                port:
-                  number: 9080
+| Manifest | Description |
+|----------|-------------|
+| [`praxis-full.yaml`](../examples/ops/k8s/praxis-full.yaml) | Full stack — Namespace, ConfigMap, Restate StatefulSet (PVC-backed), Praxis Core + all four driver packs as Deployments + Services |
+| [`praxis-autoscaling.yaml`](../examples/ops/k8s/praxis-autoscaling.yaml) | HorizontalPodAutoscalers that scale driver packs based on CPU demand (network 1–8, compute 1–6, storage 1–4, iam 1–3) |
+
+```bash
+# Deploy the full stack
+kubectl apply -f examples/ops/k8s/praxis-full.yaml
+
+# Wait for readiness
+kubectl -n praxis-system wait --for=condition=ready pod \
+  -l app.kubernetes.io/part-of=praxis --timeout=120s
+
+# Register each service with Restate
+for svc in praxis-core praxis-storage praxis-compute praxis-network praxis-identity; do
+  kubectl -n praxis-system exec deploy/restate -- \
+    curl -s -X POST http://localhost:9070/deployments \
+      -H 'content-type: application/json' \
+      -d "{\"uri\": \"http://${svc}.praxis-system:9080\"}"
+done
+
+# (Optional) Enable autoscaling
+kubectl apply -f examples/ops/k8s/praxis-autoscaling.yaml
 ```
 
-Register the driver pack with Restate Cloud (or any Restate instance):
+For **Restate Cloud**, replace the in-cluster Restate StatefulSet with the cloud-provided endpoints and register each service's Ingress URL instead:
 
 ```bash
 curl -X POST https://<restate-cloud-admin>/deployments \
@@ -146,7 +112,7 @@ curl -X POST https://<restate-cloud-admin>/deployments \
   -d '{"uri": "https://praxis-storage.example.com"}'
 ```
 
-Repeat for each driver pack and Praxis Core. Each gets its own Deployment, Service, and Ingress — fully independent scaling and rollout.
+Each driver pack and Praxis Core gets its own Deployment, Service, and (optionally) Ingress — fully independent scaling and rollout.
 
 ## Quick Start (Local Development)
 

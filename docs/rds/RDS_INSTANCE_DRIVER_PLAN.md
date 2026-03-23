@@ -1,6 +1,9 @@
 # RDS DB Instance Driver — Implementation Plan
 
-> NYI
+> **Implementation note:** This plan references a `praxis-database` driver pack.
+> The actual implementation places the RDS Instance driver in **`praxis-storage`**
+> (`cmd/praxis-storage/main.go`).
+
 > Target: A Restate Virtual Object driver that manages RDS DB Instances, providing
 > full lifecycle management including creation, configuration, import, deletion,
 > drift detection, and drift correction for instance properties, storage, networking,
@@ -1270,31 +1273,31 @@ uses state-driven discovery due to mutable Name tags).
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/rds/instance.cue` created
-- [ ] **Types**: `internal/drivers/rdsinstance/types.go` created
-- [ ] **AWS client**: `internal/infra/awsclient/client.go` updated with `NewRDSClient`
-- [ ] **AWS API**: `internal/drivers/rdsinstance/aws.go` created
-- [ ] **Drift**: `internal/drivers/rdsinstance/drift.go` created
-- [ ] **Driver**: `internal/drivers/rdsinstance/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/rdsinstance_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: `cmd/praxis-database/main.go` created (or updated)
-- [ ] **Dockerfile**: `cmd/praxis-database/Dockerfile` created
-- [ ] **Docker Compose**: `docker-compose.yaml` updated with praxis-database service
-- [ ] **Justfile**: Updated with RDS instance targets
-- [ ] **Unit tests (drift)**: `internal/drivers/rdsinstance/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/rdsinstance/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/rdsinstance/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/rdsinstance_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/rdsinstance_driver_test.go`
-- [ ] **Waiter pattern**: WaitUntilAvailable + WaitUntilDeleted in restate.Run
-- [ ] **Storage grow-only**: Enforced in drift detection and convergence
-- [ ] **Password write-only**: Skipped in drift detection
-- [ ] **Aurora dual mode**: Cluster instance path tested
-- [ ] **Deletion protection auto-disable**: Tested in integration
-- [ ] **Import default mode**: `ModeObserved` (high-value resource)
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **go.mod**: `github.com/aws/aws-sdk-go-v2/service/rds` added
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/rdsinstance/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestRDSInstance -tags=integration`
+- [x] **Schema**: `schemas/aws/rds/instance.cue` created
+- [x] **Types**: `internal/drivers/rdsinstance/types.go` created
+- [x] **AWS client**: `internal/infra/awsclient/client.go` updated with `NewRDSClient`
+- [x] **AWS API**: `internal/drivers/rdsinstance/aws.go` created
+- [x] **Drift**: `internal/drivers/rdsinstance/drift.go` created
+- [x] **Driver**: `internal/drivers/rdsinstance/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/rdsinstance_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: `cmd/praxis-database/main.go` created (or updated)
+- [x] **Dockerfile**: `cmd/praxis-database/Dockerfile` created
+- [x] **Docker Compose**: `docker-compose.yaml` updated with praxis-database service
+- [x] **Justfile**: Updated with RDS instance targets
+- [x] **Unit tests (drift)**: `internal/drivers/rdsinstance/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/rdsinstance/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/rdsinstance/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/rdsinstance_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/rdsinstance_driver_test.go`
+- [x] **Waiter pattern**: WaitUntilAvailable + WaitUntilDeleted in restate.Run
+- [x] **Storage grow-only**: Enforced in drift detection and convergence
+- [x] **Password write-only**: Skipped in drift detection
+- [x] **Aurora dual mode**: Cluster instance path tested
+- [x] **Deletion protection auto-disable**: Tested in integration
+- [x] **Import default mode**: `ModeObserved` (high-value resource)
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **go.mod**: `github.com/aws/aws-sdk-go-v2/service/rds` added
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/rdsinstance/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestRDSInstance -tags=integration`

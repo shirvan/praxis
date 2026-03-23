@@ -9,7 +9,11 @@ import (
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/praxiscloud/praxis/internal/core/config"
+	"github.com/praxiscloud/praxis/internal/drivers/auroracluster"
+	"github.com/praxiscloud/praxis/internal/drivers/dbparametergroup"
+	"github.com/praxiscloud/praxis/internal/drivers/dbsubnetgroup"
 	"github.com/praxiscloud/praxis/internal/drivers/ebs"
+	"github.com/praxiscloud/praxis/internal/drivers/rdsinstance"
 	"github.com/praxiscloud/praxis/internal/drivers/s3"
 )
 
@@ -18,7 +22,11 @@ func main() {
 
 	srv := server.NewRestate().
 		Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth()))).
-		Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth())))
+		Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth()))).
+		Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(cfg.Auth()))).
+		Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(cfg.Auth()))).
+		Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth()))).
+		Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(cfg.Auth())))
 
 	slog.Info("starting storage driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

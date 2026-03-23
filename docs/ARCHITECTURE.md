@@ -31,9 +31,12 @@ graph TD
     Core -->|"Restate RPC - durable, exactly-once"| Drivers
 
     subgraph Drivers["DRIVER PACKS (grouped by AWS domain)"]
-        Storage["Storage<br/>(S3, EBS, RDS, DynamoDB)"]
-        Network["Network<br/>(SG, VPC, EIP, IGW, ELB, R53)"]
-        Compute["Compute<br/>(AMI, KeyPair, EC2, ASG, Lambda)"]
+        Storage["Storage<br/>(S3, EBS, RDS, Aurora)"]
+        Network["Network<br/>(SG, VPC, EIP, IGW, NACL, RT, Subnet, NAT GW, VPC Peering, Route 53)"]
+        ELB["ELB<br/>(ALB, NLB, Target Group, Listener, Listener Rule)"]
+        Compute["Compute<br/>(AMI, KeyPair, EC2, Lambda)"]
+        IAM["Identity<br/>(Role, Policy, User, Group, Instance Profile)"]
+        Observability["Observability<br/>(future: CloudWatch, CloudTrail)"]
     end
 
     Drivers --> AWS["AWS APIs"]
@@ -87,11 +90,11 @@ srv := server.NewRestate().
 
 | Pack | Container | Drivers | Rationale |
 | --- | --- | --- | --- |
-| **Storage** | `praxis-storage` | S3, EBS (future: RDS, DynamoDB, SQS, SNS) | Data stores and messaging |
-| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering (future: ELB, Route 53, CloudFront, API GW) | Networking is tightly coupled — VPC+SG+ELB almost always deploy together |
-| **Compute** | `praxis-compute` | AMI, KeyPair, EC2 (future: Auto Scaling, Lambda, ECS, EKS) | All compute lifecycle, similar IAM patterns |
-| **Identity** | `praxis-identity` | *(future: IAM, KMS, Secrets Manager, ACM)* | Security-sensitive, low churn |
-| **Observability** | `praxis-observability` | *(future: CloudWatch)* | Optional, many users skip it |
+| **Storage** | `praxis-storage` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster | Data stores and databases |
+| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule | Networking and load balancing — VPC+SG+DNS+ELB almost always deploy together |
+| **Compute** | `praxis-compute` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping | Compute lifecycle |
+| **Identity** | `praxis-identity` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile | Security-sensitive, low churn |
+| **Observability** | `praxis-observability` | *(future: CloudWatch, CloudTrail)* | Logging, metrics, and audit — optional, many users skip it |
 
 Each driver within a pack:
 

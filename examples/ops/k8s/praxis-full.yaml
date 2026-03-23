@@ -1,0 +1,517 @@
+# praxis-full.yaml — Complete Praxis deployment on Kubernetes.
+#
+# Deploys the full Praxis stack: Restate runtime, praxis-core, and all four
+# driver packs (storage, compute, network, iam). Every component gets a
+# Deployment + ClusterIP Service. Restate runs as a StatefulSet with
+# persistent storage for its journal.
+#
+# Topology:
+#   restate (StatefulSet, 1 replica, PVC)
+#   ├── praxis-core (Deployment) — command service, orchestrator, templates
+#   ├── praxis-storage (Deployment) — S3, EBS drivers
+#   ├── praxis-compute (Deployment) — AMI, KeyPair, EC2 drivers
+#   ├── praxis-network (Deployment) — SG, VPC, IGW, NACL, RouteTable, Subnet, NAT, Peering
+#   └── praxis-identity (Deployment) — IAMPolicy, IAMInstanceProfile drivers
+#
+# Quick start:
+#   kubectl apply -f examples/ops/k8s/praxis-full.yaml
+#   kubectl -n praxis-system wait --for=condition=ready pod -l app.kubernetes.io/part-of=praxis --timeout=120s
+#
+# Then register services with Restate (from a pod with network access):
+#   curl -X POST http://restate.praxis-system:9070/deployments \
+#     -H 'content-type: application/json' \
+#     -d '{"uri": "http://praxis-core.praxis-system:9080"}'
+#   # Repeat for each driver pack service.
+#
+# To expose the Restate ingress externally:
+#   kubectl -n praxis-system port-forward svc/restate 8080:8080
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NAMESPACE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: praxis-system
+  labels:
+    app.kubernetes.io/part-of: praxis
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGMAP — shared environment for all Praxis services
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: praxis-config
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/part-of: praxis
+data:
+  # AWS credentials / region — replace with real values or use IAM Roles for
+  # Service Accounts (IRSA) in production.
+  AWS_REGION: "us-east-1"
+  AWS_DEFAULT_REGION: "us-east-1"
+  AWS_ACCESS_KEY_ID: "REPLACE_ME"
+  AWS_SECRET_ACCESS_KEY: "REPLACE_ME"
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RESTATE — durable execution runtime (StatefulSet)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: restate
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: restate
+    app.kubernetes.io/part-of: praxis
+    app.kubernetes.io/component: runtime
+spec:
+  serviceName: restate
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: restate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: restate
+        app.kubernetes.io/part-of: praxis
+        app.kubernetes.io/component: runtime
+    spec:
+      containers:
+        - name: restate
+          image: docker.restate.dev/restatedev/restate:1.3
+          ports:
+            - name: ingress
+              containerPort: 8080
+            - name: admin
+              containerPort: 9070
+            - name: metrics
+              containerPort: 9071
+          env:
+            - name: RESTATE_OBSERVABILITY__LOG__FILTER
+              value: "restate=info"
+          volumeMounts:
+            - name: restate-data
+              mountPath: /target/restate
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: restate-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: restate
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: restate
+    app.kubernetes.io/part-of: praxis
+spec:
+  selector:
+    app.kubernetes.io/name: restate
+  ports:
+    - name: ingress
+      port: 8080
+      targetPort: ingress
+    - name: admin
+      port: 9070
+      targetPort: admin
+    - name: metrics
+      port: 9071
+      targetPort: metrics
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRAXIS CORE — command service, orchestrator, template engine
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praxis-core
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-core
+    app.kubernetes.io/part-of: praxis
+    app.kubernetes.io/component: core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: praxis-core
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: praxis-core
+        app.kubernetes.io/part-of: praxis
+        app.kubernetes.io/component: core
+    spec:
+      containers:
+        - name: praxis-core
+          image: ghcr.io/shirvan/praxis-core:latest
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: praxis-config
+          env:
+            - name: PRAXIS_LISTEN_ADDR
+              value: "0.0.0.0:9080"
+            - name: PRAXIS_RESTATE_ENDPOINT
+              value: "http://restate.praxis-system:8080"
+            - name: PRAXIS_SCHEMA_DIR
+              value: "/schemas"
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: praxis-core
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-core
+    app.kubernetes.io/part-of: praxis
+spec:
+  selector:
+    app.kubernetes.io/name: praxis-core
+  ports:
+    - name: restate
+      port: 9080
+      targetPort: restate
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRAXIS STORAGE — S3, EBS drivers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praxis-storage
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-storage
+    app.kubernetes.io/part-of: praxis
+    app.kubernetes.io/component: drivers
+    praxis.io/driver-pack: storage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: praxis-storage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: praxis-storage
+        app.kubernetes.io/part-of: praxis
+        app.kubernetes.io/component: drivers
+        praxis.io/driver-pack: storage
+    spec:
+      containers:
+        - name: praxis-storage
+          image: ghcr.io/shirvan/praxis-storage:latest
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: praxis-config
+          env:
+            - name: PRAXIS_LISTEN_ADDR
+              value: "0.0.0.0:9080"
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: praxis-storage
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-storage
+    app.kubernetes.io/part-of: praxis
+spec:
+  selector:
+    app.kubernetes.io/name: praxis-storage
+  ports:
+    - name: restate
+      port: 9080
+      targetPort: restate
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRAXIS COMPUTE — AMI, KeyPair, EC2 drivers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praxis-compute
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-compute
+    app.kubernetes.io/part-of: praxis
+    app.kubernetes.io/component: drivers
+    praxis.io/driver-pack: compute
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: praxis-compute
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: praxis-compute
+        app.kubernetes.io/part-of: praxis
+        app.kubernetes.io/component: drivers
+        praxis.io/driver-pack: compute
+    spec:
+      containers:
+        - name: praxis-compute
+          image: ghcr.io/shirvan/praxis-compute:latest
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: praxis-config
+          env:
+            - name: PRAXIS_LISTEN_ADDR
+              value: "0.0.0.0:9080"
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: praxis-compute
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-compute
+    app.kubernetes.io/part-of: praxis
+spec:
+  selector:
+    app.kubernetes.io/name: praxis-compute
+  ports:
+    - name: restate
+      port: 9080
+      targetPort: restate
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRAXIS NETWORK — SG, VPC, IGW, NACL, RouteTable, Subnet, NAT, Peering
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praxis-network
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-network
+    app.kubernetes.io/part-of: praxis
+    app.kubernetes.io/component: drivers
+    praxis.io/driver-pack: network
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: praxis-network
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: praxis-network
+        app.kubernetes.io/part-of: praxis
+        app.kubernetes.io/component: drivers
+        praxis.io/driver-pack: network
+    spec:
+      containers:
+        - name: praxis-network
+          image: ghcr.io/shirvan/praxis-network:latest
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: praxis-config
+          env:
+            - name: PRAXIS_LISTEN_ADDR
+              value: "0.0.0.0:9080"
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: praxis-network
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-network
+    app.kubernetes.io/part-of: praxis
+spec:
+  selector:
+    app.kubernetes.io/name: praxis-network
+  ports:
+    - name: restate
+      port: 9080
+      targetPort: restate
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRAXIS IAM — IAMPolicy, IAMInstanceProfile drivers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: praxis-identity
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-identity
+    app.kubernetes.io/part-of: praxis
+    app.kubernetes.io/component: drivers
+    praxis.io/driver-pack: iam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: praxis-identity
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: praxis-identity
+        app.kubernetes.io/part-of: praxis
+        app.kubernetes.io/component: drivers
+        praxis.io/driver-pack: iam
+    spec:
+      containers:
+        - name: praxis-identity
+          image: ghcr.io/shirvan/praxis-identity:latest
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: praxis-config
+          env:
+            - name: PRAXIS_LISTEN_ADDR
+              value: "0.0.0.0:9080"
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: praxis-identity
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-identity
+    app.kubernetes.io/part-of: praxis
+spec:
+  selector:
+    app.kubernetes.io/name: praxis-identity
+  ports:
+    - name: restate
+      port: 9080
+      targetPort: restate

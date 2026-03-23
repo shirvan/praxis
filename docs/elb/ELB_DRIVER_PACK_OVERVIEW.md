@@ -1,10 +1,9 @@
 # ELB Driver Pack — Overview
 
-> NYI
 > This document summarizes the ELB driver family for Praxis: five drivers covering
 > Application Load Balancers (ALBs), Network Load Balancers (NLBs), Target Groups,
 > Listeners, and Listener Rules. It describes their relationships, shared
-> infrastructure, implementation order, and the new `praxis-elb` driver pack.
+> infrastructure, implementation order, and how the ELB drivers are served by the `praxis-network` driver pack.
 
 ---
 
@@ -12,7 +11,7 @@
 
 1. [Driver Summary](#1-driver-summary)
 2. [Relationships & Dependencies](#2-relationships--dependencies)
-3. [Driver Pack: praxis-elb](#3-driver-pack-praxis-elb)
+3. [Driver Pack: praxis-network (ELB drivers)](#3-driver-pack-praxis-network-elb-drivers)
 4. [Shared Infrastructure](#4-shared-infrastructure)
 5. [Implementation Order](#5-implementation-order)
 6. [go.mod Changes](#6-gomod-changes)
@@ -32,7 +31,7 @@
 | ALB | `ALB` | `region~albName` | `KeyScopeRegion` | subnets, securityGroups, ipAddressType, accessLogs, deletionProtection, idleTimeout, tags | Yes | [ALB_DRIVER_PLAN.md](ALB_DRIVER_PLAN.md) |
 | NLB | `NLB` | `region~nlbName` | `KeyScopeRegion` | subnets, crossZoneLoadBalancing, deletionProtection, tags | Yes | [NLB_DRIVER_PLAN.md](NLB_DRIVER_PLAN.md) |
 | Target Group | `TargetGroup` | `region~tgName` | `KeyScopeRegion` | healthCheck, deregistrationDelay, stickiness, targets, tags | Yes | [TARGET_GROUP_DRIVER_PLAN.md](TARGET_GROUP_DRIVER_PLAN.md) |
-| Listener | `Listener` | `region~listenerName` | `KeyScopeRegion` | port, protocol, defaultActions, sslPolicy, certificateArn, tags | Yes | [LISTENER_DRIVER_PLAN.md](LISTENER_DRIVER_PLAN.md) |
+| Listener | `Listener` | `region~listenerName` | `KeyScopeRegion` | port, protocol, defaultActions, sslPolicy, certificateArn, alpnPolicy, tags | Yes | [LISTENER_DRIVER_PLAN.md](LISTENER_DRIVER_PLAN.md) |
 | Listener Rule | `ListenerRule` | `region~ruleName` | `KeyScopeRegion` | priority, conditions, actions, tags | Yes | [LISTENER_RULE_DRIVER_PLAN.md](LISTENER_RULE_DRIVER_PLAN.md) |
 
 All five drivers use `KeyScopeRegion` — ELBv2 resources are regional, keys are
@@ -97,69 +96,30 @@ graph TD
 
 ---
 
-## 3. Driver Pack: praxis-elb
+## 3. Driver Pack: praxis-network (ELB drivers)
 
-### New Entry Point
+The five ELB drivers are served by the **praxis-network** driver pack alongside VPC,
+Security Group, Route 53, and other networking drivers. Load balancers are
+fundamentally networking infrastructure and share deployment lifecycle with VPC and
+DNS resources.
 
-**File**: `cmd/praxis-elb/main.go`
+### Entry Point
+
+**File**: `cmd/praxis-network/main.go`
+
+The ELB drivers are registered alongside all other networking drivers:
 
 ```go
-package main
-
-import (
-    "context"
-    "log/slog"
-    "os"
-
-    restate "github.com/restatedev/sdk-go"
-    server "github.com/restatedev/sdk-go/server"
-
-    "github.com/praxiscloud/praxis/internal/core/config"
-    "github.com/praxiscloud/praxis/internal/drivers/alb"
-    "github.com/praxiscloud/praxis/internal/drivers/nlb"
-    "github.com/praxiscloud/praxis/internal/drivers/targetgroup"
-    "github.com/praxiscloud/praxis/internal/drivers/listener"
-    "github.com/praxiscloud/praxis/internal/drivers/listenerrule"
-)
-
-func main() {
-    cfg := config.Load()
-
-    srv := server.NewRestate().
-        Bind(restate.Reflect(alb.NewALBDriver(cfg.Auth()))).
-        Bind(restate.Reflect(nlb.NewNLBDriver(cfg.Auth()))).
-        Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(cfg.Auth()))).
-        Bind(restate.Reflect(listener.NewListenerDriver(cfg.Auth()))).
-        Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(cfg.Auth())))
-
-    slog.Info("starting elb driver pack", "addr", cfg.ListenAddr)
-    if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
-        slog.Error("praxis-elb exited unexpectedly", "err", err.Error())
-        os.Exit(1)
-    }
-}
+srv := server.NewRestate().
+    // ... VPC, SG, Route 53, etc. ...
+    Bind(restate.Reflect(alb.NewALBDriver(cfg.Auth()))).
+    Bind(restate.Reflect(nlb.NewNLBDriver(cfg.Auth()))).
+    Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(cfg.Auth()))).
+    Bind(restate.Reflect(listener.NewListenerDriver(cfg.Auth()))).
+    Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(cfg.Auth())))
 ```
 
-### Dockerfile
-
-**File**: `cmd/praxis-elb/Dockerfile`
-
-Follows the same pattern as existing driver packs (`cmd/praxis-compute/Dockerfile`).
-
-```dockerfile
-FROM golang:1.25-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /praxis-elb ./cmd/praxis-elb
-
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=builder /praxis-elb /praxis-elb
-ENTRYPOINT ["/praxis-elb"]
-```
-
-### Port: 9086
+### Port: 9082 (same as praxis-network)
 
 | Pack | Port |
 |---|---|
@@ -167,8 +127,7 @@ ENTRYPOINT ["/praxis-elb"]
 | praxis-network | 9082 |
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
-| praxis-iam | 9085 |
-| **praxis-elb** | **9086** |
+| praxis-identity | 9085 |
 
 ---
 
@@ -282,55 +241,29 @@ go mod tidy
 
 ## 7. Docker Compose Changes
 
-**File**: `docker-compose.yaml` — add the `praxis-elb` service:
-
-```yaml
-  praxis-elb:
-    build:
-      context: .
-      dockerfile: cmd/praxis-elb/Dockerfile
-    container_name: praxis-elb
-    env_file:
-      - .env
-    depends_on:
-      restate:
-        condition: service_healthy
-      localstack-init:
-        condition: service_completed_successfully
-    ports:
-      - "9086:9080"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
-```
-
-Update the Restate service's registration to include `praxis-elb:9080`.
+The ELB drivers are served by the existing `praxis-network` service in
+`docker-compose.yaml`. No additional Docker Compose service is needed.
 
 ### Restate Registration
+
+The ELB drivers are discovered automatically when `praxis-network` is registered:
 
 ```bash
 curl -s -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
-  -d '{"uri": "http://praxis-elb:9080"}'
+  -d '{"uri": "http://praxis-network:9080"}'
 ```
 
-All five services are discovered automatically from the single registration endpoint
+All networking and ELB services are discovered from the single registration endpoint
 via Restate's reflection-based service discovery.
 
 ---
 
 ## 8. Justfile Changes
 
-Add targets for the new driver pack and individual drivers:
+ELB driver test targets are standalone; logs are available via `logs-network`:
 
 ```just
-# ELB driver pack
-build-elb:
-    go build ./cmd/praxis-elb/...
-
 test-elb:
     go test ./internal/drivers/alb/... ./internal/drivers/nlb/... \
             ./internal/drivers/targetgroup/... ./internal/drivers/listener/... \
@@ -357,8 +290,9 @@ test-listener:
 test-listenerrule:
     go test ./internal/drivers/listenerrule/... -v -count=1 -race
 
-logs-elb:
-    docker compose logs -f praxis-elb
+# ELB logs (via network pack)
+logs-network:
+    docker compose logs -f praxis-network
 ```
 
 ---
@@ -569,45 +503,43 @@ references.
 ## 12. Checklist
 
 ### Infrastructure
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2` added
-- [ ] `cmd/praxis-elb/main.go` created
-- [ ] `cmd/praxis-elb/Dockerfile` created
-- [ ] `docker-compose.yaml` updated with `praxis-elb` service
-- [ ] `justfile` updated with ELB targets
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2` added
+- [x] ELB drivers added to `cmd/praxis-network/main.go`
+- [x] `justfile` updated with ELB targets
 
 ### Schemas
-- [ ] `schemas/aws/elb/alb.cue`
-- [ ] `schemas/aws/elb/nlb.cue`
-- [ ] `schemas/aws/elb/target_group.cue`
-- [ ] `schemas/aws/elb/listener.cue`
-- [ ] `schemas/aws/elb/listener_rule.cue`
+- [x] `schemas/aws/elb/alb.cue`
+- [x] `schemas/aws/elb/nlb.cue`
+- [x] `schemas/aws/elb/target_group.cue`
+- [x] `schemas/aws/elb/listener.cue`
+- [x] `schemas/aws/elb/listener_rule.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
-- [ ] `internal/drivers/alb/`
-- [ ] `internal/drivers/nlb/`
-- [ ] `internal/drivers/targetgroup/`
-- [ ] `internal/drivers/listener/`
-- [ ] `internal/drivers/listenerrule/`
+- [x] `internal/drivers/alb/`
+- [x] `internal/drivers/nlb/`
+- [x] `internal/drivers/targetgroup/`
+- [x] `internal/drivers/listener/`
+- [x] `internal/drivers/listenerrule/`
 
 ### Adapters
-- [ ] `internal/core/provider/alb_adapter.go`
-- [ ] `internal/core/provider/nlb_adapter.go`
-- [ ] `internal/core/provider/targetgroup_adapter.go`
-- [ ] `internal/core/provider/listener_adapter.go`
-- [ ] `internal/core/provider/listenerrule_adapter.go`
+- [x] `internal/core/provider/alb_adapter.go`
+- [x] `internal/core/provider/nlb_adapter.go`
+- [x] `internal/core/provider/targetgroup_adapter.go`
+- [x] `internal/core/provider/listener_adapter.go`
+- [x] `internal/core/provider/listenerrule_adapter.go`
 
 ### Registry
-- [ ] All 5 adapters registered in `NewRegistry()`
+- [x] All 5 adapters registered in `NewRegistry()`
 
 ### Tests
-- [ ] Unit tests for all 5 drivers
-- [ ] Integration tests for all 5 drivers
+- [x] Unit tests for all 5 drivers
+- [x] Integration tests for all 5 drivers
 - [ ] Cross-driver integration test (TG → ALB → Listener → Listener Rule)
 
 ### Documentation
-- [ ] [ALB_DRIVER_PLAN.md](ALB_DRIVER_PLAN.md)
-- [ ] [NLB_DRIVER_PLAN.md](NLB_DRIVER_PLAN.md)
-- [ ] [TARGET_GROUP_DRIVER_PLAN.md](TARGET_GROUP_DRIVER_PLAN.md)
-- [ ] [LISTENER_DRIVER_PLAN.md](LISTENER_DRIVER_PLAN.md)
-- [ ] [LISTENER_RULE_DRIVER_PLAN.md](LISTENER_RULE_DRIVER_PLAN.md)
-- [ ] This overview document
+- [x] [ALB_DRIVER_PLAN.md](ALB_DRIVER_PLAN.md)
+- [x] [NLB_DRIVER_PLAN.md](NLB_DRIVER_PLAN.md)
+- [x] [TARGET_GROUP_DRIVER_PLAN.md](TARGET_GROUP_DRIVER_PLAN.md)
+- [x] [LISTENER_DRIVER_PLAN.md](LISTENER_DRIVER_PLAN.md)
+- [x] [LISTENER_RULE_DRIVER_PLAN.md](LISTENER_RULE_DRIVER_PLAN.md)
+- [x] This overview document

@@ -1,0 +1,194 @@
+# praxis-autoscaling.yaml — HorizontalPodAutoscaler configs for Praxis driver packs.
+#
+# Scales each driver pack independently based on CPU utilization. In practice,
+# network and compute drivers see the most load during large deployments
+# (many VPCs, subnets, EC2 instances), while storage and IAM stay lighter.
+#
+# The scaling profile here reflects that asymmetry:
+#   - network: 1–8 replicas, aggressive scale-up (large DAGs fan out here)
+#   - compute: 1–6 replicas
+#   - storage: 1–4 replicas
+#   - iam:     1–3 replicas (policy operations are fast, rarely a bottleneck)
+#
+# Prerequisites:
+#   - metrics-server must be installed (for CPU-based HPA)
+#   - Apply after praxis-full.yaml — the target Deployments must exist
+#
+# Usage:
+#   kubectl apply -f examples/ops/k8s/praxis-autoscaling.yaml
+#   kubectl -n praxis-system get hpa
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NETWORK DRIVERS — highest scale ceiling (VPC, Subnet, SG, IGW, NAT, etc.)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: praxis-network
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-network
+    app.kubernetes.io/part-of: praxis
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: praxis-network
+  minReplicas: 1
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        # During a large deployment, fan-out can spike quickly — allow
+        # doubling the replica count every 30s to keep up.
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      # Cool down slowly — reconcile timers keep driver pods busy even
+      # after the initial provisioning burst subsides.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMPUTE DRIVERS — AMI, KeyPair, EC2
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: praxis-compute
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-compute
+    app.kubernetes.io/part-of: praxis
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: praxis-compute
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STORAGE DRIVERS — S3, EBS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: praxis-storage
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-storage
+    app.kubernetes.io/part-of: praxis
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: praxis-storage
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IAM DRIVERS — IAMPolicy, IAMInstanceProfile
+# ═══════════════════════════════════════════════════════════════════════════════
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: praxis-identity
+  namespace: praxis-system
+  labels:
+    app.kubernetes.io/name: praxis-identity
+    app.kubernetes.io/part-of: praxis
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: praxis-identity
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

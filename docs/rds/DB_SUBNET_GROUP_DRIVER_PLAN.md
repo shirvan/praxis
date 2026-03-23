@@ -1,6 +1,9 @@
 # DB Subnet Group Driver — Implementation Plan
 
-> NYI
+> **Implementation note:** This plan references a `praxis-database` driver pack.
+> The actual implementation places the DB Subnet Group driver in **`praxis-storage`**
+> (`cmd/praxis-storage/main.go`).
+
 > Target: A Restate Virtual Object driver that manages Amazon RDS DB Subnet
 > Groups, providing full lifecycle management including creation, configuration,
 > import, deletion, drift detection, and drift correction for subnet membership
@@ -697,23 +700,23 @@ successfully. No waiter is needed, unlike DB instances and clusters.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/rds/db_subnet_group.cue` created
-- [ ] **Types**: `internal/drivers/dbsubnetgroup/types.go` created
-- [ ] **AWS API**: `internal/drivers/dbsubnetgroup/aws.go` created
-- [ ] **Drift**: `internal/drivers/dbsubnetgroup/drift.go` created
-- [ ] **Driver**: `internal/drivers/dbsubnetgroup/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/dbsubnetgroup_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: `cmd/praxis-database/main.go` updated with binding
-- [ ] **Unit tests (drift)**: `internal/drivers/dbsubnetgroup/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/dbsubnetgroup/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/dbsubnetgroup/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/dbsubnetgroup_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/dbsubnetgroup_driver_test.go`
-- [ ] **Subnet set comparison**: Order-independent drift detection
-- [ ] **AZ error handling**: Clear TerminalError for insufficient AZ coverage
-- [ ] **Import default mode**: `ModeObserved`
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/dbsubnetgroup/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestDBSubnetGroup -tags=integration`
+- [x] **Schema**: `schemas/aws/rds/db_subnet_group.cue` created
+- [x] **Types**: `internal/drivers/dbsubnetgroup/types.go` created
+- [x] **AWS API**: `internal/drivers/dbsubnetgroup/aws.go` created
+- [x] **Drift**: `internal/drivers/dbsubnetgroup/drift.go` created
+- [x] **Driver**: `internal/drivers/dbsubnetgroup/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/dbsubnetgroup_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: `cmd/praxis-database/main.go` updated with binding
+- [x] **Unit tests (drift)**: `internal/drivers/dbsubnetgroup/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/dbsubnetgroup/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/dbsubnetgroup/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/dbsubnetgroup_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/dbsubnetgroup_driver_test.go`
+- [x] **Subnet set comparison**: Order-independent drift detection
+- [x] **AZ error handling**: Clear TerminalError for insufficient AZ coverage
+- [x] **Import default mode**: `ModeObserved`
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/dbsubnetgroup/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestDBSubnetGroup -tags=integration`

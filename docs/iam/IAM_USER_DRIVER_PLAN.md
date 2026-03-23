@@ -1,6 +1,6 @@
 # IAM User Driver — Implementation Plan
 
-> NYI
+> ✅ Implemented
 > Target: A Restate Virtual Object driver that manages IAM Users, providing full
 > lifecycle management including creation, import, deletion, drift detection, and
 > drift correction for user properties, inline policies, managed policy attachments,
@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — IAM Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -120,7 +120,7 @@ IAM user names are unique within an account. `CreateUser` returns
 ✦ internal/core/provider/iamuser_adapter.go          — IAMUserAdapter implementing provider.Adapter
 ✦ internal/core/provider/iamuser_adapter_test.go     — Unit tests for adapter
 ✦ tests/integration/iamuser_driver_test.go           — Integration tests
-✎ cmd/praxis-iam/main.go                            — Add IAMUser driver .Bind()
+✎ cmd/praxis-identity/main.go                            — Add IAMUser driver .Bind()
 ✎ internal/core/provider/registry.go                 — Add NewIAMUserAdapter to NewRegistry()
 ```
 
@@ -616,9 +616,9 @@ Add `NewIAMUserAdapterWithRegistry(accounts)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — IAM Driver Pack Entry Point
+## Step 9 — Identity Driver Pack Entry Point
 
-**File**: `cmd/praxis-iam/main.go` (modified)
+**File**: `cmd/praxis-identity/main.go` (modified)
 
 Add `.Bind(restate.Reflect(iamuser.NewIAMUserDriver(cfg.Auth())))`.
 
@@ -792,7 +792,7 @@ This prevents a window where the user lacks required permissions during converge
 - [ ] **Driver**: `internal/drivers/iamuser/driver.go` created with all 6 handlers
 - [ ] **Adapter**: `internal/core/provider/iamuser_adapter.go` created
 - [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMUser driver bound in `cmd/praxis-iam/main.go`
+- [ ] **Entry point**: IAMUser driver bound in `cmd/praxis-identity/main.go`
 - [ ] **Unit tests (drift)**: `internal/drivers/iamuser/drift_test.go`
 - [ ] **Unit tests (aws)**: `internal/drivers/iamuser/aws_test.go`
 - [ ] **Unit tests (driver)**: `internal/drivers/iamuser/driver_test.go`

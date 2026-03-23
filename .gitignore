@@ -12,6 +12,8 @@ dist/
 /praxis-compute
 /praxis-network
 /praxis-storage
+/praxis-identity
+/praxis-observability
 
 # Test binary
 *.test

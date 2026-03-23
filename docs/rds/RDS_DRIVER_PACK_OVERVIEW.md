@@ -1,6 +1,11 @@
 # RDS Driver Pack — Overview
 
-> NYI
+> **Implementation note:** This plan originally proposed a standalone `praxis-database`
+> driver pack on port 9086. The actual implementation places all four RDS drivers in
+> the existing **`praxis-storage`** pack (`cmd/praxis-storage/`). References to
+> `praxis-database`, `cmd/praxis-database/`, and port 9086 below reflect the original
+> plan; the canonical source of truth is `cmd/praxis-storage/main.go`.
+
 > This document summarizes the RDS driver family for Praxis: four drivers covering
 > RDS DB Instances, Aurora Clusters, DB Parameter Groups, and DB Subnet Groups. It
 > describes their relationships, shared infrastructure, implementation order, and the
@@ -153,7 +158,7 @@ ENTRYPOINT ["/praxis-database"]
 | praxis-network | 9082 |
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
-| praxis-iam | 9085 |
+| praxis-identity | 9085 |
 | **praxis-database** | **9086** |
 
 ---
@@ -534,41 +539,41 @@ restarts, the journaled result is replayed without re-waiting.
 ## 12. Checklist
 
 ### Infrastructure
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/rds` added
-- [ ] `cmd/praxis-database/main.go` created
-- [ ] `cmd/praxis-database/Dockerfile` created
-- [ ] `docker-compose.yaml` updated with `praxis-database` service
-- [ ] `justfile` updated with database targets
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/rds` added
+- [x] `cmd/praxis-database/main.go` created
+- [x] `cmd/praxis-database/Dockerfile` created
+- [x] `docker-compose.yaml` updated with `praxis-database` service
+- [x] `justfile` updated with database targets
 
 ### Schemas
-- [ ] `schemas/aws/rds/instance.cue`
-- [ ] `schemas/aws/rds/aurora_cluster.cue`
-- [ ] `schemas/aws/rds/parameter_group.cue`
-- [ ] `schemas/aws/rds/subnet_group.cue`
+- [x] `schemas/aws/rds/instance.cue`
+- [x] `schemas/aws/rds/aurora_cluster.cue`
+- [x] `schemas/aws/rds/parameter_group.cue`
+- [x] `schemas/aws/rds/subnet_group.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
-- [ ] `internal/drivers/rdsinstance/`
-- [ ] `internal/drivers/auroracluster/`
-- [ ] `internal/drivers/dbparametergroup/`
-- [ ] `internal/drivers/dbsubnetgroup/`
+- [x] `internal/drivers/rdsinstance/`
+- [x] `internal/drivers/auroracluster/`
+- [x] `internal/drivers/dbparametergroup/`
+- [x] `internal/drivers/dbsubnetgroup/`
 
 ### Adapters
-- [ ] `internal/core/provider/rdsinstance_adapter.go`
-- [ ] `internal/core/provider/auroracluster_adapter.go`
-- [ ] `internal/core/provider/dbparametergroup_adapter.go`
-- [ ] `internal/core/provider/dbsubnetgroup_adapter.go`
+- [x] `internal/core/provider/rdsinstance_adapter.go`
+- [x] `internal/core/provider/auroracluster_adapter.go`
+- [x] `internal/core/provider/dbparametergroup_adapter.go`
+- [x] `internal/core/provider/dbsubnetgroup_adapter.go`
 
 ### Registry
-- [ ] All 4 adapters registered in `NewRegistry()`
+- [x] All 4 adapters registered in `NewRegistry()`
 
 ### Tests
-- [ ] Unit tests for all 4 drivers
-- [ ] Integration tests for all 4 drivers
+- [x] Unit tests for all 4 drivers
+- [x] Integration tests for all 4 drivers
 - [ ] Cross-driver integration test (SubnetGroup → ParameterGroup → Instance → Aurora)
 
 ### Documentation
-- [ ] [RDS_INSTANCE_DRIVER_PLAN.md](RDS_INSTANCE_DRIVER_PLAN.md)
-- [ ] [AURORA_CLUSTER_DRIVER_PLAN.md](AURORA_CLUSTER_DRIVER_PLAN.md)
-- [ ] [DB_PARAMETER_GROUP_DRIVER_PLAN.md](DB_PARAMETER_GROUP_DRIVER_PLAN.md)
-- [ ] [DB_SUBNET_GROUP_DRIVER_PLAN.md](DB_SUBNET_GROUP_DRIVER_PLAN.md)
-- [ ] This overview document
+- [x] [RDS_INSTANCE_DRIVER_PLAN.md](RDS_INSTANCE_DRIVER_PLAN.md)
+- [x] [AURORA_CLUSTER_DRIVER_PLAN.md](AURORA_CLUSTER_DRIVER_PLAN.md)
+- [x] [DB_PARAMETER_GROUP_DRIVER_PLAN.md](DB_PARAMETER_GROUP_DRIVER_PLAN.md)
+- [x] [DB_SUBNET_GROUP_DRIVER_PLAN.md](DB_SUBNET_GROUP_DRIVER_PLAN.md)
+- [x] This overview document

@@ -1,7 +1,6 @@
 # Target Group Driver — Implementation Plan
 
-> NYI
-> Target: A Restate Virtual Object driver that manages ELBv2 Target Groups,
+> A Restate Virtual Object driver that manages ELBv2 Target Groups,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for health check configuration, target
 > registrations, stickiness settings, and tags.
@@ -9,6 +8,10 @@
 > Key scope: `KeyScopeRegion` — key format is `region~tgName`, permanent and
 > immutable for the lifetime of the Virtual Object. The AWS-assigned target group
 > ARN lives only in state/outputs.
+>
+> **Note:** Integration tests are present but skip on LocalStack community edition
+> (v4.x) because ELBv2 is a paid-tier service. They should run against a real AWS
+> account.
 
 ---
 
@@ -645,14 +648,14 @@ existing resource.
 
 ## Checklist
 
-- [ ] `schemas/aws/elb/target_group.cue` created
-- [ ] `internal/drivers/targetgroup/types.go` created
-- [ ] `internal/drivers/targetgroup/aws.go` created
-- [ ] `internal/drivers/targetgroup/drift.go` created
-- [ ] `internal/drivers/targetgroup/driver.go` created
-- [ ] `internal/drivers/targetgroup/driver_test.go` created
-- [ ] `internal/drivers/targetgroup/aws_test.go` created
-- [ ] `internal/drivers/targetgroup/drift_test.go` created
-- [ ] `internal/core/provider/targetgroup_adapter.go` created
-- [ ] `internal/core/provider/registry.go` updated
-- [ ] `tests/integration/targetgroup_driver_test.go` created
+- [x] `schemas/aws/elb/target_group.cue` created
+- [x] `internal/drivers/targetgroup/types.go` created
+- [x] `internal/drivers/targetgroup/aws.go` created
+- [x] `internal/drivers/targetgroup/drift.go` created
+- [x] `internal/drivers/targetgroup/driver.go` created
+- [x] `internal/drivers/targetgroup/driver_test.go` created
+- [x] `internal/drivers/targetgroup/aws_test.go` created
+- [x] `internal/drivers/targetgroup/drift_test.go` created
+- [x] `internal/core/provider/targetgroup_adapter.go` created
+- [x] `internal/core/provider/registry.go` updated
+- [x] `tests/integration/targetgroup_driver_test.go` created

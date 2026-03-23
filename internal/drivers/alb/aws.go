@@ -1,0 +1,413 @@
+package alb
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/smithy-go"
+
+	"github.com/praxiscloud/praxis/internal/infra/ratelimit"
+)
+
+type ALBAPI interface {
+	CreateALB(ctx context.Context, spec ALBSpec) (arn, dnsName, hostedZoneId, vpcId string, err error)
+	DescribeALB(ctx context.Context, id string) (ObservedState, error)
+	DeleteALB(ctx context.Context, arn string) error
+	SetSubnets(ctx context.Context, arn string, subnets []SubnetMapping) error
+	SetSecurityGroups(ctx context.Context, arn string, securityGroups []string) error
+	SetIpAddressType(ctx context.Context, arn string, ipAddressType string) error
+	ModifyAttributes(ctx context.Context, arn string, attrs map[string]string) error
+	UpdateTags(ctx context.Context, arn string, desired map[string]string) error
+}
+
+type realALBAPI struct {
+	client  *elbv2sdk.Client
+	limiter *ratelimit.Limiter
+}
+
+func NewALBAPI(client *elbv2sdk.Client) ALBAPI {
+	return &realALBAPI{client: client, limiter: ratelimit.New("alb", 15, 8)}
+}
+
+func (r *realALBAPI) CreateALB(ctx context.Context, spec ALBSpec) (string, string, string, string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", "", "", "", err
+	}
+	input := &elbv2sdk.CreateLoadBalancerInput{
+		Name:           aws.String(spec.Name),
+		Type:           elbv2types.LoadBalancerTypeEnumApplication,
+		Scheme:         elbv2types.LoadBalancerSchemeEnum(spec.Scheme),
+		IpAddressType:  elbv2types.IpAddressType(spec.IpAddressType),
+		SecurityGroups: spec.SecurityGroups,
+	}
+	if len(spec.SubnetMappings) > 0 {
+		for _, sm := range spec.SubnetMappings {
+			mapping := elbv2types.SubnetMapping{SubnetId: aws.String(sm.SubnetId)}
+			if sm.AllocationId != "" {
+				mapping.AllocationId = aws.String(sm.AllocationId)
+			}
+			input.SubnetMappings = append(input.SubnetMappings, mapping)
+		}
+	} else {
+		input.Subnets = spec.Subnets
+	}
+	if len(spec.Tags) > 0 {
+		input.Tags = toELBTags(spec.Tags)
+	}
+	out, err := r.client.CreateLoadBalancer(ctx, input)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	if len(out.LoadBalancers) == 0 {
+		return "", "", "", "", fmt.Errorf("create ALB %q returned no load balancers", spec.Name)
+	}
+	lb := out.LoadBalancers[0]
+	arn := aws.ToString(lb.LoadBalancerArn)
+	// Set attributes after creation
+	attrs := buildAttributeMap(spec)
+	if len(attrs) > 0 {
+		if err := r.ModifyAttributes(ctx, arn, attrs); err != nil {
+			return "", "", "", "", err
+		}
+	}
+	return arn,
+		aws.ToString(lb.DNSName),
+		aws.ToString(lb.CanonicalHostedZoneId),
+		aws.ToString(lb.VpcId),
+		nil
+}
+
+func (r *realALBAPI) DescribeALB(ctx context.Context, id string) (ObservedState, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, err
+	}
+	input := &elbv2sdk.DescribeLoadBalancersInput{}
+	if strings.HasPrefix(id, "arn:") {
+		input.LoadBalancerArns = []string{id}
+	} else {
+		input.Names = []string{id}
+	}
+	out, err := r.client.DescribeLoadBalancers(ctx, input)
+	if err != nil {
+		return ObservedState{}, err
+	}
+	if len(out.LoadBalancers) == 0 {
+		return ObservedState{}, fmt.Errorf("ALB %s not found", id)
+	}
+	lb := out.LoadBalancers[0]
+	arn := aws.ToString(lb.LoadBalancerArn)
+
+	// Get attributes
+	attrState, err := r.describeAttributes(ctx, arn)
+	if err != nil {
+		return ObservedState{}, err
+	}
+	// Get tags
+	tags, err := r.describeTags(ctx, arn)
+	if err != nil {
+		return ObservedState{}, err
+	}
+	// Extract subnets and security groups
+	subnets := make([]string, 0, len(lb.AvailabilityZones))
+	for _, az := range lb.AvailabilityZones {
+		subnets = append(subnets, aws.ToString(az.SubnetId))
+	}
+	sort.Strings(subnets)
+	sgs := make([]string, len(lb.SecurityGroups))
+	copy(sgs, lb.SecurityGroups)
+	sort.Strings(sgs)
+
+	return ObservedState{
+		LoadBalancerArn:    arn,
+		DnsName:            aws.ToString(lb.DNSName),
+		HostedZoneId:       aws.ToString(lb.CanonicalHostedZoneId),
+		Name:               aws.ToString(lb.LoadBalancerName),
+		Scheme:             string(lb.Scheme),
+		VpcId:              aws.ToString(lb.VpcId),
+		IpAddressType:      string(lb.IpAddressType),
+		Subnets:            subnets,
+		SecurityGroups:     sgs,
+		AccessLogs:         attrState.AccessLogs,
+		DeletionProtection: attrState.DeletionProtection,
+		IdleTimeout:        attrState.IdleTimeout,
+		State:              string(lb.State.Code),
+		Tags:               tags,
+	}, nil
+}
+
+func (r *realALBAPI) DeleteALB(ctx context.Context, arn string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.DeleteLoadBalancer(ctx, &elbv2sdk.DeleteLoadBalancerInput{LoadBalancerArn: aws.String(arn)})
+	return err
+}
+
+func (r *realALBAPI) SetSubnets(ctx context.Context, arn string, subnets []SubnetMapping) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	input := &elbv2sdk.SetSubnetsInput{LoadBalancerArn: aws.String(arn)}
+	for _, sm := range subnets {
+		mapping := elbv2types.SubnetMapping{SubnetId: aws.String(sm.SubnetId)}
+		if sm.AllocationId != "" {
+			mapping.AllocationId = aws.String(sm.AllocationId)
+		}
+		input.SubnetMappings = append(input.SubnetMappings, mapping)
+	}
+	_, err := r.client.SetSubnets(ctx, input)
+	return err
+}
+
+func (r *realALBAPI) SetSecurityGroups(ctx context.Context, arn string, securityGroups []string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.SetSecurityGroups(ctx, &elbv2sdk.SetSecurityGroupsInput{
+		LoadBalancerArn: aws.String(arn),
+		SecurityGroups:  securityGroups,
+	})
+	return err
+}
+
+func (r *realALBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddressType string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.SetIpAddressType(ctx, &elbv2sdk.SetIpAddressTypeInput{
+		LoadBalancerArn: aws.String(arn),
+		IpAddressType:   elbv2types.IpAddressType(ipAddressType),
+	})
+	return err
+}
+
+func (r *realALBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map[string]string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	var attributes []elbv2types.LoadBalancerAttribute
+	for key, value := range attrs {
+		attributes = append(attributes, elbv2types.LoadBalancerAttribute{Key: aws.String(key), Value: aws.String(value)})
+	}
+	_, err := r.client.ModifyLoadBalancerAttributes(ctx, &elbv2sdk.ModifyLoadBalancerAttributesInput{
+		LoadBalancerArn: aws.String(arn),
+		Attributes:      attributes,
+	})
+	return err
+}
+
+func (r *realALBAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
+	existing, err := r.describeTags(ctx, arn)
+	if err != nil {
+		return err
+	}
+	filteredExisting := filterPraxisTags(existing)
+	filteredDesired := filterPraxisTags(desired)
+	var removeKeys []string
+	for key := range filteredExisting {
+		if _, ok := filteredDesired[key]; !ok {
+			removeKeys = append(removeKeys, key)
+		}
+	}
+	if len(removeKeys) > 0 {
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
+		_, err := r.client.RemoveTags(ctx, &elbv2sdk.RemoveTagsInput{ResourceArns: []string{arn}, TagKeys: removeKeys})
+		if err != nil {
+			return err
+		}
+	}
+	if len(filteredDesired) == 0 {
+		return nil
+	}
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err = r.client.AddTags(ctx, &elbv2sdk.AddTagsInput{ResourceArns: []string{arn}, Tags: toELBTags(filteredDesired)})
+	return err
+}
+
+type describeAttributeResult struct {
+	AccessLogs         *AccessLogConfig
+	DeletionProtection bool
+	IdleTimeout        int
+}
+
+func (r *realALBAPI) describeAttributes(ctx context.Context, arn string) (describeAttributeResult, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return describeAttributeResult{}, err
+	}
+	out, err := r.client.DescribeLoadBalancerAttributes(ctx, &elbv2sdk.DescribeLoadBalancerAttributesInput{LoadBalancerArn: aws.String(arn)})
+	if err != nil {
+		return describeAttributeResult{}, err
+	}
+	result := describeAttributeResult{IdleTimeout: 60}
+	var accessLogEnabled bool
+	var accessLogBucket, accessLogPrefix string
+	for _, attr := range out.Attributes {
+		key := aws.ToString(attr.Key)
+		value := aws.ToString(attr.Value)
+		switch key {
+		case "deletion_protection.enabled":
+			result.DeletionProtection = value == "true"
+		case "idle_timeout.timeout_seconds":
+			if parsed, parseErr := strconv.Atoi(value); parseErr == nil {
+				result.IdleTimeout = parsed
+			}
+		case "access_logs.s3.enabled":
+			accessLogEnabled = value == "true"
+		case "access_logs.s3.bucket":
+			accessLogBucket = value
+		case "access_logs.s3.prefix":
+			accessLogPrefix = value
+		}
+	}
+	if accessLogEnabled || accessLogBucket != "" {
+		result.AccessLogs = &AccessLogConfig{
+			Enabled: accessLogEnabled,
+			Bucket:  accessLogBucket,
+			Prefix:  accessLogPrefix,
+		}
+	}
+	return result, nil
+}
+
+func (r *realALBAPI) describeTags(ctx context.Context, arn string) (map[string]string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	out, err := r.client.DescribeTags(ctx, &elbv2sdk.DescribeTagsInput{ResourceArns: []string{arn}})
+	if err != nil {
+		return nil, err
+	}
+	tags := map[string]string{}
+	for _, desc := range out.TagDescriptions {
+		for _, tag := range desc.Tags {
+			tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+		}
+	}
+	return tags, nil
+}
+
+// buildAttributeMap constructs the LB attribute key-value pairs from the spec.
+func buildAttributeMap(spec ALBSpec) map[string]string {
+	attrs := map[string]string{
+		"deletion_protection.enabled":  strconv.FormatBool(spec.DeletionProtection),
+		"idle_timeout.timeout_seconds": strconv.Itoa(spec.IdleTimeout),
+	}
+	if spec.AccessLogs != nil {
+		attrs["access_logs.s3.enabled"] = strconv.FormatBool(spec.AccessLogs.Enabled)
+		attrs["access_logs.s3.bucket"] = spec.AccessLogs.Bucket
+		if spec.AccessLogs.Prefix != "" {
+			attrs["access_logs.s3.prefix"] = spec.AccessLogs.Prefix
+		}
+	}
+	return attrs
+}
+
+func toELBTags(tags map[string]string) []elbv2types.Tag {
+	out := make([]elbv2types.Tag, 0, len(tags))
+	for key, value := range tags {
+		out = append(out, elbv2types.Tag{Key: aws.String(key), Value: aws.String(value)})
+	}
+	return out
+}
+
+func filterPraxisTags(tags map[string]string) map[string]string {
+	if len(tags) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(tags))
+	for key, value := range tags {
+		if !strings.HasPrefix(key, "praxis:") {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+// normalizeSubnets converts subnet mappings to a sorted list of subnet IDs.
+func normalizeSubnets(mappings []SubnetMapping) []string {
+	out := make([]string, 0, len(mappings))
+	for _, m := range mappings {
+		out = append(out, m.SubnetId)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// subnetsToMappings converts a plain subnet slice to SubnetMapping slice.
+func subnetsToMappings(subnets []string) []SubnetMapping {
+	out := make([]SubnetMapping, 0, len(subnets))
+	for _, s := range subnets {
+		out = append(out, SubnetMapping{SubnetId: s})
+	}
+	return out
+}
+
+// Error classification
+
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == "LoadBalancerNotFound"
+	}
+	return strings.Contains(err.Error(), "LoadBalancerNotFound")
+}
+
+func IsDuplicate(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == "DuplicateLoadBalancerName"
+	}
+	return strings.Contains(err.Error(), "DuplicateLoadBalancerName")
+}
+
+func IsResourceInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		code := apiErr.ErrorCode()
+		return code == "ResourceInUse" || code == "OperationNotPermitted"
+	}
+	errText := err.Error()
+	return strings.Contains(errText, "ResourceInUse") || strings.Contains(errText, "OperationNotPermitted")
+}
+
+func IsTooMany(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == "TooManyLoadBalancers"
+	}
+	return strings.Contains(err.Error(), "TooManyLoadBalancers")
+}
+
+func IsInvalidConfig(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == "InvalidConfigurationRequest"
+	}
+	return strings.Contains(err.Error(), "InvalidConfigurationRequest")
+}

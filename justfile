@@ -67,7 +67,7 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity
     just wait-stack
     just register
 
@@ -83,7 +83,7 @@ logs:
 logs-storage:
     docker compose logs -f praxis-storage
 
-# Follow logs for the network driver pack (SG, VPC).
+# Follow logs for the network driver pack (SG, VPC, Route 53, ELB).
 logs-network:
     docker compose logs -f praxis-network
 
@@ -91,9 +91,13 @@ logs-network:
 logs-compute:
     docker compose logs -f praxis-compute
 
+# Follow logs for the Identity driver pack.
+logs-identity:
+    docker compose logs -f praxis-identity
+
 # Follow logs for all driver packs together.
 logs-drivers:
-    docker compose logs -f praxis-storage praxis-network praxis-compute
+    docker compose logs -f praxis-storage praxis-network praxis-compute praxis-identity
 
 # Follow logs for all services
 logs-all:
@@ -120,6 +124,11 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-compute:9080"}' | jq .
     @echo "✓ Compute driver pack registered"
+    @echo "Registering Identity driver pack with Restate..."
+    @curl -s -X POST http://localhost:9070/deployments \
+        -H 'content-type: application/json' \
+        -d '{"uri": "http://praxis-identity:9080"}' | jq .
+    @echo "✓ Identity driver pack registered"
     @echo "Registering Praxis Core (command service + orchestrator)..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
@@ -135,6 +144,7 @@ build:
     go build -o bin/praxis-storage ./cmd/praxis-storage
     go build -o bin/praxis-network ./cmd/praxis-network
     go build -o bin/praxis-compute ./cmd/praxis-compute
+    go build -o bin/praxis-identity ./cmd/praxis-identity
 
 # Build CLI binary only
 build-cli:
@@ -194,9 +204,90 @@ test-routetable:
 test-keypair:
     go test ./internal/drivers/keypair/... -v -count=1 -race
 
+# Run IAM Instance Profile driver unit tests only
+test-iaminstanceprofile:
+    go test ./internal/drivers/iaminstanceprofile/... -v -count=1 -race
+
+# Run IAM Policy driver unit tests only
+test-iampolicy:
+    go test ./internal/drivers/iampolicy/... -v -count=1 -race
+
+# Run IAM Role driver unit tests only
+test-iamrole:
+    go test ./internal/drivers/iamrole/... -v -count=1 -race
+
+# Run IAM User driver unit tests only
+test-iamuser:
+    go test ./internal/drivers/iamuser/... -v -count=1 -race
+
+# Run IAM Group driver unit tests only
+test-iamgroup:
+    go test ./internal/drivers/iamgroup/... -v -count=1 -race
+
+# Run IAM driver unit tests only
+test-iam:
+    go test ./internal/drivers/iamrole/... ./internal/drivers/iampolicy/... ./internal/drivers/iamuser/... ./internal/drivers/iamgroup/... ./internal/drivers/iaminstanceprofile/... ./internal/core/provider/... -v -count=1 -race
+
+# Run Route53 driver unit tests only
+test-route53:
+    go test ./internal/drivers/route53zone/... ./internal/drivers/route53record/... ./internal/drivers/route53healthcheck/... -v -count=1 -race
+
+test-route53zone:
+    go test ./internal/drivers/route53zone/... -v -count=1 -race
+
+test-route53record:
+    go test ./internal/drivers/route53record/... -v -count=1 -race
+
+test-route53healthcheck:
+    go test ./internal/drivers/route53healthcheck/... -v -count=1 -race
+
 # Run EC2 driver unit tests only
 test-ec2:
     go test ./internal/drivers/ec2/... -v -count=1 -race
+
+# Run Lambda function driver unit tests only
+test-lambda:
+	go test ./internal/drivers/lambda/... ./internal/core/provider/... -v -count=1 -race
+
+# Run RDS driver unit tests only
+test-rds:
+    go test ./internal/drivers/dbsubnetgroup/... ./internal/drivers/dbparametergroup/... ./internal/drivers/rdsinstance/... ./internal/drivers/auroracluster/... ./internal/core/provider/... -v -count=1 -race
+
+# Run Lambda layer driver unit tests only
+test-lambdalayer:
+    go test ./internal/drivers/lambdalayer/... -v -count=1 -race
+
+# Run Lambda permission driver unit tests only
+test-lambdaperm:
+    go test ./internal/drivers/lambdaperm/... -v -count=1 -race
+
+# Run ELB driver pack unit tests (ALB, NLB, TG, Listener, Listener Rule)
+test-elb:
+    go test ./internal/drivers/alb/... ./internal/drivers/nlb/... ./internal/drivers/targetgroup/... ./internal/drivers/listener/... ./internal/drivers/listenerrule/... -v -count=1 -race
+
+# Run ALB driver unit tests only
+test-alb:
+    go test ./internal/drivers/alb/... -v -count=1 -race
+
+# Run NLB driver unit tests only
+test-nlb:
+    go test ./internal/drivers/nlb/... -v -count=1 -race
+
+# Run Target Group driver unit tests only
+test-targetgroup:
+    go test ./internal/drivers/targetgroup/... -v -count=1 -race
+
+# Run Listener driver unit tests only
+test-listener:
+    go test ./internal/drivers/listener/... -v -count=1 -race
+
+# Run Listener Rule driver unit tests only
+test-listenerrule:
+    go test ./internal/drivers/listenerrule/... -v -count=1 -race
+
+# Run Event Source Mapping driver unit tests only
+test-esm:
+    go test ./internal/drivers/esm/... -v -count=1 -race
 
 # Run AMI driver unit tests only
 test-ami:
@@ -230,6 +321,42 @@ test-subnet-integration:
     done
     wait "$pid"
 
+# Run IAM Policy integration tests only
+test-iampolicy-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestIAMPolicy -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-iampolicy-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run IAM Role integration tests only
+test-iamrole-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestIAMRole -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-iamrole-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run IAM User integration tests only
+test-iamuser-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestIAMUser -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-iamuser-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
 # Run template engine + resolver unit tests
 test-template:
     go test ./internal/core/template/... ./internal/core/resolver/... -v -count=1 -race
@@ -243,6 +370,18 @@ test-integration:
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run IAM Instance Profile integration tests only
+test-iaminstanceprofile-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestIAMInstanceProfile -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-iaminstanceprofile-integration] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"
@@ -391,6 +530,114 @@ test-template-integration:
     done
     wait "$pid"
 
+# Run DBSubnetGroup integration tests (requires Docker — Testcontainers + LocalStack)
+test-dbsubnetgroup-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestDBSubnetGroup -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-dbsubnetgroup-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run DBParameterGroup integration tests (requires Docker — Testcontainers + LocalStack)
+test-dbparametergroup-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestDBParameterGroup -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-dbparametergroup-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run RDSInstance integration tests (requires Docker — Testcontainers + LocalStack)
+test-rdsinstance-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestRDSInstance -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-rdsinstance-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run AuroraCluster integration tests (requires Docker — Testcontainers + LocalStack)
+test-auroracluster-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestAuroraCluster -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-auroracluster-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run ALB integration tests (requires Docker — Testcontainers + LocalStack)
+test-alb-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestALB -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-alb-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run NLB integration tests (requires Docker — Testcontainers + LocalStack)
+test-nlb-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestNLB -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-nlb-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run Listener integration tests (requires Docker — Testcontainers + LocalStack)
+test-listener-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestListener -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-listener-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run ListenerRule integration tests (requires Docker — Testcontainers + LocalStack)
+test-listenerrule-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestListenerRule -v -count=1 -tags=integration -timeout=10m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-listenerrule-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run ELB integration tests — all 5 ELB drivers (requires Docker — Testcontainers + LocalStack)
+test-elb-integration:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run "TestALB|TestNLB|TestTargetGroup|TestListener|TestListenerRule" -v -count=1 -tags=integration -timeout=15m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-elb-integration] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
 # Run all tests
 test-all: test test-integration
 
@@ -485,9 +732,9 @@ _validate-version VERSION:
 _validate-service SERVICE:
     #!/bin/sh
     case "{{SERVICE}}" in
-        praxis|praxis-core|praxis-storage|praxis-network|praxis-compute) ;;
+        praxis|praxis-core|praxis-storage|praxis-network|praxis-compute|praxis-identity) ;;
         *) echo "Unknown service: {{SERVICE}}"
-           echo "Valid services: praxis, praxis-core, praxis-storage, praxis-network, praxis-compute"
+           echo "Valid services: praxis, praxis-core, praxis-storage, praxis-network, praxis-compute, praxis-identity"
            exit 1 ;;
     esac
     echo "✓ Service {{SERVICE}} is valid"

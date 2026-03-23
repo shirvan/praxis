@@ -1,6 +1,9 @@
 # Aurora Cluster Driver — Implementation Plan
 
-> NYI
+> **Implementation note:** This plan references a `praxis-database` driver pack.
+> The actual implementation places the Aurora Cluster driver in **`praxis-storage`**
+> (`cmd/praxis-storage/main.go`).
+
 > Target: A Restate Virtual Object driver that manages Amazon Aurora DB Clusters,
 > providing full lifecycle management including creation, configuration, import,
 > deletion, drift detection, and drift correction for cluster properties, engine
@@ -929,25 +932,25 @@ extends both the cluster and instance drivers.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/rds/aurora_cluster.cue` created
-- [ ] **Types**: `internal/drivers/auroracluster/types.go` created
-- [ ] **AWS API**: `internal/drivers/auroracluster/aws.go` created
-- [ ] **Drift**: `internal/drivers/auroracluster/drift.go` created
-- [ ] **Driver**: `internal/drivers/auroracluster/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/auroracluster_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: `cmd/praxis-database/main.go` updated with Aurora binding
-- [ ] **Unit tests (drift)**: `internal/drivers/auroracluster/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/auroracluster/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/auroracluster/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/auroracluster_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/auroracluster_driver_test.go`
-- [ ] **Password write-only**: Skipped in drift detection
-- [ ] **Member validation**: Delete blocks if cluster has active instances
-- [ ] **Deletion protection auto-disable**: Tested in integration
-- [ ] **Import default mode**: `ModeObserved` (high-value resource)
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Engine version upgrade**: Major vs minor detection
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/auroracluster/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestAuroraCluster -tags=integration`
+- [x] **Schema**: `schemas/aws/rds/aurora_cluster.cue` created
+- [x] **Types**: `internal/drivers/auroracluster/types.go` created
+- [x] **AWS API**: `internal/drivers/auroracluster/aws.go` created
+- [x] **Drift**: `internal/drivers/auroracluster/drift.go` created
+- [x] **Driver**: `internal/drivers/auroracluster/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/auroracluster_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: `cmd/praxis-database/main.go` updated with Aurora binding
+- [x] **Unit tests (drift)**: `internal/drivers/auroracluster/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/auroracluster/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/auroracluster/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/auroracluster_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/auroracluster_driver_test.go`
+- [x] **Password write-only**: Skipped in drift detection
+- [x] **Member validation**: Delete blocks if cluster has active instances
+- [x] **Deletion protection auto-disable**: Tested in integration
+- [x] **Import default mode**: `ModeObserved` (high-value resource)
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Engine version upgrade**: Major vs minor detection
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/auroracluster/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestAuroraCluster -tags=integration`

@@ -1,6 +1,12 @@
 # Route 53 DNS Record Driver — Implementation Plan
 
-> NYI
+> **Status: IMPLEMENTED** — Driver is fully implemented with unit tests,
+> integration tests, CUE schema, provider adapter, and registry integration.
+>
+> **Implementation note:** This plan references a `praxis-dns` driver pack.
+> The actual implementation places the DNS Record driver in **`praxis-network`**
+> (`cmd/praxis-network/main.go`).
+
 > Target: A Restate Virtual Object driver that manages Route 53 DNS Record Sets,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for standard records, alias records, and routing
@@ -1212,26 +1218,26 @@ constraint — it relies on AWS's `InvalidChangeBatch` error, which maps to a te
 ## Checklist
 
 ### Schema
-- [ ] `schemas/aws/route53/record.cue`
+- [x] `schemas/aws/route53/record.cue`
 
 ### Driver
-- [ ] `internal/drivers/route53record/types.go`
-- [ ] `internal/drivers/route53record/aws.go`
-- [ ] `internal/drivers/route53record/drift.go`
-- [ ] `internal/drivers/route53record/driver.go`
-- [ ] `internal/drivers/route53record/driver_test.go`
-- [ ] `internal/drivers/route53record/aws_test.go`
-- [ ] `internal/drivers/route53record/drift_test.go`
+- [x] `internal/drivers/route53record/types.go`
+- [x] `internal/drivers/route53record/aws.go`
+- [x] `internal/drivers/route53record/drift.go`
+- [x] `internal/drivers/route53record/driver.go`
+- [x] `internal/drivers/route53record/driver_test.go`
+- [x] `internal/drivers/route53record/aws_test.go`
+- [x] `internal/drivers/route53record/drift_test.go`
 
 ### Adapter
-- [ ] `internal/core/provider/route53record_adapter.go`
-- [ ] `internal/core/provider/route53record_adapter_test.go`
+- [x] `internal/core/provider/route53record_adapter.go`
+- [x] `internal/core/provider/route53record_adapter_test.go`
 
 ### Registry
-- [ ] Adapter registered in `NewRegistry()`
+- [x] Adapter registered in `NewRegistry()`
 
 ### Integration Tests
-- [ ] `tests/integration/route53_record_driver_test.go`
+- [x] `tests/integration/route53_record_driver_test.go`
 
 ### Infrastructure
-- [ ] `cmd/praxis-dns/main.go` — `.Bind()` call
+- [x] `cmd/praxis-dns/main.go` — `.Bind()` call

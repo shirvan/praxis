@@ -1,6 +1,5 @@
 # NLB Driver — Implementation Plan
 
-> NYI
 > Target: A Restate Virtual Object driver that manages Network Load Balancers
 > (NLBs), providing full lifecycle management including creation, import, deletion,
 > drift detection, and drift correction for load balancer attributes, subnet
@@ -465,14 +464,14 @@ NLB attribute. The NLB driver does not manage it.
 
 ## Checklist
 
-- [ ] `schemas/aws/elb/nlb.cue` created
-- [ ] `internal/drivers/nlb/types.go` created
-- [ ] `internal/drivers/nlb/aws.go` created
-- [ ] `internal/drivers/nlb/drift.go` created
-- [ ] `internal/drivers/nlb/driver.go` created
-- [ ] `internal/drivers/nlb/driver_test.go` created
-- [ ] `internal/drivers/nlb/aws_test.go` created
-- [ ] `internal/drivers/nlb/drift_test.go` created
-- [ ] `internal/core/provider/nlb_adapter.go` created
-- [ ] `internal/core/provider/registry.go` updated
-- [ ] `tests/integration/nlb_driver_test.go` created
+- [x] `schemas/aws/elb/nlb.cue` created
+- [x] `internal/drivers/nlb/types.go` created
+- [x] `internal/drivers/nlb/aws.go` created
+- [x] `internal/drivers/nlb/drift.go` created
+- [x] `internal/drivers/nlb/driver.go` created
+- [x] `internal/drivers/nlb/driver_test.go` created
+- [x] `internal/drivers/nlb/aws_test.go` created
+- [x] `internal/drivers/nlb/drift_test.go` created
+- [x] `internal/core/provider/nlb_adapter.go` created
+- [x] `internal/core/provider/registry.go` updated
+- [x] `tests/integration/nlb_driver_test.go` created

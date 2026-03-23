@@ -1,6 +1,6 @@
 # IAM Group Driver — Implementation Plan
 
-> NYI
+> ✅ Implemented
 > Target: A Restate Virtual Object driver that manages IAM Groups, providing full
 > lifecycle management including creation, import, deletion, drift detection, and
 > drift correction for group properties, inline policies, managed policy attachments,
@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — IAM Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -118,7 +118,7 @@ Group names are AWS-enforced unique. `CreateGroup` returns `EntityAlreadyExists`
 ✦ internal/core/provider/iamgroup_adapter.go         — IAMGroupAdapter implementing provider.Adapter
 ✦ internal/core/provider/iamgroup_adapter_test.go    — Unit tests for adapter
 ✦ tests/integration/iamgroup_driver_test.go          — Integration tests
-✎ cmd/praxis-iam/main.go                            — Add IAMGroup driver .Bind()
+✎ cmd/praxis-identity/main.go                            — Add IAMGroup driver .Bind()
 ✎ internal/core/provider/registry.go                 — Add NewIAMGroupAdapter to NewRegistry()
 ```
 
@@ -561,9 +561,9 @@ Add `NewIAMGroupAdapterWithRegistry(accounts)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — IAM Driver Pack Entry Point
+## Step 9 — Identity Driver Pack Entry Point
 
-**File**: `cmd/praxis-iam/main.go` (modified)
+**File**: `cmd/praxis-identity/main.go` (modified)
 
 Add `.Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(cfg.Auth())))`.
 
@@ -718,7 +718,7 @@ path during re-provision and reconciliation.
 - [ ] **Driver**: `internal/drivers/iamgroup/driver.go` created with all 6 handlers
 - [ ] **Adapter**: `internal/core/provider/iamgroup_adapter.go` created
 - [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMGroup driver bound in `cmd/praxis-iam/main.go`
+- [ ] **Entry point**: IAMGroup driver bound in `cmd/praxis-identity/main.go`
 - [ ] **Unit tests (drift)**: `internal/drivers/iamgroup/drift_test.go`
 - [ ] **Unit tests (aws)**: `internal/drivers/iamgroup/aws_test.go`
 - [ ] **Unit tests (driver)**: `internal/drivers/iamgroup/driver_test.go`

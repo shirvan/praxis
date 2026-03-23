@@ -1,10 +1,10 @@
-# IAM Driver Pack — Overview
+# Identity Driver Pack — Overview
 
-> NYI
+> ✅ Implemented
 > This document summarizes the IAM driver family for Praxis: five drivers covering
 > IAM Roles, Policies, Users, Groups, and Instance Profiles. It describes their
 > relationships, shared infrastructure, implementation order, and the new
-> `praxis-iam` driver pack.
+> `praxis-identity` driver pack.
 
 ---
 
@@ -12,7 +12,7 @@
 
 1. [Driver Summary](#1-driver-summary)
 2. [Relationships & Dependencies](#2-relationships--dependencies)
-3. [Driver Pack: praxis-iam](#3-driver-pack-praxis-iam)
+3. [Driver Pack: praxis-identity](#3-driver-pack-praxis-identity)
 4. [Shared Infrastructure](#4-shared-infrastructure)
 5. [Implementation Order](#5-implementation-order)
 6. [go.mod Changes](#6-gomod-changes)
@@ -72,11 +72,11 @@ graph TD
 
 ---
 
-## 3. Driver Pack: praxis-iam
+## 3. Driver Pack: praxis-identity
 
 ### New Entry Point
 
-**File**: `cmd/praxis-iam/main.go`
+**File**: `cmd/praxis-identity/main.go`
 
 ```go
 package main
@@ -108,7 +108,7 @@ func main() {
         Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(cfg.Auth())))
 
     if err := srv.Start(context.Background(), ":9085"); err != nil {
-        slog.Error("praxis-iam exited unexpectedly", "err", err.Error())
+        slog.Error("praxis-identity exited unexpectedly", "err", err.Error())
         os.Exit(1)
     }
 }
@@ -116,7 +116,7 @@ func main() {
 
 ### Dockerfile
 
-**File**: `cmd/praxis-iam/Dockerfile`
+**File**: `cmd/praxis-identity/Dockerfile`
 
 Follows same pattern as existing driver packs (`cmd/praxis-compute/Dockerfile`).
 
@@ -126,11 +126,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /praxis-iam ./cmd/praxis-iam
+RUN CGO_ENABLED=0 go build -o /praxis-identity ./cmd/praxis-identity
 
 FROM gcr.io/distroless/static-debian12
-COPY --from=builder /praxis-iam /praxis-iam
-ENTRYPOINT ["/praxis-iam"]
+COPY --from=builder /praxis-identity /praxis-identity
+ENTRYPOINT ["/praxis-identity"]
 ```
 
 ### Port: 9085
@@ -141,7 +141,7 @@ ENTRYPOINT ["/praxis-iam"]
 | praxis-network | 9082 |
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
-| **praxis-iam** | **9085** |
+| **praxis-identity** | **9085** |
 
 ---
 
@@ -245,13 +245,13 @@ go mod tidy
 
 ## 7. Docker Compose Changes
 
-**File**: `docker-compose.yaml` — add the `praxis-iam` service:
+**File**: `docker-compose.yaml` — add the `praxis-identity` service:
 
 ```yaml
-  praxis-iam:
+  praxis-identity:
     build:
       context: .
-      dockerfile: cmd/praxis-iam/Dockerfile
+      dockerfile: cmd/praxis-identity/Dockerfile
     ports:
       - "9085:9085"
     environment:
@@ -263,7 +263,7 @@ go mod tidy
       - restate
 ```
 
-Update the Restate service's registration to include `praxis-iam:9085`.
+Update the Restate service's registration to include `praxis-identity:9085`.
 
 ---
 
@@ -272,9 +272,9 @@ Update the Restate service's registration to include `praxis-iam:9085`.
 Add targets for the new driver pack and individual drivers:
 
 ```just
-# IAM driver pack
+# Identity driver pack
 build-iam:
-    go build ./cmd/praxis-iam/...
+    go build ./cmd/praxis-identity/...
 
 test-iam:
     go test ./internal/drivers/iamrole/... ./internal/drivers/iampolicy/... \
@@ -415,9 +415,9 @@ references.
 
 ### Infrastructure
 - [ ] `go get github.com/aws/aws-sdk-go-v2/service/iam` added
-- [ ] `cmd/praxis-iam/main.go` created
-- [ ] `cmd/praxis-iam/Dockerfile` created
-- [ ] `docker-compose.yaml` updated with `praxis-iam` service
+- [ ] `cmd/praxis-identity/main.go` created
+- [ ] `cmd/praxis-identity/Dockerfile` created
+- [ ] `docker-compose.yaml` updated with `praxis-identity` service
 - [ ] `justfile` updated with IAM targets
 
 ### Schemas

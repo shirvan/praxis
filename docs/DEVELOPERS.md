@@ -17,9 +17,10 @@ Praxis development benefits from scoping the imagination sandbox of the LLM Agen
 cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
-  praxis-storage/              # Storage driver pack (S3, EBS, future: RDS, DynamoDB...)
-  praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, future: ELB...)
-  praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, future: ASG, Lambda...)
+  praxis-storage/              # Storage driver pack (S3, EBS, DBSubnetGroup, DBParameterGroup, RDSInstance, AuroraCluster)
+  praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53Zone, Route53Record, Route53HealthCheck)
+  praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping)
+  praxis-identity/             # Identity driver pack (IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile)
 
 internal/
   cli/                         # CLI command implementations
@@ -66,6 +67,23 @@ internal/
       subnet_adapter.go        # Subnet adapter
       natgw_adapter.go         # NAT Gateway adapter
       vpcpeering_adapter.go    # VPC Peering adapter
+      lambda_adapter.go        # Lambda Function adapter
+      lambdalayer_adapter.go   # Lambda Layer adapter
+      lambdaperm_adapter.go    # Lambda Permission adapter
+      esm_adapter.go           # Event Source Mapping adapter
+      iamrole_adapter.go       # IAM Role adapter
+      iampolicy_adapter.go     # IAM Policy adapter
+      iamuser_adapter.go       # IAM User adapter
+      iamgroup_adapter.go      # IAM Group adapter
+      iaminstanceprofile_adapter.go # IAM Instance Profile adapter
+      route53zone_adapter.go   # Route 53 Hosted Zone adapter
+      route53record_adapter.go # Route 53 DNS Record adapter
+      route53healthcheck_adapter.go # Route 53 Health Check adapter
+      rdsinstance_adapter.go   # RDS Instance adapter
+      dbsubnetgroup_adapter.go # DB Subnet Group adapter
+      dbparametergroup_adapter.go # DB Parameter Group adapter
+      auroracluster_adapter.go # Aurora Cluster adapter
+      targetgroup_adapter.go   # Target Group adapter
     registry/                  # Template + policy registries
       template_registry.go     # Restate VO for template storage
       policy_registry.go       # Restate VO for policy storage
@@ -92,6 +110,23 @@ internal/
     subnet/                    # Subnet driver
     natgw/                     # NAT Gateway driver
     vpcpeering/                # VPC Peering Connection driver
+    lambda/                    # Lambda Function driver
+    lambdalayer/               # Lambda Layer driver
+    lambdaperm/                # Lambda Permission driver
+    esm/                       # Event Source Mapping driver
+    iamrole/                   # IAM Role driver
+    iampolicy/                 # IAM Policy driver
+    iamuser/                   # IAM User driver
+    iamgroup/                  # IAM Group driver
+    iaminstanceprofile/        # IAM Instance Profile driver
+    route53zone/               # Route 53 Hosted Zone driver
+    route53record/             # Route 53 DNS Record driver
+    route53healthcheck/        # Route 53 Health Check driver
+    rdsinstance/               # RDS Instance driver
+    dbsubnetgroup/             # DB Subnet Group driver
+    dbparametergroup/          # DB Parameter Group driver
+    auroracluster/             # Aurora Cluster driver
+    targetgroup/               # Target Group driver
   infra/
     awsclient/                 # Shared AWS client setup
     ratelimit/                 # Token bucket rate limiter
@@ -113,6 +148,23 @@ schemas/aws/                   # CUE schemas per provider/service
   natgw/natgw.cue
   vpc/vpc.cue
   vpcpeering/vpcpeering.cue
+  lambda/function.cue
+  lambda/layer.cue
+  lambda/permission.cue
+  lambda/event_source_mapping.cue
+  iam/role.cue
+  iam/policy.cue
+  iam/user.cue
+  iam/group.cue
+  iam/instance_profile.cue
+  route53/hosted_zone.cue
+  route53/record.cue
+  route53/health_check.cue
+  rds/instance.cue
+  rds/aurora_cluster.cue
+  rds/parameter_group.cue
+  rds/subnet_group.cue
+  elb/target_group.cue
 
 tests/integration/             # Integration tests (Testcontainers)
 ```
@@ -158,6 +210,21 @@ just test-subnet     # Subnet driver
 just test-natgw      # NAT Gateway driver
 just test-vpcpeering # VPC Peering driver
 just test-keypair    # Key Pair driver
+just test-lambda     # Lambda Function driver
+just test-lambdalayer # Lambda Layer driver
+just test-lambdaperm # Lambda Permission driver
+just test-esm        # Event Source Mapping driver
+just test-iamrole    # IAM Role driver
+just test-iampolicy  # IAM Policy driver
+just test-iamuser    # IAM User driver
+just test-iamgroup   # IAM Group driver
+just test-iaminstanceprofile # IAM Instance Profile driver
+just test-iam        # All IAM drivers
+just test-route53    # All Route 53 drivers
+just test-route53zone # Route 53 Hosted Zone driver
+just test-route53record # Route 53 DNS Record driver
+just test-route53healthcheck # Route 53 Health Check driver
+just test-rds        # All RDS drivers
 
 # Lint
 just lint

@@ -6,6 +6,11 @@ package awsclient
 import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -26,4 +31,29 @@ func NewS3Client(cfg aws.Config) *s3.Client {
 // NewEC2Client returns an EC2 client from the given config.
 func NewEC2Client(cfg aws.Config) *ec2.Client {
 	return ec2.NewFromConfig(cfg)
+}
+
+// NewELBv2Client returns an ELBv2 client from the given config.
+func NewELBv2Client(cfg aws.Config) *elasticloadbalancingv2.Client {
+	return elasticloadbalancingv2.NewFromConfig(cfg)
+}
+
+// NewIAMClient returns an IAM client from the given config.
+func NewIAMClient(cfg aws.Config) *iam.Client {
+	return iam.NewFromConfig(cfg)
+}
+
+// NewLambdaClient returns a Lambda client from the given config.
+func NewLambdaClient(cfg aws.Config) *lambdasdk.Client {
+	return lambdasdk.NewFromConfig(cfg)
+}
+
+// NewRoute53Client returns a Route53 client from the given config.
+func NewRoute53Client(cfg aws.Config) *route53.Client {
+	return route53.NewFromConfig(cfg)
+}
+
+// NewRDSClient returns an RDS client from the given config.
+func NewRDSClient(cfg aws.Config) *rds.Client {
+	return rds.NewFromConfig(cfg)
 }

@@ -8,7 +8,17 @@ import (
 	"github.com/praxiscloud/praxis/internal/drivers/ebs"
 	"github.com/praxiscloud/praxis/internal/drivers/ec2"
 	"github.com/praxiscloud/praxis/internal/drivers/eip"
+	"github.com/praxiscloud/praxis/internal/drivers/esm"
+	"github.com/praxiscloud/praxis/internal/drivers/iaminstanceprofile"
+	"github.com/praxiscloud/praxis/internal/drivers/iamrole"
+	"github.com/praxiscloud/praxis/internal/drivers/iamuser"
+	"github.com/praxiscloud/praxis/internal/drivers/lambda"
+	"github.com/praxiscloud/praxis/internal/drivers/lambdalayer"
+	"github.com/praxiscloud/praxis/internal/drivers/lambdaperm"
 	"github.com/praxiscloud/praxis/internal/drivers/nacl"
+	"github.com/praxiscloud/praxis/internal/drivers/route53healthcheck"
+	"github.com/praxiscloud/praxis/internal/drivers/route53record"
+	"github.com/praxiscloud/praxis/internal/drivers/route53zone"
 	"github.com/praxiscloud/praxis/internal/drivers/s3"
 	"github.com/praxiscloud/praxis/internal/drivers/sg"
 	"github.com/praxiscloud/praxis/internal/drivers/subnet"
@@ -212,6 +222,27 @@ func TestRegistry_Get_UnsupportedKind(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported resource kind")
 }
 
+func TestRegistry_Get_LambdaLayer(t *testing.T) {
+	registry := NewRegistryWithAdapters(NewLambdaLayerAdapter())
+	adapter, err := registry.Get(lambdalayer.ServiceName)
+	require.NoError(t, err)
+	assert.Equal(t, lambdalayer.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_LambdaPermission(t *testing.T) {
+	registry := NewRegistryWithAdapters(NewLambdaPermissionAdapter())
+	adapter, err := registry.Get(lambdaperm.ServiceName)
+	require.NoError(t, err)
+	assert.Equal(t, lambdaperm.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_ESM(t *testing.T) {
+	registry := NewRegistryWithAdapters(NewESMAdapter())
+	adapter, err := registry.Get(esm.ServiceName)
+	require.NoError(t, err)
+	assert.Equal(t, esm.ServiceName, adapter.Kind())
+}
+
 func TestRegistry_Get_S3(t *testing.T) {
 	registry := NewRegistry()
 	adapter, err := registry.Get("S3Bucket")
@@ -226,6 +257,13 @@ func TestRegistry_Get_EC2Instance(t *testing.T) {
 	assert.Equal(t, ec2.ServiceName, adapter.Kind())
 }
 
+func TestRegistry_Get_LambdaFunction(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("LambdaFunction")
+	require.NoError(t, err)
+	assert.Equal(t, lambda.ServiceName, adapter.Kind())
+}
+
 func TestRegistry_Get_EBSVolume(t *testing.T) {
 	registry := NewRegistry()
 	adapter, err := registry.Get("EBSVolume")
@@ -238,6 +276,27 @@ func TestRegistry_Get_ElasticIP(t *testing.T) {
 	adapter, err := registry.Get("ElasticIP")
 	require.NoError(t, err)
 	assert.Equal(t, eip.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_IAMInstanceProfile(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("IAMInstanceProfile")
+	require.NoError(t, err)
+	assert.Equal(t, iaminstanceprofile.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_IAMRole(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("IAMRole")
+	require.NoError(t, err)
+	assert.Equal(t, iamrole.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_IAMUser(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("IAMUser")
+	require.NoError(t, err)
+	assert.Equal(t, iamuser.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_AMI(t *testing.T) {
@@ -266,6 +325,27 @@ func TestRegistry_Get_Subnet(t *testing.T) {
 	adapter, err := registry.Get("Subnet")
 	require.NoError(t, err)
 	assert.Equal(t, subnet.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_Route53HostedZone(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("Route53HostedZone")
+	require.NoError(t, err)
+	assert.Equal(t, route53zone.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_Route53Record(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("Route53Record")
+	require.NoError(t, err)
+	assert.Equal(t, route53record.ServiceName, adapter.Kind())
+}
+
+func TestRegistry_Get_Route53HealthCheck(t *testing.T) {
+	registry := NewRegistry()
+	adapter, err := registry.Get("Route53HealthCheck")
+	require.NoError(t, err)
+	assert.Equal(t, route53healthcheck.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_NilSafety(t *testing.T) {

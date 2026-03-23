@@ -1,6 +1,12 @@
 # Route 53 Health Check Driver — Implementation Plan
 
-> NYI
+> **Status: IMPLEMENTED** — Driver is fully implemented with unit tests,
+> integration tests, CUE schema, provider adapter, and registry integration.
+>
+> **Implementation note:** This plan references a `praxis-dns` driver pack.
+> The actual implementation places the Health Check driver in **`praxis-network`**
+> (`cmd/praxis-network/main.go`).
+
 > Target: A Restate Virtual Object driver that manages Route 53 Health Checks,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for endpoint health checks, calculated health
@@ -1251,26 +1257,26 @@ comparison to prevent false drift.
 ## Checklist
 
 ### Schema
-- [ ] `schemas/aws/route53/health_check.cue`
+- [x] `schemas/aws/route53/health_check.cue`
 
 ### Driver
-- [ ] `internal/drivers/route53healthcheck/types.go`
-- [ ] `internal/drivers/route53healthcheck/aws.go`
-- [ ] `internal/drivers/route53healthcheck/drift.go`
-- [ ] `internal/drivers/route53healthcheck/driver.go`
-- [ ] `internal/drivers/route53healthcheck/driver_test.go`
-- [ ] `internal/drivers/route53healthcheck/aws_test.go`
-- [ ] `internal/drivers/route53healthcheck/drift_test.go`
+- [x] `internal/drivers/route53healthcheck/types.go`
+- [x] `internal/drivers/route53healthcheck/aws.go`
+- [x] `internal/drivers/route53healthcheck/drift.go`
+- [x] `internal/drivers/route53healthcheck/driver.go`
+- [x] `internal/drivers/route53healthcheck/driver_test.go`
+- [x] `internal/drivers/route53healthcheck/aws_test.go`
+- [x] `internal/drivers/route53healthcheck/drift_test.go`
 
 ### Adapter
-- [ ] `internal/core/provider/route53healthcheck_adapter.go`
-- [ ] `internal/core/provider/route53healthcheck_adapter_test.go`
+- [x] `internal/core/provider/route53healthcheck_adapter.go`
+- [x] `internal/core/provider/route53healthcheck_adapter_test.go`
 
 ### Registry
-- [ ] Adapter registered in `NewRegistry()`
+- [x] Adapter registered in `NewRegistry()`
 
 ### Integration Tests
-- [ ] `tests/integration/route53_health_check_driver_test.go`
+- [x] `tests/integration/route53_health_check_driver_test.go`
 
 ### Infrastructure
-- [ ] `cmd/praxis-dns/main.go` — `.Bind()` call
+- [x] `cmd/praxis-dns/main.go` — `.Bind()` call

@@ -1,6 +1,5 @@
 # ALB Driver — Implementation Plan
 
-> NYI
 > Target: A Restate Virtual Object driver that manages Application Load Balancers
 > (ALBs), providing full lifecycle management including creation, import, deletion,
 > drift detection, and drift correction for load balancer attributes, subnet
@@ -129,8 +128,7 @@ tags — matching the IAM pattern.
 ✦ internal/core/provider/alb_adapter_test.go       — Unit tests for adapter
 ✦ tests/integration/alb_driver_test.go             — Integration tests
 ✎ internal/core/provider/registry.go               — Add NewALBAdapter to NewRegistry()
-✎ docker-compose.yaml                              — Add praxis-elb service on port 9086
-✎ justfile                                         — Add ELB build/test/register targets
+✎ justfile                                         — Add ELB build/test targets
 ```
 
 ---
@@ -644,9 +642,9 @@ r.Register(NewALBAdapterWithRegistry(accounts))
 
 ## Step 9 — ELB Driver Pack Entry Point
 
-The ALB driver is bound in `cmd/praxis-elb/main.go` alongside NLB, Target Group,
-Listener, and Listener Rule drivers. See the
-[ELB Driver Pack Overview](ELB_DRIVER_PACK_OVERVIEW.md) for the full entry point.
+The ALB driver is bound in `cmd/praxis-network/main.go` alongside NLB, Target Group,
+Listener, and Listener Rule drivers (and all other networking drivers). See the
+[ELB Driver Pack Overview](ELB_DRIVER_PACK_OVERVIEW.md) for details.
 
 ---
 
@@ -756,14 +754,14 @@ if the subnets are in the same AZ.
 
 ## Checklist
 
-- [ ] `schemas/aws/elb/alb.cue` created
-- [ ] `internal/drivers/alb/types.go` created
-- [ ] `internal/drivers/alb/aws.go` created
-- [ ] `internal/drivers/alb/drift.go` created
-- [ ] `internal/drivers/alb/driver.go` created
-- [ ] `internal/drivers/alb/driver_test.go` created
-- [ ] `internal/drivers/alb/aws_test.go` created
-- [ ] `internal/drivers/alb/drift_test.go` created
-- [ ] `internal/core/provider/alb_adapter.go` created
-- [ ] `internal/core/provider/registry.go` updated
-- [ ] `tests/integration/alb_driver_test.go` created
+- [x] `schemas/aws/elb/alb.cue` created
+- [x] `internal/drivers/alb/types.go` created
+- [x] `internal/drivers/alb/aws.go` created
+- [x] `internal/drivers/alb/drift.go` created
+- [x] `internal/drivers/alb/driver.go` created
+- [x] `internal/drivers/alb/driver_test.go` created
+- [x] `internal/drivers/alb/aws_test.go` created
+- [x] `internal/drivers/alb/drift_test.go` created
+- [x] `internal/core/provider/alb_adapter.go` created
+- [x] `internal/core/provider/registry.go` updated
+- [x] `tests/integration/alb_driver_test.go` created

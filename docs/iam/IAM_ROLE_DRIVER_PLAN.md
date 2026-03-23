@@ -1,6 +1,6 @@
 # IAM Role Driver — Implementation Plan
 
-> NYI
+> ✅ Implemented
 > Target: A Restate Virtual Object driver that manages IAM Roles, providing full
 > lifecycle management including creation, import, deletion, drift detection, and
 > drift correction for role properties, assume-role policy documents, inline policies,
@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — IAM Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -140,14 +140,14 @@ maps to a terminal 409 in the Provision handler.
 ✦ internal/core/provider/iamrole_adapter.go        — IAMRoleAdapter implementing provider.Adapter
 ✦ internal/core/provider/iamrole_adapter_test.go   — Unit tests for adapter
 ✦ tests/integration/iamrole_driver_test.go         — Integration tests
-✦ cmd/praxis-iam/main.go                           — IAM driver pack entry point (NEW pack)
-✦ cmd/praxis-iam/Dockerfile                        — Multi-stage Docker build
+✦ cmd/praxis-identity/main.go                           — Identity driver pack entry point (NEW pack)
+✦ cmd/praxis-identity/Dockerfile                        — Multi-stage Docker build
 ✎ internal/core/provider/registry.go               — Add NewIAMRoleAdapter to NewRegistry()
-✎ docker-compose.yaml                              — Add praxis-iam service on port 9085
+✎ docker-compose.yaml                              — Add praxis-identity service on port 9085
 ✎ justfile                                         — Add IAM build/test/register targets
 ```
 
-> **Note**: IAM drivers live in a new `praxis-iam` driver pack. IAM is foundational
+> **Note**: IAM drivers live in a new `praxis-identity` driver pack. IAM is foundational
 > and cross-cutting — roles, policies, users, and groups are consumed by compute,
 > network, and storage resources. A dedicated pack keeps the dependency graph clean
 > and allows IAM to be scaled/deployed independently.
@@ -950,11 +950,11 @@ Add `NewIAMRoleAdapterWithRegistry(accounts)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — IAM Driver Pack Entry Point
+## Step 9 — Identity Driver Pack Entry Point
 
-**File**: `cmd/praxis-iam/main.go`
+**File**: `cmd/praxis-identity/main.go`
 
-The IAM driver pack hosts all IAM-related drivers (Role, Policy, User, Group,
+The Identity driver pack hosts all IAM-related drivers (Role, Policy, User, Group,
 Instance Profile). IAM is foundational — it is consumed by all other resource
 types across compute, network, and storage domains.
 
@@ -979,7 +979,7 @@ func main() {
 
 ### Dockerfile
 
-**File**: `cmd/praxis-iam/Dockerfile`
+**File**: `cmd/praxis-identity/Dockerfile`
 
 ```dockerfile
 FROM golang:1.25-alpine AS build
@@ -987,11 +987,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /praxis-iam ./cmd/praxis-iam
+RUN CGO_ENABLED=0 go build -o /praxis-identity ./cmd/praxis-identity
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /praxis-iam /praxis-iam
-ENTRYPOINT ["/praxis-iam"]
+COPY --from=build /praxis-identity /praxis-identity
+ENTRYPOINT ["/praxis-identity"]
 ```
 
 ---
@@ -1003,11 +1003,11 @@ ENTRYPOINT ["/praxis-iam"]
 **File**: `docker-compose.yaml` (modified)
 
 ```yaml
-praxis-iam:
+praxis-identity:
     build:
       context: .
-      dockerfile: cmd/praxis-iam/Dockerfile
-    container_name: praxis-iam
+      dockerfile: cmd/praxis-identity/Dockerfile
+    container_name: praxis-identity
     env_file:
       - .env
     depends_on:
@@ -1027,12 +1027,12 @@ Port 9085 (Storage: 9081, Network: 9082, Core: 9083, Compute: 9084, IAM: 9085).
 
 | Target | Command |
 |---|---|
-| `logs-iam` | `docker compose logs -f praxis-iam` |
+| `logs-identity` | `docker compose logs -f praxis-identity` |
 | `test-iamrole` | `go test ./internal/drivers/iamrole/... -v -count=1 -race` |
 | `test-iamrole-integration` | `go test ./tests/integration/ -run TestIAMRole -v -count=1 -tags=integration -timeout=5m` |
-| `build` (shared) | Add `go build -o bin/praxis-iam ./cmd/praxis-iam` |
-| `register` (shared) | Register IAM pack at `http://praxis-iam:9080` |
-| `up` (shared) | Add `praxis-iam` to the list of services |
+| `build` (shared) | Add `go build -o bin/praxis-identity ./cmd/praxis-identity` |
+| `register` (shared) | Register Identity pack at `http://praxis-identity:9080` |
+| `up` (shared) | Add `praxis-identity` to the list of services |
 
 ---
 
@@ -1181,11 +1181,11 @@ IAM resources get their own CUE package directory (`schemas/aws/iam/`), separate
 from `ec2`, `s3`, or `vpc`. All IAM resource types (Role, Policy, User, Group,
 Instance Profile) share the `iam` package and can cross-reference each other.
 
-### 9. Driver Pack Placement: praxis-iam
+### 9. Driver Pack Placement: praxis-identity
 
 IAM is cross-cutting — consumed by compute, network, and storage resources. Rather
 than bolting IAM drivers onto an existing domain pack (e.g., compute), a dedicated
-`praxis-iam` pack keeps concerns separated and allows independent scaling. Port 9085.
+`praxis-identity` pack keeps concerns separated and allows independent scaling. Port 9085.
 
 ---
 
@@ -1231,9 +1231,9 @@ than bolting IAM drivers onto an existing domain pack (e.g., compute), a dedicat
 - [ ] **Driver**: `internal/drivers/iamrole/driver.go` created with all 6 handlers
 - [ ] **Adapter**: `internal/core/provider/iamrole_adapter.go` created
 - [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: `cmd/praxis-iam/main.go` created
-- [ ] **Dockerfile**: `cmd/praxis-iam/Dockerfile` created
-- [ ] **Docker Compose**: `docker-compose.yaml` updated with praxis-iam service
+- [ ] **Entry point**: `cmd/praxis-identity/main.go` created
+- [ ] **Dockerfile**: `cmd/praxis-identity/Dockerfile` created
+- [ ] **Docker Compose**: `docker-compose.yaml` updated with praxis-identity service
 - [ ] **Justfile**: Updated with IAM targets
 - [ ] **Unit tests (drift)**: `internal/drivers/iamrole/drift_test.go`
 - [ ] **Unit tests (aws helpers)**: `internal/drivers/iamrole/aws_test.go`

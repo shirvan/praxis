@@ -1,6 +1,15 @@
 # Route 53 Driver Pack — Overview
 
-> NYI
+> **Status: IMPLEMENTED** — All three drivers (Hosted Zone, DNS Record, Health
+> Check) are fully implemented with unit tests, integration tests, CUE schemas,
+> provider adapters, registry integration.
+>
+> **Implementation note:** This plan originally proposed a standalone `praxis-dns`
+> driver pack on port 9086. The actual implementation places all three Route 53 drivers
+> in the existing **`praxis-network`** pack (`cmd/praxis-network/`). References to
+> `praxis-dns`, `cmd/praxis-dns/`, and port 9086 below reflect the original plan;
+> the canonical source of truth is `cmd/praxis-network/main.go`.
+
 > This document summarizes the Route 53 driver family for Praxis: three drivers
 > covering Hosted Zones, DNS Records, and Health Checks. It describes their
 > relationships, shared infrastructure, implementation order, and the new
@@ -145,7 +154,7 @@ ENTRYPOINT ["/praxis-dns"]
 | praxis-network | 9082 |
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
-| praxis-iam | 9085 |
+| praxis-identity | 9085 |
 | **praxis-dns** | **9086** |
 
 ---
@@ -528,37 +537,37 @@ references.
 ## 12. Checklist
 
 ### Infrastructure
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/route53` added
-- [ ] `cmd/praxis-dns/main.go` created
-- [ ] `cmd/praxis-dns/Dockerfile` created
-- [ ] `docker-compose.yaml` updated with `praxis-dns` service
-- [ ] `justfile` updated with Route 53 targets
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/route53` added
+- [x] `cmd/praxis-dns/main.go` created
+- [x] `cmd/praxis-dns/Dockerfile` created
+- [x] `docker-compose.yaml` updated with `praxis-dns` service
+- [x] `justfile` updated with Route 53 targets
 
 ### Schemas
-- [ ] `schemas/aws/route53/hosted_zone.cue`
-- [ ] `schemas/aws/route53/record.cue`
-- [ ] `schemas/aws/route53/health_check.cue`
+- [x] `schemas/aws/route53/hosted_zone.cue`
+- [x] `schemas/aws/route53/record.cue`
+- [x] `schemas/aws/route53/health_check.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
-- [ ] `internal/drivers/route53zone/`
-- [ ] `internal/drivers/route53record/`
-- [ ] `internal/drivers/route53healthcheck/`
+- [x] `internal/drivers/route53zone/`
+- [x] `internal/drivers/route53record/`
+- [x] `internal/drivers/route53healthcheck/`
 
 ### Adapters
-- [ ] `internal/core/provider/route53zone_adapter.go`
-- [ ] `internal/core/provider/route53record_adapter.go`
-- [ ] `internal/core/provider/route53healthcheck_adapter.go`
+- [x] `internal/core/provider/route53zone_adapter.go`
+- [x] `internal/core/provider/route53record_adapter.go`
+- [x] `internal/core/provider/route53healthcheck_adapter.go`
 
 ### Registry
-- [ ] All 3 adapters registered in `NewRegistry()`
+- [x] All 3 adapters registered in `NewRegistry()`
 
 ### Tests
-- [ ] Unit tests for all 3 drivers
-- [ ] Integration tests for all 3 drivers
-- [ ] Cross-driver integration test (Hosted Zone → Health Check → DNS Record)
+- [x] Unit tests for all 3 drivers
+- [x] Integration tests for all 3 drivers
+- [x] Cross-driver integration test (Hosted Zone → Health Check → DNS Record)
 
 ### Documentation
-- [ ] [HOSTED_ZONE_DRIVER_PLAN.md](HOSTED_ZONE_DRIVER_PLAN.md)
-- [ ] [DNS_RECORD_DRIVER_PLAN.md](DNS_RECORD_DRIVER_PLAN.md)
-- [ ] [HEALTH_CHECK_DRIVER_PLAN.md](HEALTH_CHECK_DRIVER_PLAN.md)
-- [ ] This overview document
+- [x] [HOSTED_ZONE_DRIVER_PLAN.md](HOSTED_ZONE_DRIVER_PLAN.md)
+- [x] [DNS_RECORD_DRIVER_PLAN.md](DNS_RECORD_DRIVER_PLAN.md)
+- [x] [HEALTH_CHECK_DRIVER_PLAN.md](HEALTH_CHECK_DRIVER_PLAN.md)
+- [x] This overview document

@@ -1,6 +1,5 @@
 # Listener Rule Driver — Implementation Plan
 
-> NYI
 > Target: A Restate Virtual Object driver that manages ELBv2 Listener Rules,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for priority, conditions, actions, and tags.
@@ -740,14 +739,14 @@ by checking the `isDefault` flag and refusing to manage default rules.
 
 ## Checklist
 
-- [ ] `schemas/aws/elb/listener_rule.cue` created
-- [ ] `internal/drivers/listenerrule/types.go` created
-- [ ] `internal/drivers/listenerrule/aws.go` created
-- [ ] `internal/drivers/listenerrule/drift.go` created
-- [ ] `internal/drivers/listenerrule/driver.go` created
-- [ ] `internal/drivers/listenerrule/driver_test.go` created
-- [ ] `internal/drivers/listenerrule/aws_test.go` created
-- [ ] `internal/drivers/listenerrule/drift_test.go` created
-- [ ] `internal/core/provider/listenerrule_adapter.go` created
-- [ ] `internal/core/provider/registry.go` updated
-- [ ] `tests/integration/listenerrule_driver_test.go` created
+- [x] `schemas/aws/elb/listener_rule.cue` created
+- [x] `internal/drivers/listenerrule/types.go` created
+- [x] `internal/drivers/listenerrule/aws.go` created
+- [x] `internal/drivers/listenerrule/drift.go` created
+- [x] `internal/drivers/listenerrule/driver.go` created
+- [x] `internal/drivers/listenerrule/driver_test.go` created
+- [x] `internal/drivers/listenerrule/aws_test.go` created
+- [x] `internal/drivers/listenerrule/drift_test.go` created
+- [x] `internal/core/provider/listenerrule_adapter.go` created
+- [x] `internal/core/provider/registry.go` updated
+- [x] `tests/integration/listenerrule_driver_test.go` created

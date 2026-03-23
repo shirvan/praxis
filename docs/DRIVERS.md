@@ -6,7 +6,7 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. The IAM drivers manage Roles, Policies, Users, Groups, and Instance Profiles. The Route 53 drivers manage Hosted Zones, DNS Records, and Health Checks. The Lambda drivers manage Lambda Functions, Layers, Permissions, and Event Source Mappings. The RDS drivers manage RDS Instances, DB Subnet Groups, DB Parameter Groups, and Aurora Clusters. The ELB drivers manage ALBs, NLBs, Target Groups, Listeners, and Listener Rules. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
 Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, ElasticIP, InternetGateway, and NetworkACL drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
@@ -27,6 +27,15 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 - AMI: `us-east-1~my-ami` (region-scoped, using `~` as separator)
 - EBS Volume: `us-east-1~data-vol` (region-scoped, using `~` as separator)
 - KeyPair: `us-east-1~my-keypair` (region-scoped, using `~` as separator)
+- Lambda Function: `us-east-1~my-function` (region-scoped, using `~` as separator)
+- Lambda Layer: `us-east-1~my-layer` (region-scoped, using `~` as separator)
+- Lambda Permission: `us-east-1~my-function~allow-s3` (region + function + statement ID)
+- Event Source Mapping: `us-east-1~my-function~<encoded-source-arn>` (region + function + encoded ARN)
+- ALB: `us-east-1~web-lb` (region-scoped, using `~` as separator)
+- NLB: `us-east-1~tcp-lb` (region-scoped, using `~` as separator)
+- Target Group: `us-east-1~web-targets` (region-scoped, using `~` as separator)
+- Listener: `us-east-1~web-https` (region-scoped, using `~` as separator)
+- Listener Rule: `us-east-1~api-route` (region-scoped, using `~` as separator)
 
 Each Virtual Object holds:
 
@@ -240,6 +249,15 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | AMI | Region | `<region>~<amiName>` | `us-east-1~my-ami` |
 | EBSVolume | Region | `<region>~<name>` | `us-east-1~data-vol` |
 | KeyPair | Region | `<region>~<keyName>` | `us-east-1~my-keypair` |
+| LambdaFunction | Region | `<region>~<functionName>` | `us-east-1~my-function` |
+| LambdaLayer | Region | `<region>~<layerName>` | `us-east-1~my-layer` |
+| LambdaPermission | Custom | `<region>~<functionName>~<statementId>` | `us-east-1~my-func~allow-s3` |
+| EventSourceMapping | Custom | `<region>~<functionName>~<encodedSourceArn>` | `us-east-1~my-func~<base64>` |
+| ALB | Region | `<region>~<albName>` | `us-east-1~web-lb` |
+| NLB | Region | `<region>~<nlbName>` | `us-east-1~tcp-lb` |
+| TargetGroup | Region | `<region>~<tgName>` | `us-east-1~web-targets` |
+| Listener | Region | `<region>~<listenerName>` | `us-east-1~web-https` |
+| ListenerRule | Region | `<region>~<ruleName>` | `us-east-1~api-route` |
 
 The `~` separator is URL-safe and does not collide with characters valid in AWS resource names.
 
@@ -343,9 +361,12 @@ cmd/praxis-<pack>/
 
 | Pack | Binary | Drivers |
 | --- | --- | --- |
-| Storage | `cmd/praxis-storage/` | S3, EBS (future: RDS, DynamoDB, SQS, SNS) |
-| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering (future: ELB, Route 53) |
-| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2 (future: Auto Scaling, Lambda, ECS, EKS) |
+| Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster |
+| Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule |
+| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping |
+| Identity | `cmd/praxis-identity/` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile |
+
+See [Driver Roadmap](DRIVER_ROADMAP.md) for 1.0 and future planned drivers.
 
 ---
 
@@ -485,3 +506,75 @@ Manages AWS VPC Peering Connections. Spec fields: `region`, `requesterVpcId`, `a
 Outputs: `vpcPeeringConnectionId`, `requesterVpcId`, `accepterVpcId`, `requesterCidrBlock`, `accepterCidrBlock`, `status`, `requesterOwnerId`, `accepterOwnerId`.
 
 Key: `<region>~<name>`. Scope: Region.
+
+### LambdaFunction
+
+Manages AWS Lambda functions. Spec fields: `region`, `functionName`, `role`, `runtime`, `handler`, `memorySize`, `timeout`, `code`, `description`, `environment`, `layers`, `vpcConfig`, `tags`.
+
+Outputs: `functionArn`, `functionName`, `version`, `state`, `lastModified`, `lastUpdateStatus`, `codeSha256`.
+
+Key: `<region>~<functionName>`. Scope: Region.
+
+### LambdaLayer
+
+Manages AWS Lambda layers (versioned, immutable per version). Spec fields: `region`, `layerName`, `description`, `compatibleRuntimes`, `code`.
+
+Outputs: `layerArn`, `layerVersionArn`, `version`, `codeSha256`.
+
+Key: `<region>~<layerName>`. Scope: Region.
+
+### LambdaPermission
+
+Manages Lambda resource-based policy statements. Spec fields: `region`, `functionName`, `statementId`, `action`, `principal`, `sourceArn`, `sourceAccount`.
+
+Outputs: `statementId`, `functionName`, `statement`.
+
+Key: `<region>~<functionName>~<statementId>`. Scope: Custom.
+
+### EventSourceMapping
+
+Manages Lambda event source mappings (SQS, DynamoDB Streams, Kinesis, etc.). Spec fields: `region`, `functionName`, `eventSourceArn`, `enabled`, `batchSize`, `maximumBatchingWindowInSeconds`, `startingPosition`, `filterCriteria`.
+
+Outputs: `uuid`, `eventSourceArn`, `functionArn`, `state`, `batchSize`.
+
+Key: `<region>~<functionName>~<encodedEventSourceArn>`. Scope: Custom.
+
+### ALB
+
+Manages AWS Application Load Balancers. Spec fields: `region`, `name`, `scheme`, `ipAddressType`, `subnets`, `subnetMappings`, `securityGroups`, `accessLogs`, `deletionProtection`, `idleTimeout`, `tags`.
+
+Outputs: `loadBalancerArn`, `dnsName`, `hostedZoneId`, `vpcId`, `canonicalHostedZoneId`.
+
+Key: `<region>~<albName>`. Scope: Region.
+
+### NLB
+
+Manages AWS Network Load Balancers. Spec fields: `region`, `name`, `scheme`, `ipAddressType`, `subnets`, `subnetMappings`, `crossZoneLoadBalancing`, `deletionProtection`, `tags`.
+
+Outputs: `loadBalancerArn`, `dnsName`, `hostedZoneId`, `vpcId`, `canonicalHostedZoneId`.
+
+Key: `<region>~<nlbName>`. Scope: Region.
+
+### TargetGroup
+
+Manages AWS ELB Target Groups. Spec fields: `region`, `name`, `protocol`, `port`, `vpcId`, `targetType`, `healthCheck`, `deregistrationDelay`, `stickiness`, `targets`, `tags`.
+
+Outputs: `targetGroupArn`, `targetGroupName`.
+
+Key: `<region>~<tgName>`. Scope: Region.
+
+### Listener
+
+Manages AWS ELB Listeners. Spec fields: `region`, `name`, `loadBalancerArn`, `port`, `protocol`, `sslPolicy`, `certificateArn`, `alpnPolicy`, `defaultActions`, `tags`.
+
+Outputs: `listenerArn`, `loadBalancerArn`, `port`, `protocol`.
+
+Key: `<region>~<listenerName>`. Scope: Region.
+
+### ListenerRule
+
+Manages AWS ELB Listener Rules. Spec fields: `region`, `name`, `listenerArn`, `priority`, `conditions`, `actions`, `tags`.
+
+Outputs: `ruleArn`, `listenerArn`, `priority`.
+
+Key: `<region>~<ruleName>`. Scope: Region.

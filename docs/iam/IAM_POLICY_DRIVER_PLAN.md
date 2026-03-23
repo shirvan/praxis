@@ -1,6 +1,6 @@
 # IAM Policy Driver — Implementation Plan
 
-> NYI
+> ✅ Implemented
 > Target: A Restate Virtual Object driver that manages IAM Policies (customer-managed
 > policies), providing full lifecycle management including creation, import, deletion,
 > versioning, drift detection, and drift correction for policy documents and tags.
@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — IAM Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -123,7 +123,7 @@ eliminates the need for ownership tags.
 ✦ internal/core/provider/iampolicy_adapter.go         — IAMPolicyAdapter implementing provider.Adapter
 ✦ internal/core/provider/iampolicy_adapter_test.go    — Unit tests for adapter
 ✦ tests/integration/iampolicy_driver_test.go          — Integration tests
-✎ cmd/praxis-iam/main.go                             — Add IAMPolicy driver .Bind()
+✎ cmd/praxis-identity/main.go                             — Add IAMPolicy driver .Bind()
 ✎ internal/core/provider/registry.go                  — Add NewIAMPolicyAdapter to NewRegistry()
 ```
 
@@ -726,9 +726,9 @@ Add `NewIAMPolicyAdapterWithRegistry(accounts)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — IAM Driver Pack Entry Point
+## Step 9 — Identity Driver Pack Entry Point
 
-**File**: `cmd/praxis-iam/main.go` (modified)
+**File**: `cmd/praxis-identity/main.go` (modified)
 
 Add `.Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(cfg.Auth())))`.
 
@@ -736,7 +736,7 @@ Add `.Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(cfg.Auth())))`.
 
 ## Step 10 — Docker Compose & Justfile
 
-No Docker Compose changes — IAMPolicy joins the existing `praxis-iam` service.
+No Docker Compose changes — IAMPolicy joins the existing `praxis-identity` service.
 
 Add justfile targets:
 
@@ -857,7 +857,7 @@ The Reconcile handler uses the stored ARN instead.
 ### 6. Shared Rate Limiter with IAM Role
 
 The IAM Policy driver uses the same rate limiter service name (`"iam"`) as the IAM
-Role driver. When both drivers are in the same process (praxis-iam pack), the rate
+Role driver. When both drivers are in the same process (praxis-identity pack), the rate
 limiter instance is per-driver (each has its own), but the service name allows
 future coordination via the Central Rate Limit Advisor.
 
@@ -898,7 +898,7 @@ future coordination via the Central Rate Limit Advisor.
 - [ ] **Driver**: `internal/drivers/iampolicy/driver.go` created with all 6 handlers
 - [ ] **Adapter**: `internal/core/provider/iampolicy_adapter.go` created
 - [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMPolicy driver bound in `cmd/praxis-iam/main.go`
+- [ ] **Entry point**: IAMPolicy driver bound in `cmd/praxis-identity/main.go`
 - [ ] **Unit tests (drift)**: `internal/drivers/iampolicy/drift_test.go`
 - [ ] **Unit tests (aws)**: `internal/drivers/iampolicy/aws_test.go`
 - [ ] **Unit tests (driver)**: `internal/drivers/iampolicy/driver_test.go`
