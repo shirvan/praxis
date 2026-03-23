@@ -22,11 +22,13 @@ graph TD
         Storage
         Network
         Compute
+        Identity
     end
 
     Storage --> AWS["AWS APIs"]
     Network --> AWS
     Compute --> AWS
+    Identity --> AWS
 ```
 
 ---
@@ -87,7 +89,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 ### Start the Stack
 
 ```bash
-git clone https://github.com/praxiscloud/praxis.git
+git clone https://github.com/shirvan/praxis.git
 cd praxis
 
 # Create the operator environment file
@@ -155,10 +157,14 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 
 ---
 
-## Current Scope (0.1.0)
+## Current Scope (0.7.0)
 
 - **Cloud:** AWS
-- **Drivers:** S3 Bucket, Security Group, EC2 Instance, VPC, Elastic IP, AMI, EBS Volume, Key Pair, Internet Gateway, Network ACL, Route Table, Subnet, NAT Gateway, VPC Peering Connection
+- **Drivers (36):**
+  - *Network:* VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule
+  - *Compute:* EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping
+  - *Storage:* S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster
+  - *Identity:* IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile
 - **Accounts:** One operator-defined account per deployed stack
 - **Deployment:** Docker Compose reference stack (LocalStack for local dev)
 - **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
@@ -190,4 +196,4 @@ See [docs/DEVELOPERS.md](docs/DEVELOPERS.md) for building, testing, and contribu
 
 ## License
 
-Copyright 2025 The Praxis Authors. Licensed under the Apache License, Version 2.0.
+Copyright 2026 Shirvan. Licensed under the Apache License, Version 2.0.
