@@ -298,3 +298,56 @@ func (c *Client) ListWorkspaces(ctx context.Context) ([]string, error) {
 	}
 	return resp, nil
 }
+
+// --------------------------------------------------------------------------
+// State management calls
+// --------------------------------------------------------------------------
+
+// StateMv renames a resource within a deployment or moves it across
+// deployments. For same-deployment renames it calls MoveResource directly.
+// For cross-deployment moves it removes from source and adds to destination.
+func (c *Client) StateMv(ctx context.Context, req types.StateMvRequest) (*types.StateMvResponse, error) {
+	newName := req.NewName
+	if newName == "" {
+		newName = req.ResourceName
+	}
+
+	if req.SourceDeployment == req.DestDeployment {
+		// Same-deployment rename.
+		_, err := ingress.Object[orchestrator.MoveResourceRequest, restate.Void](
+			c.rc, stateServiceName, req.SourceDeployment, "MoveResource",
+		).Request(ctx, orchestrator.MoveResourceRequest{
+			ResourceName: req.ResourceName,
+			NewName:      newName,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("rename resource in %q: %w", req.SourceDeployment, err)
+		}
+	} else {
+		// Cross-deployment move: remove from source, add to destination.
+		rs, err := ingress.Object[string, orchestrator.ResourceState](
+			c.rc, stateServiceName, req.SourceDeployment, "RemoveResource",
+		).Request(ctx, req.ResourceName)
+		if err != nil {
+			return nil, fmt.Errorf("remove resource %q from %q: %w", req.ResourceName, req.SourceDeployment, err)
+		}
+
+		rs.Name = newName
+		// Clear DependsOn since dependencies may not exist in the destination.
+		rs.DependsOn = nil
+
+		_, err = ingress.Object[orchestrator.ResourceState, restate.Void](
+			c.rc, stateServiceName, req.DestDeployment, "AddResource",
+		).Request(ctx, rs)
+		if err != nil {
+			return nil, fmt.Errorf("add resource %q to %q: %w", newName, req.DestDeployment, err)
+		}
+	}
+
+	return &types.StateMvResponse{
+		SourceDeployment: req.SourceDeployment,
+		DestDeployment:   req.DestDeployment,
+		OldName:          req.ResourceName,
+		NewName:          newName,
+	}, nil
+}

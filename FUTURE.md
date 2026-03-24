@@ -31,14 +31,6 @@ The lifecycle block is parsed during template evaluation and passed through as m
 
 ---
 
-## State Move & Rename
-
-Allow resources to be renamed or moved between deployments without destroying and recreating them.
-
-**Technical approach:** Add a `praxis state mv <source> <destination>` command. Source and destination use `Deployment/<key>/<resource-name>` format. The command updates the deployment state object to rename the resource entry and, if moving across deployments, removes it from the source and adds it to the destination. The underlying driver Virtual Object key does not change — only the deployment's mapping of template-local name → driver key is updated. This enables template refactoring (renaming a resource in CUE) without reprovisioning.
-
----
-
 ## Data Sources in Templates
 
 Reference existing cloud resources directly in CUE templates without managing them.
@@ -62,14 +54,6 @@ webServer: ec2.#EC2Instance & {
 ```
 
 During template evaluation, Core dispatches lookup queries to the appropriate driver's `Describe` or `Find` handler. The driver queries AWS using the filter criteria and returns outputs without taking ownership. Results are injected as read-only outputs available for expression hydration. This differs from `import --observe` in that data sources are ephemeral per-evaluation — they don't create persistent driver state.
-
----
-
-## Provider Discovery (`praxis providers`)
-
-CLI command to list available drivers and their registration status.
-
-**Technical approach:** Add a `praxis providers` (or `praxis drivers`) command that queries the Restate admin API to enumerate registered services and their deployment status. Display driver name, resource kinds handled, service endpoint, and health. Useful for debugging ("is the lambda driver registered?") and discoverability as the driver ecosystem grows. The Restate admin API already exposes service registration metadata — the CLI formats and displays it.
 
 ---
 

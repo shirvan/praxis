@@ -160,6 +160,18 @@ type FinalizeRequest struct {
 	UpdatedAt time.Time              `json:"updatedAt"`
 }
 
+// MoveResourceRequest renames a resource within a deployment or moves it to
+// another deployment. Only allowed when the deployment is in a terminal state
+// (Complete, Failed, Cancelled).
+type MoveResourceRequest struct {
+	// ResourceName is the current template-local resource name.
+	ResourceName string `json:"resourceName"`
+	// NewName is the new template-local resource name. If empty, the existing
+	// name is preserved (useful for cross-deployment moves combined with a
+	// destination deployment key on the caller).
+	NewName string `json:"newName,omitempty"`
+}
+
 // DeleteRequest is the input payload accepted by DeploymentDeleteWorkflow.Run.
 type DeleteRequest struct {
 	DeploymentKey string `json:"deploymentKey"`

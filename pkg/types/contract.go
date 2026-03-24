@@ -177,6 +177,28 @@ type PlanDeployResponse struct {
 	Rendered string      `json:"rendered"`
 }
 
+// StateMvRequest is the CLI-facing payload for `praxis state mv`.
+type StateMvRequest struct {
+	// SourceDeployment is the deployment key containing the resource.
+	SourceDeployment string `json:"sourceDeployment"`
+	// ResourceName is the current template-local resource name.
+	ResourceName string `json:"resourceName"`
+	// DestDeployment is the target deployment key. When equal to
+	// SourceDeployment this is a rename; when different, the resource is
+	// moved across deployments.
+	DestDeployment string `json:"destDeployment"`
+	// NewName is the new resource name. If empty, the original name is kept.
+	NewName string `json:"newName,omitempty"`
+}
+
+// StateMvResponse confirms a successful state move or rename.
+type StateMvResponse struct {
+	SourceDeployment string `json:"sourceDeployment"`
+	DestDeployment   string `json:"destDeployment"`
+	OldName          string `json:"oldName"`
+	NewName          string `json:"newName"`
+}
+
 // ResourceStatusResponse holds the status returned by a driver's GetStatus handler.
 type ResourceStatusResponse struct {
 	Status     ResourceStatus `json:"status"`

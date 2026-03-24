@@ -23,6 +23,7 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `workspace show`     | Both     | Show workspace details                           |
 | `workspace delete`   | Operators| Remove a workspace                               |
 | `observe`            | Both     | Watch deployment progress in real time           |
+| `state mv`           | Operators| Rename or move a resource between deployments    |
 | `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
 
@@ -520,6 +521,47 @@ Observing deployment my-webapp...
 ```
 
 The command exits automatically when the deployment reaches a terminal state (Complete, Failed, Deleted, or Cancelled). If the event stream is unavailable, it falls back to status polling.
+
+---
+
+## state mv
+
+Rename a resource within a deployment or move it to another deployment. Only the deployment state mapping is updated — no cloud resources are created, modified, or deleted. The deployment must be in a terminal state (Complete, Failed, or Cancelled).
+
+```bash
+praxis state mv <source> <destination>
+```
+
+Source format: `Deployment/<key>/<resource-name>`
+
+Destination can be:
+- A bare name — renames within the same deployment
+- `Deployment/<key>/<resource-name>` — moves to another deployment
+
+**Examples:**
+
+```bash
+# Rename a resource within the same deployment
+praxis state mv Deployment/web-app/myBucket newBucketName
+
+# Move a resource to another deployment, keeping its name
+praxis state mv Deployment/web-app/myBucket Deployment/data-stack/myBucket
+
+# Move and rename in one step
+praxis state mv Deployment/web-app/myBucket Deployment/data-stack/dataBucket
+```
+
+**Table output:**
+
+```
+Renamed myBucket → newBucketName in deployment web-app
+```
+
+```
+Moved myBucket from web-app to data-stack as dataBucket
+```
+
+The underlying driver Virtual Object key does not change. This enables template refactoring (renaming a resource in CUE) without reprovisioning.
 
 ---
 
