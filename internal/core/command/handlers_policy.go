@@ -74,7 +74,7 @@ func policyScopeKeyFromRequest(scope types.PolicyScope, templateName string) (st
 		}
 		return registry.PolicyScopeKey(scope, templateName), nil
 	default:
-		return "", restate.TerminalError(fmt.Errorf("invalid policy scope %q", scope), 400)
+		return "", restate.TerminalError(fmt.Errorf("invalid policy scope %q (supported: \"global\", \"template\")", scope), 400)
 	}
 }
 

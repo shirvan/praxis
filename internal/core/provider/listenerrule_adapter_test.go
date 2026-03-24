@@ -9,7 +9,7 @@ import (
 )
 
 func TestListenerRuleAdapter_BuildKey(t *testing.T) {
-	adapter := NewListenerRuleAdapterWithRegistry(nil)
+	adapter := NewListenerRuleAdapterWithAuth(nil)
 	doc := map[string]any{
 		"apiVersion": "praxis.io/v1",
 		"kind":       "ListenerRule",
@@ -29,7 +29,7 @@ func TestListenerRuleAdapter_BuildKey(t *testing.T) {
 }
 
 func TestListenerRuleAdapter_DecodeSpec(t *testing.T) {
-	adapter := NewListenerRuleAdapterWithRegistry(nil)
+	adapter := NewListenerRuleAdapterWithAuth(nil)
 	doc := map[string]any{
 		"apiVersion": "praxis.io/v1",
 		"kind":       "ListenerRule",
@@ -66,13 +66,13 @@ func TestListenerRuleAdapter_ExtractRegionFromListenerArn(t *testing.T) {
 }
 
 func TestListenerRuleAdapter_Kind(t *testing.T) {
-	adapter := NewListenerRuleAdapterWithRegistry(nil)
+	adapter := NewListenerRuleAdapterWithAuth(nil)
 	assert.Equal(t, "ListenerRule", adapter.Kind())
 	assert.Equal(t, "ListenerRule", adapter.ServiceName())
 }
 
 func TestListenerRuleAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewListenerRuleAdapterWithRegistry(nil)
+	adapter := NewListenerRuleAdapterWithAuth(nil)
 	outputs := map[string]any{"ruleArn": "arn:rule", "priority": 10}
 	// NormalizeOutputs expects a listenerrule.ListenerRuleOutputs struct
 	// It won't work with a raw map, so we just test with a nil/error scenario

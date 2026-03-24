@@ -9,33 +9,30 @@ import (
 	stssdk "github.com/aws/aws-sdk-go-v2/service/sts"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type EBSVolumeDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) EBSAPI
 }
 
-func NewEBSVolumeDriver(accounts *auth.Registry) *EBSVolumeDriver {
-	return NewEBSVolumeDriverWithFactory(accounts, func(cfg aws.Config) EBSAPI {
+func NewEBSVolumeDriver(auth authservice.AuthClient) *EBSVolumeDriver {
+	return NewEBSVolumeDriverWithFactory(auth, func(cfg aws.Config) EBSAPI {
 		return NewEBSAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewEBSVolumeDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) EBSAPI) *EBSVolumeDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewEBSVolumeDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EBSAPI) *EBSVolumeDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) EBSAPI {
 			return NewEBSAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &EBSVolumeDriver{auth: accounts, apiFactory: factory}
+	return &EBSVolumeDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *EBSVolumeDriver) ServiceName() string {
@@ -44,7 +41,7 @@ func (d *EBSVolumeDriver) ServiceName() string {
 
 func (d *EBSVolumeDriver) Provision(ctx restate.ObjectContext, spec EBSVolumeSpec) (EBSVolumeOutputs, error) {
 	ctx.Log().Info("provisioning EBS volume", "key", restate.Key(ctx))
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return EBSVolumeOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -221,7 +218,7 @@ func (d *EBSVolumeDriver) Provision(ctx restate.ObjectContext, spec EBSVolumeSpe
 
 func (d *EBSVolumeDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (EBSVolumeOutputs, error) {
 	ctx.Log().Info("importing EBS volume", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return EBSVolumeOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -289,7 +286,7 @@ func (d *EBSVolumeDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -330,7 +327,7 @@ func (d *EBSVolumeDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileR
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -475,11 +472,11 @@ func (d *EBSVolumeDriver) scheduleReconcile(ctx restate.ObjectContext, state *EB
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *EBSVolumeDriver) apiForAccount(account string) (EBSAPI, string, error) {
+func (d *EBSVolumeDriver) apiForAccount(ctx restate.ObjectContext, account string) (EBSAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("EBSVolumeDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve EBS account %q: %w", account, err)
 	}
@@ -527,7 +524,7 @@ func (d *EBSVolumeDriver) accountIDForAccount(ctx restate.Context, account strin
 	if d == nil || d.auth == nil {
 		return "", restate.TerminalError(fmt.Errorf("EBSVolumeDriver is not configured with an auth registry"), 500)
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return "", restate.TerminalError(fmt.Errorf("resolve EBS account %q: %w", account, err), 400)
 	}

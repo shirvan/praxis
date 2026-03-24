@@ -12,11 +12,13 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/restatedev/sdk-go/server"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/command"
 	"github.com/shirvan/praxis/internal/core/config"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/core/provider"
 	"github.com/shirvan/praxis/internal/core/registry"
+	"github.com/shirvan/praxis/internal/core/workspace"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -25,17 +27,20 @@ import (
 // and the command service.
 func main() {
 	cfg := config.Load()
-	accounts := cfg.Auth()
-	providers := provider.NewRegistryWithAdapters(
-		provider.NewS3AdapterWithRegistry(accounts),
-		provider.NewEC2AdapterWithRegistry(accounts),
-		provider.NewKeyPairAdapterWithRegistry(accounts),
-		provider.NewSecurityGroupAdapterWithRegistry(accounts),
-		provider.NewVPCAdapterWithRegistry(accounts),
-	)
+
+	// Load bootstrap accounts config from environment variables.
+	bootstrap := authservice.LoadBootstrapFromEnv()
+
+	// Create auth client for Core components — resolves credentials via Restate RPC.
+	authClient := authservice.NewAuthClient()
+
+	providers := provider.NewRegistry(authClient)
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(command.NewPraxisCommandService(cfg, accounts, providers))).
+		Bind(restate.Reflect(authservice.NewAuthService(bootstrap))).
+		Bind(restate.Reflect(workspace.WorkspaceService{})).
+		Bind(restate.Reflect(workspace.WorkspaceIndex{})).
+		Bind(restate.Reflect(command.NewPraxisCommandService(cfg, authClient, providers))).
 		Bind(restate.Reflect(orchestrator.NewDeploymentWorkflow(providers))).
 		Bind(restate.Reflect(orchestrator.NewDeploymentDeleteWorkflow(providers))).
 		Bind(restate.Reflect(orchestrator.DeploymentStateObj{})).

@@ -8,31 +8,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type DBParameterGroupDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) DBParameterGroupAPI
 }
 
-func NewDBParameterGroupDriver(accounts *auth.Registry) *DBParameterGroupDriver {
-	return NewDBParameterGroupDriverWithFactory(accounts, func(cfg aws.Config) DBParameterGroupAPI {
+func NewDBParameterGroupDriver(auth authservice.AuthClient) *DBParameterGroupDriver {
+	return NewDBParameterGroupDriverWithFactory(auth, func(cfg aws.Config) DBParameterGroupAPI {
 		return NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
-func NewDBParameterGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) DBParameterGroupAPI) *DBParameterGroupDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewDBParameterGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) DBParameterGroupAPI) *DBParameterGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) DBParameterGroupAPI { return NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg)) }
 	}
-	return &DBParameterGroupDriver{auth: accounts, apiFactory: factory}
+	return &DBParameterGroupDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *DBParameterGroupDriver) ServiceName() string {
@@ -41,7 +38,7 @@ func (d *DBParameterGroupDriver) ServiceName() string {
 
 func (d *DBParameterGroupDriver) Provision(ctx restate.ObjectContext, spec DBParameterGroupSpec) (DBParameterGroupOutputs, error) {
 	ctx.Log().Info("provisioning db parameter group", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return DBParameterGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -134,7 +131,7 @@ func (d *DBParameterGroupDriver) Provision(ctx restate.ObjectContext, spec DBPar
 
 func (d *DBParameterGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (DBParameterGroupOutputs, error) {
 	ctx.Log().Info("importing db parameter group", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return DBParameterGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -193,7 +190,7 @@ func (d *DBParameterGroupDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 	groupType := state.Desired.Type
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -228,7 +225,7 @@ func (d *DBParameterGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Rec
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -354,19 +351,15 @@ func (d *DBParameterGroupDriver) scheduleReconcile(ctx restate.ObjectContext, st
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *DBParameterGroupDriver) apiForAccount(account string) (DBParameterGroupAPI, string, error) {
+func (d *DBParameterGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (DBParameterGroupAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("db parameter group driver is not configured")
 	}
-	acct, err := d.auth.Lookup(account)
-	if err != nil {
-		return nil, "", err
-	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve RDS account %q: %w", account, err)
 	}
-	return d.apiFactory(awsCfg), acct.Region, nil
+	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
 func validateSpec(spec DBParameterGroupSpec) error {

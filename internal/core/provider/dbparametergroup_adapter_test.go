@@ -11,7 +11,7 @@ import (
 )
 
 func TestDBParameterGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewDBParameterGroupAdapter()
+	adapter := NewDBParameterGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"DBParameterGroup",
@@ -44,25 +44,25 @@ func TestDBParameterGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestDBParameterGroupAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewDBParameterGroupAdapter()
+	adapter := NewDBParameterGroupAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-west-2", "my-group")
 	require.NoError(t, err)
 	assert.Equal(t, "us-west-2~my-group", key)
 }
 
 func TestDBParameterGroupAdapter_Kind(t *testing.T) {
-	adapter := NewDBParameterGroupAdapter()
+	adapter := NewDBParameterGroupAdapterWithAuth(nil)
 	assert.Equal(t, dbparametergroup.ServiceName, adapter.Kind())
 	assert.Equal(t, dbparametergroup.ServiceName, adapter.ServiceName())
 }
 
 func TestDBParameterGroupAdapter_Scope(t *testing.T) {
-	adapter := NewDBParameterGroupAdapter()
+	adapter := NewDBParameterGroupAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestDBParameterGroupAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewDBParameterGroupAdapter()
+	adapter := NewDBParameterGroupAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(dbparametergroup.DBParameterGroupOutputs{
 		GroupName: "my-group",
 		ARN:       "arn:aws:rds:us-east-1:123:pg:my-group",

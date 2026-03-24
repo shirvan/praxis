@@ -7,31 +7,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type HealthCheckDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) HealthCheckAPI
 }
 
-func NewHealthCheckDriver(accounts *auth.Registry) *HealthCheckDriver {
-	return NewHealthCheckDriverWithFactory(accounts, func(cfg aws.Config) HealthCheckAPI {
+func NewHealthCheckDriver(auth authservice.AuthClient) *HealthCheckDriver {
+	return NewHealthCheckDriverWithFactory(auth, func(cfg aws.Config) HealthCheckAPI {
 		return NewHealthCheckAPI(awsclient.NewRoute53Client(cfg))
 	})
 }
 
-func NewHealthCheckDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) HealthCheckAPI) *HealthCheckDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewHealthCheckDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) HealthCheckAPI) *HealthCheckDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) HealthCheckAPI { return NewHealthCheckAPI(awsclient.NewRoute53Client(cfg)) }
 	}
-	return &HealthCheckDriver{auth: accounts, apiFactory: factory}
+	return &HealthCheckDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *HealthCheckDriver) ServiceName() string {
@@ -40,7 +37,7 @@ func (d *HealthCheckDriver) ServiceName() string {
 
 func (d *HealthCheckDriver) Provision(ctx restate.ObjectContext, spec HealthCheckSpec) (HealthCheckOutputs, error) {
 	ctx.Log().Info("provisioning route53 health check", "key", restate.Key(ctx))
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return HealthCheckOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -141,7 +138,7 @@ func (d *HealthCheckDriver) Provision(ctx restate.ObjectContext, spec HealthChec
 
 func (d *HealthCheckDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (HealthCheckOutputs, error) {
 	ctx.Log().Info("importing route53 health check", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return HealthCheckOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -196,7 +193,7 @@ func (d *HealthCheckDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, HealthCheckState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -228,7 +225,7 @@ func (d *HealthCheckDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -342,11 +339,11 @@ func (d *HealthCheckDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *HealthCheckDriver) apiForAccount(account string) (HealthCheckAPI, error) {
+func (d *HealthCheckDriver) apiForAccount(ctx restate.ObjectContext, account string) (HealthCheckAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("HealthCheckDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Route53 health check account %q: %w", account, err)
 	}

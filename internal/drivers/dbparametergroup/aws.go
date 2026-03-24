@@ -9,7 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -302,53 +303,17 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "DBParameterGroupNotFoundFault" || code == "DBClusterParameterGroupNotFoundFault"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "DBParameterGroupNotFoundFault") || strings.Contains(errText, "DBClusterParameterGroupNotFoundFault")
+	return awserr.HasCode(err, "DBParameterGroupNotFoundFault", "DBClusterParameterGroupNotFoundFault")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "DBParameterGroupAlreadyExistsFault" || code == "DBParameterGroupQuotaExceededFault" || code == "DBParameterGroupAlreadyExists" || code == "DBClusterParameterGroupAlreadyExistsFault"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "DBParameterGroupAlreadyExistsFault") || strings.Contains(errText, "DBClusterParameterGroupAlreadyExistsFault")
+	return awserr.HasCode(err, "DBParameterGroupAlreadyExistsFault", "DBParameterGroupQuotaExceededFault", "DBParameterGroupAlreadyExists", "DBClusterParameterGroupAlreadyExistsFault")
 }
 
 func IsInvalidState(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidDBParameterGroupStateFault" || code == "InvalidDBClusterParameterGroupStateFault"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidDBParameterGroupStateFault") || strings.Contains(errText, "InvalidDBClusterParameterGroupStateFault")
+	return awserr.HasCode(err, "InvalidDBParameterGroupStateFault", "InvalidDBClusterParameterGroupStateFault")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidParameterCombination"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidParameterValue") || strings.Contains(errText, "InvalidParameterCombination")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

@@ -7,31 +7,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type LambdaFunctionDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) LambdaAPI
 }
 
-func NewLambdaFunctionDriver(accounts *auth.Registry) *LambdaFunctionDriver {
-	return NewLambdaFunctionDriverWithFactory(accounts, func(cfg aws.Config) LambdaAPI {
+func NewLambdaFunctionDriver(auth authservice.AuthClient) *LambdaFunctionDriver {
+	return NewLambdaFunctionDriverWithFactory(auth, func(cfg aws.Config) LambdaAPI {
 		return NewLambdaAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
-func NewLambdaFunctionDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) LambdaAPI) *LambdaFunctionDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewLambdaFunctionDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LambdaAPI) *LambdaFunctionDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) LambdaAPI { return NewLambdaAPI(awsclient.NewLambdaClient(cfg)) }
 	}
-	return &LambdaFunctionDriver{auth: accounts, apiFactory: factory}
+	return &LambdaFunctionDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *LambdaFunctionDriver) ServiceName() string {
@@ -40,7 +37,7 @@ func (d *LambdaFunctionDriver) ServiceName() string {
 
 func (d *LambdaFunctionDriver) Provision(ctx restate.ObjectContext, spec LambdaFunctionSpec) (LambdaFunctionOutputs, error) {
 	ctx.Log().Info("provisioning lambda function", "key", restate.Key(ctx), "functionName", spec.FunctionName)
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return LambdaFunctionOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -204,7 +201,7 @@ func (d *LambdaFunctionDriver) Provision(ctx restate.ObjectContext, spec LambdaF
 
 func (d *LambdaFunctionDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LambdaFunctionOutputs, error) {
 	ctx.Log().Info("importing lambda function", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return LambdaFunctionOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -261,7 +258,7 @@ func (d *LambdaFunctionDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, LambdaFunctionState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -293,7 +290,7 @@ func (d *LambdaFunctionDriver) Reconcile(ctx restate.ObjectContext) (types.Recon
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -420,11 +417,11 @@ func (d *LambdaFunctionDriver) scheduleReconcile(ctx restate.ObjectContext, stat
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *LambdaFunctionDriver) apiForAccount(account string) (LambdaAPI, string, error) {
+func (d *LambdaFunctionDriver) apiForAccount(ctx restate.ObjectContext, account string) (LambdaAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("LambdaFunctionDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve Lambda account %q: %w", account, err)
 	}

@@ -8,31 +8,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type DBSubnetGroupDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) DBSubnetGroupAPI
 }
 
-func NewDBSubnetGroupDriver(accounts *auth.Registry) *DBSubnetGroupDriver {
-	return NewDBSubnetGroupDriverWithFactory(accounts, func(cfg aws.Config) DBSubnetGroupAPI {
+func NewDBSubnetGroupDriver(auth authservice.AuthClient) *DBSubnetGroupDriver {
+	return NewDBSubnetGroupDriverWithFactory(auth, func(cfg aws.Config) DBSubnetGroupAPI {
 		return NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
-func NewDBSubnetGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) DBSubnetGroupAPI) *DBSubnetGroupDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewDBSubnetGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) DBSubnetGroupAPI) *DBSubnetGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) DBSubnetGroupAPI { return NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg)) }
 	}
-	return &DBSubnetGroupDriver{auth: accounts, apiFactory: factory}
+	return &DBSubnetGroupDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *DBSubnetGroupDriver) ServiceName() string {
@@ -41,7 +38,7 @@ func (d *DBSubnetGroupDriver) ServiceName() string {
 
 func (d *DBSubnetGroupDriver) Provision(ctx restate.ObjectContext, spec DBSubnetGroupSpec) (DBSubnetGroupOutputs, error) {
 	ctx.Log().Info("provisioning db subnet group", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return DBSubnetGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -140,7 +137,7 @@ func (d *DBSubnetGroupDriver) Provision(ctx restate.ObjectContext, spec DBSubnet
 
 func (d *DBSubnetGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (DBSubnetGroupOutputs, error) {
 	ctx.Log().Info("importing db subnet group", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return DBSubnetGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -197,7 +194,7 @@ func (d *DBSubnetGroupDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, DBSubnetGroupState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -232,7 +229,7 @@ func (d *DBSubnetGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -358,19 +355,15 @@ func (d *DBSubnetGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *DBSubnetGroupDriver) apiForAccount(account string) (DBSubnetGroupAPI, string, error) {
+func (d *DBSubnetGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (DBSubnetGroupAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("db subnet group driver is not configured")
 	}
-	acct, err := d.auth.Lookup(account)
-	if err != nil {
-		return nil, "", err
-	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve RDS account %q: %w", account, err)
 	}
-	return d.apiFactory(awsCfg), acct.Region, nil
+	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
 func validateSpec(spec DBSubnetGroupSpec) error {

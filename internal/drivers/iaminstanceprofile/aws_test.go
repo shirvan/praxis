@@ -1,7 +1,6 @@
 package iaminstanceprofile
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -21,20 +20,16 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "NoSuchEntity"}))
-	assert.True(t, IsNotFound(errors.New("api error NoSuchEntity: missing")))
 }
 
 func TestIsAlreadyExists_True(t *testing.T) {
 	assert.True(t, IsAlreadyExists(&mockAPIError{code: "EntityAlreadyExists"}))
-	assert.True(t, IsAlreadyExists(errors.New("api error EntityAlreadyExists: exists")))
 }
 
 func TestIsDeleteConflict_True(t *testing.T) {
 	assert.True(t, IsDeleteConflict(&mockAPIError{code: "DeleteConflict"}))
-	assert.True(t, IsDeleteConflict(errors.New("api error DeleteConflict: attached")))
 }
 
 func TestIsLimitExceeded_True(t *testing.T) {
 	assert.True(t, IsLimitExceeded(&mockAPIError{code: "LimitExceeded"}))
-	assert.True(t, IsLimitExceeded(errors.New("api error LimitExceeded: only one role allowed")))
 }

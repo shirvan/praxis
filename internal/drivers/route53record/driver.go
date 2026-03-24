@@ -8,31 +8,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type RecordDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RecordAPI
 }
 
-func NewDNSRecordDriver(accounts *auth.Registry) *RecordDriver {
-	return NewDNSRecordDriverWithFactory(accounts, func(cfg aws.Config) RecordAPI {
+func NewDNSRecordDriver(auth authservice.AuthClient) *RecordDriver {
+	return NewDNSRecordDriverWithFactory(auth, func(cfg aws.Config) RecordAPI {
 		return NewRecordAPI(awsclient.NewRoute53Client(cfg))
 	})
 }
 
-func NewDNSRecordDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) RecordAPI) *RecordDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewDNSRecordDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RecordAPI) *RecordDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) RecordAPI { return NewRecordAPI(awsclient.NewRoute53Client(cfg)) }
 	}
-	return &RecordDriver{auth: accounts, apiFactory: factory}
+	return &RecordDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *RecordDriver) ServiceName() string {
@@ -41,7 +38,7 @@ func (d *RecordDriver) ServiceName() string {
 
 func (d *RecordDriver) Provision(ctx restate.ObjectContext, spec RecordSpec) (RecordOutputs, error) {
 	ctx.Log().Info("provisioning route53 record", "key", restate.Key(ctx))
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return RecordOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -102,7 +99,7 @@ func (d *RecordDriver) Provision(ctx restate.ObjectContext, spec RecordSpec) (Re
 
 func (d *RecordDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (RecordOutputs, error) {
 	ctx.Log().Info("importing route53 record", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return RecordOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -157,7 +154,7 @@ func (d *RecordDriver) Delete(ctx restate.ObjectContext) error {
 	if identityErr != nil {
 		return restate.TerminalError(identityErr, 400)
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -215,7 +212,7 @@ func (d *RecordDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -315,11 +312,11 @@ func (d *RecordDriver) scheduleReconcile(ctx restate.ObjectContext, state *Recor
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *RecordDriver) apiForAccount(account string) (RecordAPI, error) {
+func (d *RecordDriver) apiForAccount(ctx restate.ObjectContext, account string) (RecordAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("RecordDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Route53 record account %q: %w", account, err)
 	}

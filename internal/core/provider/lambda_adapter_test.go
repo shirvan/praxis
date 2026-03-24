@@ -11,7 +11,7 @@ import (
 )
 
 func TestLambdaAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewLambdaAdapter()
+	adapter := NewLambdaAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"LambdaFunction",
@@ -36,14 +36,14 @@ func TestLambdaAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestLambdaAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewLambdaAdapter()
+	adapter := NewLambdaAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "processor")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~processor", key)
 }
 
 func TestLambdaAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewLambdaAdapter()
+	adapter := NewLambdaAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(lambda.LambdaFunctionOutputs{FunctionArn: "arn:aws:lambda:us-east-1:123:function:processor", FunctionName: "processor", Version: "$LATEST", State: "Active"})
 	require.NoError(t, err)
 	assert.Equal(t, "processor", out["functionName"])

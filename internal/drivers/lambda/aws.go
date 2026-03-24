@@ -3,7 +3,6 @@ package lambda
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,8 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/aws/smithy-go"
+
 	restate "github.com/restatedev/sdk-go"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -348,29 +348,21 @@ func optionalString(value string) *string {
 }
 
 func IsNotFound(err error) bool {
-	return hasLambdaErrorCode(err, "ResourceNotFoundException") || strings.Contains(strings.ToLower(err.Error()), "not found")
+	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
 func IsConflict(err error) bool {
-	return hasLambdaErrorCode(err, "ResourceConflictException")
+	return awserr.HasCode(err, "ResourceConflictException")
 }
 
 func IsInvalidParameter(err error) bool {
-	return hasLambdaErrorCode(err, "InvalidParameterValueException")
+	return awserr.HasCode(err, "InvalidParameterValueException")
 }
 
 func IsAccessDenied(err error) bool {
-	return hasLambdaErrorCode(err, "AccessDeniedException")
+	return awserr.HasCode(err, "AccessDeniedException")
 }
 
 func IsThrottled(err error) bool {
-	return hasLambdaErrorCode(err, "TooManyRequestsException")
-}
-
-func hasLambdaErrorCode(err error, code string) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == code
-	}
-	return strings.Contains(err.Error(), code)
+	return awserr.HasCode(err, "TooManyRequestsException")
 }

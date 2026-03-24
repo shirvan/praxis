@@ -8,6 +8,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/config"
 	"github.com/shirvan/praxis/internal/drivers/alb"
 	"github.com/shirvan/praxis/internal/drivers/eip"
@@ -30,25 +31,26 @@ import (
 
 func main() {
 	cfg := config.Load()
+	auth := authservice.NewAuthClient()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(alb.NewALBDriver(cfg.Auth()))).
-		Bind(restate.Reflect(nlb.NewNLBDriver(cfg.Auth()))).
-		Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(cfg.Auth()))).
-		Bind(restate.Reflect(listener.NewListenerDriver(cfg.Auth()))).
-		Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(cfg.Auth()))).
-		Bind(restate.Reflect(eip.NewElasticIPDriver(cfg.Auth()))).
-		Bind(restate.Reflect(igw.NewIGWDriver(cfg.Auth()))).
-		Bind(restate.Reflect(natgw.NewNATGatewayDriver(cfg.Auth()))).
-		Bind(restate.Reflect(nacl.NewNetworkACLDriver(cfg.Auth()))).
-		Bind(restate.Reflect(route53zone.NewHostedZoneDriver(cfg.Auth()))).
-		Bind(restate.Reflect(route53record.NewDNSRecordDriver(cfg.Auth()))).
-		Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(cfg.Auth()))).
-		Bind(restate.Reflect(routetable.NewRouteTableDriver(cfg.Auth()))).
-		Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
-		Bind(restate.Reflect(subnet.NewSubnetDriver(cfg.Auth()))).
-		Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(cfg.Auth()))).
-		Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
+		Bind(restate.Reflect(alb.NewALBDriver(auth))).
+		Bind(restate.Reflect(nlb.NewNLBDriver(auth))).
+		Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth))).
+		Bind(restate.Reflect(listener.NewListenerDriver(auth))).
+		Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth))).
+		Bind(restate.Reflect(eip.NewElasticIPDriver(auth))).
+		Bind(restate.Reflect(igw.NewIGWDriver(auth))).
+		Bind(restate.Reflect(natgw.NewNATGatewayDriver(auth))).
+		Bind(restate.Reflect(nacl.NewNetworkACLDriver(auth))).
+		Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth))).
+		Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth))).
+		Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth))).
+		Bind(restate.Reflect(routetable.NewRouteTableDriver(auth))).
+		Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
+		Bind(restate.Reflect(subnet.NewSubnetDriver(auth))).
+		Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(auth))).
+		Bind(restate.Reflect(vpc.NewVPCDriver(auth)))
 
 	slog.Info("starting network driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

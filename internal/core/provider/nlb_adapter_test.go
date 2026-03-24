@@ -9,7 +9,7 @@ import (
 )
 
 func TestNLBAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewNLBAdapterWithRegistry(nil)
+	adapter := NewNLBAdapterWithAuth(nil)
 	doc := json.RawMessage(`{
 		"kind": "NLB",
 		"metadata": {"name": "my-nlb"},

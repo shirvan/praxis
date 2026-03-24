@@ -8,27 +8,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/lambda"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type LambdaAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI lambda.LambdaAPI
 	apiFactory        func(aws.Config) lambda.LambdaAPI
 }
 
-func NewLambdaAdapter() *LambdaAdapter {
-	return NewLambdaAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewLambdaAdapterWithRegistry(accounts *auth.Registry) *LambdaAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
-	return &LambdaAdapter{auth: accounts, apiFactory: func(cfg aws.Config) lambda.LambdaAPI { return lambda.NewLambdaAPI(awsclient.NewLambdaClient(cfg)) }}
+func NewLambdaAdapterWithAuth(auth authservice.AuthClient) *LambdaAdapter {
+	return &LambdaAdapter{auth: auth, apiFactory: func(cfg aws.Config) lambda.LambdaAPI { return lambda.NewLambdaAPI(awsclient.NewLambdaClient(cfg)) }}
 }
 
 func NewLambdaAdapterWithAPI(api lambda.LambdaAPI) *LambdaAdapter {
@@ -121,7 +114,7 @@ func (a *LambdaAdapter) Plan(ctx restate.Context, key string, account string, de
 		}
 		return types.OpCreate, fields, nil
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -202,14 +195,14 @@ func (a *LambdaAdapter) decodeSpec(doc resourceDocument) (lambda.LambdaFunctionS
 	return spec, nil
 }
 
-func (a *LambdaAdapter) planningAPI(account string) (lambda.LambdaAPI, error) {
+func (a *LambdaAdapter) planningAPI(ctx restate.Context, account string) (lambda.LambdaAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("Lambda adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Lambda planning account %q: %w", account, err)
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 func TestListenerAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewListenerAdapterWithRegistry(nil)
+	adapter := NewListenerAdapterWithAuth(nil)
 	doc := json.RawMessage(`{
 		"kind": "Listener",
 		"metadata": {"name": "my-https-listener"},

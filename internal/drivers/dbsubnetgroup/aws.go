@@ -9,7 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -191,47 +192,17 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DBSubnetGroupNotFoundFault"
-	}
-	return strings.Contains(err.Error(), "DBSubnetGroupNotFoundFault")
+	return awserr.HasCode(err, "DBSubnetGroupNotFoundFault")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DBSubnetGroupAlreadyExistsFault"
-	}
-	return strings.Contains(err.Error(), "DBSubnetGroupAlreadyExistsFault")
+	return awserr.HasCode(err, "DBSubnetGroupAlreadyExistsFault")
 }
 
 func IsInvalidState(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidDBSubnetGroupStateFault"
-	}
-	return strings.Contains(err.Error(), "InvalidDBSubnetGroupStateFault")
+	return awserr.HasCode(err, "InvalidDBSubnetGroupStateFault")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidSubnet" || code == "DBSubnetGroupDoesNotCoverEnoughAZs" || code == "SubnetAlreadyInUse" || code == "InvalidParameterValue" || code == "InvalidParameterCombination"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidSubnet") || strings.Contains(errText, "DBSubnetGroupDoesNotCoverEnoughAZs") || strings.Contains(errText, "SubnetAlreadyInUse") || strings.Contains(errText, "InvalidParameterValue") || strings.Contains(errText, "InvalidParameterCombination")
+	return awserr.HasCode(err, "InvalidSubnet", "DBSubnetGroupDoesNotCoverEnoughAZs", "SubnetAlreadyInUse", "InvalidParameterValue", "InvalidParameterCombination")
 }

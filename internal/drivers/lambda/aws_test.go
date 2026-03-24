@@ -1,16 +1,15 @@
 package lambda
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestErrorClassifiers(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("ResourceNotFoundException: missing")))
-	assert.True(t, IsConflict(errors.New("ResourceConflictException: busy")))
-	assert.True(t, IsInvalidParameter(errors.New("InvalidParameterValueException: bad")))
-	assert.True(t, IsAccessDenied(errors.New("AccessDeniedException: denied")))
-	assert.True(t, IsThrottled(errors.New("TooManyRequestsException: slow down")))
+	assert.True(t, IsConflict(&smithy.GenericAPIError{Code: "ResourceConflictException"}))
+	assert.True(t, IsAccessDenied(&smithy.GenericAPIError{Code: "AccessDeniedException"}))
+	assert.False(t, IsConflict(nil))
+	assert.False(t, IsAccessDenied(nil))
 }

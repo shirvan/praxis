@@ -74,11 +74,14 @@ Use --dry-run to preview changes without provisioning:
 			client := flags.newClient()
 			ctx := context.Background()
 
+			cliCfg := LoadCLIConfig()
+
 			if dryRun {
 				resp, err := client.PlanDeploy(ctx, types.PlanDeployRequest{
 					Template:  templateName,
 					Variables: variables,
 					Account:   account,
+					Workspace: cliCfg.ActiveWorkspace,
 					Targets:   targets,
 				})
 				if err != nil {
@@ -104,6 +107,7 @@ Use --dry-run to preview changes without provisioning:
 				Template:  templateName,
 				Variables: variables,
 				Account:   account,
+				Workspace: cliCfg.ActiveWorkspace,
 				Targets:   targets,
 			})
 			if err != nil {
@@ -138,6 +142,7 @@ Use --dry-run to preview changes without provisioning:
 				Variables:     variables,
 				DeploymentKey: deploymentKey,
 				Account:       account,
+				Workspace:     cliCfg.ActiveWorkspace,
 				Targets:       targets,
 				Replace:       replace,
 			})

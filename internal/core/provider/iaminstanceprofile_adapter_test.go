@@ -11,7 +11,7 @@ import (
 )
 
 func TestIAMInstanceProfileAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewIAMInstanceProfileAdapter()
+	adapter := NewIAMInstanceProfileAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"IAMInstanceProfile",
@@ -39,20 +39,20 @@ func TestIAMInstanceProfileAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestIAMInstanceProfileAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewIAMInstanceProfileAdapter()
+	adapter := NewIAMInstanceProfileAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "app-profile")
 	require.NoError(t, err)
 	assert.Equal(t, "app-profile", key)
 }
 
 func TestIAMInstanceProfileAdapter_Kind(t *testing.T) {
-	adapter := NewIAMInstanceProfileAdapter()
+	adapter := NewIAMInstanceProfileAdapterWithAuth(nil)
 	assert.Equal(t, iaminstanceprofile.ServiceName, adapter.Kind())
 	assert.Equal(t, iaminstanceprofile.ServiceName, adapter.ServiceName())
 }
 
 func TestIAMInstanceProfileAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewIAMInstanceProfileAdapter()
+	adapter := NewIAMInstanceProfileAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(iaminstanceprofile.IAMInstanceProfileOutputs{
 		Arn:                 "arn:aws:iam::123456789012:instance-profile/app-profile",
 		InstanceProfileId:   "AIPAJFEXAMPLE",

@@ -7,31 +7,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type HostedZoneDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) HostedZoneAPI
 }
 
-func NewHostedZoneDriver(accounts *auth.Registry) *HostedZoneDriver {
-	return NewHostedZoneDriverWithFactory(accounts, func(cfg aws.Config) HostedZoneAPI {
+func NewHostedZoneDriver(auth authservice.AuthClient) *HostedZoneDriver {
+	return NewHostedZoneDriverWithFactory(auth, func(cfg aws.Config) HostedZoneAPI {
 		return NewHostedZoneAPI(awsclient.NewRoute53Client(cfg))
 	})
 }
 
-func NewHostedZoneDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) HostedZoneAPI) *HostedZoneDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewHostedZoneDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) HostedZoneAPI) *HostedZoneDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) HostedZoneAPI { return NewHostedZoneAPI(awsclient.NewRoute53Client(cfg)) }
 	}
-	return &HostedZoneDriver{auth: accounts, apiFactory: factory}
+	return &HostedZoneDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *HostedZoneDriver) ServiceName() string {
@@ -40,7 +37,7 @@ func (d *HostedZoneDriver) ServiceName() string {
 
 func (d *HostedZoneDriver) Provision(ctx restate.ObjectContext, spec HostedZoneSpec) (HostedZoneOutputs, error) {
 	ctx.Log().Info("provisioning route53 hosted zone", "key", restate.Key(ctx))
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return HostedZoneOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -161,7 +158,7 @@ func (d *HostedZoneDriver) Provision(ctx restate.ObjectContext, spec HostedZoneS
 
 func (d *HostedZoneDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (HostedZoneOutputs, error) {
 	ctx.Log().Info("importing route53 hosted zone", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return HostedZoneOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -219,7 +216,7 @@ func (d *HostedZoneDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, HostedZoneState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -255,7 +252,7 @@ func (d *HostedZoneDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -402,11 +399,11 @@ func (d *HostedZoneDriver) scheduleReconcile(ctx restate.ObjectContext, state *H
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *HostedZoneDriver) apiForAccount(account string) (HostedZoneAPI, error) {
+func (d *HostedZoneDriver) apiForAccount(ctx restate.ObjectContext, account string) (HostedZoneAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("HostedZoneDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Route53 hosted zone account %q: %w", account, err)
 	}

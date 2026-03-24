@@ -11,7 +11,7 @@ import (
 )
 
 func TestIGWAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewIGWAdapter()
+	adapter := NewIGWAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"InternetGateway",
@@ -35,14 +35,14 @@ func TestIGWAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestIGWAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewIGWAdapter()
+	adapter := NewIGWAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "igw-123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~igw-123", key)
 }
 
 func TestIGWAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewIGWAdapter()
+	adapter := NewIGWAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(igw.IGWOutputs{
 		InternetGatewayId: "igw-123",
 		VpcId:             "vpc-123",

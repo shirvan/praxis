@@ -1,7 +1,6 @@
 package rdsinstance
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -28,11 +27,6 @@ func TestIsNotFound_Nil(t *testing.T) {
 	assert.False(t, IsNotFound(nil))
 }
 
-func TestIsNotFound_StringFallback(t *testing.T) {
-	assert.True(t, IsNotFound(fmt.Errorf("DBInstanceNotFound: no such instance")))
-	assert.False(t, IsNotFound(errors.New("random error")))
-}
-
 func TestIsAlreadyExists_True(t *testing.T) {
 	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBInstanceAlreadyExists"}))
 }
@@ -43,11 +37,6 @@ func TestIsAlreadyExists_False(t *testing.T) {
 
 func TestIsAlreadyExists_Nil(t *testing.T) {
 	assert.False(t, IsAlreadyExists(nil))
-}
-
-func TestIsAlreadyExists_StringFallback(t *testing.T) {
-	assert.True(t, IsAlreadyExists(fmt.Errorf("DBInstanceAlreadyExists: duplicate")))
-	assert.False(t, IsAlreadyExists(errors.New("random error")))
 }
 
 func TestIsInvalidState_DBInstance(t *testing.T) {
@@ -66,12 +55,6 @@ func TestIsInvalidState_Nil(t *testing.T) {
 	assert.False(t, IsInvalidState(nil))
 }
 
-func TestIsInvalidState_StringFallback(t *testing.T) {
-	assert.True(t, IsInvalidState(fmt.Errorf("InvalidDBInstanceState: not available")))
-	assert.True(t, IsInvalidState(fmt.Errorf("InvalidDBClusterStateFault: cluster busy")))
-	assert.False(t, IsInvalidState(errors.New("random error")))
-}
-
 func TestIsInvalidParam_Value(t *testing.T) {
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidParameterValue"}))
 }
@@ -86,10 +69,4 @@ func TestIsInvalidParam_False(t *testing.T) {
 
 func TestIsInvalidParam_Nil(t *testing.T) {
 	assert.False(t, IsInvalidParam(nil))
-}
-
-func TestIsInvalidParam_StringFallback(t *testing.T) {
-	assert.True(t, IsInvalidParam(fmt.Errorf("InvalidParameterValue: bad value")))
-	assert.True(t, IsInvalidParam(fmt.Errorf("InvalidParameterCombination: incompatible")))
-	assert.False(t, IsInvalidParam(errors.New("random error")))
 }

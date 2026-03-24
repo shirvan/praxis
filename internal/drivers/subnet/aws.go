@@ -12,6 +12,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -201,27 +203,11 @@ func (r *realSubnetAPI) FindByManagedKey(ctx context.Context, managedKey string)
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidSubnetID.NotFound" || code == "InvalidSubnetID.Malformed"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidSubnetID.NotFound") || strings.Contains(errText, "InvalidSubnetID.Malformed")
+	return awserr.HasCode(err, "InvalidSubnetID.NotFound", "InvalidSubnetID.Malformed")
 }
 
 func IsDependencyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DependencyViolation"
-	}
-	return false
+	return awserr.HasCode(err, "DependencyViolation")
 }
 
 func IsInvalidParam(err error) bool {
@@ -239,12 +225,5 @@ func IsInvalidParam(err error) bool {
 }
 
 func IsCidrConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidSubnet.Conflict"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidSubnet.Conflict")
 }

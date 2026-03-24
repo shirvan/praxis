@@ -7,7 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -19,27 +19,24 @@ const ServiceName = "SecurityGroup"
 // SecurityGroupDriver is a Restate Virtual Object that manages EC2 Security Group lifecycle.
 // Each instance is keyed by a stable resource identifier (e.g. "vpc-123~web-sg").
 type SecurityGroupDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) SGAPI
 }
 
 // NewSecurityGroupDriver creates a new SecurityGroupDriver that resolves AWS clients per request.
-func NewSecurityGroupDriver(accounts *auth.Registry) *SecurityGroupDriver {
-	return NewSecurityGroupDriverWithFactory(accounts, func(cfg aws.Config) SGAPI {
+func NewSecurityGroupDriver(auth authservice.AuthClient) *SecurityGroupDriver {
+	return NewSecurityGroupDriverWithFactory(auth, func(cfg aws.Config) SGAPI {
 		return NewSGAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewSecurityGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) SGAPI) *SecurityGroupDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewSecurityGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) SGAPI) *SecurityGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) SGAPI {
 			return NewSGAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &SecurityGroupDriver{auth: accounts, apiFactory: factory}
+	return &SecurityGroupDriver{auth: auth, apiFactory: factory}
 }
 
 // ServiceName returns the Restate Virtual Object name.
@@ -52,7 +49,7 @@ func (d *SecurityGroupDriver) ServiceName() string {
 //  2. If it already exists (re-provision), converge rules and tags.
 func (d *SecurityGroupDriver) Provision(ctx restate.ObjectContext, spec SecurityGroupSpec) (SecurityGroupOutputs, error) {
 	ctx.Log().Info("provisioning security group", "groupName", spec.GroupName, "key", restate.Key(ctx))
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return SecurityGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -171,7 +168,7 @@ func (d *SecurityGroupDriver) Provision(ctx restate.ObjectContext, spec Security
 // and the initial observed state. First reconciliation sees no drift.
 func (d *SecurityGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (SecurityGroupOutputs, error) {
 	ctx.Log().Info("importing security group", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return SecurityGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -227,7 +224,7 @@ func (d *SecurityGroupDriver) Delete(ctx restate.ObjectContext) error {
 	if err != nil {
 		return err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -270,7 +267,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -449,11 +446,11 @@ func (d *SecurityGroupDriver) applyRuleDiff(ctx restate.ObjectContext, api SGAPI
 	return nil
 }
 
-func (d *SecurityGroupDriver) apiForAccount(account string) (SGAPI, string, error) {
+func (d *SecurityGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (SGAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("SecurityGroupDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve SecurityGroup account %q: %w", account, err)
 	}

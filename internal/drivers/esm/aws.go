@@ -2,16 +2,15 @@ package esm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -304,21 +303,13 @@ func outputsFromObserved(observed ObservedState) EventSourceMappingOutputs {
 }
 
 func IsNotFound(err error) bool {
-	return hasESMErrorCode(err, "ResourceNotFoundException") || strings.Contains(strings.ToLower(err.Error()), "not found")
+	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
 func IsConflict(err error) bool {
-	return hasESMErrorCode(err, "ResourceConflictException")
+	return awserr.HasCode(err, "ResourceConflictException")
 }
 
 func IsInvalidParameter(err error) bool {
-	return hasESMErrorCode(err, "InvalidParameterValueException")
-}
-
-func hasESMErrorCode(err error, code string) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == code
-	}
-	return strings.Contains(err.Error(), code)
+	return awserr.HasCode(err, "InvalidParameterValueException")
 }

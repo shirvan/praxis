@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type SubnetDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) SubnetAPI
 }
 
-func NewSubnetDriver(accounts *auth.Registry) *SubnetDriver {
-	return NewSubnetDriverWithFactory(accounts, func(cfg aws.Config) SubnetAPI {
+func NewSubnetDriver(auth authservice.AuthClient) *SubnetDriver {
+	return NewSubnetDriverWithFactory(auth, func(cfg aws.Config) SubnetAPI {
 		return NewSubnetAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewSubnetDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) SubnetAPI) *SubnetDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewSubnetDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) SubnetAPI) *SubnetDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) SubnetAPI {
 			return NewSubnetAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &SubnetDriver{auth: accounts, apiFactory: factory}
+	return &SubnetDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *SubnetDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *SubnetDriver) ServiceName() string {
 
 func (d *SubnetDriver) Provision(ctx restate.ObjectContext, spec SubnetSpec) (SubnetOutputs, error) {
 	ctx.Log().Info("provisioning subnet", "name", spec.Tags["Name"], "key", restate.Key(ctx))
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return SubnetOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -224,7 +221,7 @@ func (d *SubnetDriver) Provision(ctx restate.ObjectContext, spec SubnetSpec) (Su
 
 func (d *SubnetDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (SubnetOutputs, error) {
 	ctx.Log().Info("importing subnet", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return SubnetOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -310,7 +307,7 @@ func (d *SubnetDriver) Delete(ctx restate.ObjectContext) error {
 		)
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -359,7 +356,7 @@ func (d *SubnetDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -495,11 +492,11 @@ func (d *SubnetDriver) scheduleReconcile(ctx restate.ObjectContext, state *Subne
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *SubnetDriver) apiForAccount(account string) (SubnetAPI, string, error) {
+func (d *SubnetDriver) apiForAccount(ctx restate.ObjectContext, account string) (SubnetAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("SubnetDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve Subnet account %q: %w", account, err)
 	}

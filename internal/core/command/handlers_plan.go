@@ -9,12 +9,12 @@ import (
 // Plan runs the full rendering and validation pipeline but stops before any
 // workflow submission or durable deployment-state mutation occurs.
 func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanResponse, error) {
-	account, err := s.resolveRequestAccount(req.Account, req.Variables)
+	account, mergedVars, err := s.resolveWorkspaceDefaults(ctx, req.Account, req.Workspace, req.Variables)
 	if err != nil {
 		return PlanResponse{}, restate.TerminalError(err, 400)
 	}
 
-	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, req.Variables, account.Name, req.Targets)
+	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, mergedVars, account, req.Targets)
 	if err != nil {
 		return PlanResponse{}, err
 	}
@@ -31,7 +31,7 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 			return PlanResponse{}, restate.TerminalError(err, 400)
 		}
 
-		op, fields, err := adapter.Plan(ctx, resource.Key, account.Name, desiredSpec)
+		op, fields, err := adapter.Plan(ctx, resource.Key, account, desiredSpec)
 		if err != nil {
 			return PlanResponse{}, err
 		}

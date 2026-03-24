@@ -11,7 +11,7 @@ import (
 )
 
 func TestRDSInstanceAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewRDSInstanceAdapter()
+	adapter := NewRDSInstanceAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"RDSInstance",
@@ -48,25 +48,25 @@ func TestRDSInstanceAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestRDSInstanceAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewRDSInstanceAdapter()
+	adapter := NewRDSInstanceAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-west-2", "mydb")
 	require.NoError(t, err)
 	assert.Equal(t, "us-west-2~mydb", key)
 }
 
 func TestRDSInstanceAdapter_Kind(t *testing.T) {
-	adapter := NewRDSInstanceAdapter()
+	adapter := NewRDSInstanceAdapterWithAuth(nil)
 	assert.Equal(t, rdsinstance.ServiceName, adapter.Kind())
 	assert.Equal(t, rdsinstance.ServiceName, adapter.ServiceName())
 }
 
 func TestRDSInstanceAdapter_Scope(t *testing.T) {
-	adapter := NewRDSInstanceAdapter()
+	adapter := NewRDSInstanceAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestRDSInstanceAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewRDSInstanceAdapter()
+	adapter := NewRDSInstanceAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(rdsinstance.RDSInstanceOutputs{
 		DBIdentifier:  "mydb",
 		DbiResourceId: "db-abc123",

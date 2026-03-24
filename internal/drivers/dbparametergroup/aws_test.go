@@ -21,12 +21,10 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_DBParameterGroup(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "DBParameterGroupNotFoundFault"}))
-	assert.True(t, IsNotFound(errors.New("DBParameterGroupNotFoundFault")))
 }
 
 func TestIsNotFound_DBClusterParameterGroup(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "DBClusterParameterGroupNotFoundFault"}))
-	assert.True(t, IsNotFound(errors.New("DBClusterParameterGroupNotFoundFault")))
 }
 
 func TestIsNotFound_False(t *testing.T) {
@@ -40,11 +38,6 @@ func TestIsAlreadyExists_DBParameterGroup(t *testing.T) {
 	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBParameterGroupQuotaExceededFault"}))
 }
 
-func TestIsAlreadyExists_StringFallback(t *testing.T) {
-	assert.True(t, IsAlreadyExists(errors.New("DBParameterGroupAlreadyExistsFault")))
-	assert.True(t, IsAlreadyExists(errors.New("DBClusterParameterGroupAlreadyExistsFault")))
-}
-
 func TestIsAlreadyExists_False(t *testing.T) {
 	assert.False(t, IsAlreadyExists(nil))
 	assert.False(t, IsAlreadyExists(errors.New("timeout")))
@@ -53,7 +46,6 @@ func TestIsAlreadyExists_False(t *testing.T) {
 func TestIsInvalidState_True(t *testing.T) {
 	assert.True(t, IsInvalidState(&mockAPIError{code: "InvalidDBParameterGroupStateFault"}))
 	assert.True(t, IsInvalidState(&mockAPIError{code: "InvalidDBClusterParameterGroupStateFault"}))
-	assert.True(t, IsInvalidState(errors.New("InvalidDBParameterGroupStateFault")))
 }
 
 func TestIsInvalidState_False(t *testing.T) {
@@ -64,7 +56,6 @@ func TestIsInvalidState_False(t *testing.T) {
 func TestIsInvalidParam_True(t *testing.T) {
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidParameterValue"}))
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidParameterCombination"}))
-	assert.True(t, IsInvalidParam(errors.New("InvalidParameterValue: bad")))
 }
 
 func TestIsInvalidParam_False(t *testing.T) {

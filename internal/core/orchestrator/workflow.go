@@ -22,9 +22,6 @@ type DeploymentWorkflow struct {
 
 // NewDeploymentWorkflow constructs the apply workflow.
 func NewDeploymentWorkflow(providers *provider.Registry) *DeploymentWorkflow {
-	if providers == nil {
-		providers = provider.NewRegistry()
-	}
 	return &DeploymentWorkflow{providers: providers}
 }
 
@@ -58,11 +55,16 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	if err != nil {
 		now, nowErr := currentTime(ctx)
 		if nowErr == nil {
-			_ = finalizeDeployment(ctx, plan.Key, FinalizeRequest{
+			if finalizeErr := finalizeDeployment(ctx, plan.Key, FinalizeRequest{
 				Status:    types.DeploymentFailed,
 				Error:     err.Error(),
 				UpdatedAt: now,
-			})
+			}); finalizeErr != nil {
+				return DeploymentResult{}, restate.TerminalError(
+					fmt.Errorf("invalid deployment graph: %w (additionally, failed to finalize deployment: %v)", err, finalizeErr),
+					400,
+				)
+			}
 		}
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("invalid deployment graph: %w", err), 400)
 	}

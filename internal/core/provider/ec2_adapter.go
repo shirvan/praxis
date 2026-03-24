@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/ec2"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type EC2Adapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI ec2.EC2API
 	apiFactory        func(aws.Config) ec2.EC2API
 }
 
-func NewEC2Adapter() *EC2Adapter {
-	return NewEC2AdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewEC2AdapterWithRegistry(accounts *auth.Registry) *EC2Adapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewEC2AdapterWithAuth(auth authservice.AuthClient) *EC2Adapter {
 	return &EC2Adapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) ec2.EC2API {
 			return ec2.NewEC2API(awsclient.NewEC2Client(cfg))
 		},
@@ -146,7 +139,7 @@ func (a *EC2Adapter) Plan(ctx restate.Context, key string, account string, desir
 		return types.OpCreate, fields, nil
 	}
 
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -248,14 +241,14 @@ func (a *EC2Adapter) decodeSpec(doc resourceDocument) (ec2.EC2InstanceSpec, erro
 	return spec, nil
 }
 
-func (a *EC2Adapter) planningAPI(account string) (ec2.EC2API, error) {
+func (a *EC2Adapter) planningAPI(ctx restate.Context, account string) (ec2.EC2API, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("EC2 adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve EC2 planning account %q: %w", account, err)
 	}

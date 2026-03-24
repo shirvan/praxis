@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/igw"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IGWAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI igw.IGWAPI
 	apiFactory        func(aws.Config) igw.IGWAPI
 }
 
-func NewIGWAdapter() *IGWAdapter {
-	return NewIGWAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewIGWAdapterWithRegistry(accounts *auth.Registry) *IGWAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIGWAdapterWithAuth(auth authservice.AuthClient) *IGWAdapter {
 	return &IGWAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) igw.IGWAPI {
 			return igw.NewIGWAPI(awsclient.NewEC2Client(cfg))
 		},
@@ -137,7 +130,7 @@ func (a *IGWAdapter) Plan(ctx restate.Context, key string, account string, desir
 		return types.OpCreate, fields, nil
 	}
 
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -230,14 +223,14 @@ func (a *IGWAdapter) decodeSpec(doc resourceDocument) (igw.IGWSpec, error) {
 	return spec, nil
 }
 
-func (a *IGWAdapter) planningAPI(account string) (igw.IGWAPI, error) {
+func (a *IGWAdapter) planningAPI(ctx restate.Context, account string) (igw.IGWAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("InternetGateway adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve InternetGateway planning account %q: %w", account, err)
 	}

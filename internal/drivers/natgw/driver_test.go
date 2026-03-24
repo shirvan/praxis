@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	restate "github.com/restatedev/sdk-go"
+
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
@@ -206,7 +209,7 @@ func setupNATGatewayDriver(t *testing.T, api NATGatewayAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewNATGatewayDriverWithFactory(nil, func(cfg aws.Config) NATGatewayAPI {
+	driver := NewNATGatewayDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) NATGatewayAPI {
 		return api
 	})
 	env := restatetest.Start(t, restate.Reflect(driver))

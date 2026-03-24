@@ -75,13 +75,13 @@ func (s *PraxisCommandService) ValidateTemplate(ctx restate.Context, req types.V
 		if err != nil {
 			return types.ValidateTemplateResponse{Valid: false, Errors: validationErrors(restate.TerminalError(err, 400))}, nil
 		}
-		_, err = s.compileTemplate(ctx, req.Source, req.TemplateRef, req.Variables, account.Name, nil)
+		_, err = s.compileTemplate(ctx, req.Source, req.TemplateRef, req.Variables, account, nil)
 		if err != nil {
 			return types.ValidateTemplateResponse{Valid: false, Errors: validationErrors(err)}, nil
 		}
 		return types.ValidateTemplateResponse{Valid: true}, nil
 	default:
-		return types.ValidateTemplateResponse{}, restate.TerminalError(fmt.Errorf("invalid validation mode %q", mode), 400)
+		return types.ValidateTemplateResponse{}, restate.TerminalError(fmt.Errorf("invalid validation mode %q (supported: %q, %q)", mode, types.ValidateModeStatic, types.ValidateModeFull), 400)
 	}
 }
 

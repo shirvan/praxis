@@ -8,31 +8,28 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type RDSInstanceDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RDSInstanceAPI
 }
 
-func NewRDSInstanceDriver(accounts *auth.Registry) *RDSInstanceDriver {
-	return NewRDSInstanceDriverWithFactory(accounts, func(cfg aws.Config) RDSInstanceAPI {
+func NewRDSInstanceDriver(auth authservice.AuthClient) *RDSInstanceDriver {
+	return NewRDSInstanceDriverWithFactory(auth, func(cfg aws.Config) RDSInstanceAPI {
 		return NewRDSInstanceAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
-func NewRDSInstanceDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) RDSInstanceAPI) *RDSInstanceDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewRDSInstanceDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RDSInstanceAPI) *RDSInstanceDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) RDSInstanceAPI { return NewRDSInstanceAPI(awsclient.NewRDSClient(cfg)) }
 	}
-	return &RDSInstanceDriver{auth: accounts, apiFactory: factory}
+	return &RDSInstanceDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *RDSInstanceDriver) ServiceName() string {
@@ -40,7 +37,7 @@ func (d *RDSInstanceDriver) ServiceName() string {
 }
 
 func (d *RDSInstanceDriver) Provision(ctx restate.ObjectContext, spec RDSInstanceSpec) (RDSInstanceOutputs, error) {
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return RDSInstanceOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -135,7 +132,7 @@ func (d *RDSInstanceDriver) Provision(ctx restate.ObjectContext, spec RDSInstanc
 }
 
 func (d *RDSInstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (RDSInstanceOutputs, error) {
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return RDSInstanceOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -191,7 +188,7 @@ func (d *RDSInstanceDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, RDSInstanceState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -252,7 +249,7 @@ func (d *RDSInstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -380,19 +377,15 @@ func (d *RDSInstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *RDSInstanceDriver) apiForAccount(account string) (RDSInstanceAPI, string, error) {
+func (d *RDSInstanceDriver) apiForAccount(ctx restate.ObjectContext, account string) (RDSInstanceAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("RDS instance driver is not configured")
 	}
-	acct, err := d.auth.Lookup(account)
-	if err != nil {
-		return nil, "", err
-	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve RDS account %q: %w", account, err)
 	}
-	return d.apiFactory(awsCfg), acct.Region, nil
+	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
 func validateSpec(spec RDSInstanceSpec) error {

@@ -20,11 +20,6 @@ func (e *mockAPIError) ErrorCode() string             { return e.code }
 func (e *mockAPIError) ErrorMessage() string          { return e.message }
 func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnknown }
 
-func TestIsNotFound_MatchesWrappedErrorText(t *testing.T) {
-	err := errors.New("[404] operation error EC2: DescribeInstances, api error InvalidInstanceID.NotFound: The instance ID does not exist")
-	assert.True(t, IsNotFound(err))
-}
-
 func TestIsNotFound_MatchesAPIErrorCode(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidInstanceID.NotFound"}))
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidInstanceID.Malformed"}))
@@ -70,7 +65,6 @@ func TestIsInsufficientCapacity_False(t *testing.T) {
 
 func TestIsTerminated(t *testing.T) {
 	assert.False(t, IsTerminated(nil))
-	assert.True(t, IsTerminated(errors.New("instance i-123 is terminated")))
 	assert.True(t, IsTerminated(errors.New("InvalidInstanceID.NotFound")))
 	assert.False(t, IsTerminated(errors.New("network error")))
 }

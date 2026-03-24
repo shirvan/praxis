@@ -45,8 +45,15 @@ func (DeploymentIndex) Remove(ctx restate.ObjectContext, key string) error {
 	return nil
 }
 
+// ListFilter is the optional input to DeploymentIndex.List.
+// When Workspace is non-empty, only deployments tagged with that workspace are returned.
+type ListFilter struct {
+	Workspace string `json:"workspace,omitempty"`
+}
+
 // List returns all summaries in deterministic key order.
-func (DeploymentIndex) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]types.DeploymentSummary, error) {
+// When filter.Workspace is non-empty, only matching deployments are returned.
+func (DeploymentIndex) List(ctx restate.ObjectSharedContext, filter ListFilter) ([]types.DeploymentSummary, error) {
 	entries, err := restate.Get[map[string]types.DeploymentSummary](ctx, "entries")
 	if err != nil {
 		return nil, err
@@ -63,7 +70,11 @@ func (DeploymentIndex) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]
 
 	out := make([]types.DeploymentSummary, 0, len(keys))
 	for _, key := range keys {
-		out = append(out, entries[key])
+		summary := entries[key]
+		if filter.Workspace != "" && summary.Workspace != filter.Workspace {
+			continue
+		}
+		out = append(out, summary)
 	}
 	return out, nil
 }

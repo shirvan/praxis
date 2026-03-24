@@ -11,7 +11,7 @@ import (
 )
 
 func TestEBSAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewEBSAdapter()
+	adapter := NewEBSAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"EBSVolume",
@@ -43,25 +43,25 @@ func TestEBSAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestEBSAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewEBSAdapter()
+	adapter := NewEBSAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "vol-0abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~vol-0abc123", key)
 }
 
 func TestEBSAdapter_Kind(t *testing.T) {
-	adapter := NewEBSAdapter()
+	adapter := NewEBSAdapterWithAuth(nil)
 	assert.Equal(t, ebs.ServiceName, adapter.Kind())
 	assert.Equal(t, ebs.ServiceName, adapter.ServiceName())
 }
 
 func TestEBSAdapter_Scope(t *testing.T) {
-	adapter := NewEBSAdapter()
+	adapter := NewEBSAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestEBSAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewEBSAdapter()
+	adapter := NewEBSAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(ebs.EBSVolumeOutputs{
 		VolumeId:         "vol-123",
 		AvailabilityZone: "us-east-1a",

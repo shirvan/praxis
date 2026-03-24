@@ -11,7 +11,7 @@ import (
 )
 
 func TestVPCPeeringAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewVPCPeeringAdapter()
+	adapter := NewVPCPeeringAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"VPCPeeringConnection",
@@ -42,14 +42,14 @@ func TestVPCPeeringAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestVPCPeeringAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewVPCPeeringAdapter()
+	adapter := NewVPCPeeringAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "pcx-123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~pcx-123", key)
 }
 
 func TestVPCPeeringAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewVPCPeeringAdapter()
+	adapter := NewVPCPeeringAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(vpcpeering.VPCPeeringOutputs{
 		VpcPeeringConnectionId: "pcx-123",
 		RequesterVpcId:         "vpc-a",
@@ -68,7 +68,7 @@ func TestVPCPeeringAdapter_NormalizeOutputs(t *testing.T) {
 }
 
 func TestVPCPeeringAdapter_DecodeSpec_MissingFields(t *testing.T) {
-	adapter := NewVPCPeeringAdapter()
+	adapter := NewVPCPeeringAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"VPCPeeringConnection",

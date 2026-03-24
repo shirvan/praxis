@@ -2,7 +2,6 @@ package ebs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -233,27 +233,11 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidVolume.NotFound"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidVolume.NotFound")
+	return awserr.HasCode(err, "InvalidVolume.NotFound")
 }
 
 func IsVolumeInUse(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "VolumeInUse"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "VolumeInUse")
+	return awserr.HasCode(err, "VolumeInUse")
 }
 
 func IsModificationCooldown(err error) bool {
@@ -267,16 +251,5 @@ func IsModificationCooldown(err error) bool {
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" ||
-			code == "InvalidParameterCombination" ||
-			code == "UnsupportedOperation" ||
-			code == "VolumeTypeNotAvailableInZone"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination", "UnsupportedOperation", "VolumeTypeNotAvailableInZone")
 }

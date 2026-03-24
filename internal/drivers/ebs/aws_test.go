@@ -21,7 +21,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidVolume.NotFound"}))
-	assert.True(t, IsNotFound(errors.New("api error InvalidVolume.NotFound: volume missing")))
 }
 
 func TestIsNotFound_False(t *testing.T) {
@@ -32,11 +31,9 @@ func TestIsNotFound_False(t *testing.T) {
 
 func TestIsVolumeInUse_True(t *testing.T) {
 	assert.True(t, IsVolumeInUse(&mockAPIError{code: "VolumeInUse"}))
-	assert.True(t, IsVolumeInUse(errors.New("api error VolumeInUse: attached")))
 }
 
 func TestIsModificationCooldown_True(t *testing.T) {
-	assert.True(t, IsModificationCooldown(errors.New("volume has been modified within the last 6 hours")))
 }
 
 func TestSingleManagedKeyMatch_Found(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/s3"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -20,22 +20,14 @@ func (a *S3Adapter) Scope() KeyScope {
 
 // S3Adapter adapts generic resource documents to the strongly typed S3 bucket driver.
 type S3Adapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI s3.S3API
 	apiFactory        func(aws.Config) s3.S3API
 }
 
-// NewS3Adapter returns the hardcoded adapter for the S3 bucket driver.
-func NewS3Adapter() *S3Adapter {
-	return NewS3AdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewS3AdapterWithRegistry(accounts *auth.Registry) *S3Adapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewS3AdapterWithAuth(auth authservice.AuthClient) *S3Adapter {
 	return &S3Adapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) s3.S3API {
 			return s3.NewS3API(awsclient.NewS3Client(cfg))
 		},
@@ -126,7 +118,7 @@ func (a *S3Adapter) Plan(ctx restate.Context, key string, account string, desire
 	if err != nil {
 		return "", nil, err
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -226,14 +218,14 @@ func (a *S3Adapter) decodeSpec(doc resourceDocument) (s3.S3BucketSpec, error) {
 	}, nil
 }
 
-func (a *S3Adapter) planningAPI(account string) (s3.S3API, error) {
+func (a *S3Adapter) planningAPI(ctx restate.Context, account string) (s3.S3API, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("S3 adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve S3 planning account %q: %w", account, err)
 	}

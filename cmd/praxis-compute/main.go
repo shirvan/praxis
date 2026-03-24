@@ -8,6 +8,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/config"
 	"github.com/shirvan/praxis/internal/drivers/ami"
 	"github.com/shirvan/praxis/internal/drivers/ec2"
@@ -20,15 +21,16 @@ import (
 
 func main() {
 	cfg := config.Load()
+	auth := authservice.NewAuthClient()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(ami.NewAMIDriver(cfg.Auth()))).
-		Bind(restate.Reflect(keypair.NewKeyPairDriver(cfg.Auth()))).
-		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth()))).
-		Bind(restate.Reflect(esm.NewEventSourceMappingDriver(cfg.Auth()))).
-		Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(cfg.Auth()))).
-		Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(cfg.Auth()))).
-		Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(cfg.Auth())))
+		Bind(restate.Reflect(ami.NewAMIDriver(auth))).
+		Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
+		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+		Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
+		Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
+		Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
+		Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth)))
 
 	slog.Info("starting compute driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

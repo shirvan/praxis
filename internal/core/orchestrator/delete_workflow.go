@@ -18,9 +18,6 @@ type DeploymentDeleteWorkflow struct {
 }
 
 func NewDeploymentDeleteWorkflow(providers *provider.Registry) *DeploymentDeleteWorkflow {
-	if providers == nil {
-		providers = provider.NewRegistry()
-	}
 	return &DeploymentDeleteWorkflow{providers: providers}
 }
 

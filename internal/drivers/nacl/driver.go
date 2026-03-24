@@ -9,33 +9,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type NetworkACLDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) NetworkACLAPI
 }
 
-func NewNetworkACLDriver(accounts *auth.Registry) *NetworkACLDriver {
-	return NewNetworkACLDriverWithFactory(accounts, func(cfg aws.Config) NetworkACLAPI {
+func NewNetworkACLDriver(auth authservice.AuthClient) *NetworkACLDriver {
+	return NewNetworkACLDriverWithFactory(auth, func(cfg aws.Config) NetworkACLAPI {
 		return NewNetworkACLAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewNetworkACLDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) NetworkACLAPI) *NetworkACLDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewNetworkACLDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) NetworkACLAPI) *NetworkACLDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) NetworkACLAPI {
 			return NewNetworkACLAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &NetworkACLDriver{auth: accounts, apiFactory: factory}
+	return &NetworkACLDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *NetworkACLDriver) ServiceName() string {
@@ -53,7 +50,7 @@ func (d *NetworkACLDriver) Provision(ctx restate.ObjectContext, spec NetworkACLS
 	}
 	spec = normalizedSpec
 
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return NetworkACLOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -120,6 +117,9 @@ func (d *NetworkACLDriver) Provision(ctx restate.ObjectContext, spec NetworkACLS
 		createdID, createErr := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 			id, runErr := api.CreateNetworkACL(rc, spec)
 			if runErr != nil {
+				if IsLimitExceeded(runErr) {
+					return "", restate.TerminalError(runErr, 503)
+				}
 				if IsInvalidParam(runErr) {
 					return "", restate.TerminalError(runErr, 400)
 				}
@@ -176,7 +176,7 @@ func (d *NetworkACLDriver) Provision(ctx restate.ObjectContext, spec NetworkACLS
 
 func (d *NetworkACLDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (NetworkACLOutputs, error) {
 	ctx.Log().Info("importing network ACL", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return NetworkACLOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -241,7 +241,7 @@ func (d *NetworkACLDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -332,7 +332,7 @@ func (d *NetworkACLDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -618,11 +618,11 @@ func (d *NetworkACLDriver) scheduleReconcile(ctx restate.ObjectContext, state *N
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *NetworkACLDriver) apiForAccount(account string) (NetworkACLAPI, string, error) {
+func (d *NetworkACLDriver) apiForAccount(ctx restate.ObjectContext, account string) (NetworkACLAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("NetworkACLDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve network ACL account %q: %w", account, err)
 	}

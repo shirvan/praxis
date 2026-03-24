@@ -9,33 +9,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type AMIDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) AMIAPI
 }
 
-func NewAMIDriver(accounts *auth.Registry) *AMIDriver {
-	return NewAMIDriverWithFactory(accounts, func(cfg aws.Config) AMIAPI {
+func NewAMIDriver(auth authservice.AuthClient) *AMIDriver {
+	return NewAMIDriverWithFactory(auth, func(cfg aws.Config) AMIAPI {
 		return NewAMIAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewAMIDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) AMIAPI) *AMIDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewAMIDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) AMIAPI) *AMIDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) AMIAPI {
 			return NewAMIAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &AMIDriver{auth: accounts, apiFactory: factory}
+	return &AMIDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *AMIDriver) ServiceName() string {
@@ -51,7 +48,7 @@ func (d *AMIDriver) Provision(ctx restate.ObjectContext, spec AMISpec) (AMIOutpu
 	}
 	ctx.Log().Info("provisioning AMI", "name", spec.Name, "key", restate.Key(ctx))
 
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return AMIOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -203,7 +200,7 @@ func (d *AMIDriver) createAMI(ctx restate.ObjectContext, api AMIAPI, spec AMISpe
 
 func (d *AMIDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (AMIOutputs, error) {
 	ctx.Log().Info("importing AMI", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return AMIOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -283,7 +280,7 @@ func (d *AMIDriver) Delete(ctx restate.ObjectContext) error {
 		return restate.TerminalError(fmt.Errorf("cannot delete AMI %s: resource is in Observed mode; re-import with --mode managed to allow deletion", state.Outputs.ImageId), 409)
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -322,7 +319,7 @@ func (d *AMIDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -576,11 +573,11 @@ func (d *AMIDriver) scheduleReconcile(ctx restate.ObjectContext, state *AMIState
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *AMIDriver) apiForAccount(account string) (AMIAPI, string, error) {
+func (d *AMIDriver) apiForAccount(ctx restate.ObjectContext, account string) (AMIAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("AMIDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve AMI account %q: %w", account, err)
 	}

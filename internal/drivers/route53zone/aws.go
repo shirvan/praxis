@@ -2,7 +2,6 @@ package route53zone
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	route53sdk "github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -260,58 +260,21 @@ func hostedZonePrivate(config *route53types.HostedZoneConfig) bool {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "NoSuchHostedZone"
-	}
-	return strings.Contains(err.Error(), "NoSuchHostedZone")
+	return awserr.HasCode(err, "NoSuchHostedZone")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "HostedZoneAlreadyExists"
-	}
-	return strings.Contains(err.Error(), "HostedZoneAlreadyExists")
+	return awserr.HasCode(err, "HostedZoneAlreadyExists")
 }
 
 func IsConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "ConflictingDomainExists" || code == "PriorRequestNotComplete"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "ConflictingDomainExists") || strings.Contains(errText, "PriorRequestNotComplete")
+	return awserr.HasCode(err, "ConflictingDomainExists", "PriorRequestNotComplete")
 }
 
 func IsInvalidInput(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidInput"
-	}
-	return strings.Contains(err.Error(), "InvalidInput")
+	return awserr.HasCode(err, "InvalidInput")
 }
 
 func IsNotEmpty(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "HostedZoneNotEmpty"
-	}
-	return strings.Contains(err.Error(), "HostedZoneNotEmpty")
+	return awserr.HasCode(err, "HostedZoneNotEmpty")
 }

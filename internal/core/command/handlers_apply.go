@@ -9,12 +9,12 @@ import (
 // Apply evaluates the template, initializes durable deployment state, and then
 // asynchronously starts the deployment workflow.
 func (s *PraxisCommandService) Apply(ctx restate.Context, req ApplyRequest) (ApplyResponse, error) {
-	account, err := s.resolveRequestAccount(req.Account, req.Variables)
+	account, mergedVars, err := s.resolveWorkspaceDefaults(ctx, req.Account, req.Workspace, req.Variables)
 	if err != nil {
 		return ApplyResponse{}, restate.TerminalError(err, 400)
 	}
 
-	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, req.Variables, account.Name, req.Targets)
+	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, mergedVars, account, req.Targets)
 	if err != nil {
 		return ApplyResponse{}, err
 	}
@@ -27,7 +27,7 @@ func (s *PraxisCommandService) Apply(ctx restate.Context, req ApplyRequest) (App
 		}
 	}
 
-	key, status, err := s.submitDeployment(ctx, deploymentKey, account.Name, req.Variables, compiled, req.Replace)
+	key, status, err := s.submitDeployment(ctx, deploymentKey, account, req.Workspace, mergedVars, compiled, req.Replace)
 	if err != nil {
 		return ApplyResponse{}, err
 	}

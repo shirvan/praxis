@@ -23,10 +23,6 @@ func TestIsNotFound_APIError(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "RuleNotFound"}))
 }
 
-func TestIsNotFound_StringMatch(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("RuleNotFound: rule does not exist")))
-}
-
 func TestIsNotFound_Nil(t *testing.T) {
 	assert.False(t, IsNotFound(nil))
 }
@@ -38,10 +34,6 @@ func TestIsNotFound_Unrelated(t *testing.T) {
 
 func TestIsPriorityInUse_APIError(t *testing.T) {
 	assert.True(t, IsPriorityInUse(&mockAPIError{code: "PriorityInUse"}))
-}
-
-func TestIsPriorityInUse_StringMatch(t *testing.T) {
-	assert.True(t, IsPriorityInUse(errors.New("PriorityInUse: priority 10 already taken")))
 }
 
 func TestIsPriorityInUse_Nil(t *testing.T) {

@@ -182,11 +182,12 @@ func (s *executionState) publicResources() []types.DeploymentResource {
 
 func (s *executionState) result(key string, status types.DeploymentStatus, errMsg string) DeploymentResult {
 	return DeploymentResult{
-		Key:       key,
-		Status:    status,
-		Resources: s.publicResources(),
-		Outputs:   s.outputs,
-		Error:     errMsg,
+		Key:            key,
+		Status:         status,
+		Resources:      s.publicResources(),
+		Outputs:        s.outputs,
+		Error:          errMsg,
+		ResourceErrors: s.failureMap(),
 	}
 }
 
@@ -200,11 +201,30 @@ func (s *executionState) failureSummary() string {
 	}
 	sort.Strings(names)
 
-	parts := make([]string, 0, len(names))
-	for _, name := range names {
-		parts = append(parts, fmt.Sprintf("%s: %s", name, s.errors[name]))
+	if len(names) == 1 {
+		return fmt.Sprintf("%s: %s", names[0], s.errors[names[0]])
 	}
-	return strings.Join(parts, "; ")
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d resource(s) failed:\n", len(names))
+	for i, name := range names {
+		fmt.Fprintf(&b, "  %d. %s: %s", i+1, name, s.errors[name])
+		if i < len(names)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+func (s *executionState) failureMap() map[string]string {
+	if len(s.failed) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(s.failed))
+	for name := range s.failed {
+		result[name] = s.errors[name]
+	}
+	return result
 }
 
 func graphFromPlanResources(resources []PlanResource) (*dag.Graph, error) {
@@ -259,6 +279,7 @@ func deploymentSummaryFromState(state *DeploymentState) types.DeploymentSummary 
 		Key:       state.Key,
 		Status:    state.Status,
 		Resources: resources,
+		Workspace: state.Workspace,
 		CreatedAt: state.CreatedAt,
 		UpdatedAt: state.UpdatedAt,
 	}

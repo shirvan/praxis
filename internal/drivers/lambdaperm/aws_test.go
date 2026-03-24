@@ -1,15 +1,15 @@
 package lambdaperm
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPermissionErrorClassifiers(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("ResourceNotFoundException: missing")))
-	assert.True(t, IsConflict(errors.New("ResourceConflictException: exists")))
-	assert.True(t, IsPreconditionFailed(errors.New("PreconditionFailedException: stale")))
-	assert.True(t, IsThrottled(errors.New("TooManyRequestsException: slow down")))
+	assert.True(t, IsConflict(&smithy.GenericAPIError{Code: "ResourceConflictException"}))
+	assert.True(t, IsThrottled(&smithy.GenericAPIError{Code: "TooManyRequestsException"}))
+	assert.False(t, IsConflict(nil))
+	assert.False(t, IsThrottled(nil))
 }

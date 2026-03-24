@@ -11,7 +11,7 @@ import (
 )
 
 func TestDBSubnetGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewDBSubnetGroupAdapter()
+	adapter := NewDBSubnetGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"DBSubnetGroup",
@@ -40,25 +40,25 @@ func TestDBSubnetGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestDBSubnetGroupAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewDBSubnetGroupAdapter()
+	adapter := NewDBSubnetGroupAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-west-2", "my-group")
 	require.NoError(t, err)
 	assert.Equal(t, "us-west-2~my-group", key)
 }
 
 func TestDBSubnetGroupAdapter_Kind(t *testing.T) {
-	adapter := NewDBSubnetGroupAdapter()
+	adapter := NewDBSubnetGroupAdapterWithAuth(nil)
 	assert.Equal(t, dbsubnetgroup.ServiceName, adapter.Kind())
 	assert.Equal(t, dbsubnetgroup.ServiceName, adapter.ServiceName())
 }
 
 func TestDBSubnetGroupAdapter_Scope(t *testing.T) {
-	adapter := NewDBSubnetGroupAdapter()
+	adapter := NewDBSubnetGroupAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestDBSubnetGroupAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewDBSubnetGroupAdapter()
+	adapter := NewDBSubnetGroupAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(dbsubnetgroup.DBSubnetGroupOutputs{
 		GroupName:         "my-group",
 		ARN:               "arn:aws:rds:us-east-1:123:subgrp:my-group",

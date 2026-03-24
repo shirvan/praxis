@@ -2,13 +2,13 @@ package route53healthcheck
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	route53sdk "github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -286,47 +286,17 @@ func resetElements(observed ObservedState, desired HealthCheckSpec) []route53typ
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "NoSuchHealthCheck"
-	}
-	return strings.Contains(err.Error(), "NoSuchHealthCheck")
+	return awserr.HasCode(err, "NoSuchHealthCheck")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "HealthCheckAlreadyExists"
-	}
-	return strings.Contains(err.Error(), "HealthCheckAlreadyExists")
+	return awserr.HasCode(err, "HealthCheckAlreadyExists")
 }
 
 func IsConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "PriorRequestNotComplete" || code == "HealthCheckVersionMismatch"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "PriorRequestNotComplete") || strings.Contains(errText, "HealthCheckVersionMismatch")
+	return awserr.HasCode(err, "PriorRequestNotComplete", "HealthCheckVersionMismatch")
 }
 
 func IsInvalidInput(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidInput"
-	}
-	return strings.Contains(err.Error(), "InvalidInput")
+	return awserr.HasCode(err, "InvalidInput")
 }

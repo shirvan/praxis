@@ -22,7 +22,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 func TestIsNotFound(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidAMIID.NotFound"}))
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidAMIID.Unavailable"}))
-	assert.True(t, IsNotFound(errors.New("AMI not found")))
 	assert.False(t, IsNotFound(&mockAPIError{code: "InvalidParameterValue"}))
 }
 

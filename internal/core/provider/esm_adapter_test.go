@@ -11,7 +11,7 @@ import (
 )
 
 func TestESMAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewESMAdapter()
+	adapter := NewESMAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"EventSourceMapping",
@@ -34,14 +34,14 @@ func TestESMAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestESMAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewESMAdapter()
+	adapter := NewESMAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "uuid-123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~uuid-123", key)
 }
 
 func TestESMAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewESMAdapter()
+	adapter := NewESMAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(esm.EventSourceMappingOutputs{UUID: "uuid-123", EventSourceArn: "arn:aws:sqs:us-east-1:123:q", FunctionArn: "arn:aws:lambda:us-east-1:123:function:processor", State: "Enabled", BatchSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, "uuid-123", out["uuid"])

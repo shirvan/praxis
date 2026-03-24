@@ -36,7 +36,7 @@ func (m *mockAMIAPI) WaitUntilAvailable(context.Context, string, time.Duration) 
 func (m *mockAMIAPI) FindByManagedKey(context.Context, string) (string, error)        { return "", nil }
 
 func TestAMIAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewAMIAdapter()
+	adapter := NewAMIAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"AMI",
@@ -81,7 +81,7 @@ func TestAMIAdapter_BuildImportKey_AMIID(t *testing.T) {
 }
 
 func TestAMIAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewAMIAdapter()
+	adapter := NewAMIAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(ami.AMIOutputs{
 		ImageId:            "ami-123",
 		Name:               "web-ami",
@@ -104,7 +104,7 @@ func TestAMIAdapter_NormalizeOutputs(t *testing.T) {
 }
 
 func TestAMIAdapter_KindAndScope(t *testing.T) {
-	adapter := NewAMIAdapter()
+	adapter := NewAMIAdapterWithAuth(nil)
 	assert.Equal(t, ami.ServiceName, adapter.Kind())
 	assert.Equal(t, ami.ServiceName, adapter.ServiceName())
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())

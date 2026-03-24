@@ -9,7 +9,12 @@ import (
 
 func main() {
 	if err := cli.NewRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		msg := err.Error()
+		if cli.IsAuthErrorMessage(msg) {
+			cli.FormatAuthError(msg)
+		} else {
+			fmt.Fprintln(os.Stderr, msg)
+		}
 		os.Exit(1)
 	}
 }

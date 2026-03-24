@@ -58,6 +58,7 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 	state := &DeploymentState{
 		Key:          restate.Key(ctx),
 		Account:      plan.Account,
+		Workspace:    plan.Workspace,
 		Status:       types.DeploymentPending,
 		TemplatePath: plan.TemplatePath,
 		Resources:    resources,
@@ -177,14 +178,33 @@ func (DeploymentStateObj) GetDetail(ctx restate.ObjectSharedContext, _ restate.V
 	}
 
 	resources := stateResourcesToPublic(state)
+
+	var errorCode types.ErrorCode
+	if state.Status == types.DeploymentFailed && state.Error != "" {
+		errorCode = types.ErrCodeProvisionFailed
+	}
+
+	var resourceErrors map[string]string
+	for _, rs := range state.Resources {
+		if rs.Error != "" {
+			if resourceErrors == nil {
+				resourceErrors = make(map[string]string)
+			}
+			resourceErrors[rs.Name] = rs.Error
+		}
+	}
+
 	return &types.DeploymentDetail{
-		Key:          state.Key,
-		Status:       state.Status,
-		TemplatePath: state.TemplatePath,
-		Resources:    resources,
-		Error:        state.Error,
-		CreatedAt:    state.CreatedAt,
-		UpdatedAt:    state.UpdatedAt,
+		Key:            state.Key,
+		Status:         state.Status,
+		Workspace:      state.Workspace,
+		TemplatePath:   state.TemplatePath,
+		Resources:      resources,
+		Error:          state.Error,
+		ErrorCode:      errorCode,
+		ResourceErrors: resourceErrors,
+		CreatedAt:      state.CreatedAt,
+		UpdatedAt:      state.UpdatedAt,
 	}, nil
 }
 

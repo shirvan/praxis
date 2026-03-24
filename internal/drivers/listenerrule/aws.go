@@ -2,14 +2,14 @@ package listenerrule
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -430,67 +430,25 @@ func extractListenerArnFromRuleArn(ruleArn string) string {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "RuleNotFound"
-	}
-	return strings.Contains(err.Error(), "RuleNotFound")
+	return awserr.HasCode(err, "RuleNotFound")
 }
 
 func IsPriorityInUse(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "PriorityInUse"
-	}
-	return strings.Contains(err.Error(), "PriorityInUse")
+	return awserr.HasCode(err, "PriorityInUse")
 }
 
 func IsTooMany(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TooManyRules"
-	}
-	return strings.Contains(err.Error(), "TooManyRules")
+	return awserr.HasCode(err, "TooManyRules")
 }
 
 func IsTooManyConditions(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TooManyConditionValues"
-	}
-	return strings.Contains(err.Error(), "TooManyConditionValues")
+	return awserr.HasCode(err, "TooManyConditionValues")
 }
 
 func IsTargetGroupNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TargetGroupNotFound"
-	}
-	return strings.Contains(err.Error(), "TargetGroupNotFound")
+	return awserr.HasCode(err, "TargetGroupNotFound")
 }
 
 func IsInvalidConfig(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidConfigurationRequest"
-	}
-	return strings.Contains(err.Error(), "InvalidConfigurationRequest")
+	return awserr.HasCode(err, "InvalidConfigurationRequest")
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func TestEIPAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewEIPAdapter()
+	adapter := NewEIPAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"ElasticIP",
@@ -38,25 +38,25 @@ func TestEIPAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestEIPAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewEIPAdapter()
+	adapter := NewEIPAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "eipalloc-0abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~eipalloc-0abc123", key)
 }
 
 func TestEIPAdapter_Kind(t *testing.T) {
-	adapter := NewEIPAdapter()
+	adapter := NewEIPAdapterWithAuth(nil)
 	assert.Equal(t, eip.ServiceName, adapter.Kind())
 	assert.Equal(t, eip.ServiceName, adapter.ServiceName())
 }
 
 func TestEIPAdapter_Scope(t *testing.T) {
-	adapter := NewEIPAdapter()
+	adapter := NewEIPAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestEIPAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewEIPAdapter()
+	adapter := NewEIPAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(eip.ElasticIPOutputs{
 		AllocationId:       "eipalloc-123",
 		PublicIp:           "203.0.113.10",

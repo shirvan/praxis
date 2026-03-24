@@ -12,6 +12,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -312,48 +314,19 @@ func applyRouteTargetToReplaceInput(input *ec2sdk.ReplaceRouteInput, route Route
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidRouteTableID.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidRouteTableID.NotFound")
+	return awserr.HasCode(err, "InvalidRouteTableID.NotFound")
 }
 
 func IsRouteNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidRoute.NotFound"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidRoute.NotFound") || strings.Contains(errText, "no route with destination-cidr-block")
+	return awserr.HasCode(err, "InvalidRoute.NotFound")
 }
 
 func IsAssociationNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidAssociationID.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidAssociationID.NotFound")
+	return awserr.HasCode(err, "InvalidAssociationID.NotFound")
 }
 
 func IsRouteAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "RouteAlreadyExists"
-	}
-	return strings.Contains(err.Error(), "RouteAlreadyExists")
+	return awserr.HasCode(err, "RouteAlreadyExists")
 }
 
 func IsMainRouteTable(err error) bool {
@@ -394,12 +367,5 @@ func IsInvalidRoute(err error) bool {
 }
 
 func IsDependencyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DependencyViolation"
-	}
-	return strings.Contains(err.Error(), "DependencyViolation")
+	return awserr.HasCode(err, "DependencyViolation")
 }

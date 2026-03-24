@@ -8,40 +8,37 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type NLBDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) NLBAPI
 }
 
-func NewNLBDriver(accounts *auth.Registry) *NLBDriver {
-	return NewNLBDriverWithFactory(accounts, func(cfg aws.Config) NLBAPI {
+func NewNLBDriver(auth authservice.AuthClient) *NLBDriver {
+	return NewNLBDriverWithFactory(auth, func(cfg aws.Config) NLBAPI {
 		return NewNLBAPI(awsclient.NewELBv2Client(cfg))
 	})
 }
 
-func NewNLBDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) NLBAPI) *NLBDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewNLBDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) NLBAPI) *NLBDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) NLBAPI {
 			return NewNLBAPI(awsclient.NewELBv2Client(cfg))
 		}
 	}
-	return &NLBDriver{auth: accounts, apiFactory: factory}
+	return &NLBDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *NLBDriver) ServiceName() string { return ServiceName }
 
 func (d *NLBDriver) Provision(ctx restate.ObjectContext, spec NLBSpec) (NLBOutputs, error) {
 	ctx.Log().Info("provisioning NLB", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return NLBOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -148,7 +145,7 @@ func (d *NLBDriver) Provision(ctx restate.ObjectContext, spec NLBSpec) (NLBOutpu
 
 func (d *NLBDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (NLBOutputs, error) {
 	ctx.Log().Info("importing NLB", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return NLBOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -200,7 +197,7 @@ func (d *NLBDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, NLBState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -247,7 +244,7 @@ func (d *NLBDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -417,11 +414,11 @@ func (d *NLBDriver) scheduleReconcile(ctx restate.ObjectContext, state *NLBState
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *NLBDriver) apiForAccount(account string) (NLBAPI, string, error) {
+func (d *NLBDriver) apiForAccount(ctx restate.ObjectContext, account string) (NLBAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("NLBDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve NLB account %q: %w", account, err)
 	}

@@ -2,14 +2,13 @@ package iamgroup
 
 import (
 	"context"
-	"errors"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -208,45 +207,17 @@ func (r *realIAMGroupAPI) listManagedPolicies(ctx context.Context, groupName str
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "NoSuchEntity"
-	}
-	return strings.Contains(err.Error(), "NoSuchEntity")
+	return awserr.HasCode(err, "NoSuchEntity")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "EntityAlreadyExists"
-	}
-	return strings.Contains(err.Error(), "EntityAlreadyExists")
+	return awserr.HasCode(err, "EntityAlreadyExists")
 }
 
 func IsDeleteConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DeleteConflict"
-	}
-	return strings.Contains(err.Error(), "DeleteConflict")
+	return awserr.HasCode(err, "DeleteConflict")
 }
 
 func IsMalformedPolicy(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "MalformedPolicyDocument"
-	}
-	return strings.Contains(err.Error(), "MalformedPolicyDocument")
+	return awserr.HasCode(err, "MalformedPolicyDocument")
 }

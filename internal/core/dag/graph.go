@@ -180,7 +180,7 @@ func (g *Graph) Subgraph(targets []string) (*Graph, error) {
 	}
 	for _, target := range targets {
 		if _, ok := g.nodes[target]; !ok {
-			return nil, fmt.Errorf("target resource %q does not exist in the graph", target)
+			return nil, fmt.Errorf("target resource %q does not exist in the graph; available resources: %s", target, strings.Join(g.NodeNames(), ", "))
 		}
 		walk(target)
 	}
@@ -209,7 +209,7 @@ func (g *Graph) detectCycles() error {
 		case visitVisited:
 			return nil
 		case visitVisiting:
-			return fmt.Errorf("dependency cycle detected: %s", formatCycle(stack, name))
+			return fmt.Errorf("dependency cycle detected: %s — review the dependency expressions in these resources to break the cycle", formatCycle(stack, name))
 		}
 
 		state[name] = visitVisiting
@@ -239,6 +239,11 @@ func (g *Graph) sortedNodeNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// NodeNames returns the sorted names of all nodes in the graph.
+func (g *Graph) NodeNames() []string {
+	return g.sortedNodeNames()
 }
 
 func formatCycle(stack []string, repeated string) string {

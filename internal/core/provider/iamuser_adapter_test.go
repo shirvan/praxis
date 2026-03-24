@@ -11,7 +11,7 @@ import (
 )
 
 func TestIAMUserAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewIAMUserAdapter()
+	adapter := NewIAMUserAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"IAMUser",
@@ -43,20 +43,20 @@ func TestIAMUserAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestIAMUserAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewIAMUserAdapter()
+	adapter := NewIAMUserAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "app-user")
 	require.NoError(t, err)
 	assert.Equal(t, "app-user", key)
 }
 
 func TestIAMUserAdapter_Kind(t *testing.T) {
-	adapter := NewIAMUserAdapter()
+	adapter := NewIAMUserAdapterWithAuth(nil)
 	assert.Equal(t, iamuser.ServiceName, adapter.Kind())
 	assert.Equal(t, iamuser.ServiceName, adapter.ServiceName())
 }
 
 func TestIAMUserAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewIAMUserAdapter()
+	adapter := NewIAMUserAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(iamuser.IAMUserOutputs{
 		Arn:      "arn:aws:iam::123456789012:user/app-user",
 		UserId:   "AIDAEXAMPLE",

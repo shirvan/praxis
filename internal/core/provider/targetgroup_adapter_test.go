@@ -11,7 +11,7 @@ import (
 )
 
 func TestTargetGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewTargetGroupAdapter()
+	adapter := NewTargetGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion": "praxis.io/v1",
 		"kind": "TargetGroup",

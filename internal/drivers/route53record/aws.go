@@ -2,7 +2,6 @@ package route53record
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	route53sdk "github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -138,37 +138,13 @@ func fromRoute53RecordSet(hostedZoneID string, recordSet route53types.ResourceRe
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidInput" && strings.Contains(strings.ToLower(apiErr.ErrorMessage()), "not found")
-	}
-	errText := strings.ToLower(err.Error())
-	return strings.Contains(errText, "not found")
+	return awserr.HasCode(err, "InvalidInput")
 }
 
 func IsConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "PriorRequestNotComplete"
-	}
-	return strings.Contains(err.Error(), "PriorRequestNotComplete")
+	return awserr.HasCode(err, "PriorRequestNotComplete")
 }
 
 func IsInvalidInput(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidInput" || code == "InvalidChangeBatch"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidInput") || strings.Contains(errText, "InvalidChangeBatch")
+	return awserr.HasCode(err, "InvalidInput", "InvalidChangeBatch")
 }

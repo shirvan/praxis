@@ -9,37 +9,34 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type LambdaLayerDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) LayerAPI
 }
 
-func NewLambdaLayerDriver(accounts *auth.Registry) *LambdaLayerDriver {
-	return NewLambdaLayerDriverWithFactory(accounts, func(cfg aws.Config) LayerAPI {
+func NewLambdaLayerDriver(auth authservice.AuthClient) *LambdaLayerDriver {
+	return NewLambdaLayerDriverWithFactory(auth, func(cfg aws.Config) LayerAPI {
 		return NewLayerAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
-func NewLambdaLayerDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) LayerAPI) *LambdaLayerDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewLambdaLayerDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LayerAPI) *LambdaLayerDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) LayerAPI { return NewLayerAPI(awsclient.NewLambdaClient(cfg)) }
 	}
-	return &LambdaLayerDriver{auth: accounts, apiFactory: factory}
+	return &LambdaLayerDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *LambdaLayerDriver) ServiceName() string { return ServiceName }
 
 func (d *LambdaLayerDriver) Provision(ctx restate.ObjectContext, spec LambdaLayerSpec) (LambdaLayerOutputs, error) {
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return LambdaLayerOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -123,7 +120,7 @@ func (d *LambdaLayerDriver) Provision(ctx restate.ObjectContext, spec LambdaLaye
 }
 
 func (d *LambdaLayerDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LambdaLayerOutputs, error) {
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return LambdaLayerOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -170,7 +167,7 @@ func (d *LambdaLayerDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, LambdaLayerState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -211,7 +208,7 @@ func (d *LambdaLayerDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -280,11 +277,11 @@ func (d *LambdaLayerDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *LambdaLayerDriver) apiForAccount(account string) (LayerAPI, string, error) {
+func (d *LambdaLayerDriver) apiForAccount(ctx restate.ObjectContext, account string) (LayerAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("LambdaLayerDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve Lambda layer account %q: %w", account, err)
 	}

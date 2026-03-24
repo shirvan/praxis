@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type KeyPairDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) KeyPairAPI
 }
 
-func NewKeyPairDriver(accounts *auth.Registry) *KeyPairDriver {
-	return NewKeyPairDriverWithFactory(accounts, func(cfg aws.Config) KeyPairAPI {
+func NewKeyPairDriver(auth authservice.AuthClient) *KeyPairDriver {
+	return NewKeyPairDriverWithFactory(auth, func(cfg aws.Config) KeyPairAPI {
 		return NewKeyPairAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewKeyPairDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) KeyPairAPI) *KeyPairDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewKeyPairDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) KeyPairAPI) *KeyPairDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) KeyPairAPI {
 			return NewKeyPairAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &KeyPairDriver{auth: accounts, apiFactory: factory}
+	return &KeyPairDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *KeyPairDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *KeyPairDriver) ServiceName() string {
 
 func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (KeyPairOutputs, error) {
 	ctx.Log().Info("provisioning key pair", "key", restate.Key(ctx), "keyName", spec.KeyName)
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return KeyPairOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -188,7 +185,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
 
 func (d *KeyPairDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (KeyPairOutputs, error) {
 	ctx.Log().Info("importing key pair", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return KeyPairOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -253,7 +250,7 @@ func (d *KeyPairDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -288,7 +285,7 @@ func (d *KeyPairDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -426,11 +423,11 @@ func (d *KeyPairDriver) scheduleReconcile(ctx restate.ObjectContext, state *KeyP
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *KeyPairDriver) apiForAccount(account string) (KeyPairAPI, string, error) {
+func (d *KeyPairDriver) apiForAccount(ctx restate.ObjectContext, account string) (KeyPairAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("KeyPairDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve key pair account %q: %w", account, err)
 	}

@@ -132,6 +132,7 @@ type DeploymentSummary struct {
 	Key       string           `json:"key"`
 	Status    DeploymentStatus `json:"status"`
 	Resources int              `json:"resources"`
+	Workspace string           `json:"workspace,omitempty"`
 	CreatedAt time.Time        `json:"createdAt"`
 	UpdatedAt time.Time        `json:"updatedAt"`
 }
@@ -142,11 +143,14 @@ type DeploymentSummary struct {
 // TemplatePath is preserved for operator visibility so a deployment record can
 // still point back to the source template location that created it.
 type DeploymentDetail struct {
-	Key          string               `json:"key"`
-	Status       DeploymentStatus     `json:"status"`
-	TemplatePath string               `json:"templatePath"`
-	Resources    []DeploymentResource `json:"resources"`
-	Error        string               `json:"error,omitempty"`
-	CreatedAt    time.Time            `json:"createdAt"`
-	UpdatedAt    time.Time            `json:"updatedAt"`
+	Key            string               `json:"key"`
+	Status         DeploymentStatus     `json:"status"`
+	Workspace      string               `json:"workspace,omitempty"`
+	TemplatePath   string               `json:"templatePath"`
+	Resources      []DeploymentResource `json:"resources"`
+	Error          string               `json:"error,omitempty"`
+	ErrorCode      ErrorCode            `json:"errorCode,omitempty"`
+	ResourceErrors map[string]string    `json:"resourceErrors,omitempty"`
+	CreatedAt      time.Time            `json:"createdAt"`
+	UpdatedAt      time.Time            `json:"updatedAt"`
 }

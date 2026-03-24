@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/sg"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -21,22 +21,14 @@ func (a *SecurityGroupAdapter) Scope() KeyScope {
 // SecurityGroupAdapter adapts generic resource documents to the strongly typed
 // EC2 security group driver.
 type SecurityGroupAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI sg.SGAPI
 	apiFactory        func(aws.Config) sg.SGAPI
 }
 
-// NewSecurityGroupAdapter returns the hardcoded adapter for the SecurityGroup driver.
-func NewSecurityGroupAdapter() *SecurityGroupAdapter {
-	return NewSecurityGroupAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewSecurityGroupAdapterWithRegistry(accounts *auth.Registry) *SecurityGroupAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewSecurityGroupAdapterWithAuth(auth authservice.AuthClient) *SecurityGroupAdapter {
 	return &SecurityGroupAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) sg.SGAPI {
 			return sg.NewSGAPI(awsclient.NewEC2Client(cfg))
 		},
@@ -129,7 +121,7 @@ func (a *SecurityGroupAdapter) Plan(ctx restate.Context, key string, account str
 	if err != nil {
 		return "", nil, err
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -212,14 +204,14 @@ func (a *SecurityGroupAdapter) decodeSpec(doc resourceDocument) (sg.SecurityGrou
 	return spec, nil
 }
 
-func (a *SecurityGroupAdapter) planningAPI(account string) (sg.SGAPI, error) {
+func (a *SecurityGroupAdapter) planningAPI(ctx restate.Context, account string) (sg.SGAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("SecurityGroup adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve SecurityGroup planning account %q: %w", account, err)
 	}

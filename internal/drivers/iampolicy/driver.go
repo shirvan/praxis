@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMPolicyDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMPolicyAPI
 }
 
-func NewIAMPolicyDriver(accounts *auth.Registry) *IAMPolicyDriver {
-	return NewIAMPolicyDriverWithFactory(accounts, func(cfg aws.Config) IAMPolicyAPI {
+func NewIAMPolicyDriver(auth authservice.AuthClient) *IAMPolicyDriver {
+	return NewIAMPolicyDriverWithFactory(auth, func(cfg aws.Config) IAMPolicyAPI {
 		return NewIAMPolicyAPI(awsclient.NewIAMClient(cfg))
 	})
 }
 
-func NewIAMPolicyDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMPolicyAPI) *IAMPolicyDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMPolicyDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMPolicyAPI) *IAMPolicyDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IAMPolicyAPI {
 			return NewIAMPolicyAPI(awsclient.NewIAMClient(cfg))
 		}
 	}
-	return &IAMPolicyDriver{auth: accounts, apiFactory: factory}
+	return &IAMPolicyDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *IAMPolicyDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *IAMPolicyDriver) ServiceName() string {
 
 func (d *IAMPolicyDriver) Provision(ctx restate.ObjectContext, spec IAMPolicySpec) (IAMPolicyOutputs, error) {
 	ctx.Log().Info("provisioning iam policy", "key", restate.Key(ctx), "policyName", spec.PolicyName)
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return IAMPolicyOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -146,7 +143,7 @@ func (d *IAMPolicyDriver) Provision(ctx restate.ObjectContext, spec IAMPolicySpe
 
 func (d *IAMPolicyDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IAMPolicyOutputs, error) {
 	ctx.Log().Info("importing iam policy", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return IAMPolicyOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -214,7 +211,7 @@ func (d *IAMPolicyDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -266,7 +263,7 @@ func (d *IAMPolicyDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileR
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -417,11 +414,11 @@ func (d *IAMPolicyDriver) scheduleReconcile(ctx restate.ObjectContext, state *IA
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *IAMPolicyDriver) apiForAccount(account string) (IAMPolicyAPI, error) {
+func (d *IAMPolicyDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMPolicyAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("iam policy driver is not configured")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAM account %q: %w", account, err)
 	}

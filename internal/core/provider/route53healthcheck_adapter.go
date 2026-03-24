@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/route53healthcheck"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type Route53HealthCheckAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI route53healthcheck.HealthCheckAPI
 	apiFactory        func(aws.Config) route53healthcheck.HealthCheckAPI
 }
 
-func NewRoute53HealthCheckAdapter() *Route53HealthCheckAdapter {
-	return NewRoute53HealthCheckAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewRoute53HealthCheckAdapterWithRegistry(accounts *auth.Registry) *Route53HealthCheckAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewRoute53HealthCheckAdapterWithAuth(auth authservice.AuthClient) *Route53HealthCheckAdapter {
 	return &Route53HealthCheckAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) route53healthcheck.HealthCheckAPI {
 			return route53healthcheck.NewHealthCheckAPI(awsclient.NewRoute53Client(cfg))
 		},
@@ -103,7 +96,7 @@ func (a *Route53HealthCheckAdapter) Plan(ctx restate.Context, key string, accoun
 		}
 		return types.OpCreate, fields, nil
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -174,14 +167,14 @@ func (a *Route53HealthCheckAdapter) decodeSpec(doc resourceDocument) (route53hea
 	return spec, nil
 }
 
-func (a *Route53HealthCheckAdapter) planningAPI(account string) (route53healthcheck.HealthCheckAPI, error) {
+func (a *Route53HealthCheckAdapter) planningAPI(ctx restate.Context, account string) (route53healthcheck.HealthCheckAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("Route53HealthCheck adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Route53HealthCheck planning account %q: %w", account, err)
 	}

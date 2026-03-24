@@ -9,33 +9,30 @@ import (
 	stssdk "github.com/aws/aws-sdk-go-v2/service/sts"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ElasticIPDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) EIPAPI
 }
 
-func NewElasticIPDriver(accounts *auth.Registry) *ElasticIPDriver {
-	return NewElasticIPDriverWithFactory(accounts, func(cfg aws.Config) EIPAPI {
+func NewElasticIPDriver(auth authservice.AuthClient) *ElasticIPDriver {
+	return NewElasticIPDriverWithFactory(auth, func(cfg aws.Config) EIPAPI {
 		return NewEIPAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewElasticIPDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) EIPAPI) *ElasticIPDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewElasticIPDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EIPAPI) *ElasticIPDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) EIPAPI {
 			return NewEIPAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &ElasticIPDriver{auth: accounts, apiFactory: factory}
+	return &ElasticIPDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *ElasticIPDriver) ServiceName() string {
@@ -44,7 +41,7 @@ func (d *ElasticIPDriver) ServiceName() string {
 
 func (d *ElasticIPDriver) Provision(ctx restate.ObjectContext, spec ElasticIPSpec) (ElasticIPOutputs, error) {
 	ctx.Log().Info("provisioning elastic IP", "key", restate.Key(ctx))
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return ElasticIPOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -176,7 +173,7 @@ func (d *ElasticIPDriver) Provision(ctx restate.ObjectContext, spec ElasticIPSpe
 
 func (d *ElasticIPDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ElasticIPOutputs, error) {
 	ctx.Log().Info("importing elastic IP", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return ElasticIPOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -244,7 +241,7 @@ func (d *ElasticIPDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -282,7 +279,7 @@ func (d *ElasticIPDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileR
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -409,11 +406,11 @@ func (d *ElasticIPDriver) scheduleReconcile(ctx restate.ObjectContext, state *El
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *ElasticIPDriver) apiForAccount(account string) (EIPAPI, string, error) {
+func (d *ElasticIPDriver) apiForAccount(ctx restate.ObjectContext, account string) (EIPAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("ElasticIPDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve Elastic IP account %q: %w", account, err)
 	}
@@ -453,7 +450,7 @@ func (d *ElasticIPDriver) accountIDForAccount(ctx restate.Context, account strin
 	if d == nil || d.auth == nil {
 		return "", restate.TerminalError(fmt.Errorf("ElasticIPDriver is not configured with an auth registry"), 500)
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return "", restate.TerminalError(fmt.Errorf("resolve Elastic IP account %q: %w", account, err), 400)
 	}

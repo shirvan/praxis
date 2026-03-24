@@ -2,14 +2,14 @@ package igw
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -224,57 +224,21 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidInternetGatewayID.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidInternetGatewayID.NotFound")
+	return awserr.HasCode(err, "InvalidInternetGatewayID.NotFound")
 }
 
 func IsDependencyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DependencyViolation"
-	}
-	return strings.Contains(err.Error(), "DependencyViolation")
+	return awserr.HasCode(err, "DependencyViolation")
 }
 
 func IsAlreadyAttached(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "Resource.AlreadyAssociated"
-	}
-	return strings.Contains(err.Error(), "Resource.AlreadyAssociated")
+	return awserr.HasCode(err, "Resource.AlreadyAssociated")
 }
 
 func IsNotAttached(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "Gateway.NotAttached"
-	}
-	return strings.Contains(err.Error(), "Gateway.NotAttached")
+	return awserr.HasCode(err, "Gateway.NotAttached")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidParameterCombination"
-	}
-	return strings.Contains(err.Error(), "InvalidParameterValue") || strings.Contains(err.Error(), "InvalidParameterCombination")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

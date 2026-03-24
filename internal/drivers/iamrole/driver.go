@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMRoleDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMRoleAPI
 }
 
-func NewIAMRoleDriver(accounts *auth.Registry) *IAMRoleDriver {
-	return NewIAMRoleDriverWithFactory(accounts, func(cfg aws.Config) IAMRoleAPI {
+func NewIAMRoleDriver(auth authservice.AuthClient) *IAMRoleDriver {
+	return NewIAMRoleDriverWithFactory(auth, func(cfg aws.Config) IAMRoleAPI {
 		return NewIAMRoleAPI(awsclient.NewIAMClient(cfg))
 	})
 }
 
-func NewIAMRoleDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMRoleAPI) *IAMRoleDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMRoleDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMRoleAPI) *IAMRoleDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IAMRoleAPI {
 			return NewIAMRoleAPI(awsclient.NewIAMClient(cfg))
 		}
 	}
-	return &IAMRoleDriver{auth: accounts, apiFactory: factory}
+	return &IAMRoleDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *IAMRoleDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *IAMRoleDriver) ServiceName() string {
 
 func (d *IAMRoleDriver) Provision(ctx restate.ObjectContext, spec IAMRoleSpec) (IAMRoleOutputs, error) {
 	ctx.Log().Info("provisioning iam role", "key", restate.Key(ctx), "roleName", spec.RoleName)
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return IAMRoleOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -166,7 +163,7 @@ func (d *IAMRoleDriver) Provision(ctx restate.ObjectContext, spec IAMRoleSpec) (
 
 func (d *IAMRoleDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IAMRoleOutputs, error) {
 	ctx.Log().Info("importing iam role", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return IAMRoleOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -234,7 +231,7 @@ func (d *IAMRoleDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -303,7 +300,7 @@ func (d *IAMRoleDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -534,11 +531,11 @@ func (d *IAMRoleDriver) scheduleReconcile(ctx restate.ObjectContext, state *IAMR
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *IAMRoleDriver) apiForAccount(account string) (IAMRoleAPI, error) {
+func (d *IAMRoleDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMRoleAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("iam role driver is not configured")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAM account %q: %w", account, err)
 	}

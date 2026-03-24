@@ -67,11 +67,13 @@ which is useful for debugging variable resolution and output expressions.`,
 
 			client := flags.newClient()
 			ctx := context.Background()
+			cliCfg := LoadCLIConfig()
 
 			resp, err := client.Plan(ctx, types.PlanRequest{
 				Template:  string(content),
 				Variables: variables,
 				Account:   account,
+				Workspace: cliCfg.ActiveWorkspace,
 				Targets:   targets,
 			})
 			if err != nil {

@@ -10,7 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -303,49 +304,17 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DBInstanceNotFound"
-	}
-	return strings.Contains(err.Error(), "DBInstanceNotFound")
+	return awserr.HasCode(err, "DBInstanceNotFound")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DBInstanceAlreadyExists"
-	}
-	return strings.Contains(err.Error(), "DBInstanceAlreadyExists")
+	return awserr.HasCode(err, "DBInstanceAlreadyExists")
 }
 
 func IsInvalidState(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidDBInstanceState" || code == "InvalidDBClusterStateFault"
-	}
-	text := err.Error()
-	return strings.Contains(text, "InvalidDBInstanceState") || strings.Contains(text, "InvalidDBClusterStateFault")
+	return awserr.HasCode(err, "InvalidDBInstanceState", "InvalidDBClusterStateFault")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidParameterCombination"
-	}
-	text := err.Error()
-	return strings.Contains(text, "InvalidParameterValue") || strings.Contains(text, "InvalidParameterCombination")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

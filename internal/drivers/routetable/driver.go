@@ -8,33 +8,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type RouteTableDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RouteTableAPI
 }
 
-func NewRouteTableDriver(accounts *auth.Registry) *RouteTableDriver {
-	return NewRouteTableDriverWithFactory(accounts, func(cfg aws.Config) RouteTableAPI {
+func NewRouteTableDriver(auth authservice.AuthClient) *RouteTableDriver {
+	return NewRouteTableDriverWithFactory(auth, func(cfg aws.Config) RouteTableAPI {
 		return NewRouteTableAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewRouteTableDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) RouteTableAPI) *RouteTableDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewRouteTableDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RouteTableAPI) *RouteTableDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) RouteTableAPI {
 			return NewRouteTableAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &RouteTableDriver{auth: accounts, apiFactory: factory}
+	return &RouteTableDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *RouteTableDriver) ServiceName() string {
@@ -58,7 +55,7 @@ func (d *RouteTableDriver) Provision(ctx restate.ObjectContext, spec RouteTableS
 		return RouteTableOutputs{}, restate.TerminalError(fmt.Errorf("vpcId is required"), 400)
 	}
 
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return RouteTableOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -174,7 +171,7 @@ func (d *RouteTableDriver) Provision(ctx restate.ObjectContext, spec RouteTableS
 
 func (d *RouteTableDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (RouteTableOutputs, error) {
 	ctx.Log().Info("importing route table", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return RouteTableOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -235,7 +232,7 @@ func (d *RouteTableDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -348,7 +345,7 @@ func (d *RouteTableDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -651,11 +648,11 @@ func defaultRouteTableImportMode(mode types.Mode) types.Mode {
 	return mode
 }
 
-func (d *RouteTableDriver) apiForAccount(account string) (RouteTableAPI, string, error) {
+func (d *RouteTableDriver) apiForAccount(ctx restate.ObjectContext, account string) (RouteTableAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("RouteTableDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve RouteTable account %q: %w", account, err)
 	}

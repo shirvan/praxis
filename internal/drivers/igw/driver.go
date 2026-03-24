@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IGWDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IGWAPI
 }
 
-func NewIGWDriver(accounts *auth.Registry) *IGWDriver {
-	return NewIGWDriverWithFactory(accounts, func(cfg aws.Config) IGWAPI {
+func NewIGWDriver(auth authservice.AuthClient) *IGWDriver {
+	return NewIGWDriverWithFactory(auth, func(cfg aws.Config) IGWAPI {
 		return NewIGWAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewIGWDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IGWAPI) *IGWDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIGWDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IGWAPI) *IGWDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IGWAPI {
 			return NewIGWAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &IGWDriver{auth: accounts, apiFactory: factory}
+	return &IGWDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *IGWDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *IGWDriver) ServiceName() string {
 
 func (d *IGWDriver) Provision(ctx restate.ObjectContext, spec IGWSpec) (IGWOutputs, error) {
 	ctx.Log().Info("provisioning internet gateway", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return IGWOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -223,7 +220,7 @@ func (d *IGWDriver) Provision(ctx restate.ObjectContext, spec IGWSpec) (IGWOutpu
 
 func (d *IGWDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IGWOutputs, error) {
 	ctx.Log().Info("importing internet gateway", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return IGWOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -291,7 +288,7 @@ func (d *IGWDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -373,7 +370,7 @@ func (d *IGWDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -532,11 +529,11 @@ func (d *IGWDriver) scheduleReconcile(ctx restate.ObjectContext, state *IGWState
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *IGWDriver) apiForAccount(account string) (IGWAPI, string, error) {
+func (d *IGWDriver) apiForAccount(ctx restate.ObjectContext, account string) (IGWAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("IGWDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve internet gateway account %q: %w", account, err)
 	}

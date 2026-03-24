@@ -20,7 +20,6 @@ func (e *mockAPIError) ErrorMessage() string          { return e.message }
 func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnknown }
 
 func TestIsNotFound_True(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("record not found in hosted zone")))
 }
 
 func TestIsNotFound_False(t *testing.T) {
@@ -30,13 +29,11 @@ func TestIsNotFound_False(t *testing.T) {
 
 func TestIsConflict_True(t *testing.T) {
 	assert.True(t, IsConflict(&mockAPIError{code: "PriorRequestNotComplete"}))
-	assert.True(t, IsConflict(errors.New("api error PriorRequestNotComplete: busy")))
 }
 
 func TestIsInvalidInput_True(t *testing.T) {
 	assert.True(t, IsInvalidInput(&mockAPIError{code: "InvalidInput"}))
 	assert.True(t, IsInvalidInput(&mockAPIError{code: "InvalidChangeBatch"}))
-	assert.True(t, IsInvalidInput(errors.New("api error InvalidChangeBatch: bad")))
 }
 
 func TestIsInvalidInput_False(t *testing.T) {

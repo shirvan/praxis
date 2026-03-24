@@ -11,7 +11,7 @@ import (
 )
 
 func TestSubnetAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewSubnetAdapter()
+	adapter := NewSubnetAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"Subnet",
@@ -44,14 +44,14 @@ func TestSubnetAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestSubnetAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewSubnetAdapter()
+	adapter := NewSubnetAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "subnet-0abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~subnet-0abc123", key)
 }
 
 func TestSubnetAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewSubnetAdapter()
+	adapter := NewSubnetAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(subnet.SubnetOutputs{
 		SubnetId:            "subnet-123",
 		ARN:                 "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-123",
@@ -74,7 +74,7 @@ func TestSubnetAdapter_NormalizeOutputs(t *testing.T) {
 }
 
 func TestSubnetAdapter_DecodeSpec_MissingVpcID(t *testing.T) {
-	adapter := NewSubnetAdapter()
+	adapter := NewSubnetAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"Subnet",
 		"metadata":{"name":"public-a"},
@@ -86,7 +86,7 @@ func TestSubnetAdapter_DecodeSpec_MissingVpcID(t *testing.T) {
 }
 
 func TestSubnetAdapter_DecodeSpec_MissingAvailabilityZone(t *testing.T) {
-	adapter := NewSubnetAdapter()
+	adapter := NewSubnetAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"Subnet",
 		"metadata":{"name":"public-a"},

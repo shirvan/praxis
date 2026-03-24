@@ -11,7 +11,7 @@ import (
 )
 
 func TestNATGatewayAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewNATGatewayAdapter()
+	adapter := NewNATGatewayAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"NATGateway",
@@ -37,14 +37,14 @@ func TestNATGatewayAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestNATGatewayAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewNATGatewayAdapter()
+	adapter := NewNATGatewayAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "nat-123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~nat-123", key)
 }
 
 func TestNATGatewayAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewNATGatewayAdapter()
+	adapter := NewNATGatewayAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(natgw.NATGatewayOutputs{
 		NatGatewayId:       "nat-123",
 		SubnetId:           "subnet-123",

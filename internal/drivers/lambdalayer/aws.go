@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,7 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -358,25 +358,17 @@ func validateCode(code CodeSpec) error {
 }
 
 func IsNotFound(err error) bool {
-	return hasLayerErrorCode(err, "ResourceNotFoundException") || strings.Contains(strings.ToLower(err.Error()), "not found")
+	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
 func IsInvalidParameter(err error) bool {
-	return hasLayerErrorCode(err, "InvalidParameterValueException")
+	return awserr.HasCode(err, "InvalidParameterValueException")
 }
 
 func IsConflict(err error) bool {
-	return hasLayerErrorCode(err, "ResourceConflictException")
+	return awserr.HasCode(err, "ResourceConflictException")
 }
 
 func IsPolicyNotFound(err error) bool {
-	return hasLayerErrorCode(err, "ResourceNotFoundException") && strings.Contains(strings.ToLower(err.Error()), "policy")
-}
-
-func hasLayerErrorCode(err error, code string) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == code
-	}
-	return strings.Contains(err.Error(), code)
+	return awserr.HasCode(err, "ResourceNotFoundException") && strings.Contains(strings.ToLower(err.Error()), "policy")
 }

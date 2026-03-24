@@ -11,7 +11,7 @@ import (
 )
 
 func TestLambdaPermissionAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewLambdaPermissionAdapter()
+	adapter := NewLambdaPermissionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"LambdaPermission",
@@ -34,14 +34,14 @@ func TestLambdaPermissionAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestLambdaPermissionAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewLambdaPermissionAdapter()
+	adapter := NewLambdaPermissionAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "processor~allow-s3")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~processor~allow-s3", key)
 }
 
 func TestLambdaPermissionAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewLambdaPermissionAdapter()
+	adapter := NewLambdaPermissionAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(lambdaperm.LambdaPermissionOutputs{StatementId: "allow-s3", FunctionName: "processor", Statement: `{"Sid":"allow-s3"}`})
 	require.NoError(t, err)
 	assert.Equal(t, "allow-s3", out["statementId"])

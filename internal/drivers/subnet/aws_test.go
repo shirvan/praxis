@@ -1,7 +1,6 @@
 package subnet
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -22,7 +21,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidSubnetID.NotFound"}))
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidSubnetID.Malformed"}))
-	assert.True(t, IsNotFound(errors.New("api error InvalidSubnetID.NotFound: missing subnet")))
 }
 
 func TestIsDependencyViolation_True(t *testing.T) {

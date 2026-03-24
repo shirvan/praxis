@@ -11,7 +11,7 @@ import (
 )
 
 func TestNetworkACLAdapter_BuildKey(t *testing.T) {
-	adapter := NewNetworkACLAdapter()
+	adapter := NewNetworkACLAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"NetworkACL",
@@ -32,7 +32,7 @@ func TestNetworkACLAdapter_BuildKey(t *testing.T) {
 }
 
 func TestNetworkACLAdapter_DecodeSpecAndNormalizeOutputs(t *testing.T) {
-	adapter := NewNetworkACLAdapter()
+	adapter := NewNetworkACLAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"NetworkACL",
@@ -59,7 +59,7 @@ func TestNetworkACLAdapter_DecodeSpecAndNormalizeOutputs(t *testing.T) {
 }
 
 func TestNetworkACLAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewNetworkACLAdapter()
+	adapter := NewNetworkACLAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "acl-123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~acl-123", key)

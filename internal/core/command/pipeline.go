@@ -61,7 +61,7 @@ func (s *PraxisCommandService) compileTemplate(
 		return nil, restate.TerminalError(err, 400)
 	}
 
-	ssmResolver, err := s.newSSMResolver(accountName)
+	ssmResolver, err := s.newSSMResolver(ctx, accountName)
 	if err != nil {
 		return nil, restate.TerminalError(err, 500)
 	}
@@ -125,6 +125,7 @@ func (s *PraxisCommandService) submitDeployment(
 	ctx restate.Context,
 	deploymentKey string,
 	account string,
+	workspace string,
 	variables map[string]any,
 	compiled *compiledTemplate,
 	forceReplace []string,
@@ -137,7 +138,7 @@ func (s *PraxisCommandService) submitDeployment(
 	}
 	if existingState != nil && existingState.Status == types.DeploymentDeleting {
 		return "", "", restate.TerminalError(
-			fmt.Errorf("deployment %q is currently deleting", deploymentKey), 409)
+			fmt.Errorf("deployment %q is currently deleting; wait for deletion to complete or run 'praxis observe Deployment/%s'", deploymentKey, deploymentKey), 409)
 	}
 
 	createdAt, err := restate.Run(ctx, func(runCtx restate.RunContext) (time.Time, error) {
@@ -164,6 +165,7 @@ func (s *PraxisCommandService) submitDeployment(
 	plan := orchestrator.DeploymentPlan{
 		Key:          deploymentKey,
 		Account:      account,
+		Workspace:    workspace,
 		Resources:    compiled.PlanResources,
 		Variables:    variables,
 		CreatedAt:    createdAt,
@@ -184,6 +186,7 @@ func (s *PraxisCommandService) submitDeployment(
 		Key:       deploymentKey,
 		Status:    types.DeploymentPending,
 		Resources: len(plan.Resources),
+		Workspace: workspace,
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,
 	})
@@ -281,7 +284,7 @@ func policySources(record types.PolicyRecord) []template.PolicySource {
 
 func (s *PraxisCommandService) buildResourceNodes(specs map[string]json.RawMessage) ([]*types.ResourceNode, error) {
 	if len(specs) == 0 {
-		return nil, fmt.Errorf("template rendered no resources")
+		return nil, fmt.Errorf("template rendered no resources; ensure the template defines a top-level 'resources' block with at least one resource")
 	}
 
 	names := make([]string, 0, len(specs))

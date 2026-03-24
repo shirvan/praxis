@@ -11,7 +11,7 @@ import (
 )
 
 func TestRoute53HostedZoneAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewRoute53HostedZoneAdapter()
+	adapter := NewRoute53HostedZoneAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"Route53HostedZone",
@@ -37,7 +37,7 @@ func TestRoute53HostedZoneAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestRoute53HostedZoneAdapter_NormalizeOutputsAndImportKey(t *testing.T) {
-	adapter := NewRoute53HostedZoneAdapter()
+	adapter := NewRoute53HostedZoneAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(route53zone.HostedZoneOutputs{
 		HostedZoneId: "Z123456789",
 		Name:         "example.com",

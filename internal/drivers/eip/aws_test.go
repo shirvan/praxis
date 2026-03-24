@@ -21,7 +21,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidAllocationID.NotFound"}))
-	assert.True(t, IsNotFound(errors.New("api error InvalidAllocationID.NotFound: allocation missing")))
 }
 
 func TestIsNotFound_False(t *testing.T) {
@@ -32,11 +31,15 @@ func TestIsNotFound_False(t *testing.T) {
 
 func TestIsAssociationExists_True(t *testing.T) {
 	assert.True(t, IsAssociationExists(&mockAPIError{code: "InvalidIPAddress.InUse"}))
-	assert.True(t, IsAssociationExists(errors.New("address is already associated")))
 }
 
 func TestIsAddressLimitExceeded_True(t *testing.T) {
 	assert.True(t, IsAddressLimitExceeded(&mockAPIError{code: "AddressLimitExceeded"}))
+}
+
+func TestIsQuotaExceeded_True(t *testing.T) {
+	assert.True(t, IsQuotaExceeded(&mockAPIError{code: "AddressLimitExceeded"}))
+	assert.False(t, IsQuotaExceeded(nil))
 }
 
 func TestSingleManagedKeyMatch_Found(t *testing.T) {

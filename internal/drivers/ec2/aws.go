@@ -14,6 +14,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -345,16 +347,7 @@ func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (s
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidInstanceID.NotFound" || code == "InvalidInstanceID.Malformed"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidInstanceID.NotFound")
+	return awserr.HasCode(err, "InvalidInstanceID.NotFound", "InvalidInstanceID.Malformed")
 }
 
 func IsTerminated(err error) bool {
@@ -366,31 +359,11 @@ func IsTerminated(err error) bool {
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" ||
-			code == "InvalidAMIID.Malformed" ||
-			code == "InvalidAMIID.NotFound" ||
-			code == "InvalidSubnetID.NotFound" ||
-			code == "InvalidGroup.NotFound"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound", "InvalidSubnetID.NotFound", "InvalidGroup.NotFound")
 }
 
 func IsInsufficientCapacity(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InsufficientInstanceCapacity" || code == "InstanceLimitExceeded" || code == "Unsupported"
-	}
-	return false
+	return awserr.HasCode(err, "InsufficientInstanceCapacity", "InstanceLimitExceeded", "Unsupported")
 }
 
 func base64Encode(s string) string {

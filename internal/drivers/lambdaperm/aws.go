@@ -3,13 +3,12 @@ package lambdaperm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -172,25 +171,17 @@ func extractConditionValue(condition any, key string) string {
 }
 
 func IsNotFound(err error) bool {
-	return hasPermissionErrorCode(err, "ResourceNotFoundException") || strings.Contains(strings.ToLower(err.Error()), "not found")
+	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
 func IsConflict(err error) bool {
-	return hasPermissionErrorCode(err, "ResourceConflictException")
+	return awserr.HasCode(err, "ResourceConflictException")
 }
 
 func IsPreconditionFailed(err error) bool {
-	return hasPermissionErrorCode(err, "PreconditionFailedException")
+	return awserr.HasCode(err, "PreconditionFailedException")
 }
 
 func IsThrottled(err error) bool {
-	return hasPermissionErrorCode(err, "TooManyRequestsException")
-}
-
-func hasPermissionErrorCode(err error, code string) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == code
-	}
-	return strings.Contains(err.Error(), code)
+	return awserr.HasCode(err, "TooManyRequestsException")
 }

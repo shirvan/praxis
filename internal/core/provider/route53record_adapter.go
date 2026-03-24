@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/route53record"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type Route53RecordAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI route53record.RecordAPI
 	apiFactory        func(aws.Config) route53record.RecordAPI
 }
 
-func NewRoute53RecordAdapter() *Route53RecordAdapter {
-	return NewRoute53RecordAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewRoute53RecordAdapterWithRegistry(accounts *auth.Registry) *Route53RecordAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewRoute53RecordAdapterWithAuth(auth authservice.AuthClient) *Route53RecordAdapter {
 	return &Route53RecordAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) route53record.RecordAPI {
 			return route53record.NewRecordAPI(awsclient.NewRoute53Client(cfg))
 		},
@@ -124,7 +117,7 @@ func (a *Route53RecordAdapter) Plan(ctx restate.Context, key string, account str
 		}
 		return types.OpCreate, fields, nil
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -204,14 +197,14 @@ func (a *Route53RecordAdapter) decodeSpec(doc resourceDocument) (route53record.R
 	return spec, nil
 }
 
-func (a *Route53RecordAdapter) planningAPI(account string) (route53record.RecordAPI, error) {
+func (a *Route53RecordAdapter) planningAPI(ctx restate.Context, account string) (route53record.RecordAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("Route53Record adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Route53Record planning account %q: %w", account, err)
 	}

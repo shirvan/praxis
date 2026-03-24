@@ -8,33 +8,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type EC2InstanceDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) EC2API
 }
 
-func NewEC2InstanceDriver(accounts *auth.Registry) *EC2InstanceDriver {
-	return NewEC2InstanceDriverWithFactory(accounts, func(cfg aws.Config) EC2API {
+func NewEC2InstanceDriver(auth authservice.AuthClient) *EC2InstanceDriver {
+	return NewEC2InstanceDriverWithFactory(auth, func(cfg aws.Config) EC2API {
 		return NewEC2API(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewEC2InstanceDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) EC2API) *EC2InstanceDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewEC2InstanceDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EC2API) *EC2InstanceDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) EC2API {
 			return NewEC2API(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &EC2InstanceDriver{auth: accounts, apiFactory: factory}
+	return &EC2InstanceDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *EC2InstanceDriver) ServiceName() string {
@@ -43,7 +40,7 @@ func (d *EC2InstanceDriver) ServiceName() string {
 
 func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2InstanceSpec) (EC2InstanceOutputs, error) {
 	ctx.Log().Info("provisioning EC2 instance", "name", spec.Tags["Name"], "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return EC2InstanceOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -241,7 +238,7 @@ func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2Instanc
 
 func (d *EC2InstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (EC2InstanceOutputs, error) {
 	ctx.Log().Info("importing EC2 instance", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return EC2InstanceOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -311,7 +308,7 @@ func (d *EC2InstanceDriver) Delete(ctx restate.ObjectContext) error {
 		return restate.TerminalError(fmt.Errorf("cannot delete instance %s: resource is in Observed mode; re-import with --mode managed to allow deletion", state.Outputs.InstanceId), 409)
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -351,7 +348,7 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -516,11 +513,11 @@ func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *EC2InstanceDriver) apiForAccount(account string) (EC2API, string, error) {
+func (d *EC2InstanceDriver) apiForAccount(ctx restate.ObjectContext, account string) (EC2API, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("EC2InstanceDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve EC2 account %q: %w", account, err)
 	}

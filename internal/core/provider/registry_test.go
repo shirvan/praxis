@@ -59,7 +59,7 @@ func TestValidateKeyPart_Valid(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestS3Adapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewS3Adapter()
+	adapter := NewS3AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"S3Bucket",
@@ -87,20 +87,20 @@ func TestS3Adapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestS3Adapter_BuildImportKey(t *testing.T) {
-	adapter := NewS3Adapter()
+	adapter := NewS3AdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "my-bucket")
 	require.NoError(t, err)
 	assert.Equal(t, "my-bucket", key)
 }
 
 func TestS3Adapter_Kind(t *testing.T) {
-	adapter := NewS3Adapter()
+	adapter := NewS3AdapterWithAuth(nil)
 	assert.Equal(t, s3.ServiceName, adapter.Kind())
 	assert.Equal(t, s3.ServiceName, adapter.ServiceName())
 }
 
 func TestS3Adapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewS3Adapter()
+	adapter := NewS3AdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(s3.S3BucketOutputs{
 		ARN:        "arn:aws:s3:::my-bucket",
 		BucketName: "my-bucket",
@@ -115,13 +115,13 @@ func TestS3Adapter_NormalizeOutputs(t *testing.T) {
 }
 
 func TestS3Adapter_NormalizeOutputs_WrongType(t *testing.T) {
-	adapter := NewS3Adapter()
+	adapter := NewS3AdapterWithAuth(nil)
 	_, err := adapter.NormalizeOutputs("not-an-output")
 	require.Error(t, err)
 }
 
 func TestS3Adapter_DecodeSpec_InvalidJSON(t *testing.T) {
-	adapter := NewS3Adapter()
+	adapter := NewS3AdapterWithAuth(nil)
 	_, err := adapter.DecodeSpec(json.RawMessage(`{invalid`))
 	require.Error(t, err)
 }
@@ -131,7 +131,7 @@ func TestS3Adapter_DecodeSpec_InvalidJSON(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSecurityGroupAdapter_BuildKey(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"SecurityGroup",
@@ -153,7 +153,7 @@ func TestSecurityGroupAdapter_BuildKey(t *testing.T) {
 }
 
 func TestSecurityGroupAdapter_BuildKey_NoRegionLabel(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"SecurityGroup",
@@ -174,20 +174,20 @@ func TestSecurityGroupAdapter_BuildKey_NoRegionLabel(t *testing.T) {
 }
 
 func TestSecurityGroupAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "sg-0abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "sg-0abc123", key)
 }
 
 func TestSecurityGroupAdapter_Kind(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	assert.Equal(t, sg.ServiceName, adapter.Kind())
 	assert.Equal(t, sg.ServiceName, adapter.ServiceName())
 }
 
 func TestSecurityGroupAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(sg.SecurityGroupOutputs{
 		GroupId:  "sg-12345",
 		GroupArn: "arn:aws:ec2:us-east-1:123:security-group/sg-12345",
@@ -200,13 +200,13 @@ func TestSecurityGroupAdapter_NormalizeOutputs(t *testing.T) {
 }
 
 func TestSecurityGroupAdapter_NormalizeOutputs_WrongType(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	_, err := adapter.NormalizeOutputs(42)
 	require.Error(t, err)
 }
 
 func TestSecurityGroupAdapter_DecodeSpec_InvalidJSON(t *testing.T) {
-	adapter := NewSecurityGroupAdapter()
+	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	_, err := adapter.DecodeSpec(json.RawMessage(`not-json`))
 	require.Error(t, err)
 }
@@ -216,133 +216,133 @@ func TestSecurityGroupAdapter_DecodeSpec_InvalidJSON(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRegistry_Get_UnsupportedKind(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	_, err := registry.Get("NoSuchKind")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported resource kind")
 }
 
 func TestRegistry_Get_LambdaLayer(t *testing.T) {
-	registry := NewRegistryWithAdapters(NewLambdaLayerAdapter())
+	registry := NewRegistryWithAdapters(NewLambdaLayerAdapterWithAuth(nil))
 	adapter, err := registry.Get(lambdalayer.ServiceName)
 	require.NoError(t, err)
 	assert.Equal(t, lambdalayer.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_LambdaPermission(t *testing.T) {
-	registry := NewRegistryWithAdapters(NewLambdaPermissionAdapter())
+	registry := NewRegistryWithAdapters(NewLambdaPermissionAdapterWithAuth(nil))
 	adapter, err := registry.Get(lambdaperm.ServiceName)
 	require.NoError(t, err)
 	assert.Equal(t, lambdaperm.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_ESM(t *testing.T) {
-	registry := NewRegistryWithAdapters(NewESMAdapter())
+	registry := NewRegistryWithAdapters(NewESMAdapterWithAuth(nil))
 	adapter, err := registry.Get(esm.ServiceName)
 	require.NoError(t, err)
 	assert.Equal(t, esm.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_S3(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("S3Bucket")
 	require.NoError(t, err)
 	assert.Equal(t, "S3Bucket", adapter.Kind())
 }
 
 func TestRegistry_Get_EC2Instance(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("EC2Instance")
 	require.NoError(t, err)
 	assert.Equal(t, ec2.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_LambdaFunction(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("LambdaFunction")
 	require.NoError(t, err)
 	assert.Equal(t, lambda.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_EBSVolume(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("EBSVolume")
 	require.NoError(t, err)
 	assert.Equal(t, ebs.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_ElasticIP(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("ElasticIP")
 	require.NoError(t, err)
 	assert.Equal(t, eip.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_IAMInstanceProfile(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("IAMInstanceProfile")
 	require.NoError(t, err)
 	assert.Equal(t, iaminstanceprofile.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_IAMRole(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("IAMRole")
 	require.NoError(t, err)
 	assert.Equal(t, iamrole.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_IAMUser(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("IAMUser")
 	require.NoError(t, err)
 	assert.Equal(t, iamuser.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_AMI(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("AMI")
 	require.NoError(t, err)
 	assert.Equal(t, ami.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_SecurityGroup(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("SecurityGroup")
 	require.NoError(t, err)
 	assert.Equal(t, "SecurityGroup", adapter.Kind())
 }
 
 func TestRegistry_Get_NetworkACL(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("NetworkACL")
 	require.NoError(t, err)
 	assert.Equal(t, nacl.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_Subnet(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("Subnet")
 	require.NoError(t, err)
 	assert.Equal(t, subnet.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_Route53HostedZone(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("Route53HostedZone")
 	require.NoError(t, err)
 	assert.Equal(t, route53zone.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_Route53Record(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("Route53Record")
 	require.NoError(t, err)
 	assert.Equal(t, route53record.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_Route53HealthCheck(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	adapter, err := registry.Get("Route53HealthCheck")
 	require.NoError(t, err)
 	assert.Equal(t, route53healthcheck.ServiceName, adapter.Kind())
@@ -359,7 +359,7 @@ func TestRegistry_NilSafety(t *testing.T) {
 }
 
 func TestRegistry_All_ReturnsDefensiveCopy(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewRegistry(nil)
 	all := registry.All()
 	require.NotEmpty(t, all)
 
@@ -370,7 +370,7 @@ func TestRegistry_All_ReturnsDefensiveCopy(t *testing.T) {
 }
 
 func TestNewRegistryWithAdapters_SkipsNil(t *testing.T) {
-	registry := NewRegistryWithAdapters(nil, NewS3Adapter(), nil)
+	registry := NewRegistryWithAdapters(nil, NewS3AdapterWithAuth(nil), nil)
 	all := registry.All()
 	assert.Len(t, all, 1)
 }

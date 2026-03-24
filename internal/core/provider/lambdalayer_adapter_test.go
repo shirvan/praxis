@@ -11,7 +11,7 @@ import (
 )
 
 func TestLambdaLayerAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewLambdaLayerAdapter()
+	adapter := NewLambdaLayerAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"LambdaLayer",
@@ -34,14 +34,14 @@ func TestLambdaLayerAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestLambdaLayerAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewLambdaLayerAdapter()
+	adapter := NewLambdaLayerAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "deps")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~deps", key)
 }
 
 func TestLambdaLayerAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewLambdaLayerAdapter()
+	adapter := NewLambdaLayerAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(lambdalayer.LambdaLayerOutputs{LayerArn: "arn:aws:lambda:us-east-1:123:layer:deps", LayerVersionArn: "arn:aws:lambda:us-east-1:123:layer:deps:7", LayerName: "deps", Version: 7, CodeSha256: "abc"})
 	require.NoError(t, err)
 	assert.Equal(t, "deps", out["layerName"])

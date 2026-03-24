@@ -11,7 +11,7 @@ import (
 )
 
 func TestIAMGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewIAMGroupAdapter()
+	adapter := NewIAMGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"IAMGroup",
@@ -39,20 +39,20 @@ func TestIAMGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestIAMGroupAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewIAMGroupAdapter()
+	adapter := NewIAMGroupAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "app-group")
 	require.NoError(t, err)
 	assert.Equal(t, "app-group", key)
 }
 
 func TestIAMGroupAdapter_Kind(t *testing.T) {
-	adapter := NewIAMGroupAdapter()
+	adapter := NewIAMGroupAdapterWithAuth(nil)
 	assert.Equal(t, iamgroup.ServiceName, adapter.Kind())
 	assert.Equal(t, iamgroup.ServiceName, adapter.ServiceName())
 }
 
 func TestIAMGroupAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewIAMGroupAdapter()
+	adapter := NewIAMGroupAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(iamgroup.IAMGroupOutputs{
 		Arn:       "arn:aws:iam::123456789012:group/app-group",
 		GroupId:   "AGPAEXAMPLE",

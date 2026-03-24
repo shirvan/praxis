@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/natgw"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type NATGatewayAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI natgw.NATGatewayAPI
 	apiFactory        func(aws.Config) natgw.NATGatewayAPI
 }
 
-func NewNATGatewayAdapter() *NATGatewayAdapter {
-	return NewNATGatewayAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewNATGatewayAdapterWithRegistry(accounts *auth.Registry) *NATGatewayAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewNATGatewayAdapterWithAuth(auth authservice.AuthClient) *NATGatewayAdapter {
 	return &NATGatewayAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) natgw.NATGatewayAPI {
 			return natgw.NewNATGatewayAPI(awsclient.NewEC2Client(cfg))
 		},
@@ -146,7 +139,7 @@ func (a *NATGatewayAdapter) Plan(ctx restate.Context, key string, account string
 		return types.OpCreate, fields, nil
 	}
 
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -250,14 +243,14 @@ func (a *NATGatewayAdapter) decodeSpec(doc resourceDocument) (natgw.NATGatewaySp
 	return spec, nil
 }
 
-func (a *NATGatewayAdapter) planningAPI(account string) (natgw.NATGatewayAPI, error) {
+func (a *NATGatewayAdapter) planningAPI(ctx restate.Context, account string) (natgw.NATGatewayAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("NATGateway adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve NATGateway planning account %q: %w", account, err)
 	}

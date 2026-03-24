@@ -11,7 +11,7 @@ import (
 )
 
 func TestIAMRoleAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewIAMRoleAdapter()
+	adapter := NewIAMRoleAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"IAMRole",
@@ -46,20 +46,20 @@ func TestIAMRoleAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestIAMRoleAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewIAMRoleAdapter()
+	adapter := NewIAMRoleAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "app-role")
 	require.NoError(t, err)
 	assert.Equal(t, "app-role", key)
 }
 
 func TestIAMRoleAdapter_Kind(t *testing.T) {
-	adapter := NewIAMRoleAdapter()
+	adapter := NewIAMRoleAdapterWithAuth(nil)
 	assert.Equal(t, iamrole.ServiceName, adapter.Kind())
 	assert.Equal(t, iamrole.ServiceName, adapter.ServiceName())
 }
 
 func TestIAMRoleAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewIAMRoleAdapter()
+	adapter := NewIAMRoleAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(iamrole.IAMRoleOutputs{
 		Arn:      "arn:aws:iam::123456789012:role/app-role",
 		RoleId:   "AROAEXAMPLE",

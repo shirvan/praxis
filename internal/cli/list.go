@@ -17,6 +17,8 @@ import (
 //	praxis list deployments
 //	praxis list deployments -o json
 func newListCmd(flags *rootFlags) *cobra.Command {
+	var wsFilter string
+
 	cmd := &cobra.Command{
 		Use:   "list <resource-type>",
 		Short: "List active deployments",
@@ -33,22 +35,24 @@ Use -o json for machine-readable output.`,
 			resourceType := args[0]
 			switch resourceType {
 			case "deployments", "deployment", "deploy":
-				return listDeployments(flags)
+				return listDeployments(flags, wsFilter)
 			default:
 				return fmt.Errorf("unsupported resource type %q (supported: deployments)", resourceType)
 			}
 		},
 	}
 
+	cmd.Flags().StringVarP(&wsFilter, "workspace", "w", "", "Filter deployments by workspace")
+
 	return cmd
 }
 
 // listDeployments queries the global deployment index and renders the results.
-func listDeployments(flags *rootFlags) error {
+func listDeployments(flags *rootFlags, workspace string) error {
 	client := flags.newClient()
 	ctx := context.Background()
 
-	summaries, err := client.ListDeployments(ctx)
+	summaries, err := client.ListDeployments(ctx, workspace)
 	if err != nil {
 		return err
 	}

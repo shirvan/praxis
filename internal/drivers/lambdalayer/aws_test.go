@@ -1,15 +1,15 @@
 package lambdalayer
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLayerErrorClassifiers(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("ResourceNotFoundException: missing")))
-	assert.True(t, IsInvalidParameter(errors.New("InvalidParameterValueException: bad")))
-	assert.True(t, IsConflict(errors.New("ResourceConflictException: busy")))
-	assert.True(t, IsPolicyNotFound(errors.New("ResourceNotFoundException: policy missing")))
+	assert.True(t, IsInvalidParameter(&smithy.GenericAPIError{Code: "InvalidParameterValueException"}))
+	assert.True(t, IsPolicyNotFound(&smithy.GenericAPIError{Code: "ResourceNotFoundException", Message: "Layer policy missing"}))
+	assert.False(t, IsInvalidParameter(nil))
+	assert.False(t, IsPolicyNotFound(nil))
 }

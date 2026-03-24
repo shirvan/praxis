@@ -2,63 +2,7 @@
 
 > Features are listed roughly in priority order.
 >
-> This file tracks gaps and extensions beyond the current implementation. Already-shipped pieces such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, and AWS SSM resolver are intentionally omitted.
-
----
-
-## Auth Service
-
-Centralized AWS credential management as a Restate Virtual Object. Replaces the current model where each driver independently loads credentials via the default SDK chain. All AWS authentication — static credentials, IAM role assumption, cross-account STS sessions, and credential rotation — flows through a single service that vends short-lived, scoped credentials to drivers and Core components on demand.
-
-```mermaid
-flowchart TD
-    D1["Driver A"] -->|"GetCredentials(account)"| Auth["Auth Service<br/>(Virtual Object<br/>per account-alias)"]
-    D2["Driver B"] -->|"GetCredentials(account)"| Auth
-    Core["Praxis Core"] -->|"GetCredentials(account)"| Auth
-
-    Auth --> Cache{"Session cached<br/>and valid?"}
-    Cache -->|Yes| Return["Return cached credentials"]
-    Cache -->|No| Resolve{"Credential source?"}
-
-    Resolve -->|STS| STS["AssumeRole<br/>(restate.Run)"]
-    Resolve -->|SSO| SSO["IAM Identity Center"]
-    Resolve -->|Static| Static["Env vars<br/>(LocalStack)"]
-    Resolve -->|Default| SDK["AWS SDK chain"]
-
-    STS --> Return
-    SSO --> Return
-    Static --> Return
-    SDK --> Return
-```
-
-**Technical approach:** A Restate Virtual Object keyed by account-alias (e.g. `prod-us`, `staging`, `shared-services`). Each key encapsulates the credential state for one AWS account/role pair. Drivers request credentials by calling `Auth.GetCredentials(accountAlias)` via Restate RPC; the service returns a cached STS session or assumes a fresh role if the session is expired or missing.
-
-**Credential sources (priority order):**
-
-1. **STS AssumeRole** — primary mode for production and multi-account. The Auth Service's own identity (IAM role on the container/task) assumes target roles configured per account-alias. Supports external ID and session policies for cross-account trust.
-2. **IAM Identity Center (SSO)** — for developer workflows. The service exchanges SSO tokens for temporary role credentials.
-3. **Static credentials** — dev/test only (LocalStack). `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` passed through as-is. The service detects `AWS_ENDPOINT_URL` and skips STS.
-4. **Default SDK chain** — fallback. If no explicit source is configured, delegates to the standard AWS SDK credential chain (env vars → shared config → IMDS/ECS task role).
-
-**Session management:** Credentials are cached in the Virtual Object's Restate-managed state with their expiry time. On each `GetCredentials` call, the service checks TTL and returns the cached session if it has ≥5 minutes remaining. Expired or near-expiry sessions trigger a new `AssumeRole` call wrapped in `restate.Run` for journaling. This eliminates redundant STS calls across concurrent driver invocations targeting the same account.
-
-**Configuration model:** Account-alias → role mapping defined in a config file or environment:
-
-```yaml
-accounts:
-  prod-us:
-    role_arn: arn:aws:iam::123456789012:role/PraxisDriverRole
-    region: us-east-1
-    external_id: praxis-prod
-  staging:
-    role_arn: arn:aws:iam::987654321098:role/PraxisDriverRole
-    region: us-west-2
-  local:
-    # No role_arn — uses static creds or default chain
-    region: us-east-1
-```
-
-**Integration points:** The SSM Secret Resolver, all driver services, and future Core components call `Auth.GetCredentials` instead of loading `aws.Config` directly. For multi-account deployments, the Deployment Orchestrator passes the target account-alias to each driver invocation, and the driver uses it to fetch the correct credentials. This is the prerequisite that makes Multi-Account (see below) possible without per-driver credential plumbing.
+> This file tracks gaps and extensions beyond the current implementation. Already-shipped pieces such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, AWS SSM resolver, Auth Service (credential management), and Workspace Service (environment isolation) are intentionally omitted.
 
 ---
 
@@ -237,7 +181,7 @@ Support for GCP and Azure as additional cloud providers.
 
 Manage resources across multiple AWS accounts (or multiple GCP projects / Azure subscriptions) from a single Praxis instance.
 
-**Technical approach:** Credential configuration per driver instance via IAM role assumption (AWS), service account impersonation (GCP), or managed identity (Azure). Templates specify the target account/project as a parameter. Core passes the credential context to the driver, which assumes the appropriate role before making API calls. Enables hub-and-spoke patterns where a central platform team manages infrastructure across many workload accounts.
+**Technical approach:** Credential configuration per driver instance via IAM role assumption (AWS), service account impersonation (GCP), or managed identity (Azure). Templates specify the target account/project as a parameter. Core passes the credential context to the driver, which assumes the appropriate role before making API calls. Enables hub-and-spoke patterns where a central platform team manages infrastructure across many workload accounts. The Auth Service already handles per-account credential resolution and STS AssumeRole — the remaining work is multi-account orchestration logic in Core and per-resource account overrides in templates.
 
 ---
 

@@ -9,6 +9,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 
 	"github.com/shirvan/praxis/internal/core/orchestrator"
+	"github.com/shirvan/praxis/internal/core/workspace"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -59,7 +60,7 @@ func (c *Client) Apply(ctx context.Context, req types.ApplyRequest) (*types.Appl
 	resp, err := ingress.Service[types.ApplyRequest, types.ApplyResponse](c.rc, commandServiceName, "Apply").
 		Request(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("apply: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -71,7 +72,7 @@ func (c *Client) Plan(ctx context.Context, req types.PlanRequest) (*types.PlanRe
 	resp, err := ingress.Service[types.PlanRequest, types.PlanResponse](c.rc, commandServiceName, "Plan").
 		Request(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("plan: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -83,7 +84,7 @@ func (c *Client) DeleteDeployment(ctx context.Context, key string) (*types.Delet
 		c.rc, commandServiceName, "DeleteDeployment",
 	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key})
 	if err != nil {
-		return nil, fmt.Errorf("delete deployment: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -94,7 +95,7 @@ func (c *Client) ImportResource(ctx context.Context, req types.ImportRequest) (*
 		c.rc, commandServiceName, "Import",
 	).Request(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("import: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -116,10 +117,11 @@ func (c *Client) GetDeployment(ctx context.Context, key string) (*types.Deployme
 }
 
 // ListDeployments returns all deployment summaries from the global index.
-func (c *Client) ListDeployments(ctx context.Context) ([]types.DeploymentSummary, error) {
-	resp, err := ingress.Object[restate.Void, []types.DeploymentSummary](
+// If workspace is non-empty, results are filtered to that workspace.
+func (c *Client) ListDeployments(ctx context.Context, workspace string) ([]types.DeploymentSummary, error) {
+	resp, err := ingress.Object[orchestrator.ListFilter, []types.DeploymentSummary](
 		c.rc, indexServiceName, indexGlobalKey, "List",
-	).Request(ctx, restate.Void{})
+	).Request(ctx, orchestrator.ListFilter{Workspace: workspace})
 	if err != nil {
 		return nil, fmt.Errorf("list deployments: %w", err)
 	}
@@ -185,7 +187,7 @@ func (c *Client) Deploy(ctx context.Context, req types.DeployRequest) (*types.De
 		c.rc, commandServiceName, "Deploy",
 	).Request(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("deploy: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -196,7 +198,7 @@ func (c *Client) PlanDeploy(ctx context.Context, req types.PlanDeployRequest) (*
 		c.rc, commandServiceName, "PlanDeploy",
 	).Request(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("plan deploy: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -211,7 +213,7 @@ func (c *Client) RegisterTemplate(ctx context.Context, req types.RegisterTemplat
 		c.rc, commandServiceName, "RegisterTemplate",
 	).Request(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("register template: %w", err)
+		return nil, err
 	}
 	return &resp, nil
 }
@@ -233,7 +235,7 @@ func (c *Client) ListTemplates(ctx context.Context) ([]types.TemplateSummary, er
 		c.rc, commandServiceName, "ListTemplates",
 	).Request(ctx, restate.Void{})
 	if err != nil {
-		return nil, fmt.Errorf("list templates: %w", err)
+		return nil, err
 	}
 	return resp, nil
 }
@@ -244,7 +246,55 @@ func (c *Client) DeleteTemplate(ctx context.Context, name string) error {
 		c.rc, commandServiceName, "DeleteTemplate",
 	).Request(ctx, types.DeleteTemplateRequest{Name: name})
 	if err != nil {
-		return fmt.Errorf("delete template %q: %w", name, err)
+		return err
 	}
 	return nil
+}
+
+// --------------------------------------------------------------------------
+// Workspace service calls
+// --------------------------------------------------------------------------
+
+const (
+	workspaceServiceName = "WorkspaceService"
+	workspaceIndexName   = "WorkspaceIndex"
+	workspaceIndexKey    = "global"
+)
+
+// ConfigureWorkspace creates or updates a workspace.
+func (c *Client) ConfigureWorkspace(ctx context.Context, cfg workspace.WorkspaceConfig) error {
+	_, err := ingress.Object[workspace.WorkspaceConfig, restate.Void](
+		c.rc, workspaceServiceName, cfg.Name, "Configure",
+	).Request(ctx, cfg)
+	return err
+}
+
+// GetWorkspace returns the workspace info for the given name.
+func (c *Client) GetWorkspace(ctx context.Context, name string) (*workspace.WorkspaceInfo, error) {
+	resp, err := ingress.Object[restate.Void, workspace.WorkspaceInfo](
+		c.rc, workspaceServiceName, name, "Get",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DeleteWorkspace removes a workspace.
+func (c *Client) DeleteWorkspace(ctx context.Context, name string) error {
+	_, err := ingress.Object[restate.Void, restate.Void](
+		c.rc, workspaceServiceName, name, "Delete",
+	).Request(ctx, restate.Void{})
+	return err
+}
+
+// ListWorkspaces returns all workspace names in sorted order.
+func (c *Client) ListWorkspaces(ctx context.Context) ([]string, error) {
+	resp, err := ingress.Object[restate.Void, []string](
+		c.rc, workspaceIndexName, workspaceIndexKey, "List",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }

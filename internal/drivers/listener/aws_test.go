@@ -23,10 +23,6 @@ func TestIsNotFound_APIError(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "ListenerNotFound"}))
 }
 
-func TestIsNotFound_StringMatch(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("ListenerNotFound: listener does not exist")))
-}
-
 func TestIsNotFound_Nil(t *testing.T) {
 	assert.False(t, IsNotFound(nil))
 }
@@ -38,10 +34,6 @@ func TestIsNotFound_Unrelated(t *testing.T) {
 
 func TestIsDuplicate_APIError(t *testing.T) {
 	assert.True(t, IsDuplicate(&mockAPIError{code: "DuplicateListener"}))
-}
-
-func TestIsDuplicate_StringMatch(t *testing.T) {
-	assert.True(t, IsDuplicate(errors.New("DuplicateListener: port already in use")))
 }
 
 func TestIsDuplicate_Nil(t *testing.T) {

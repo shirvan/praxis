@@ -21,7 +21,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidKeyPair.NotFound"}))
-	assert.True(t, IsNotFound(errors.New("api error InvalidKeyPair.NotFound: missing")))
 }
 
 func TestIsNotFound_False(t *testing.T) {
@@ -32,13 +31,10 @@ func TestIsNotFound_False(t *testing.T) {
 
 func TestIsDuplicate_True(t *testing.T) {
 	assert.True(t, IsDuplicate(&mockAPIError{code: "InvalidKeyPair.Duplicate"}))
-	assert.True(t, IsDuplicate(errors.New("api error InvalidKeyPair.Duplicate: exists")))
 }
 
 func TestIsInvalidKeyFormat_True(t *testing.T) {
 	assert.True(t, IsInvalidKeyFormat(&mockAPIError{code: "InvalidKey.Format"}))
 	assert.True(t, IsInvalidKeyFormat(&mockAPIError{code: "InvalidKeyPair.Format"}))
-	assert.True(t, IsInvalidKeyFormat(errors.New("api error InvalidKey.Format: bad key")))
-	assert.True(t, IsInvalidKeyFormat(errors.New("api error InvalidKeyPair.Format: bad key")))
-	assert.False(t, IsInvalidKeyFormat(errors.New("other error")))
+	assert.False(t, IsInvalidKeyFormat(nil))
 }

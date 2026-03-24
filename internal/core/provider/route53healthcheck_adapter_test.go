@@ -11,7 +11,7 @@ import (
 )
 
 func TestRoute53HealthCheckAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewRoute53HealthCheckAdapter()
+	adapter := NewRoute53HealthCheckAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"Route53HealthCheck",
@@ -42,7 +42,7 @@ func TestRoute53HealthCheckAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestRoute53HealthCheckAdapter_NormalizeOutputsAndImportKey(t *testing.T) {
-	adapter := NewRoute53HealthCheckAdapter()
+	adapter := NewRoute53HealthCheckAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(route53healthcheck.HealthCheckOutputs{HealthCheckId: "abcdef12-3456-7890-abcd-ef1234567890"})
 	require.NoError(t, err)
 	assert.Equal(t, "abcdef12-3456-7890-abcd-ef1234567890", out["healthCheckId"])

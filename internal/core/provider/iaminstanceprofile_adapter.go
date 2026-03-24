@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/iaminstanceprofile"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMInstanceProfileAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI iaminstanceprofile.IAMInstanceProfileAPI
 	apiFactory        func(aws.Config) iaminstanceprofile.IAMInstanceProfileAPI
 }
 
-func NewIAMInstanceProfileAdapter() *IAMInstanceProfileAdapter {
-	return NewIAMInstanceProfileAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewIAMInstanceProfileAdapterWithRegistry(accounts *auth.Registry) *IAMInstanceProfileAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMInstanceProfileAdapterWithAuth(auth authservice.AuthClient) *IAMInstanceProfileAdapter {
 	return &IAMInstanceProfileAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) iaminstanceprofile.IAMInstanceProfileAPI {
 			return iaminstanceprofile.NewIAMInstanceProfileAPI(awsclient.NewIAMClient(cfg))
 		},
@@ -117,7 +110,7 @@ func (a *IAMInstanceProfileAdapter) Plan(ctx restate.Context, key string, accoun
 	if err != nil {
 		return "", nil, err
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -212,14 +205,14 @@ func (a *IAMInstanceProfileAdapter) decodeSpec(doc resourceDocument) (iaminstanc
 	}, nil
 }
 
-func (a *IAMInstanceProfileAdapter) planningAPI(account string) (iaminstanceprofile.IAMInstanceProfileAPI, error) {
+func (a *IAMInstanceProfileAdapter) planningAPI(ctx restate.Context, account string) (iaminstanceprofile.IAMInstanceProfileAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("IAMInstanceProfile adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAMInstanceProfile planning account %q: %w", account, err)
 	}

@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/iamrole"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMRoleAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI iamrole.IAMRoleAPI
 	apiFactory        func(aws.Config) iamrole.IAMRoleAPI
 }
 
-func NewIAMRoleAdapter() *IAMRoleAdapter {
-	return NewIAMRoleAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewIAMRoleAdapterWithRegistry(accounts *auth.Registry) *IAMRoleAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMRoleAdapterWithAuth(auth authservice.AuthClient) *IAMRoleAdapter {
 	return &IAMRoleAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) iamrole.IAMRoleAPI {
 			return iamrole.NewIAMRoleAPI(awsclient.NewIAMClient(cfg))
 		},
@@ -109,7 +102,7 @@ func (a *IAMRoleAdapter) Plan(ctx restate.Context, key string, account string, d
 	if err != nil {
 		return "", nil, err
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -222,14 +215,14 @@ func (a *IAMRoleAdapter) decodeSpec(doc resourceDocument) (iamrole.IAMRoleSpec, 
 	}, nil
 }
 
-func (a *IAMRoleAdapter) planningAPI(account string) (iamrole.IAMRoleAPI, error) {
+func (a *IAMRoleAdapter) planningAPI(ctx restate.Context, account string) (iamrole.IAMRoleAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("IAMRole adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAMRole planning account %q: %w", account, err)
 	}

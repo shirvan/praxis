@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/vpcpeering"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type VPCPeeringAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI vpcpeering.VPCPeeringAPI
 	apiFactory        func(aws.Config) vpcpeering.VPCPeeringAPI
 }
 
-func NewVPCPeeringAdapter() *VPCPeeringAdapter {
-	return NewVPCPeeringAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewVPCPeeringAdapterWithRegistry(accounts *auth.Registry) *VPCPeeringAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewVPCPeeringAdapterWithAuth(auth authservice.AuthClient) *VPCPeeringAdapter {
 	return &VPCPeeringAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) vpcpeering.VPCPeeringAPI {
 			return vpcpeering.NewVPCPeeringAPI(awsclient.NewEC2Client(cfg))
 		},
@@ -140,7 +133,7 @@ func (a *VPCPeeringAdapter) Plan(ctx restate.Context, key string, account string
 		return types.OpCreate, fields, nil
 	}
 
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -243,14 +236,14 @@ func (a *VPCPeeringAdapter) decodeSpec(doc resourceDocument) (vpcpeering.VPCPeer
 	return spec, nil
 }
 
-func (a *VPCPeeringAdapter) planningAPI(account string) (vpcpeering.VPCPeeringAPI, error) {
+func (a *VPCPeeringAdapter) planningAPI(ctx restate.Context, account string) (vpcpeering.VPCPeeringAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("VPCPeeringConnection adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve VPCPeeringConnection planning account %q: %w", account, err)
 	}

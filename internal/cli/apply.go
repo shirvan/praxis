@@ -91,11 +91,14 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 			client := flags.newClient()
 			ctx := context.Background()
 
+			cliCfg := LoadCLIConfig()
+
 			// Run plan first to show what would change.
 			planResp, err := client.Plan(ctx, types.PlanRequest{
 				Template:  string(content),
 				Variables: variables,
 				Account:   account,
+				Workspace: cliCfg.ActiveWorkspace,
 				Targets:   targets,
 			})
 			if err != nil {
@@ -130,6 +133,7 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 				Variables:     variables,
 				DeploymentKey: deploymentKey,
 				Account:       account,
+				Workspace:     cliCfg.ActiveWorkspace,
 				Targets:       targets,
 				Replace:       replace,
 			})

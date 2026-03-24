@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	restate "github.com/restatedev/sdk-go"
+
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
@@ -161,7 +164,7 @@ func setupIAMInstanceProfileDriver(t *testing.T, api IAMInstanceProfileAPI) *ing
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewIAMInstanceProfileDriverWithFactory(nil, func(cfg aws.Config) IAMInstanceProfileAPI {
+	driver := NewIAMInstanceProfileDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) IAMInstanceProfileAPI {
 		return api
 	})
 	env := restatetest.Start(t, restate.Reflect(driver))

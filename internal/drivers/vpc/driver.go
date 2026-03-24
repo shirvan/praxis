@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type VPCDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) VPCAPI
 }
 
-func NewVPCDriver(accounts *auth.Registry) *VPCDriver {
-	return NewVPCDriverWithFactory(accounts, func(cfg aws.Config) VPCAPI {
+func NewVPCDriver(auth authservice.AuthClient) *VPCDriver {
+	return NewVPCDriverWithFactory(auth, func(cfg aws.Config) VPCAPI {
 		return NewVPCAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewVPCDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) VPCAPI) *VPCDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewVPCDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) VPCAPI) *VPCDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) VPCAPI {
 			return NewVPCAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &VPCDriver{auth: accounts, apiFactory: factory}
+	return &VPCDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *VPCDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *VPCDriver) ServiceName() string {
 
 func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutputs, error) {
 	ctx.Log().Info("provisioning VPC", "name", spec.Tags["Name"], "key", restate.Key(ctx))
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return VPCOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -262,7 +259,7 @@ func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutpu
 
 func (d *VPCDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (VPCOutputs, error) {
 	ctx.Log().Info("importing VPC", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return VPCOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -361,7 +358,7 @@ func (d *VPCDriver) Delete(ctx restate.ObjectContext) error {
 		)
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -412,7 +409,7 @@ func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -574,11 +571,11 @@ func (d *VPCDriver) scheduleReconcile(ctx restate.ObjectContext, state *VPCState
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *VPCDriver) apiForAccount(account string) (VPCAPI, string, error) {
+func (d *VPCDriver) apiForAccount(ctx restate.ObjectContext, account string) (VPCAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("VPCDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve VPC account %q: %w", account, err)
 	}

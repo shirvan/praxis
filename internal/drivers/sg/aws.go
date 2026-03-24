@@ -11,6 +11,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -335,29 +337,12 @@ func denormalizeProtocol(p string) string {
 
 // IsNotFound returns true if the AWS error indicates the security group does not exist.
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidGroup.NotFound" || code == "InvalidGroupId.Malformed"
-	}
-	// Fallback: match Restate-wrapped error strings
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidGroup.NotFound")
+	return awserr.HasCode(err, "InvalidGroup.NotFound", "InvalidGroupId.Malformed")
 }
 
 // IsDuplicate returns true if the error indicates a duplicate security group name.
 func IsDuplicate(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidGroup.Duplicate"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidGroup.Duplicate")
 }
 
 // isDuplicatePermission returns true if the error indicates a duplicate rule
@@ -377,29 +362,11 @@ func isDuplicatePermission(err error) bool {
 // IsInvalidParam returns true if the error indicates an invalid parameter
 // (e.g., malformed CIDR, invalid port range). These should be terminal errors.
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidPermission.Malformed"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidPermission.Malformed")
 }
 
 // IsDependencyViolation returns true if deletion failed because the security group
 // is still referenced by other resources (e.g., ENIs, other SG rules).
 func IsDependencyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DependencyViolation"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "DependencyViolation") ||
-		strings.Contains(errText, "resource is still in use") ||
-		strings.Contains(errText, "still referenced by other resources")
+	return awserr.HasCode(err, "DependencyViolation")
 }

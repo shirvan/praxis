@@ -8,33 +8,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMUserDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMUserAPI
 }
 
-func NewIAMUserDriver(accounts *auth.Registry) *IAMUserDriver {
-	return NewIAMUserDriverWithFactory(accounts, func(cfg aws.Config) IAMUserAPI {
+func NewIAMUserDriver(auth authservice.AuthClient) *IAMUserDriver {
+	return NewIAMUserDriverWithFactory(auth, func(cfg aws.Config) IAMUserAPI {
 		return NewIAMUserAPI(awsclient.NewIAMClient(cfg))
 	})
 }
 
-func NewIAMUserDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMUserAPI) *IAMUserDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMUserDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMUserAPI) *IAMUserDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IAMUserAPI {
 			return NewIAMUserAPI(awsclient.NewIAMClient(cfg))
 		}
 	}
-	return &IAMUserDriver{auth: accounts, apiFactory: factory}
+	return &IAMUserDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *IAMUserDriver) ServiceName() string {
@@ -43,7 +40,7 @@ func (d *IAMUserDriver) ServiceName() string {
 
 func (d *IAMUserDriver) Provision(ctx restate.ObjectContext, spec IAMUserSpec) (IAMUserOutputs, error) {
 	ctx.Log().Info("provisioning iam user", "key", restate.Key(ctx), "userName", spec.UserName)
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return IAMUserOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -161,7 +158,7 @@ func (d *IAMUserDriver) Provision(ctx restate.ObjectContext, spec IAMUserSpec) (
 
 func (d *IAMUserDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IAMUserOutputs, error) {
 	ctx.Log().Info("importing iam user", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return IAMUserOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -229,7 +226,7 @@ func (d *IAMUserDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -300,7 +297,7 @@ func (d *IAMUserDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -533,11 +530,11 @@ func (d *IAMUserDriver) scheduleReconcile(ctx restate.ObjectContext, state *IAMU
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *IAMUserDriver) apiForAccount(account string) (IAMUserAPI, error) {
+func (d *IAMUserDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMUserAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("iam user driver is not configured")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAM account %q: %w", account, err)
 	}

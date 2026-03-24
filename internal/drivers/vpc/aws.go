@@ -2,7 +2,6 @@ package vpc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -277,59 +277,22 @@ func (r *realVPCAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 
 // IsNotFound returns true if the AWS error indicates the VPC does not exist.
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidVpcID.NotFound" ||
-			code == "InvalidVpcID.Malformed"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidVpcID.NotFound")
+	return awserr.HasCode(err, "InvalidVpcID.NotFound", "InvalidVpcID.Malformed")
 }
 
 // IsDependencyViolation returns true if the VPC cannot be deleted because it
 // has dependent resources.
 func IsDependencyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DependencyViolation"
-	}
-	return false
+	return awserr.HasCode(err, "DependencyViolation")
 }
 
 // IsInvalidParam returns true if the error indicates an invalid parameter.
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" ||
-			code == "InvalidParameterCombination" ||
-			code == "InvalidVpcRange" ||
-			code == "VpcLimitExceeded"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination", "InvalidVpcRange", "VpcLimitExceeded")
 }
 
 // IsCidrConflict returns true if the requested CIDR block conflicts with an
 // existing VPC or overlaps with reserved ranges.
 func IsCidrConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "CidrConflict" ||
-			code == "InvalidVpc.Range"
-	}
-	return false
+	return awserr.HasCode(err, "CidrConflict", "InvalidVpc.Range")
 }

@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/listenerrule"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ListenerRuleAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI listenerrule.ListenerRuleAPI
 	apiFactory        func(aws.Config) listenerrule.ListenerRuleAPI
 }
 
-func NewListenerRuleAdapter() *ListenerRuleAdapter {
-	return NewListenerRuleAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewListenerRuleAdapterWithRegistry(accounts *auth.Registry) *ListenerRuleAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewListenerRuleAdapterWithAuth(auth authservice.AuthClient) *ListenerRuleAdapter {
 	return &ListenerRuleAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) listenerrule.ListenerRuleAPI {
 			return listenerrule.NewListenerRuleAPI(awsclient.NewELBv2Client(cfg))
 		},
@@ -114,7 +107,7 @@ func (a *ListenerRuleAdapter) Plan(ctx restate.Context, key string, account stri
 		}
 		return types.OpCreate, fields, nil
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -198,14 +191,14 @@ func (a *ListenerRuleAdapter) decodeSpec(doc resourceDocument) (listenerrule.Lis
 	return spec, nil
 }
 
-func (a *ListenerRuleAdapter) planningAPI(account string) (listenerrule.ListenerRuleAPI, error) {
+func (a *ListenerRuleAdapter) planningAPI(ctx restate.Context, account string) (listenerrule.ListenerRuleAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("ListenerRule adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ListenerRule planning account %q: %w", account, err)
 	}

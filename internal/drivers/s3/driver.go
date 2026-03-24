@@ -7,7 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -28,27 +28,24 @@ const ServiceName = "S3Bucket"
 //   - Durable execution: if the service crashes mid-Provision, Restate replays
 //     from the journal — completed restate.Run() calls are not re-executed
 type S3BucketDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) S3API
 }
 
 // NewS3BucketDriver creates a new S3BucketDriver that resolves AWS clients per request.
-func NewS3BucketDriver(accounts *auth.Registry) *S3BucketDriver {
-	return NewS3BucketDriverWithFactory(accounts, func(cfg aws.Config) S3API {
+func NewS3BucketDriver(auth authservice.AuthClient) *S3BucketDriver {
+	return NewS3BucketDriverWithFactory(auth, func(cfg aws.Config) S3API {
 		return NewS3API(awsclient.NewS3Client(cfg))
 	})
 }
 
-func NewS3BucketDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) S3API) *S3BucketDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewS3BucketDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) S3API) *S3BucketDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) S3API {
 			return NewS3API(awsclient.NewS3Client(cfg))
 		}
 	}
-	return &S3BucketDriver{auth: accounts, apiFactory: factory}
+	return &S3BucketDriver{auth: auth, apiFactory: factory}
 }
 
 // ServiceName returns the Restate Virtual Object name.
@@ -67,7 +64,7 @@ func (d *S3BucketDriver) ServiceName() string {
 // declarative infrastructure systems to behave.
 func (d *S3BucketDriver) Provision(ctx restate.ObjectContext, spec S3BucketSpec) (S3BucketOutputs, error) {
 	ctx.Log().Info("provisioning bucket", "bucket", spec.BucketName, "key", restate.Key(ctx))
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return S3BucketOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -128,6 +125,9 @@ func (d *S3BucketDriver) Provision(ctx restate.ObjectContext, spec S3BucketSpec)
 	if !bucketExists {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			if err := api.CreateBucket(rc, spec.BucketName, spec.Region); err != nil {
+				if IsBucketLimitExceeded(err) {
+					return restate.Void{}, restate.TerminalError(err, 503)
+				}
 				if IsConflict(err) {
 					return restate.Void{}, restate.TerminalError(err, 409)
 				}
@@ -192,7 +192,7 @@ func (d *S3BucketDriver) Provision(ctx restate.ObjectContext, spec S3BucketSpec)
 // spec and diverge from the import baseline.
 func (d *S3BucketDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (S3BucketOutputs, error) {
 	ctx.Log().Info("importing bucket", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return S3BucketOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -257,7 +257,7 @@ func (d *S3BucketDriver) Delete(ctx restate.ObjectContext) error {
 	if err != nil {
 		return err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -312,7 +312,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -397,11 +397,11 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 	return types.ReconcileResult{}, nil
 }
 
-func (d *S3BucketDriver) apiForAccount(account string) (S3API, error) {
+func (d *S3BucketDriver) apiForAccount(ctx restate.ObjectContext, account string) (S3API, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("S3BucketDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve S3 account %q: %w", account, err)
 	}

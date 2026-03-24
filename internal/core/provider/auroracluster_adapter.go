@@ -8,27 +8,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/auroracluster"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type AuroraClusterAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI auroracluster.AuroraClusterAPI
 	apiFactory        func(aws.Config) auroracluster.AuroraClusterAPI
 }
 
-func NewAuroraClusterAdapter() *AuroraClusterAdapter {
-	return NewAuroraClusterAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewAuroraClusterAdapterWithRegistry(accounts *auth.Registry) *AuroraClusterAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
-	return &AuroraClusterAdapter{auth: accounts, apiFactory: func(cfg aws.Config) auroracluster.AuroraClusterAPI {
+func NewAuroraClusterAdapterWithAuth(auth authservice.AuthClient) *AuroraClusterAdapter {
+	return &AuroraClusterAdapter{auth: auth, apiFactory: func(cfg aws.Config) auroracluster.AuroraClusterAPI {
 		return auroracluster.NewAuroraClusterAPI(awsclient.NewRDSClient(cfg))
 	}}
 }
@@ -99,7 +92,7 @@ func (a *AuroraClusterAdapter) Plan(ctx restate.Context, key string, account str
 	if getErr != nil {
 		return "", nil, fmt.Errorf("AuroraCluster Plan: failed to read outputs for key %q: %w", key, getErr)
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -199,14 +192,14 @@ func (a *AuroraClusterAdapter) decodeSpec(doc resourceDocument) (auroracluster.A
 	return auroracluster.AuroraClusterSpec{Region: strings.TrimSpace(spec.Region), ClusterIdentifier: name, Engine: spec.Engine, EngineVersion: spec.EngineVersion, MasterUsername: spec.MasterUsername, MasterUserPassword: spec.MasterUserPassword, DatabaseName: spec.DatabaseName, Port: spec.Port, DBSubnetGroupName: spec.DBSubnetGroupName, DBClusterParameterGroupName: spec.DBClusterParameterGroupName, VpcSecurityGroupIds: spec.VpcSecurityGroupIds, StorageEncrypted: spec.StorageEncrypted, KMSKeyId: spec.KMSKeyId, BackupRetentionPeriod: spec.BackupRetentionPeriod, PreferredBackupWindow: spec.PreferredBackupWindow, PreferredMaintenanceWindow: spec.PreferredMaintenanceWindow, DeletionProtection: spec.DeletionProtection, EnabledCloudwatchLogsExports: spec.EnabledCloudwatchLogsExports, Tags: spec.Tags}, nil
 }
 
-func (a *AuroraClusterAdapter) planningAPI(account string) (auroracluster.AuroraClusterAPI, error) {
+func (a *AuroraClusterAdapter) planningAPI(ctx restate.Context, account string) (auroracluster.AuroraClusterAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("AuroraCluster adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve AuroraCluster planning account %q: %w", account, err)
 	}

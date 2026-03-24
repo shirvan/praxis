@@ -8,33 +8,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type NATGatewayDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) NATGatewayAPI
 }
 
-func NewNATGatewayDriver(accounts *auth.Registry) *NATGatewayDriver {
-	return NewNATGatewayDriverWithFactory(accounts, func(cfg aws.Config) NATGatewayAPI {
+func NewNATGatewayDriver(auth authservice.AuthClient) *NATGatewayDriver {
+	return NewNATGatewayDriverWithFactory(auth, func(cfg aws.Config) NATGatewayAPI {
 		return NewNATGatewayAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
-func NewNATGatewayDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) NATGatewayAPI) *NATGatewayDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewNATGatewayDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) NATGatewayAPI) *NATGatewayDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) NATGatewayAPI {
 			return NewNATGatewayAPI(awsclient.NewEC2Client(cfg))
 		}
 	}
-	return &NATGatewayDriver{auth: accounts, apiFactory: factory}
+	return &NATGatewayDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *NATGatewayDriver) ServiceName() string {
@@ -43,7 +40,7 @@ func (d *NATGatewayDriver) ServiceName() string {
 
 func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewaySpec) (NATGatewayOutputs, error) {
 	ctx.Log().Info("provisioning NAT gateway", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return NATGatewayOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -214,7 +211,7 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 
 func (d *NATGatewayDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (NATGatewayOutputs, error) {
 	ctx.Log().Info("importing NAT gateway", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return NATGatewayOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -279,7 +276,7 @@ func (d *NATGatewayDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -328,7 +325,7 @@ func (d *NATGatewayDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -513,11 +510,11 @@ func (d *NATGatewayDriver) deleteAndWait(ctx restate.ObjectContext, api NATGatew
 	return err
 }
 
-func (d *NATGatewayDriver) apiForAccount(account string) (NATGatewayAPI, string, error) {
+func (d *NATGatewayDriver) apiForAccount(ctx restate.ObjectContext, account string) (NATGatewayAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("NATGatewayDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve NAT gateway account %q: %w", account, err)
 	}

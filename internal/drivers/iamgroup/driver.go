@@ -7,33 +7,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMGroupDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMGroupAPI
 }
 
-func NewIAMGroupDriver(accounts *auth.Registry) *IAMGroupDriver {
-	return NewIAMGroupDriverWithFactory(accounts, func(cfg aws.Config) IAMGroupAPI {
+func NewIAMGroupDriver(auth authservice.AuthClient) *IAMGroupDriver {
+	return NewIAMGroupDriverWithFactory(auth, func(cfg aws.Config) IAMGroupAPI {
 		return NewIAMGroupAPI(awsclient.NewIAMClient(cfg))
 	})
 }
 
-func NewIAMGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMGroupAPI) *IAMGroupDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMGroupAPI) *IAMGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IAMGroupAPI {
 			return NewIAMGroupAPI(awsclient.NewIAMClient(cfg))
 		}
 	}
-	return &IAMGroupDriver{auth: accounts, apiFactory: factory}
+	return &IAMGroupDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *IAMGroupDriver) ServiceName() string {
@@ -42,7 +39,7 @@ func (d *IAMGroupDriver) ServiceName() string {
 
 func (d *IAMGroupDriver) Provision(ctx restate.ObjectContext, spec IAMGroupSpec) (IAMGroupOutputs, error) {
 	ctx.Log().Info("provisioning iam group", "key", restate.Key(ctx), "groupName", spec.GroupName)
-	api, err := d.apiForAccount(spec.Account)
+	api, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return IAMGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -156,7 +153,7 @@ func (d *IAMGroupDriver) Provision(ctx restate.ObjectContext, spec IAMGroupSpec)
 
 func (d *IAMGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IAMGroupOutputs, error) {
 	ctx.Log().Info("importing iam group", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, err := d.apiForAccount(ref.Account)
+	api, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return IAMGroupOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -224,7 +221,7 @@ func (d *IAMGroupDriver) Delete(ctx restate.ObjectContext) error {
 		return nil
 	}
 
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -282,7 +279,7 @@ func (d *IAMGroupDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, err := d.apiForAccount(state.Desired.Account)
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -460,11 +457,11 @@ func (d *IAMGroupDriver) correctDrift(ctx restate.ObjectContext, api IAMGroupAPI
 	return nil
 }
 
-func (d *IAMGroupDriver) apiForAccount(account string) (IAMGroupAPI, error) {
+func (d *IAMGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMGroupAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("iam group driver is not configured")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAM account %q: %w", account, err)
 	}

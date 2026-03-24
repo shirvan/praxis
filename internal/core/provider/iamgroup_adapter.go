@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/iamgroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMGroupAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI iamgroup.IAMGroupAPI
 	apiFactory        func(aws.Config) iamgroup.IAMGroupAPI
 }
 
-func NewIAMGroupAdapter() *IAMGroupAdapter {
-	return NewIAMGroupAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewIAMGroupAdapterWithRegistry(accounts *auth.Registry) *IAMGroupAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMGroupAdapterWithAuth(auth authservice.AuthClient) *IAMGroupAdapter {
 	return &IAMGroupAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) iamgroup.IAMGroupAPI {
 			return iamgroup.NewIAMGroupAPI(awsclient.NewIAMClient(cfg))
 		},
@@ -109,7 +102,7 @@ func (a *IAMGroupAdapter) Plan(ctx restate.Context, key string, account string, 
 	if err != nil {
 		return "", nil, err
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -198,14 +191,14 @@ func (a *IAMGroupAdapter) decodeSpec(doc resourceDocument) (iamgroup.IAMGroupSpe
 	return iamgroup.IAMGroupSpec{Path: spec.Path, GroupName: name, InlinePolicies: spec.InlinePolicies, ManagedPolicyArns: spec.ManagedPolicyArns}, nil
 }
 
-func (a *IAMGroupAdapter) planningAPI(account string) (iamgroup.IAMGroupAPI, error) {
+func (a *IAMGroupAdapter) planningAPI(ctx restate.Context, account string) (iamgroup.IAMGroupAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("IAMGroup adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAMGroup planning account %q: %w", account, err)
 	}

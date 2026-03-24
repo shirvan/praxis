@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/route53zone"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type Route53HostedZoneAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI route53zone.HostedZoneAPI
 	apiFactory        func(aws.Config) route53zone.HostedZoneAPI
 }
 
-func NewRoute53HostedZoneAdapter() *Route53HostedZoneAdapter {
-	return NewRoute53HostedZoneAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewRoute53HostedZoneAdapterWithRegistry(accounts *auth.Registry) *Route53HostedZoneAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewRoute53HostedZoneAdapterWithAuth(auth authservice.AuthClient) *Route53HostedZoneAdapter {
 	return &Route53HostedZoneAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) route53zone.HostedZoneAPI {
 			return route53zone.NewHostedZoneAPI(awsclient.NewRoute53Client(cfg))
 		},
@@ -107,7 +100,7 @@ func (a *Route53HostedZoneAdapter) Plan(ctx restate.Context, key string, account
 		}
 		return types.OpCreate, fields, nil
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -183,14 +176,14 @@ func (a *Route53HostedZoneAdapter) decodeSpec(doc resourceDocument) (route53zone
 	return spec, nil
 }
 
-func (a *Route53HostedZoneAdapter) planningAPI(account string) (route53zone.HostedZoneAPI, error) {
+func (a *Route53HostedZoneAdapter) planningAPI(ctx restate.Context, account string) (route53zone.HostedZoneAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("Route53HostedZone adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Route53HostedZone planning account %q: %w", account, err)
 	}

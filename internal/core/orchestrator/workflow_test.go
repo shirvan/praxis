@@ -101,6 +101,59 @@ func TestExecutionState_ResultProducesStablePublicResources(t *testing.T) {
 	assert.Equal(t, types.DeploymentResourceError, result.Resources[1].Status)
 	assert.Equal(t, "invalid subnet", result.Resources[1].Error)
 	assert.Equal(t, "db: invalid subnet", result.Error)
+	assert.Equal(t, map[string]string{"db": "invalid subnet"}, result.ResourceErrors)
+}
+
+func TestFailureSummary_NoFailures(t *testing.T) {
+	resources := []PlanResource{testPlanResource("network")}
+	exec := newExecutionState(resources)
+	exec.markReady("network", map[string]any{"vpcId": "vpc-123"})
+	assert.Equal(t, "", exec.failureSummary())
+}
+
+func TestFailureSummary_MultipleFailures(t *testing.T) {
+	resources := []PlanResource{
+		testPlanResource("api"),
+		testPlanResource("cache"),
+		testPlanResource("db"),
+	}
+	exec := newExecutionState(resources)
+	exec.markProvisioning("api")
+	exec.markFailed("api", "insufficient capacity")
+	exec.markProvisioning("cache")
+	exec.markFailed("cache", "parameter group not found")
+	exec.markProvisioning("db")
+	exec.markFailed("db", "subnet not found")
+
+	summary := exec.failureSummary()
+	assert.Contains(t, summary, "3 resource(s) failed:")
+	assert.Contains(t, summary, "1. api: insufficient capacity")
+	assert.Contains(t, summary, "2. cache: parameter group not found")
+	assert.Contains(t, summary, "3. db: subnet not found")
+}
+
+func TestFailureMap_ReturnsNilForNoFailures(t *testing.T) {
+	resources := []PlanResource{testPlanResource("network")}
+	exec := newExecutionState(resources)
+	assert.Nil(t, exec.failureMap())
+}
+
+func TestFailureMap_ReturnsStructuredErrors(t *testing.T) {
+	resources := []PlanResource{
+		testPlanResource("api"),
+		testPlanResource("db"),
+	}
+	exec := newExecutionState(resources)
+	exec.markProvisioning("api")
+	exec.markFailed("api", "capacity error")
+	exec.markProvisioning("db")
+	exec.markFailed("db", "subnet missing")
+
+	m := exec.failureMap()
+	assert.Equal(t, map[string]string{
+		"api": "capacity error",
+		"db":  "subnet missing",
+	}, m)
 }
 
 func TestPlanResourcesFromState_RebuildsDeleteGraphInputs(t *testing.T) {

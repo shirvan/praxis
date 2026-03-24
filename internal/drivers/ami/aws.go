@@ -2,7 +2,6 @@ package ami
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,7 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -378,52 +378,17 @@ func extractTags(tags []ec2types.Tag) map[string]string {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidAMIID.NotFound" || code == "InvalidAMIID.Unavailable"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidAMIID.NotFound") || strings.Contains(errText, "InvalidAMIID.Unavailable") || strings.Contains(errText, "AMI not found")
+	return awserr.HasCode(err, "InvalidAMIID.NotFound", "InvalidAMIID.Unavailable")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" ||
-			code == "InvalidParameter" ||
-			code == "MissingParameter" ||
-			code == "InvalidAMIID.Malformed" ||
-			code == "InvalidAMIID.NotFound"
-	}
-	return false
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameter", "MissingParameter", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound")
 }
 
 func IsSnapshotNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidSnapshot.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidSnapshot.NotFound")
+	return awserr.HasCode(err, "InvalidSnapshot.NotFound")
 }
 
 func IsAMIQuotaExceeded(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "AMIQuotaExceeded"
-	}
-	return strings.Contains(err.Error(), "AMIQuotaExceeded")
+	return awserr.HasCode(err, "AMIQuotaExceeded")
 }

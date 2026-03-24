@@ -58,6 +58,9 @@ type DeploymentPlan struct {
 	// TemplatePath is preserved for operator visibility.
 	TemplatePath string `json:"templatePath,omitempty"`
 
+	// Workspace is the workspace name associated with this deployment.
+	Workspace string `json:"workspace,omitempty"`
+
 	// ForceReplace lists template-local resource names that should be deleted
 	// and re-provisioned regardless of plan diff results.
 	ForceReplace []string `json:"forceReplace,omitempty"`
@@ -100,6 +103,7 @@ type PlanResource struct {
 type DeploymentState struct {
 	Key          string                    `json:"key"`
 	Account      string                    `json:"account,omitempty"`
+	Workspace    string                    `json:"workspace,omitempty"`
 	Status       types.DeploymentStatus    `json:"status"`
 	TemplatePath string                    `json:"templatePath,omitempty"`
 	Resources    map[string]*ResourceState `json:"resources"`
@@ -125,11 +129,12 @@ type ResourceState struct {
 // DeploymentResult is the final workflow output returned from both apply and
 // delete workflows.
 type DeploymentResult struct {
-	Key       string                     `json:"key"`
-	Status    types.DeploymentStatus     `json:"status"`
-	Resources []types.DeploymentResource `json:"resources"`
-	Outputs   map[string]map[string]any  `json:"outputs"`
-	Error     string                     `json:"error,omitempty"`
+	Key            string                     `json:"key"`
+	Status         types.DeploymentStatus     `json:"status"`
+	Resources      []types.DeploymentResource `json:"resources"`
+	Outputs        map[string]map[string]any  `json:"outputs"`
+	Error          string                     `json:"error,omitempty"`
+	ResourceErrors map[string]string          `json:"resourceErrors,omitempty"`
 }
 
 // ResourceUpdate updates one resource entry inside DeploymentState.

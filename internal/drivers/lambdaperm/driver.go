@@ -9,37 +9,34 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type LambdaPermissionDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) PermissionAPI
 }
 
-func NewLambdaPermissionDriver(accounts *auth.Registry) *LambdaPermissionDriver {
-	return NewLambdaPermissionDriverWithFactory(accounts, func(cfg aws.Config) PermissionAPI {
+func NewLambdaPermissionDriver(auth authservice.AuthClient) *LambdaPermissionDriver {
+	return NewLambdaPermissionDriverWithFactory(auth, func(cfg aws.Config) PermissionAPI {
 		return NewPermissionAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
-func NewLambdaPermissionDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) PermissionAPI) *LambdaPermissionDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewLambdaPermissionDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) PermissionAPI) *LambdaPermissionDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) PermissionAPI { return NewPermissionAPI(awsclient.NewLambdaClient(cfg)) }
 	}
-	return &LambdaPermissionDriver{auth: accounts, apiFactory: factory}
+	return &LambdaPermissionDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *LambdaPermissionDriver) ServiceName() string { return ServiceName }
 
 func (d *LambdaPermissionDriver) Provision(ctx restate.ObjectContext, spec LambdaPermissionSpec) (LambdaPermissionOutputs, error) {
-	api, region, err := d.apiForAccount(spec.Account)
+	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return LambdaPermissionOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -109,7 +106,7 @@ func (d *LambdaPermissionDriver) Provision(ctx restate.ObjectContext, spec Lambd
 }
 
 func (d *LambdaPermissionDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LambdaPermissionOutputs, error) {
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return LambdaPermissionOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -171,7 +168,7 @@ func (d *LambdaPermissionDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, LambdaPermissionState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -200,7 +197,7 @@ func (d *LambdaPermissionDriver) Reconcile(ctx restate.ObjectContext) (types.Rec
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -267,11 +264,11 @@ func (d *LambdaPermissionDriver) scheduleReconcile(ctx restate.ObjectContext, st
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *LambdaPermissionDriver) apiForAccount(account string) (PermissionAPI, string, error) {
+func (d *LambdaPermissionDriver) apiForAccount(ctx restate.ObjectContext, account string) (PermissionAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("LambdaPermissionDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve Lambda permission account %q: %w", account, err)
 	}

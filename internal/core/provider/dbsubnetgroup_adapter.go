@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type DBSubnetGroupAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI dbsubnetgroup.DBSubnetGroupAPI
 	apiFactory        func(aws.Config) dbsubnetgroup.DBSubnetGroupAPI
 }
 
-func NewDBSubnetGroupAdapter() *DBSubnetGroupAdapter {
-	return NewDBSubnetGroupAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewDBSubnetGroupAdapterWithRegistry(accounts *auth.Registry) *DBSubnetGroupAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewDBSubnetGroupAdapterWithAuth(auth authservice.AuthClient) *DBSubnetGroupAdapter {
 	return &DBSubnetGroupAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) dbsubnetgroup.DBSubnetGroupAPI {
 			return dbsubnetgroup.NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg))
 		},
@@ -109,7 +102,7 @@ func (a *DBSubnetGroupAdapter) Plan(ctx restate.Context, key string, account str
 	if getErr != nil {
 		return "", nil, fmt.Errorf("DBSubnetGroup Plan: failed to read outputs for key %q: %w", key, getErr)
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -195,14 +188,14 @@ func (a *DBSubnetGroupAdapter) decodeSpec(doc resourceDocument) (dbsubnetgroup.D
 	return dbsubnetgroup.DBSubnetGroupSpec{Region: strings.TrimSpace(spec.Region), GroupName: name, Description: spec.Description, SubnetIds: spec.SubnetIds, Tags: spec.Tags}, nil
 }
 
-func (a *DBSubnetGroupAdapter) planningAPI(account string) (dbsubnetgroup.DBSubnetGroupAPI, error) {
+func (a *DBSubnetGroupAdapter) planningAPI(ctx restate.Context, account string) (dbsubnetgroup.DBSubnetGroupAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("DBSubnetGroup adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve DBSubnetGroup planning account %q: %w", account, err)
 	}

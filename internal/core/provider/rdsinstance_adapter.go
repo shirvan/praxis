@@ -8,27 +8,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/rdsinstance"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type RDSInstanceAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI rdsinstance.RDSInstanceAPI
 	apiFactory        func(aws.Config) rdsinstance.RDSInstanceAPI
 }
 
-func NewRDSInstanceAdapter() *RDSInstanceAdapter {
-	return NewRDSInstanceAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewRDSInstanceAdapterWithRegistry(accounts *auth.Registry) *RDSInstanceAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
-	return &RDSInstanceAdapter{auth: accounts, apiFactory: func(cfg aws.Config) rdsinstance.RDSInstanceAPI {
+func NewRDSInstanceAdapterWithAuth(auth authservice.AuthClient) *RDSInstanceAdapter {
+	return &RDSInstanceAdapter{auth: auth, apiFactory: func(cfg aws.Config) rdsinstance.RDSInstanceAPI {
 		return rdsinstance.NewRDSInstanceAPI(awsclient.NewRDSClient(cfg))
 	}}
 }
@@ -99,7 +92,7 @@ func (a *RDSInstanceAdapter) Plan(ctx restate.Context, key string, account strin
 	if getErr != nil {
 		return "", nil, fmt.Errorf("RDSInstance Plan: failed to read outputs for key %q: %w", key, getErr)
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -208,14 +201,14 @@ func (a *RDSInstanceAdapter) decodeSpec(doc resourceDocument) (rdsinstance.RDSIn
 	return rdsinstance.RDSInstanceSpec{Region: strings.TrimSpace(spec.Region), DBIdentifier: name, Engine: spec.Engine, EngineVersion: spec.EngineVersion, InstanceClass: spec.InstanceClass, AllocatedStorage: spec.AllocatedStorage, StorageType: spec.StorageType, IOPS: spec.IOPS, StorageThroughput: spec.StorageThroughput, StorageEncrypted: spec.StorageEncrypted, KMSKeyId: spec.KMSKeyId, MasterUsername: spec.MasterUsername, MasterUserPassword: spec.MasterUserPassword, DBSubnetGroupName: spec.DBSubnetGroupName, ParameterGroupName: spec.ParameterGroupName, VpcSecurityGroupIds: spec.VpcSecurityGroupIds, DBClusterIdentifier: spec.DBClusterIdentifier, MultiAZ: spec.MultiAZ, PubliclyAccessible: spec.PubliclyAccessible, BackupRetentionPeriod: spec.BackupRetentionPeriod, PreferredBackupWindow: spec.PreferredBackupWindow, PreferredMaintenanceWindow: spec.PreferredMaintenanceWindow, DeletionProtection: spec.DeletionProtection, AutoMinorVersionUpgrade: spec.AutoMinorVersionUpgrade, MonitoringInterval: spec.MonitoringInterval, MonitoringRoleArn: spec.MonitoringRoleArn, PerformanceInsightsEnabled: spec.PerformanceInsightsEnabled, Tags: spec.Tags}, nil
 }
 
-func (a *RDSInstanceAdapter) planningAPI(account string) (rdsinstance.RDSInstanceAPI, error) {
+func (a *RDSInstanceAdapter) planningAPI(ctx restate.Context, account string) (rdsinstance.RDSInstanceAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("RDSInstance adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve RDSInstance planning account %q: %w", account, err)
 	}

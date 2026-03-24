@@ -11,7 +11,7 @@ import (
 )
 
 func TestKeyPairAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewKeyPairAdapter()
+	adapter := NewKeyPairAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"KeyPair",
@@ -38,25 +38,25 @@ func TestKeyPairAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestKeyPairAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewKeyPairAdapter()
+	adapter := NewKeyPairAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "web-key")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~web-key", key)
 }
 
 func TestKeyPairAdapter_Kind(t *testing.T) {
-	adapter := NewKeyPairAdapter()
+	adapter := NewKeyPairAdapterWithAuth(nil)
 	assert.Equal(t, keypair.ServiceName, adapter.Kind())
 	assert.Equal(t, keypair.ServiceName, adapter.ServiceName())
 }
 
 func TestKeyPairAdapter_Scope(t *testing.T) {
-	adapter := NewKeyPairAdapter()
+	adapter := NewKeyPairAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestKeyPairAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewKeyPairAdapter()
+	adapter := NewKeyPairAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(keypair.KeyPairOutputs{
 		KeyName:            "web-key",
 		KeyPairId:          "key-123",

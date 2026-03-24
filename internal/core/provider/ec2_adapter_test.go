@@ -11,7 +11,7 @@ import (
 )
 
 func TestEC2Adapter_BuildKeyAndDecodeSpec(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"EC2Instance",
@@ -44,14 +44,14 @@ func TestEC2Adapter_BuildKeyAndDecodeSpec(t *testing.T) {
 }
 
 func TestEC2Adapter_BuildImportKey(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "i-0abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~i-0abc123", key)
 }
 
 func TestEC2Adapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(ec2.EC2InstanceOutputs{
 		InstanceId:       "i-123",
 		PrivateIpAddress: "10.0.0.12",
@@ -69,18 +69,18 @@ func TestEC2Adapter_NormalizeOutputs(t *testing.T) {
 }
 
 func TestEC2Adapter_Kind(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	assert.Equal(t, ec2.ServiceName, adapter.Kind())
 	assert.Equal(t, ec2.ServiceName, adapter.ServiceName())
 }
 
 func TestEC2Adapter_Scope(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestEC2Adapter_DecodeSpec_MissingRegion(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
 		"metadata":{"name":"web"},
@@ -92,7 +92,7 @@ func TestEC2Adapter_DecodeSpec_MissingRegion(t *testing.T) {
 }
 
 func TestEC2Adapter_DecodeSpec_MissingImageId(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
 		"metadata":{"name":"web"},
@@ -104,7 +104,7 @@ func TestEC2Adapter_DecodeSpec_MissingImageId(t *testing.T) {
 }
 
 func TestEC2Adapter_DecodeSpec_MissingSubnetId(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
 		"metadata":{"name":"web"},
@@ -116,7 +116,7 @@ func TestEC2Adapter_DecodeSpec_MissingSubnetId(t *testing.T) {
 }
 
 func TestEC2Adapter_DecodeSpec_SetsNameTag(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
 		"metadata":{"name":"web-server"},
@@ -129,7 +129,7 @@ func TestEC2Adapter_DecodeSpec_SetsNameTag(t *testing.T) {
 }
 
 func TestEC2Adapter_BuildKey_MissingName(t *testing.T) {
-	adapter := NewEC2Adapter()
+	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
 		"metadata":{"name":""},

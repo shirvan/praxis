@@ -107,6 +107,7 @@ drift detection, dependency ordering, and lifecycle management.`,
 		newImportCmd(flags),
 		newObserveCmd(flags),
 		newTemplateCmd(flags),
+		newWorkspaceCmd(flags),
 		newFmtCmd(),
 		newVersionCmd(),
 	)

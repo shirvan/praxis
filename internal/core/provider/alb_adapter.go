@@ -8,26 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/alb"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ALBAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI alb.ALBAPI
 	apiFactory        func(aws.Config) alb.ALBAPI
 }
 
-func NewALBAdapter() *ALBAdapter { return NewALBAdapterWithRegistry(auth.LoadFromEnv()) }
-
-func NewALBAdapterWithRegistry(accounts *auth.Registry) *ALBAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewALBAdapterWithAuth(auth authservice.AuthClient) *ALBAdapter {
 	return &ALBAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) alb.ALBAPI {
 			return alb.NewALBAPI(awsclient.NewELBv2Client(cfg))
 		},
@@ -106,7 +101,7 @@ func (a *ALBAdapter) Plan(ctx restate.Context, key string, account string, desir
 	if getErr != nil {
 		return "", nil, fmt.Errorf("ALB Plan: failed to read outputs for key %q: %w", key, getErr)
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -195,14 +190,14 @@ func (a *ALBAdapter) decodeSpec(doc resourceDocument) (alb.ALBSpec, error) {
 	return spec, nil
 }
 
-func (a *ALBAdapter) planningAPI(account string) (alb.ALBAPI, error) {
+func (a *ALBAdapter) planningAPI(ctx restate.Context, account string) (alb.ALBAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("ALB adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ALB planning account %q: %w", account, err)
 	}

@@ -2,14 +2,14 @@ package eip
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -194,37 +194,17 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidAllocationID.NotFound" || code == "InvalidAddressID.NotFound"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidAllocationID.NotFound") || strings.Contains(errText, "InvalidAddressID.NotFound")
+	return awserr.HasCode(err, "InvalidAllocationID.NotFound", "InvalidAddressID.NotFound")
 }
 
 func IsAssociationExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidIPAddress.InUse"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidIPAddress.InUse") || strings.Contains(errText, "is already associated")
+	return awserr.HasCode(err, "InvalidIPAddress.InUse")
 }
 
 func IsAddressLimitExceeded(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "AddressLimitExceeded"
-	}
-	return strings.Contains(err.Error(), "AddressLimitExceeded")
+	return awserr.HasCode(err, "AddressLimitExceeded")
+}
+
+func IsQuotaExceeded(err error) bool {
+	return IsAddressLimitExceeded(err)
 }

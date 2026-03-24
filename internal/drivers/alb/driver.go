@@ -8,40 +8,37 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ALBDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) ALBAPI
 }
 
-func NewALBDriver(accounts *auth.Registry) *ALBDriver {
-	return NewALBDriverWithFactory(accounts, func(cfg aws.Config) ALBAPI {
+func NewALBDriver(auth authservice.AuthClient) *ALBDriver {
+	return NewALBDriverWithFactory(auth, func(cfg aws.Config) ALBAPI {
 		return NewALBAPI(awsclient.NewELBv2Client(cfg))
 	})
 }
 
-func NewALBDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) ALBAPI) *ALBDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewALBDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) ALBAPI) *ALBDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) ALBAPI {
 			return NewALBAPI(awsclient.NewELBv2Client(cfg))
 		}
 	}
-	return &ALBDriver{auth: accounts, apiFactory: factory}
+	return &ALBDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *ALBDriver) ServiceName() string { return ServiceName }
 
 func (d *ALBDriver) Provision(ctx restate.ObjectContext, spec ALBSpec) (ALBOutputs, error) {
 	ctx.Log().Info("provisioning ALB", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return ALBOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -149,7 +146,7 @@ func (d *ALBDriver) Provision(ctx restate.ObjectContext, spec ALBSpec) (ALBOutpu
 
 func (d *ALBDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ALBOutputs, error) {
 	ctx.Log().Info("importing ALB", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, region, err := d.apiForAccount(ref.Account)
+	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return ALBOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -201,7 +198,7 @@ func (d *ALBDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, ALBState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -249,7 +246,7 @@ func (d *ALBDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -433,11 +430,11 @@ func (d *ALBDriver) scheduleReconcile(ctx restate.ObjectContext, state *ALBState
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *ALBDriver) apiForAccount(account string) (ALBAPI, string, error) {
+func (d *ALBDriver) apiForAccount(ctx restate.ObjectContext, account string) (ALBAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("ALBDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve ALB account %q: %w", account, err)
 	}

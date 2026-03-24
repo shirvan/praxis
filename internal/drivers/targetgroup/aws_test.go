@@ -23,10 +23,6 @@ func TestIsNotFound_APIError(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "TargetGroupNotFound"}))
 }
 
-func TestIsNotFound_StringMatch(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("TargetGroupNotFound: target group does not exist")))
-}
-
 func TestIsNotFound_Nil(t *testing.T) {
 	assert.False(t, IsNotFound(nil))
 }
@@ -38,10 +34,6 @@ func TestIsNotFound_Unrelated(t *testing.T) {
 
 func TestIsDuplicate_APIError(t *testing.T) {
 	assert.True(t, IsDuplicate(&mockAPIError{code: "DuplicateTargetGroupName"}))
-}
-
-func TestIsDuplicate_StringMatch(t *testing.T) {
-	assert.True(t, IsDuplicate(errors.New("DuplicateTargetGroupName: name already in use")))
 }
 
 func TestIsDuplicate_Nil(t *testing.T) {
@@ -57,10 +49,6 @@ func TestIsResourceInUse_APIError(t *testing.T) {
 	assert.True(t, IsResourceInUse(&mockAPIError{code: "ResourceInUse"}))
 }
 
-func TestIsResourceInUse_StringMatch(t *testing.T) {
-	assert.True(t, IsResourceInUse(errors.New("ResourceInUse: target group is still referenced")))
-}
-
 func TestIsResourceInUse_Nil(t *testing.T) {
 	assert.False(t, IsResourceInUse(nil))
 }
@@ -71,10 +59,6 @@ func TestIsResourceInUse_Unrelated(t *testing.T) {
 
 func TestIsTooMany_APIError(t *testing.T) {
 	assert.True(t, IsTooMany(&mockAPIError{code: "TooManyTargetGroups"}))
-}
-
-func TestIsTooMany_StringMatch(t *testing.T) {
-	assert.True(t, IsTooMany(errors.New("TooManyTargetGroups: exceeded quota")))
 }
 
 func TestIsTooMany_Nil(t *testing.T) {
@@ -89,12 +73,6 @@ func TestIsInvalidConfiguration_APIError(t *testing.T) {
 	assert.True(t, IsInvalidConfiguration(&mockAPIError{code: "InvalidTarget"}))
 	assert.True(t, IsInvalidConfiguration(&mockAPIError{code: "ValidationError"}))
 	assert.True(t, IsInvalidConfiguration(&mockAPIError{code: "InvalidConfigurationRequest"}))
-}
-
-func TestIsInvalidConfiguration_StringMatch(t *testing.T) {
-	assert.True(t, IsInvalidConfiguration(errors.New("InvalidTarget: target does not exist")))
-	assert.True(t, IsInvalidConfiguration(errors.New("ValidationError: invalid protocol")))
-	assert.True(t, IsInvalidConfiguration(errors.New("InvalidConfigurationRequest: bad config")))
 }
 
 func TestIsInvalidConfiguration_Nil(t *testing.T) {

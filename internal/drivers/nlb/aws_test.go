@@ -23,10 +23,6 @@ func TestIsNotFound_APIError(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "LoadBalancerNotFound"}))
 }
 
-func TestIsNotFound_StringMatch(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("LoadBalancerNotFound: NLB does not exist")))
-}
-
 func TestIsNotFound_Nil(t *testing.T) {
 	assert.False(t, IsNotFound(nil))
 }
@@ -38,10 +34,6 @@ func TestIsNotFound_Unrelated(t *testing.T) {
 
 func TestIsDuplicate_APIError(t *testing.T) {
 	assert.True(t, IsDuplicate(&mockAPIError{code: "DuplicateLoadBalancerName"}))
-}
-
-func TestIsDuplicate_StringMatch(t *testing.T) {
-	assert.True(t, IsDuplicate(errors.New("DuplicateLoadBalancerName: name already in use")))
 }
 
 func TestIsDuplicate_Nil(t *testing.T) {
@@ -58,11 +50,6 @@ func TestIsResourceInUse_APIError(t *testing.T) {
 	assert.True(t, IsResourceInUse(&mockAPIError{code: "OperationNotPermitted"}))
 }
 
-func TestIsResourceInUse_StringMatch(t *testing.T) {
-	assert.True(t, IsResourceInUse(errors.New("ResourceInUse: NLB is still referenced")))
-	assert.True(t, IsResourceInUse(errors.New("OperationNotPermitted: cannot delete")))
-}
-
 func TestIsResourceInUse_Nil(t *testing.T) {
 	assert.False(t, IsResourceInUse(nil))
 }
@@ -73,10 +60,6 @@ func TestIsResourceInUse_Unrelated(t *testing.T) {
 
 func TestIsTooMany_APIError(t *testing.T) {
 	assert.True(t, IsTooMany(&mockAPIError{code: "TooManyLoadBalancers"}))
-}
-
-func TestIsTooMany_StringMatch(t *testing.T) {
-	assert.True(t, IsTooMany(errors.New("TooManyLoadBalancers: exceeded quota")))
 }
 
 func TestIsTooMany_Nil(t *testing.T) {

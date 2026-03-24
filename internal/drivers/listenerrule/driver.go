@@ -7,40 +7,37 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ListenerRuleDriver struct {
-	auth       *auth.Registry
+	auth       authservice.AuthClient
 	apiFactory func(aws.Config) ListenerRuleAPI
 }
 
-func NewListenerRuleDriver(accounts *auth.Registry) *ListenerRuleDriver {
-	return NewListenerRuleDriverWithFactory(accounts, func(cfg aws.Config) ListenerRuleAPI {
+func NewListenerRuleDriver(auth authservice.AuthClient) *ListenerRuleDriver {
+	return NewListenerRuleDriverWithFactory(auth, func(cfg aws.Config) ListenerRuleAPI {
 		return NewListenerRuleAPI(awsclient.NewELBv2Client(cfg))
 	})
 }
 
-func NewListenerRuleDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) ListenerRuleAPI) *ListenerRuleDriver {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewListenerRuleDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) ListenerRuleAPI) *ListenerRuleDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) ListenerRuleAPI {
 			return NewListenerRuleAPI(awsclient.NewELBv2Client(cfg))
 		}
 	}
-	return &ListenerRuleDriver{auth: accounts, apiFactory: factory}
+	return &ListenerRuleDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *ListenerRuleDriver) ServiceName() string { return ServiceName }
 
 func (d *ListenerRuleDriver) Provision(ctx restate.ObjectContext, spec ListenerRuleSpec) (ListenerRuleOutputs, error) {
 	ctx.Log().Info("provisioning listener rule", "key", restate.Key(ctx))
-	api, _, err := d.apiForAccount(spec.Account)
+	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
 		return ListenerRuleOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -155,7 +152,7 @@ func (d *ListenerRuleDriver) Provision(ctx restate.ObjectContext, spec ListenerR
 
 func (d *ListenerRuleDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ListenerRuleOutputs, error) {
 	ctx.Log().Info("importing listener rule", "resourceId", ref.ResourceID, "mode", ref.Mode)
-	api, _, err := d.apiForAccount(ref.Account)
+	api, _, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
 		return ListenerRuleOutputs{}, restate.TerminalError(err, 400)
 	}
@@ -212,7 +209,7 @@ func (d *ListenerRuleDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, ListenerRuleState{Status: types.StatusDeleted})
 		return nil
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return restate.TerminalError(err, 400)
 	}
@@ -245,7 +242,7 @@ func (d *ListenerRuleDriver) Reconcile(ctx restate.ObjectContext) (types.Reconci
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	api, _, err := d.apiForAccount(state.Desired.Account)
+	api, _, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
 		return types.ReconcileResult{}, restate.TerminalError(err, 400)
 	}
@@ -371,11 +368,11 @@ func (d *ListenerRuleDriver) scheduleReconcile(ctx restate.ObjectContext, state 
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-func (d *ListenerRuleDriver) apiForAccount(account string) (ListenerRuleAPI, string, error) {
+func (d *ListenerRuleDriver) apiForAccount(ctx restate.ObjectContext, account string) (ListenerRuleAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("ListenerRuleDriver is not configured with an auth registry")
 	}
-	awsCfg, err := d.auth.Resolve(account)
+	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve listener rule account %q: %w", account, err)
 	}

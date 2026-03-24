@@ -8,6 +8,7 @@ type ApplyRequest struct {
 	Variables     map[string]any `json:"variables,omitempty"`
 	DeploymentKey string         `json:"deploymentKey,omitempty"`
 	Account       string         `json:"account,omitempty"`
+	Workspace     string         `json:"workspace,omitempty"`
 	Targets       []string       `json:"targets,omitempty"`
 	Replace       []string       `json:"replace,omitempty"`
 }
@@ -26,6 +27,7 @@ type PlanRequest struct {
 	TemplateRef *TemplateRef   `json:"templateRef,omitempty"`
 	Variables   map[string]any `json:"variables,omitempty"`
 	Account     string         `json:"account,omitempty"`
+	Workspace   string         `json:"workspace,omitempty"`
 	Targets     []string       `json:"targets,omitempty"`
 }
 
@@ -53,6 +55,7 @@ type ImportRequest struct {
 	Region     string `json:"region"`
 	Mode       Mode   `json:"mode,omitempty"`
 	Account    string `json:"account,omitempty"`
+	Workspace  string `json:"workspace,omitempty"`
 }
 
 // ImportResponse mirrors the generic deployment-facing view of a driver import.
@@ -148,6 +151,7 @@ type DeployRequest struct {
 	Variables     map[string]any `json:"variables,omitempty"`     // user-provided variables
 	DeploymentKey string         `json:"deploymentKey,omitempty"` // optional stable key
 	Account       string         `json:"account,omitempty"`       // AWS account override
+	Workspace     string         `json:"workspace,omitempty"`     // workspace context
 	Targets       []string       `json:"targets,omitempty"`       // limit to named resources + deps
 	Replace       []string       `json:"replace,omitempty"`       // force Delete→Provision on named resources
 }
@@ -163,6 +167,7 @@ type PlanDeployRequest struct {
 	Template  string         `json:"template"`            // registered template name (required)
 	Variables map[string]any `json:"variables,omitempty"` // user-provided variables
 	Account   string         `json:"account,omitempty"`   // AWS account override
+	Workspace string         `json:"workspace,omitempty"` // workspace context
 	Targets   []string       `json:"targets,omitempty"`   // limit to named resources + deps
 }
 

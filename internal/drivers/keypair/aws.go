@@ -2,14 +2,14 @@ package keypair
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -174,38 +174,13 @@ func toEC2Tags(tags map[string]string) []ec2types.Tag {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidKeyPair.NotFound"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidKeyPair.NotFound")
+	return awserr.HasCode(err, "InvalidKeyPair.NotFound")
 }
 
 func IsDuplicate(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidKeyPair.Duplicate"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidKeyPair.Duplicate")
+	return awserr.HasCode(err, "InvalidKeyPair.Duplicate")
 }
 
 func IsInvalidKeyFormat(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidKey.Format" || code == "InvalidKeyPair.Format"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidKey.Format") || strings.Contains(errText, "InvalidKeyPair.Format")
+	return awserr.HasCode(err, "InvalidKey.Format", "InvalidKeyPair.Format")
 }

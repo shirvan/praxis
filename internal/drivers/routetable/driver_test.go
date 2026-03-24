@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	restate "github.com/restatedev/sdk-go"
+
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
@@ -170,7 +173,7 @@ func (f *fakeRouteTableAPI) FindByManagedKey(ctx context.Context, managedKey str
 
 func setupRouteTableDriver(t *testing.T, api *fakeRouteTableAPI) *ingress.Client {
 	t.Helper()
-	driver := NewRouteTableDriverWithFactory(nil, func(cfg aws.Config) RouteTableAPI {
+	driver := NewRouteTableDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) RouteTableAPI {
 		return api
 	})
 	env := restatetest.Start(t, restate.Reflect(driver))

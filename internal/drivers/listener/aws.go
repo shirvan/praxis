@@ -2,14 +2,14 @@ package listener
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -280,67 +280,25 @@ func filterPraxisTags(tags map[string]string) map[string]string {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "ListenerNotFound"
-	}
-	return strings.Contains(err.Error(), "ListenerNotFound")
+	return awserr.HasCode(err, "ListenerNotFound")
 }
 
 func IsDuplicate(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DuplicateListener"
-	}
-	return strings.Contains(err.Error(), "DuplicateListener")
+	return awserr.HasCode(err, "DuplicateListener")
 }
 
 func IsTooMany(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TooManyListeners"
-	}
-	return strings.Contains(err.Error(), "TooManyListeners")
+	return awserr.HasCode(err, "TooManyListeners")
 }
 
 func IsTargetGroupNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TargetGroupNotFound"
-	}
-	return strings.Contains(err.Error(), "TargetGroupNotFound")
+	return awserr.HasCode(err, "TargetGroupNotFound")
 }
 
 func IsInvalidConfig(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidConfigurationRequest"
-	}
-	return strings.Contains(err.Error(), "InvalidConfigurationRequest")
+	return awserr.HasCode(err, "InvalidConfigurationRequest")
 }
 
 func IsCertificateNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "CertificateNotFound"
-	}
-	return strings.Contains(err.Error(), "CertificateNotFound")
+	return awserr.HasCode(err, "CertificateNotFound")
 }

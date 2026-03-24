@@ -43,7 +43,7 @@ func (s *PraxisCommandService) DeleteDeployment(ctx restate.Context, req DeleteD
 
 // Import adopts an existing provider resource through the typed adapter.
 func (s *PraxisCommandService) Import(ctx restate.Context, req ImportRequest) (ImportResponse, error) {
-	account, err := s.resolveRequestAccount(req.Account, nil)
+	account, _, err := s.resolveWorkspaceDefaults(ctx, req.Account, req.Workspace, nil)
 	if err != nil {
 		return ImportResponse{}, restate.TerminalError(err, 400)
 	}
@@ -64,10 +64,10 @@ func (s *PraxisCommandService) Import(ctx restate.Context, req ImportRequest) (I
 		return ImportResponse{}, restate.TerminalError(err, 400)
 	}
 
-	status, outputs, err := adapter.Import(ctx, key, account.Name, types.ImportRef{
+	status, outputs, err := adapter.Import(ctx, key, account, types.ImportRef{
 		ResourceID: req.ResourceID,
 		Mode:       req.Mode,
-		Account:    account.Name,
+		Account:    account,
 	})
 	if err != nil {
 		return ImportResponse{}, err

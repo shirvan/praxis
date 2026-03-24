@@ -12,6 +12,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -261,40 +263,15 @@ func IsNotFound(err error) bool {
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidParameterCombination"
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "InvalidParameterValue") || strings.Contains(msg, "InvalidParameterCombination")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }
 
 func IsAllocationInUse(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "Resource.AlreadyAssociated" || code == "InvalidAllocationID.NotFound"
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "resource.alreadyassociated") || strings.Contains(msg, "invalidallocationid.notfound") || strings.Contains(msg, "already associated")
+	return awserr.HasCode(err, "Resource.AlreadyAssociated", "InvalidAllocationID.NotFound")
 }
 
 func IsSubnetNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidSubnetID.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidSubnetID.NotFound")
+	return awserr.HasCode(err, "InvalidSubnetID.NotFound")
 }
 
 func IsFailed(state string) bool {

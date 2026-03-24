@@ -25,11 +25,6 @@ func TestIsNotFound_MatchesAPIErrorCode(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidVpcID.Malformed"}))
 }
 
-func TestIsNotFound_MatchesWrappedErrorText(t *testing.T) {
-	err := errors.New("[404] operation error EC2: DescribeVpcs, api error InvalidVpcID.NotFound: The VPC ID does not exist")
-	assert.True(t, IsNotFound(err))
-}
-
 func TestIsNotFound_False(t *testing.T) {
 	assert.False(t, IsNotFound(nil))
 	assert.False(t, IsNotFound(errors.New("network timeout")))

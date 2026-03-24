@@ -11,6 +11,8 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -279,17 +281,7 @@ func IsNotFound(err error) bool {
 // IsBucketNotEmpty returns true if a DeleteBucket call failed because the
 // bucket still contains objects. Praxis never auto-empties buckets.
 func IsBucketNotEmpty(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "BucketNotEmpty"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "BucketNotEmpty") ||
-		strings.Contains(errText, "bucket you tried to delete is not empty") ||
-		strings.Contains(errText, "You must delete all versions in the bucket")
+	return awserr.HasCode(err, "BucketNotEmpty")
 }
 
 // IsConflict returns true if the error indicates a resource state conflict
@@ -301,4 +293,8 @@ func IsConflict(err error) bool {
 	var bao *s3types.BucketAlreadyOwnedByYou
 	var bae *s3types.BucketAlreadyExists
 	return errors.As(err, &bao) || errors.As(err, &bae)
+}
+
+func IsBucketLimitExceeded(err error) bool {
+	return awserr.HasCode(err, "TooManyBuckets")
 }

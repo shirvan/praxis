@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/keypair"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type KeyPairAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI keypair.KeyPairAPI
 	apiFactory        func(aws.Config) keypair.KeyPairAPI
 }
 
-func NewKeyPairAdapter() *KeyPairAdapter {
-	return NewKeyPairAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewKeyPairAdapterWithRegistry(accounts *auth.Registry) *KeyPairAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewKeyPairAdapterWithAuth(auth authservice.AuthClient) *KeyPairAdapter {
 	return &KeyPairAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) keypair.KeyPairAPI {
 			return keypair.NewKeyPairAPI(awsclient.NewEC2Client(cfg))
 		},
@@ -139,7 +132,7 @@ func (a *KeyPairAdapter) Plan(ctx restate.Context, key string, account string, d
 		return types.OpCreate, fields, nil
 	}
 
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -233,14 +226,14 @@ func (a *KeyPairAdapter) decodeSpec(doc resourceDocument) (keypair.KeyPairSpec, 
 	return spec, nil
 }
 
-func (a *KeyPairAdapter) planningAPI(account string) (keypair.KeyPairAPI, error) {
+func (a *KeyPairAdapter) planningAPI(ctx restate.Context, account string) (keypair.KeyPairAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("KeyPair adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve KeyPair planning account %q: %w", account, err)
 	}

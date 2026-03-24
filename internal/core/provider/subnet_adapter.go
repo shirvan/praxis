@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/subnet"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type SubnetAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI subnet.SubnetAPI
 	apiFactory        func(aws.Config) subnet.SubnetAPI
 }
 
-func NewSubnetAdapter() *SubnetAdapter {
-	return NewSubnetAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewSubnetAdapterWithRegistry(accounts *auth.Registry) *SubnetAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
 	return &SubnetAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) subnet.SubnetAPI {
 			return subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg))
 		},
@@ -146,7 +139,7 @@ func (a *SubnetAdapter) Plan(ctx restate.Context, key string, account string, de
 		return types.OpCreate, fields, nil
 	}
 
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -245,14 +238,14 @@ func (a *SubnetAdapter) decodeSpec(doc resourceDocument) (subnet.SubnetSpec, err
 	return spec, nil
 }
 
-func (a *SubnetAdapter) planningAPI(account string) (subnet.SubnetAPI, error) {
+func (a *SubnetAdapter) planningAPI(ctx restate.Context, account string) (subnet.SubnetAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("Subnet adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Subnet planning account %q: %w", account, err)
 	}

@@ -13,7 +13,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -109,44 +109,43 @@ type Registry struct {
 }
 
 // NewRegistry returns the current hardcoded adapter set for Praxis Core.
-func NewRegistry() *Registry {
-	accounts := auth.LoadFromEnv()
+func NewRegistry(auth authservice.AuthClient) *Registry {
 	return NewRegistryWithAdapters(
-		NewS3AdapterWithRegistry(accounts),
-		NewEBSAdapterWithRegistry(accounts),
-		NewAMIAdapterWithRegistry(accounts),
-		NewEC2AdapterWithRegistry(accounts),
-		NewKeyPairAdapterWithRegistry(accounts),
-		NewIAMRoleAdapterWithRegistry(accounts),
-		NewIAMPolicyAdapterWithRegistry(accounts),
-		NewIAMUserAdapterWithRegistry(accounts),
-		NewIAMGroupAdapterWithRegistry(accounts),
-		NewIAMInstanceProfileAdapterWithRegistry(accounts),
-		NewEIPAdapterWithRegistry(accounts),
-		NewNATGatewayAdapterWithRegistry(accounts),
-		NewNetworkACLAdapterWithRegistry(accounts),
-		NewRoute53HostedZoneAdapterWithRegistry(accounts),
-		NewRoute53RecordAdapterWithRegistry(accounts),
-		NewRoute53HealthCheckAdapterWithRegistry(accounts),
-		NewRouteTableAdapterWithRegistry(accounts),
-		NewSecurityGroupAdapterWithRegistry(accounts),
-		NewESMAdapterWithRegistry(accounts),
-		NewLambdaAdapterWithRegistry(accounts),
-		NewLambdaLayerAdapterWithRegistry(accounts),
-		NewLambdaPermissionAdapterWithRegistry(accounts),
-		NewSubnetAdapterWithRegistry(accounts),
-		NewIGWAdapterWithRegistry(accounts),
-		NewVPCPeeringAdapterWithRegistry(accounts),
-		NewVPCAdapterWithRegistry(accounts),
-		NewDBSubnetGroupAdapterWithRegistry(accounts),
-		NewDBParameterGroupAdapterWithRegistry(accounts),
-		NewRDSInstanceAdapterWithRegistry(accounts),
-		NewAuroraClusterAdapterWithRegistry(accounts),
-		NewALBAdapterWithRegistry(accounts),
-		NewNLBAdapterWithRegistry(accounts),
-		NewTargetGroupAdapterWithRegistry(accounts),
-		NewListenerAdapterWithRegistry(accounts),
-		NewListenerRuleAdapterWithRegistry(accounts),
+		NewS3AdapterWithAuth(auth),
+		NewEBSAdapterWithAuth(auth),
+		NewAMIAdapterWithAuth(auth),
+		NewEC2AdapterWithAuth(auth),
+		NewKeyPairAdapterWithAuth(auth),
+		NewIAMRoleAdapterWithAuth(auth),
+		NewIAMPolicyAdapterWithAuth(auth),
+		NewIAMUserAdapterWithAuth(auth),
+		NewIAMGroupAdapterWithAuth(auth),
+		NewIAMInstanceProfileAdapterWithAuth(auth),
+		NewEIPAdapterWithAuth(auth),
+		NewNATGatewayAdapterWithAuth(auth),
+		NewNetworkACLAdapterWithAuth(auth),
+		NewRoute53HostedZoneAdapterWithAuth(auth),
+		NewRoute53RecordAdapterWithAuth(auth),
+		NewRoute53HealthCheckAdapterWithAuth(auth),
+		NewRouteTableAdapterWithAuth(auth),
+		NewSecurityGroupAdapterWithAuth(auth),
+		NewESMAdapterWithAuth(auth),
+		NewLambdaAdapterWithAuth(auth),
+		NewLambdaLayerAdapterWithAuth(auth),
+		NewLambdaPermissionAdapterWithAuth(auth),
+		NewSubnetAdapterWithAuth(auth),
+		NewIGWAdapterWithAuth(auth),
+		NewVPCPeeringAdapterWithAuth(auth),
+		NewVPCAdapterWithAuth(auth),
+		NewDBSubnetGroupAdapterWithAuth(auth),
+		NewDBParameterGroupAdapterWithAuth(auth),
+		NewRDSInstanceAdapterWithAuth(auth),
+		NewAuroraClusterAdapterWithAuth(auth),
+		NewALBAdapterWithAuth(auth),
+		NewNLBAdapterWithAuth(auth),
+		NewTargetGroupAdapterWithAuth(auth),
+		NewListenerAdapterWithAuth(auth),
+		NewListenerRuleAdapterWithAuth(auth),
 	)
 }
 

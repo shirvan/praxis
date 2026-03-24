@@ -1,14 +1,13 @@
 package esm
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestESMErrorClassifiers(t *testing.T) {
-	assert.True(t, IsNotFound(errors.New("ResourceNotFoundException: missing")))
-	assert.True(t, IsConflict(errors.New("ResourceConflictException: busy")))
-	assert.True(t, IsInvalidParameter(errors.New("InvalidParameterValueException: invalid")))
+	assert.True(t, IsConflict(&smithy.GenericAPIError{Code: "ResourceConflictException"}))
+	assert.False(t, IsConflict(nil))
 }

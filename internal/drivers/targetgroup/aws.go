@@ -2,7 +2,6 @@ package targetgroup
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -11,7 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -401,58 +401,21 @@ func diffTargets(desired, observed []Target) (add []Target, remove []Target) {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TargetGroupNotFound"
-	}
-	return strings.Contains(err.Error(), "TargetGroupNotFound")
+	return awserr.HasCode(err, "TargetGroupNotFound")
 }
 
 func IsDuplicate(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DuplicateTargetGroupName"
-	}
-	return strings.Contains(err.Error(), "DuplicateTargetGroupName")
+	return awserr.HasCode(err, "DuplicateTargetGroupName")
 }
 
 func IsResourceInUse(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "ResourceInUse"
-	}
-	return strings.Contains(err.Error(), "ResourceInUse")
+	return awserr.HasCode(err, "ResourceInUse")
 }
 
 func IsTooMany(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "TooManyTargetGroups"
-	}
-	return strings.Contains(err.Error(), "TooManyTargetGroups")
+	return awserr.HasCode(err, "TooManyTargetGroups")
 }
 
 func IsInvalidConfiguration(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidTarget" || code == "ValidationError" || code == "InvalidConfigurationRequest"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidTarget") || strings.Contains(errText, "ValidationError") || strings.Contains(errText, "InvalidConfigurationRequest")
+	return awserr.HasCode(err, "InvalidTarget", "ValidationError", "InvalidConfigurationRequest")
 }

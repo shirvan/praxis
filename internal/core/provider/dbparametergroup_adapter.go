@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/dbparametergroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type DBParameterGroupAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI dbparametergroup.DBParameterGroupAPI
 	apiFactory        func(aws.Config) dbparametergroup.DBParameterGroupAPI
 }
 
-func NewDBParameterGroupAdapter() *DBParameterGroupAdapter {
-	return NewDBParameterGroupAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewDBParameterGroupAdapterWithRegistry(accounts *auth.Registry) *DBParameterGroupAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewDBParameterGroupAdapterWithAuth(auth authservice.AuthClient) *DBParameterGroupAdapter {
 	return &DBParameterGroupAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) dbparametergroup.DBParameterGroupAPI {
 			return dbparametergroup.NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg))
 		},
@@ -102,7 +95,7 @@ func (a *DBParameterGroupAdapter) Plan(ctx restate.Context, key string, account 
 	if getErr != nil {
 		return "", nil, fmt.Errorf("DBParameterGroup Plan: failed to read outputs for key %q: %w", key, getErr)
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -190,14 +183,14 @@ func (a *DBParameterGroupAdapter) decodeSpec(doc resourceDocument) (dbparameterg
 	return dbparametergroup.DBParameterGroupSpec{Region: strings.TrimSpace(spec.Region), GroupName: name, Type: strings.TrimSpace(spec.Type), Family: spec.Family, Description: spec.Description, Parameters: spec.Parameters, Tags: spec.Tags}, nil
 }
 
-func (a *DBParameterGroupAdapter) planningAPI(account string) (dbparametergroup.DBParameterGroupAPI, error) {
+func (a *DBParameterGroupAdapter) planningAPI(ctx restate.Context, account string) (dbparametergroup.DBParameterGroupAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("DBParameterGroup adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve DBParameterGroup planning account %q: %w", account, err)
 	}

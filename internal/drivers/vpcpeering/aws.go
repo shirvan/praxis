@@ -2,14 +2,14 @@ package vpcpeering
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -284,78 +284,25 @@ func firstCIDR(info *ec2types.VpcPeeringConnectionVpcInfo) string {
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidVpcPeeringConnectionID.NotFound" || code == "InvalidVpcPeeringConnectionId.NotFound"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidVpcPeeringConnectionID.NotFound") || strings.Contains(errText, "InvalidVpcPeeringConnectionId.NotFound")
+	return awserr.HasCode(err, "InvalidVpcPeeringConnectionID.NotFound", "InvalidVpcPeeringConnectionId.NotFound")
 }
 
 func IsVpcNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidVpcID.NotFound" || code == "InvalidVpcID.Malformed"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidVpcID.NotFound") || strings.Contains(errText, "InvalidVpcID.Malformed")
+	return awserr.HasCode(err, "InvalidVpcID.NotFound", "InvalidVpcID.Malformed")
 }
 
 func IsAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "VpcPeeringConnectionAlreadyExists" || code == "InvalidVpcPeeringConnection.Duplicate"
-	}
-	errText := strings.ToLower(err.Error())
-	return strings.Contains(errText, "vpcpeeringconnectionalreadyexists") || strings.Contains(errText, "invalidvpcpeeringconnection.duplicate") || strings.Contains(errText, "already exists") || strings.Contains(errText, "duplicate")
+	return awserr.HasCode(err, "VpcPeeringConnectionAlreadyExists", "InvalidVpcPeeringConnection.Duplicate")
 }
 
 func IsCidrOverlap(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "OverlappingCidrBlock" {
-		return true
-	}
-	errText := strings.ToLower(err.Error())
-	return strings.Contains(errText, "overlappingcidrblock") || strings.Contains(errText, "overlapping cidr") || strings.Contains(errText, "cidr blocks overlap")
+	return awserr.HasCode(err, "OverlappingCidrBlock")
 }
 
 func IsPeeringLimitExceeded(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "VpcPeeringConnectionLimitExceeded" || code == "VpcLimitExceeded"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "VpcPeeringConnectionLimitExceeded") || strings.Contains(errText, "VpcLimitExceeded")
+	return awserr.HasCode(err, "VpcPeeringConnectionLimitExceeded", "VpcLimitExceeded")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidParameterCombination"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidParameterValue") || strings.Contains(errText, "InvalidParameterCombination")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

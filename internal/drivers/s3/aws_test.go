@@ -1,18 +1,30 @@
 package s3
 
 import (
-	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsBucketNotEmpty_MatchesWrappedErrorText(t *testing.T) {
-	err := errors.New("[500] operation error S3: DeleteBucket, api error BucketNotEmpty: The bucket you tried to delete is not empty")
-	assert.True(t, IsBucketNotEmpty(err))
+type mockAPIError struct {
+	code    string
+	message string
 }
 
-func TestIsBucketNotEmpty_MatchesRestateWrappedPanicText(t *testing.T) {
-	err := errors.New("Invocation panicked, returning error to Restate err=\"[500] [500] (500) operation error S3: DeleteBucket, https response error StatusCode: 409, api error BucketNotEmpty: The bucket you tried to delete is not empty. You must delete all versions in the bucket.\\nRelated command: run []\"")
-	assert.True(t, IsBucketNotEmpty(err))
+func (e *mockAPIError) Error() string                 { return fmt.Sprintf("%s: %s", e.code, e.message) }
+func (e *mockAPIError) ErrorCode() string             { return e.code }
+func (e *mockAPIError) ErrorMessage() string          { return e.message }
+func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnknown }
+
+func TestIsBucketNotEmpty_True(t *testing.T) {
+	assert.True(t, IsBucketNotEmpty(&mockAPIError{code: "BucketNotEmpty"}))
+	assert.False(t, IsBucketNotEmpty(nil))
+}
+
+func TestIsBucketLimitExceeded_True(t *testing.T) {
+	assert.True(t, IsBucketLimitExceeded(&mockAPIError{code: "TooManyBuckets"}))
+	assert.False(t, IsBucketLimitExceeded(nil))
+	assert.False(t, IsBucketLimitExceeded(&mockAPIError{code: "BucketNotEmpty"}))
 }

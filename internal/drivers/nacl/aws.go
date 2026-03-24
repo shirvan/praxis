@@ -2,7 +2,6 @@ package nacl
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -11,7 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
@@ -462,72 +462,29 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 }
 
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidNetworkAclID.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidNetworkAclID.NotFound")
+	return awserr.HasCode(err, "InvalidNetworkAclID.NotFound")
 }
 
 func IsInUse(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "DependencyViolation"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "DependencyViolation") || strings.Contains(strings.ToLower(errText), "dependencies and cannot be deleted")
+	return awserr.HasCode(err, "DependencyViolation")
 }
 
 func IsDefaultACL(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "Client.CannotDelete" || code == "OperationNotPermitted"
-	}
-	errText := strings.ToLower(err.Error())
-	return strings.Contains(errText, "default network acl") || strings.Contains(errText, "cannot delete")
+	return awserr.HasCode(err, "Client.CannotDelete", "OperationNotPermitted")
 }
 
 func IsDuplicateRule(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "NetworkAclEntryAlreadyExists"
-	}
-	return strings.Contains(err.Error(), "NetworkAclEntryAlreadyExists")
+	return awserr.HasCode(err, "NetworkAclEntryAlreadyExists")
 }
 
 func IsRuleNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "InvalidNetworkAclEntry.NotFound"
-	}
-	return strings.Contains(err.Error(), "InvalidNetworkAclEntry.NotFound")
+	return awserr.HasCode(err, "InvalidNetworkAclEntry.NotFound")
 }
 
 func IsInvalidParam(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := apiErr.ErrorCode()
-		return code == "InvalidParameterValue" || code == "InvalidParameterCombination" || code == "InvalidSubnetID.NotFound" || code == "InvalidVpcID.NotFound"
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "InvalidParameterValue") || strings.Contains(errText, "InvalidParameterCombination") || strings.Contains(errText, "InvalidSubnetID.NotFound") || strings.Contains(errText, "InvalidVpcID.NotFound")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination", "InvalidSubnetID.NotFound", "InvalidVpcID.NotFound")
+}
+
+func IsLimitExceeded(err error) bool {
+	return awserr.HasCodePrefix(err, "NetworkAclLimit", "RulesPerAclLimit")
 }

@@ -1,7 +1,6 @@
 package nacl
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -21,27 +20,29 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidNetworkAclID.NotFound"}))
-	assert.True(t, IsNotFound(errors.New("api error InvalidNetworkAclID.NotFound: missing")))
 }
 
 func TestIsInUse_True(t *testing.T) {
 	assert.True(t, IsInUse(&mockAPIError{code: "DependencyViolation"}))
-	assert.True(t, IsInUse(errors.New("DependencyViolation: network ACL has dependencies and cannot be deleted")))
 }
 
 func TestIsDefaultACL_True(t *testing.T) {
 	assert.True(t, IsDefaultACL(&mockAPIError{code: "Client.CannotDelete"}))
-	assert.True(t, IsDefaultACL(errors.New("cannot delete default network ACL")))
 }
 
 func TestIsDuplicateRule_True(t *testing.T) {
 	assert.True(t, IsDuplicateRule(&mockAPIError{code: "NetworkAclEntryAlreadyExists"}))
-	assert.True(t, IsDuplicateRule(errors.New("api error NetworkAclEntryAlreadyExists: duplicate")))
 }
 
 func TestIsRuleNotFound_True(t *testing.T) {
 	assert.True(t, IsRuleNotFound(&mockAPIError{code: "InvalidNetworkAclEntry.NotFound"}))
-	assert.True(t, IsRuleNotFound(errors.New("api error InvalidNetworkAclEntry.NotFound: missing")))
+}
+
+func TestIsLimitExceeded_True(t *testing.T) {
+	assert.True(t, IsLimitExceeded(&mockAPIError{code: "NetworkAclLimitExceeded"}))
+	assert.True(t, IsLimitExceeded(&mockAPIError{code: "RulesPerAclLimitExceeded"}))
+	assert.False(t, IsLimitExceeded(nil))
+	assert.False(t, IsLimitExceeded(&mockAPIError{code: "InvalidParameterValue"}))
 }
 
 func TestSingleManagedKeyMatch(t *testing.T) {

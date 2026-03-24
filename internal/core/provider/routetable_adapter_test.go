@@ -11,7 +11,7 @@ import (
 )
 
 func TestRouteTableAdapter_BuildKey(t *testing.T) {
-	adapter := NewRouteTableAdapter()
+	adapter := NewRouteTableAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"RouteTable",
@@ -31,7 +31,7 @@ func TestRouteTableAdapter_BuildKey(t *testing.T) {
 }
 
 func TestRouteTableAdapter_DecodeSpecAndNormalizeOutputs(t *testing.T) {
-	adapter := NewRouteTableAdapter()
+	adapter := NewRouteTableAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"RouteTable",
@@ -58,7 +58,7 @@ func TestRouteTableAdapter_DecodeSpecAndNormalizeOutputs(t *testing.T) {
 }
 
 func TestRouteTableAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewRouteTableAdapter()
+	adapter := NewRouteTableAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-east-1", "rtb-123")
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~rtb-123", key)

@@ -11,7 +11,7 @@ import (
 )
 
 func TestAuroraClusterAdapter_DecodeSpecAndBuildKey(t *testing.T) {
-	adapter := NewAuroraClusterAdapter()
+	adapter := NewAuroraClusterAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
 		"apiVersion":"praxis.io/v1",
 		"kind":"AuroraCluster",
@@ -44,25 +44,25 @@ func TestAuroraClusterAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 }
 
 func TestAuroraClusterAdapter_BuildImportKey(t *testing.T) {
-	adapter := NewAuroraClusterAdapter()
+	adapter := NewAuroraClusterAdapterWithAuth(nil)
 	key, err := adapter.BuildImportKey("us-west-2", "my-cluster")
 	require.NoError(t, err)
 	assert.Equal(t, "us-west-2~my-cluster", key)
 }
 
 func TestAuroraClusterAdapter_Kind(t *testing.T) {
-	adapter := NewAuroraClusterAdapter()
+	adapter := NewAuroraClusterAdapterWithAuth(nil)
 	assert.Equal(t, auroracluster.ServiceName, adapter.Kind())
 	assert.Equal(t, auroracluster.ServiceName, adapter.ServiceName())
 }
 
 func TestAuroraClusterAdapter_Scope(t *testing.T) {
-	adapter := NewAuroraClusterAdapter()
+	adapter := NewAuroraClusterAdapterWithAuth(nil)
 	assert.Equal(t, KeyScopeRegion, adapter.Scope())
 }
 
 func TestAuroraClusterAdapter_NormalizeOutputs(t *testing.T) {
-	adapter := NewAuroraClusterAdapter()
+	adapter := NewAuroraClusterAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(auroracluster.AuroraClusterOutputs{
 		ClusterIdentifier: "my-cluster",
 		ClusterResourceId: "cluster-abc",

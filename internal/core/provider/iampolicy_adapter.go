@@ -8,28 +8,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/iampolicy"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type IAMPolicyAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI iampolicy.IAMPolicyAPI
 	apiFactory        func(aws.Config) iampolicy.IAMPolicyAPI
 }
 
-func NewIAMPolicyAdapter() *IAMPolicyAdapter {
-	return NewIAMPolicyAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewIAMPolicyAdapterWithRegistry(accounts *auth.Registry) *IAMPolicyAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
+func NewIAMPolicyAdapterWithAuth(auth authservice.AuthClient) *IAMPolicyAdapter {
 	return &IAMPolicyAdapter{
-		auth: accounts,
+		auth: auth,
 		apiFactory: func(cfg aws.Config) iampolicy.IAMPolicyAPI {
 			return iampolicy.NewIAMPolicyAPI(awsclient.NewIAMClient(cfg))
 		},
@@ -109,7 +102,7 @@ func (a *IAMPolicyAdapter) Plan(ctx restate.Context, key string, account string,
 	if err != nil {
 		return "", nil, err
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -199,14 +192,14 @@ func (a *IAMPolicyAdapter) decodeSpec(doc resourceDocument) (iampolicy.IAMPolicy
 	return iampolicy.IAMPolicySpec{Path: spec.Path, PolicyName: name, PolicyDocument: spec.PolicyDocument, Description: spec.Description, Tags: spec.Tags}, nil
 }
 
-func (a *IAMPolicyAdapter) planningAPI(account string) (iampolicy.IAMPolicyAPI, error) {
+func (a *IAMPolicyAdapter) planningAPI(ctx restate.Context, account string) (iampolicy.IAMPolicyAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("IAMPolicy adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve IAMPolicy planning account %q: %w", account, err)
 	}

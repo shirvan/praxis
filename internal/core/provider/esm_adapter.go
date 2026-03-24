@@ -8,27 +8,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/esm"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 type ESMAdapter struct {
-	auth              *auth.Registry
+	auth              authservice.AuthClient
 	staticPlanningAPI esm.ESMAPI
 	apiFactory        func(aws.Config) esm.ESMAPI
 }
 
-func NewESMAdapter() *ESMAdapter {
-	return NewESMAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewESMAdapterWithRegistry(accounts *auth.Registry) *ESMAdapter {
-	if accounts == nil {
-		accounts = auth.LoadFromEnv()
-	}
-	return &ESMAdapter{auth: accounts, apiFactory: func(cfg aws.Config) esm.ESMAPI { return esm.NewESMAPI(awsclient.NewLambdaClient(cfg)) }}
+func NewESMAdapterWithAuth(auth authservice.AuthClient) *ESMAdapter {
+	return &ESMAdapter{auth: auth, apiFactory: func(cfg aws.Config) esm.ESMAPI { return esm.NewESMAPI(awsclient.NewLambdaClient(cfg)) }}
 }
 
 func (a *ESMAdapter) Kind() string        { return esm.ServiceName }
@@ -101,7 +94,7 @@ func (a *ESMAdapter) Plan(ctx restate.Context, key string, account string, desir
 		}
 		return types.OpCreate, fields, nil
 	}
-	planningAPI, err := a.planningAPI(account)
+	planningAPI, err := a.planningAPI(ctx, account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -174,14 +167,14 @@ func (a *ESMAdapter) decodeSpec(doc resourceDocument) (esm.EventSourceMappingSpe
 	return spec, nil
 }
 
-func (a *ESMAdapter) planningAPI(account string) (esm.ESMAPI, error) {
+func (a *ESMAdapter) planningAPI(ctx restate.Context, account string) (esm.ESMAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
 		return nil, fmt.Errorf("event source mapping adapter planning API is not configured")
 	}
-	awsCfg, err := a.auth.Resolve(account)
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve event source mapping planning account %q: %w", account, err)
 	}

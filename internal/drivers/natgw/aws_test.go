@@ -22,7 +22,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "NatGatewayNotFound"}))
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidNatGatewayID.NotFound"}))
-	assert.True(t, IsNotFound(errors.New("api error NatGatewayNotFound: missing")))
 }
 
 func TestIsNotFound_False(t *testing.T) {
@@ -39,12 +38,10 @@ func TestIsInvalidParam_True(t *testing.T) {
 func TestIsAllocationInUse_True(t *testing.T) {
 	assert.True(t, IsAllocationInUse(&mockAPIError{code: "Resource.AlreadyAssociated"}))
 	assert.True(t, IsAllocationInUse(&mockAPIError{code: "InvalidAllocationID.NotFound"}))
-	assert.True(t, IsAllocationInUse(errors.New("Elastic IP address eipalloc-123 is already associated")))
 }
 
 func TestIsSubnetNotFound_True(t *testing.T) {
 	assert.True(t, IsSubnetNotFound(&mockAPIError{code: "InvalidSubnetID.NotFound"}))
-	assert.True(t, IsSubnetNotFound(errors.New("api error InvalidSubnetID.NotFound: missing")))
 }
 
 func TestIsFailed(t *testing.T) {

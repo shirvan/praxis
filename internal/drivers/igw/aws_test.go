@@ -1,7 +1,6 @@
 package igw
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -21,7 +20,6 @@ func (e *mockAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnkno
 
 func TestIsNotFound_True(t *testing.T) {
 	assert.True(t, IsNotFound(&mockAPIError{code: "InvalidInternetGatewayID.NotFound"}))
-	assert.True(t, IsNotFound(errors.New("api error InvalidInternetGatewayID.NotFound: missing")))
 }
 
 func TestIsDependencyViolation_True(t *testing.T) {
@@ -30,12 +28,10 @@ func TestIsDependencyViolation_True(t *testing.T) {
 
 func TestIsAlreadyAttached_True(t *testing.T) {
 	assert.True(t, IsAlreadyAttached(&mockAPIError{code: "Resource.AlreadyAssociated"}))
-	assert.True(t, IsAlreadyAttached(errors.New("api error Resource.AlreadyAssociated: already attached")))
 }
 
 func TestIsNotAttached_True(t *testing.T) {
 	assert.True(t, IsNotAttached(&mockAPIError{code: "Gateway.NotAttached"}))
-	assert.True(t, IsNotAttached(errors.New("api error Gateway.NotAttached: not attached")))
 }
 
 func TestIsInvalidParam_True(t *testing.T) {
