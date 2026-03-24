@@ -73,7 +73,8 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 	}
 
 	return PlanDeployResponse{
-		Plan:     plan,
-		Rendered: compiled.Rendered,
+		Plan:        plan,
+		Rendered:    compiled.Rendered,
+		DataSources: compiled.DataSources,
 	}, nil
 }

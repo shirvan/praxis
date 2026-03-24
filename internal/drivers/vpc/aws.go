@@ -25,6 +25,7 @@ type VPCAPI interface {
 	ModifyDnsSupport(ctx context.Context, vpcId string, enabled bool) error
 	UpdateTags(ctx context.Context, vpcId string, tags map[string]string) error
 	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 }
 
 type realVPCAPI struct {
@@ -268,6 +269,34 @@ func (r *realVPCAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 				"manual intervention required",
 			len(matches), managedKey, matches,
 		)
+	}
+}
+
+func (r *realVPCAPI) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+	filters := make([]ec2types.Filter, 0, len(tags))
+	for key, value := range tags {
+		filters = append(filters, ec2types.Filter{Name: aws.String("tag:" + key), Values: []string{value}})
+	}
+	out, err := r.client.DescribeVpcs(ctx, &ec2sdk.DescribeVpcsInput{Filters: filters})
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	for _, item := range out.Vpcs {
+		if id := aws.ToString(item.VpcId); id != "" {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup: %d VPCs match the given tag filters", len(matches))
 	}
 }
 

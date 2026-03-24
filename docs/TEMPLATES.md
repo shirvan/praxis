@@ -32,12 +32,13 @@ Cross-resource references use a simple `${resources.<name>.outputs.<field>}` syn
 - **Type-preserving** — integers stay integers, booleans stay booleans
 - **Natural for dependency references** — express that resource B needs an output from resource A
 
-### Two Evaluation Phases
+### Evaluation Phases
 
 | Concern | Mechanism | When | Example |
 |---------|----------|------|---------|
 | Schema, constraints, defaults | CUE | Template authoring | `versioning: bool \| *true` |
 | Variable injection | CUE interpolation | Template evaluation | `"\(variables.name)-bucket"` |
+| Data source lookups | Adapter Lookup | Compilation (before DAG) | `${data.existingVpc.outputs.vpcId}` |
 | Cross-resource references | Output expressions | Dispatch time | `${resources.sg.outputs.groupId}` |
 | Secret references | SSM protocol | Template evaluation | `ssm:///praxis/prod/db-password` |
 
@@ -112,6 +113,224 @@ Key elements:
 - **CUE unification** — `s3.#S3Bucket &` validates resources against provider schemas
 - **CUE interpolation** — `\(variables.name)` resolves during CUE evaluation
 - **Output expression placeholders** — `${resources.sg.outputs.groupId}` remain as strings until the dependency completes at dispatch time
+
+## Data Sources
+
+Templates can declare a top-level `data` block for **read-only lookups of existing cloud resources**. A data source performs a lookup against the cloud provider, returns the resource's attributes as outputs, and disappears — no state is stored, no lifecycle is tracked.
+
+This unlocks a critical composition pattern: a team deploys a VPC once, and many application templates reference it without taking ownership.
+
+```mermaid
+flowchart LR
+    subgraph Template
+        D["data block<br/>(read-only lookup)"]
+        R["resources block<br/>(managed lifecycle)"]
+    end
+
+    D -->|"${data.existingVpc<br/>.outputs.vpcId}"| R
+    R -->|"${resources.webSG<br/>.outputs.groupId}"| R
+
+    D -.->|"Lookup"| AWS["AWS APIs"]
+    R -->|"Provision"| AWS
+```
+
+### How Data Sources Differ from `import --observe`
+
+| | Data Source | Import (Observed) |
+|---|---|---|
+| **Persistent state** | None — ephemeral per-evaluation | Yes — creates a tracked Virtual Object |
+| **Drift detection** | No | Yes (read-only) |
+| **Appears in `praxis get`** | No | Yes |
+| **Deleted on `praxis delete`** | No | Untracked only |
+| **Purpose** | Inject existing outputs into a template | Adopt unmanaged resources into Praxis |
+
+### Data Source Syntax
+
+Each entry in the `data` block uses a generic lookup shape:
+
+```cue
+variables: {
+    environment: "dev" | "staging" | "prod"
+}
+
+data: {
+    existingVpc: {
+        kind:   "VPC"
+        region: "us-east-1"
+        filter: {
+            tag: Name: "production-vpc"
+        }
+    }
+
+    artifactBucket: {
+        kind:   "S3Bucket"
+        filter: {
+            name: "company-artifacts-prod"
+        }
+    }
+}
+
+resources: {
+    webSG: {
+        apiVersion: "praxis.io/v1"
+        kind:       "SecurityGroup"
+        metadata: name: "web-sg"
+        spec: {
+            groupName:   "web-sg"
+            description: "Web security group"
+            vpcId:       "${data.existingVpc.outputs.vpcId}"
+            ingressRules: [{
+                protocol:  "tcp"
+                fromPort:  443
+                toPort:    443
+                cidrBlock: "0.0.0.0/0"
+            }]
+            tags: env: variables.environment
+        }
+    }
+}
+```
+
+### Data Source Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `kind` | string | Yes | The resource kind to look up (e.g., `"VPC"`, `"S3Bucket"`, `"SecurityGroup"`). Must match a registered adapter. |
+| `region` | string | No | AWS region for region-scoped resources. Required for kinds that use `KeyScopeRegion`. |
+| `account` | string | No | Override the deployment's default account for this lookup. Falls back to the deployment account. |
+| `filter` | struct | Yes | Provider-specific filter criteria (see below). |
+
+### Filter Specification
+
+Filters are a nested struct with well-known keys. Each adapter defines which filters it supports.
+
+```cue
+filter: {
+    // Look up by resource ID (fastest — direct Describe call)
+    id: "vpc-0abc123def456"
+
+    // Look up by name tag (common pattern)
+    name: "production-vpc"
+
+    // Look up by tag key/value pairs
+    tag: {
+        Name:        "production-vpc"
+        Environment: "prod"
+    }
+}
+```
+
+**Resolution priority** (adapters apply the first matching filter):
+1. `id` — Direct `Describe<Resource>(id)` call. Fastest, no ambiguity.
+2. `name` — Uses the driver's `FindByManagedKey` or a name-based Describe.
+3. `tag` — Tag-based filter using the AWS `DescribeX(Filters: tag:Key=Value)` pattern.
+
+When multiple filter fields are provided, they are ANDed (all must match).
+
+### Data Source Expressions
+
+Data source outputs use the `data.` prefix instead of `resources.`:
+
+```
+${data.<dataSourceName>.outputs.<fieldName>}
+```
+
+**Examples:**
+- `${data.existingVpc.outputs.vpcId}` — the VPC ID
+- `${data.existingVpc.outputs.cidrBlock}` — the VPC's CIDR block
+- `${data.artifactBucket.outputs.arn}` — the S3 bucket ARN
+
+These expressions follow the same rules as resource expressions:
+- Must occupy the **full JSON value** at their path (no mixed interpolation).
+- The expression value is replaced with the **typed output** (string, int, bool, array).
+- Data source names must not collide with resource names (validated at build time).
+
+The critical difference: data source expressions are resolved **before** the DAG is built, so they are gone by the time the orchestrator sees the plan. The orchestrator only ever sees `resources.*` expressions.
+
+### Data Source Resolution Pipeline
+
+Data sources are resolved during template compilation in the Command Service, between CUE evaluation and SSM resolution:
+
+```mermaid
+flowchart TD
+    A["CUE Evaluation<br/>extracts resources + data blocks"] --> B["validateDataSources()<br/>kind registered, filter non-empty,<br/>no name collisions with resources"]
+    B --> C["resolveDataSources()<br/>for each data source (sorted, deterministic):<br/>1. Get adapter by kind<br/>2. Call adapter.Lookup(ctx, account, filter)<br/>3. Collect outputs"]
+    C --> D["substituteDataExprs()<br/>walk each resource spec JSON,<br/>replace data expressions with<br/>resolved typed values"]
+    D --> E["SSM Resolution<br/>(existing)"]
+    E --> F["Build Resource Nodes<br/>ParseDependencies, BuildKey"]
+    F --> G["Build DAG<br/>(existing)"]
+    G --> H["Plan / Submit to Orchestrator<br/>(orchestrator never sees data sources)"]
+
+    style A fill:#4CAF50,color:#fff
+    style B fill:#2196F3,color:#fff
+    style C fill:#2196F3,color:#fff
+    style D fill:#2196F3,color:#fff
+    style E fill:#4CAF50,color:#fff
+    style F fill:#4CAF50,color:#fff
+    style G fill:#4CAF50,color:#fff
+    style H fill:#4CAF50,color:#fff
+```
+
+**Why resolve in the Command Service, not the Orchestrator:**
+
+1. **DAG construction depends on data source outputs.** If a data source is needed to build a resource key (e.g., a security group scoped to a looked-up VPC ID), the key must be known before `BuildKey` runs.
+2. **Plan needs resolved specs.** `praxis plan` must show the fully resolved diff, including data-sourced values.
+3. **Simplicity.** The orchestrator's dispatch loop handles provisioning futures and failure cascades. Adding a separate lookup phase would complicate it significantly.
+
+The trade-off is that data source lookups run synchronously during `plan` and `apply` compilation. This is acceptable because lookups are fast read-only API calls.
+
+### Supported Data Source Kinds
+
+| Kind | Outputs | Filter Support |
+|---|---|---|
+| `VPC` | vpcId, arn, cidrBlock, state, enableDnsHostnames, enableDnsSupport, ownerId | id, name, tag |
+| `Subnet` | subnetId, cidrBlock, availabilityZone, vpcId, arn | id, name, tag |
+| `SecurityGroup` | groupId, vpcId, arn, groupName | id, name, tag |
+| `S3Bucket` | bucketName, arn, domainName, region | name |
+| `IAMRole` | roleId, arn, roleName | id, name, tag |
+| `Route53HostedZone` | hostedZoneId, nameServers, isPrivate | id, name, tag |
+
+All other adapter kinds return a `501` error indicating lookup is not yet supported. Additional adapters will gain lookup support as demand arises.
+
+### Data Source Error Handling
+
+| Scenario | HTTP Status | Behavior |
+|---|---|---|
+| Resource not found | `404` | Terminal error — `plan` and `apply` fail immediately |
+| Ambiguous match (multiple results) | `409` | Terminal error — narrow the filter criteria |
+| Adapter does not support lookup | `501` | Terminal error — the kind has not implemented `Lookup` |
+| Invalid filter (empty or unsupported) | `400` | Terminal error at validation before any API calls |
+| Name collision (data source name = resource name) | `400` | Terminal error at validation |
+| Unresolved `data.*` expression reaches DAG parser | `400` | Rejected with "data sources must be resolved before dependency parsing" |
+
+### Data Source CLI Output
+
+When data sources are present, `plan`, `apply`, and `deploy --dry-run` print a `Data sources:` section:
+
+```
+Data sources:
+  existingVpc (VPC)
+    cidrBlock = 10.0.0.0/16
+    vpcId     = vpc-123abc
+    arn       = arn:aws:ec2:us-east-1:123456789:vpc/vpc-123abc
+    state     = available
+```
+
+In JSON output mode, the same information appears in the `dataSources` response field.
+
+### Data Source Examples
+
+- [examples/stacks/data-source-vpc.cue](../examples/stacks/data-source-vpc.cue) — VPC lookup with security group deployment
+- [examples/stacks/data-source-multi.cue](../examples/stacks/data-source-multi.cue) — Multiple lookups (S3Bucket + IAMRole)
+
+### Future Extensibility: Non-AWS Data Sources
+
+The design avoids encoding AWS-specific concepts into the syntax. The `kind` field maps to an adapter, and adapters can wrap any cloud provider. When GCP or Azure support is added:
+
+1. A GCP VPC adapter registers with `Kind() = "GCPVPC"`.
+2. Templates reference it as `kind: "GCPVPC"`.
+3. The adapter's `Lookup` method calls the appropriate GCP API.
+4. The expression format (`data.<name>.outputs.<field>`) is identical.
 
 ---
 
@@ -467,8 +686,9 @@ Template evaluation runs as a sequential pipeline in the Command Service:
 flowchart TD
     A["Template Source<br/>(inline CUE or registry ref)"] --> B["1. CUE Parse + Schema Unification<br/>Load template, inject variables,<br/>unify against provider schemas.<br/>CUE interpolation resolves. Defaults apply."]
     B --> C["2. Policy Unification<br/>Global and template-scoped CUE policies<br/>unified with the template."]
-    C --> D["3. SSM Parameter Resolution<br/>Scan specs for ssm:// references,<br/>batch-resolve via AWS SSM.<br/>Journaled through restate.Run()"]
-    D --> E["4. DAG Construction<br/>Parse ${resources.*} references.<br/>Build dependency edges. Detect cycles."]
+    C --> DS["3. Data Source Resolution<br/>Validate data block → call adapter.Lookup()<br/>for each source → substitute data expressions<br/>with resolved typed values"]
+    DS --> D["4. SSM Parameter Resolution<br/>Scan specs for ssm:// references,<br/>batch-resolve via AWS SSM.<br/>Journaled through restate.Run()"]
+    D --> E["5. DAG Construction<br/>Parse ${resources.*} references.<br/>Build dependency edges. Detect cycles."]
     E --> F{"Mode?"}
     F -->|Apply| G["Submit to<br/>DeploymentWorkflow"]
     F -->|Plan| H["Diff each resource<br/>against current driver state"]

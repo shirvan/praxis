@@ -12,6 +12,63 @@ Drivers are grouped by AWS domain into **driver packs** — each pack is a singl
 
 Drivers are intentionally simple. They know how to create, read, update, delete, and reconcile one type of resource. They have zero knowledge of other drivers, dependency graphs, or deployment workflows. All coordination happens in [Core's orchestrator](ORCHESTRATOR.md).
 
+Drivers can also expose read-only lookup helpers used by template data sources. These lookups do not create Restate state and are only used during command-service compilation.
+
+## Adapter Lookup Support
+
+Provider adapters may implement a read-only `Lookup` capability for existing resources. The command service uses it to resolve template `data` blocks before SSM resolution and DAG parsing.
+
+### Lookup Method Signature
+
+```go
+Lookup(ctx context.Context, account string, filter LookupFilter) (map[string]any, error)
+```
+
+The `LookupFilter` struct carries the filter specified in a template's `data.<name>.filter` block:
+
+```go
+type LookupFilter struct {
+    ID   string            // Direct resource ID
+    Name string            // Lookup by Name tag or resource name
+    Tags map[string]string // Tag key/value pairs (ANDed)
+}
+```
+
+### Implementation Requirements
+
+Lookup implementations should:
+
+- Accept `id`, `name`, and `tag` filters (resolution priority: id → name → tag)
+- Return the same output map shape the resource exposes after provisioning
+- Reject zero matches with a terminal `404`
+- Reject ambiguous matches (multiple results) with a terminal `409`
+- Return a `501` if the adapter has not implemented `Lookup` yet
+- Never call create, update, or delete APIs — lookups are strictly read-only
+
+### Adapter Implementation Flow
+
+```mermaid
+flowchart TD
+    A["Command Service calls<br/>adapter.Lookup(ctx, account, filter)"] --> B{"filter.ID set?"}
+    B -->|Yes| C["Describe by ID"]
+    B -->|No| D{"filter.Name set?"}
+    D -->|Yes| E["FindByManagedKey or<br/>Describe by Name"]
+    D -->|No| F{"filter.Tags set?"}
+    F -->|Yes| G["Describe with<br/>tag filters"]
+    F -->|No| H["Return 400:<br/>empty filter"]
+    C --> I{"Found?"}
+    E --> I
+    G --> I
+    I -->|0 results| J["Return 404"]
+    I -->|1 result| K["Build outputs map"]
+    I -->|>1 results| L["Return 409:<br/>ambiguous"]
+    K --> M["Return outputs"]
+```
+
+### Supported Kinds
+
+See the [Supported Data Source Kinds](TEMPLATES.md#supported-data-source-kinds) table in the Templates documentation for the full list of adapters that support lookup, along with their outputs and filter support.
+
 ---
 
 ## Driver Model

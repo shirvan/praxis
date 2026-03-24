@@ -101,6 +101,8 @@ Without `--wait`, the command returns immediately with the deployment key and st
 
 The `--dry-run` flag runs the full evaluation pipeline but does not submit a workflow — it shows a plan diff of what would change, identical to `praxis plan` output.
 
+When a template contains data sources, `plan`, `apply --dry-run`, and `deploy --dry-run` also print a `Data sources:` section showing each resolved lookup and its outputs. In JSON mode, the same information is returned in the `dataSources` field.
+
 ---
 
 ## template
@@ -539,6 +541,7 @@ praxis state mv <source> <destination>
 Source format: `Deployment/<key>/<resource-name>`
 
 Destination can be:
+
 - A bare name — renames within the same deployment
 - `Deployment/<key>/<resource-name>` — moves to another deployment
 
@@ -557,11 +560,11 @@ praxis state mv Deployment/web-app/myBucket Deployment/data-stack/dataBucket
 
 **Table output:**
 
-```
+```text
 Renamed myBucket → newBucketName in deployment web-app
 ```
 
-```
+```text
 Moved myBucket from web-app to data-stack as dataBucket
 ```
 

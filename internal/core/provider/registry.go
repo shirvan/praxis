@@ -17,6 +17,14 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LookupFilter contains the supported selectors for read-only data source lookup.
+type LookupFilter struct {
+	Region string            `json:"region,omitempty"`
+	ID     string            `json:"id,omitempty"`
+	Name   string            `json:"name,omitempty"`
+	Tag    map[string]string `json:"tag,omitempty"`
+}
+
 // Adapter bridges a template resource kind to an existing typed driver.
 type Adapter interface {
 	// Kind returns the template kind handled by the adapter.

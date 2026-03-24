@@ -42,6 +42,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/command"
 	"github.com/shirvan/praxis/internal/core/config"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
@@ -97,25 +98,20 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	awsCfg := localstackAWSConfig(t)
 	s3Client := awsclient.NewS3Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	accounts := config.Load().Auth()
+	authClient := authservice.NewAuthClient()
 
 	// --- Typed drivers ---
-	s3Driver := drivers3.NewS3BucketDriver(accounts)
-	ec2Driver := driverec2.NewEC2InstanceDriver(accounts)
-	keyPairDriver := driverkeypair.NewKeyPairDriver(accounts)
-	sgDriver := driversg.NewSecurityGroupDriver(accounts)
+	s3Driver := drivers3.NewS3BucketDriver(authClient)
+	ec2Driver := driverec2.NewEC2InstanceDriver(authClient)
+	keyPairDriver := driverkeypair.NewKeyPairDriver(authClient)
+	sgDriver := driversg.NewSecurityGroupDriver(authClient)
 
 	// --- Provider adapter registry ---
 	//
 	// The adapters get the live AWS APIs so that `praxis plan` can describe
 	// existing state during tests. The same construction path as
 	// cmd/praxis-core/main.go keeps these tests honest.
-	providers := provider.NewRegistryWithAdapters(
-		provider.NewS3AdapterWithRegistry(accounts),
-		provider.NewEC2AdapterWithRegistry(accounts),
-		provider.NewKeyPairAdapterWithRegistry(accounts),
-		provider.NewSecurityGroupAdapterWithRegistry(accounts),
-	)
+	providers := provider.NewRegistry(authClient)
 
 	// --- Core config ---
 	//
@@ -129,7 +125,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	}
 
 	// --- Command service + orchestrator instances ---
-	cmdService := command.NewPraxisCommandService(cfg, accounts, providers)
+	cmdService := command.NewPraxisCommandService(cfg, authClient, providers)
 	applyWorkflow := orchestrator.NewDeploymentWorkflow(providers)
 	deleteWorkflow := orchestrator.NewDeploymentDeleteWorkflow(providers)
 
@@ -139,6 +135,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	// registers every service, and returns an environment whose Ingress()
 	// client routes through the actual Restate runtime.
 	env := restatetest.Start(t,
+		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
 		// Command service
 		restate.Reflect(cmdService),
 		// Apply workflow

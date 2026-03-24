@@ -72,6 +72,8 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **Import Existing Resources.** Adopt cloud resources already running in your account. Praxis captures their current state as a baseline and begins managing or observing them.
 
+**Data Sources.** Reference existing cloud resources in templates without managing them. A `data` block performs read-only lookups that inject outputs (VPC IDs, ARNs, CIDR blocks) into managed resource specs — no state stored, no lifecycle tracked.
+
 **CUE Templates.** Platform teams define typed, validated templates in CUE. End users fill in variables. Output expressions wire resource outputs into downstream specs. Policy constraints enforce organizational standards via CUE unification.
 
 **Lifecycle Protection.** Mark resources with `preventDestroy` to block accidental deletion, or `ignoreChanges` to let external systems co-manage specific fields without Praxis fighting for control.
@@ -129,7 +131,7 @@ praxis get Deployment/my-webapp
 # List all deployments
 praxis list deployments
 
-# Stream deployment events in real time
+# Follow deployment events
 praxis observe Deployment/my-webapp
 
 # Import an existing S3 bucket
@@ -170,7 +172,7 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 - **Accounts:** One operator-defined account per deployed stack
 - **Deployment:** Docker Compose reference stack (LocalStack for local dev)
 - **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
-- **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`
+- **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`, `workspace`, `state`, `fmt`, `version`
 
 See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for ready-to-use templates.
 
@@ -183,9 +185,11 @@ See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for read
 | [Architecture](docs/ARCHITECTURE.md) | Everyone | How Praxis works — Restate-powered core, modular drivers, design tradeoffs |
 | [Drivers](docs/DRIVERS.md) | Contributors | Driver model, contract, state management, reconciliation, building new drivers |
 | [Orchestrator](docs/ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete flow |
-| [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE template system, expression evaluation, registry, policy enforcement |
+| [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE template system, expression evaluation, registry, policy enforcement, data sources |
+| [Auth & Workspaces](docs/AUTH.md) | Everyone | Credential management, workspace isolation, account selection |
 | [CLI Reference](docs/CLI.md) | Users | All commands, account selection, output formats, timeouts |
 | [Operator Guide](docs/OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
+| [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
 
 ---

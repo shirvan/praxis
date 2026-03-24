@@ -29,6 +29,7 @@ type renderedResourceDocument struct {
 type compiledTemplate struct {
 	TemplatePath  string
 	Specs         map[string]json.RawMessage
+	DataSources   map[string]types.DataSourceResult
 	Nodes         []*types.ResourceNode
 	Graph         *dag.Graph
 	PlanResources []orchestrator.PlanResource
@@ -56,9 +57,32 @@ func (s *PraxisCommandService) compileTemplate(
 		return nil, err
 	}
 
-	rawSpecs, err := s.engine.EvaluateBytesWithPolicies([]byte(source), policies, variables)
+	evalResult, err := s.engine.EvaluateBytesWithPolicies([]byte(source), policies, variables)
 	if err != nil {
 		return nil, restate.TerminalError(err, 400)
+	}
+	rawSpecs := evalResult.Resources
+	dataSources := map[string]types.DataSourceResult(nil)
+
+	if len(evalResult.DataSources) > 0 {
+		resourceNames := make(map[string]bool, len(rawSpecs))
+		for name := range rawSpecs {
+			resourceNames[name] = true
+		}
+
+		if err := s.validateDataSources(evalResult.DataSources, resourceNames); err != nil {
+			return nil, restate.TerminalError(err, 400)
+		}
+
+		dataSources, err = s.resolveDataSources(ctx, evalResult.DataSources, accountName)
+		if err != nil {
+			return nil, err
+		}
+
+		rawSpecs, err = substituteDataExprs(rawSpecs, dataSources)
+		if err != nil {
+			return nil, restate.TerminalError(err, 400)
+		}
 	}
 
 	ssmResolver, err := s.newSSMResolver(ctx, accountName)
@@ -102,7 +126,7 @@ func (s *PraxisCommandService) compileTemplate(
 		nodes = filteredNodes
 	}
 
-	rendered, err := renderResolvedTemplate(ssmResolvedSpecs, sensitive)
+	rendered, err := renderResolvedTemplate(dataSources, ssmResolvedSpecs, sensitive)
 	if err != nil {
 		return nil, restate.TerminalError(err, 500)
 	}
@@ -110,6 +134,7 @@ func (s *PraxisCommandService) compileTemplate(
 	return &compiledTemplate{
 		TemplatePath:  templatePath,
 		Specs:         ssmResolvedSpecs,
+		DataSources:   dataSources,
 		Nodes:         nodes,
 		Graph:         graph,
 		PlanResources: planResourcesFromGraph(nodes, graph),
@@ -397,7 +422,7 @@ func deriveDeploymentKey(specs map[string]json.RawMessage) (string, error) {
 	return key, nil
 }
 
-func renderResolvedTemplate(specs map[string]json.RawMessage, sensitive *resolver.SensitiveParams) (string, error) {
+func renderResolvedTemplate(dataSources map[string]types.DataSourceResult, specs map[string]json.RawMessage, sensitive *resolver.SensitiveParams) (string, error) {
 	resourceNames := make([]string, 0, len(specs))
 	for name := range specs {
 		resourceNames = append(resourceNames, name)
@@ -417,7 +442,26 @@ func renderResolvedTemplate(specs map[string]json.RawMessage, sensitive *resolve
 		renderedResources[name] = masked
 	}
 
-	return marshalPrettyJSON(map[string]any{"resources": renderedResources})
+	rendered := map[string]any{"resources": renderedResources}
+	if len(dataSources) > 0 {
+		names := make([]string, 0, len(dataSources))
+		for name := range dataSources {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		renderedDataSources := make(map[string]any, len(dataSources))
+		for _, name := range names {
+			result := dataSources[name]
+			renderedDataSources[name] = map[string]any{
+				"kind":    result.Kind,
+				"outputs": result.Outputs,
+			}
+		}
+		rendered["data"] = renderedDataSources
+	}
+
+	return marshalPrettyJSON(rendered)
 }
 
 func maskSensitiveValues(resourceName string, value any, sensitive *resolver.SensitiveParams) (any, error) {

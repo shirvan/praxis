@@ -193,7 +193,7 @@ resources: {
 
 func TestEngine_EvaluateBytesWithPolicies_Passes(t *testing.T) {
 	eng := NewEngine("")
-	specs, err := eng.EvaluateBytesWithPolicies([]byte(`
+	result, err := eng.EvaluateBytesWithPolicies([]byte(`
 resources: {
 	bucket: {
 		kind: "S3Bucket"
@@ -209,7 +209,7 @@ resources: {
 		Source: []byte(`resources: [_]: spec: encryption: enabled: true`),
 	}}, nil)
 	require.NoError(t, err)
-	assert.Contains(t, specs, "bucket")
+	assert.Contains(t, result.Resources, "bucket")
 }
 
 func TestEngine_EvaluateBytesWithPolicies_Violation(t *testing.T) {
@@ -599,7 +599,7 @@ func TestEngine_ExamplePolicy_SecurityBaseline_Passes(t *testing.T) {
 	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "security-baseline.cue"))
 	require.NoError(t, err)
 
-	specs, err := eng.EvaluateBytesWithPolicies([]byte(`
+	result, err := eng.EvaluateBytesWithPolicies([]byte(`
 resources: {
 	bucket: {
 		kind: "S3Bucket"
@@ -627,8 +627,8 @@ resources: {
 		Source: policy,
 	}}, nil)
 	require.NoError(t, err)
-	assert.Contains(t, specs, "bucket")
-	assert.Contains(t, specs, "server")
+	assert.Contains(t, result.Resources, "bucket")
+	assert.Contains(t, result.Resources, "server")
 }
 
 func TestEngine_ExamplePolicy_SecurityBaseline_ViolatesEncryption(t *testing.T) {
@@ -722,7 +722,7 @@ func TestEngine_ExamplePolicy_ProdGuardrails_Passes(t *testing.T) {
 	policy, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "policies", "prod-guardrails.cue"))
 	require.NoError(t, err)
 
-	specs, err := eng.EvaluateBytesWithPolicies([]byte(`
+	result, err := eng.EvaluateBytesWithPolicies([]byte(`
 resources: {
 	"web-prod": {
 		kind: "EC2Instance"
@@ -753,7 +753,36 @@ resources: {
 		Source: policy,
 	}}, nil)
 	require.NoError(t, err)
-	assert.Len(t, specs, 2)
+	assert.Len(t, result.Resources, 2)
+}
+
+func TestEngine_EvaluateBytesWithPolicies_ExtractsDataSources(t *testing.T) {
+	eng := NewEngine("")
+	result, err := eng.EvaluateBytesWithPolicies([]byte(`
+data: {
+	existingVpc: {
+		kind: "VPC"
+		region: "us-east-1"
+		filter: {
+			name: "production-vpc"
+		}
+	}
+}
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		metadata: { name: "assets" }
+		spec: {
+			region: "us-east-1"
+			bucketName: "assets"
+		}
+	}
+}`), nil, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result.Resources, "bucket")
+	require.Contains(t, result.DataSources, "existingVpc")
+	assert.Equal(t, "VPC", result.DataSources["existingVpc"].Kind)
+	assert.Equal(t, "production-vpc", result.DataSources["existingVpc"].Filter.Name)
 }
 
 func TestEngine_ExamplePolicy_ProdGuardrails_ViolatesMonitoring(t *testing.T) {

@@ -8,6 +8,8 @@
 
 The orchestrator is the deployment execution engine inside Praxis Core. It takes a compiled template — validated resources with a dependency graph — and drives them to completion by dispatching to [drivers](DRIVERS.md) in topological order with maximum parallelism.
 
+The orchestrator never sees [data sources](TEMPLATES.md#data-sources). Data source lookups are resolved during template compilation in the Command Service — before the DAG is built — so by the time the orchestrator receives a plan, all `${data.*}` expressions have been replaced with literal values. The orchestrator only handles `${resources.*}` expressions for dispatch-time hydration.
+
 The orchestrator is built on three Restate primitives:
 
 - **Workflows** — run-once-per-key execution for apply and delete flows

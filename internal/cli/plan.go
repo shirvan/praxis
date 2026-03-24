@@ -86,6 +86,7 @@ which is useful for debugging variable resolution and output expressions.`,
 			}
 
 			// Human-readable plan output.
+			printDataSources(resp.DataSources)
 			printPlan(resp.Plan)
 
 			// Optionally show the fully-resolved template JSON.

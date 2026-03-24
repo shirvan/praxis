@@ -50,8 +50,9 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 	}
 
 	return PlanResponse{
-		Plan:     plan,
-		Rendered: compiled.Rendered,
+		Plan:        plan,
+		Rendered:    compiled.Rendered,
+		DataSources: compiled.DataSources,
 	}, nil
 }
 

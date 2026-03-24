@@ -33,8 +33,15 @@ type PlanRequest struct {
 
 // PlanResponse contains the machine-readable plan result and rendered output.
 type PlanResponse struct {
-	Plan     *PlanResult `json:"plan"`
-	Rendered string      `json:"rendered"`
+	Plan        *PlanResult                 `json:"plan"`
+	Rendered    string                      `json:"rendered"`
+	DataSources map[string]DataSourceResult `json:"dataSources,omitempty"`
+}
+
+// DataSourceResult shows one resolved data source and its outputs.
+type DataSourceResult struct {
+	Kind    string         `json:"kind"`
+	Outputs map[string]any `json:"outputs"`
 }
 
 // DeleteDeploymentRequest starts a deployment-wide delete flow.
@@ -173,8 +180,9 @@ type PlanDeployRequest struct {
 
 // PlanDeployResponse contains the plan result and rendered template.
 type PlanDeployResponse struct {
-	Plan     *PlanResult `json:"plan"`
-	Rendered string      `json:"rendered"`
+	Plan        *PlanResult                 `json:"plan"`
+	Rendered    string                      `json:"rendered"`
+	DataSources map[string]DataSourceResult `json:"dataSources,omitempty"`
 }
 
 // StateMvRequest is the CLI-facing payload for `praxis state mv`.

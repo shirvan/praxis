@@ -12,10 +12,10 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
-	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -92,6 +92,32 @@ func (f *fakeHostedZoneAPI) FindHostedZoneByName(ctx context.Context, name strin
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.nameIndex[normalizeZoneName(name)], nil
+}
+
+func (f *fakeHostedZoneAPI) FindHostedZoneByTags(ctx context.Context, tags map[string]string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var matches []string
+	for id, observed := range f.zones {
+		matched := true
+		for key, value := range tags {
+			if observed.Tags[key] != value {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup")
+	}
 }
 
 func (f *fakeHostedZoneAPI) UpdateComment(ctx context.Context, hostedZoneID, comment string) error {

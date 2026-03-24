@@ -41,6 +41,9 @@ type S3API interface {
 
 	// DeleteBucket removes a bucket. Fails if the bucket is not empty.
 	DeleteBucket(ctx context.Context, name string) error
+
+	// FindByTags returns the single bucket whose tags exactly match the provided selectors.
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 }
 
 // realS3API implements S3API using the actual AWS SDK v2 S3 client.
@@ -246,6 +249,56 @@ func (r *realS3API) DeleteBucket(ctx context.Context, name string) error {
 		Bucket: aws.String(name),
 	})
 	return err
+}
+
+func (r *realS3API) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+	out, err := r.client.ListBuckets(ctx, &s3sdk.ListBucketsInput{})
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	for _, bucket := range out.Buckets {
+		name := aws.ToString(bucket.Name)
+		if name == "" {
+			continue
+		}
+		if err := r.limiter.Wait(ctx); err != nil {
+			return "", err
+		}
+		tagResp, tagErr := r.client.GetBucketTagging(ctx, &s3sdk.GetBucketTaggingInput{Bucket: aws.String(name)})
+		if tagErr != nil {
+			var apiErr smithy.APIError
+			if errors.As(tagErr, &apiErr) && apiErr.ErrorCode() == "NoSuchTagSet" {
+				continue
+			}
+			continue
+		}
+		bucketTags := make(map[string]string, len(tagResp.TagSet))
+		for _, tag := range tagResp.TagSet {
+			bucketTags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+		}
+		matched := true
+		for key, value := range tags {
+			if bucketTags[key] != value {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			matches = append(matches, name)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup: %d buckets match the given tag filters", len(matches))
+	}
 }
 
 // ---------------------------------------------------------------------------

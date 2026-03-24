@@ -37,6 +37,7 @@ type ObservedState struct {
 	GroupName    string            `json:"groupName"`
 	Description  string            `json:"description"`
 	VpcId        string            `json:"vpcId"`
+	OwnerId      string            `json:"ownerId,omitempty"`
 	IngressRules []NormalizedRule  `json:"ingressRules"`
 	EgressRules  []NormalizedRule  `json:"egressRules"`
 	Tags         map[string]string `json:"tags"`

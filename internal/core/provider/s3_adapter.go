@@ -189,6 +189,32 @@ func (a *S3Adapter) Import(ctx restate.Context, key string, account string, ref 
 	return types.StatusReady, outputs, nil
 }
 
+func (a *S3Adapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	api, err := a.planningAPI(ctx, account)
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (s3.ObservedState, error) {
+		return lookupS3Bucket(runCtx, api, filter)
+	})
+	if err != nil {
+		return nil, classifyLookupError(err, s3.IsNotFound)
+	}
+	if !matchesS3Filter(observed, filter) {
+		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no S3Bucket found matching filter"), 404)
+	}
+	outputs, err := a.NormalizeOutputs(s3.S3BucketOutputs{
+		ARN:        fmt.Sprintf("arn:aws:s3:::%s", observed.BucketName),
+		BucketName: observed.BucketName,
+		Region:     observed.Region,
+		DomainName: bucketDomainName(observed.BucketName, observed.Region),
+	})
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	return outputs, nil
+}
+
 func (a *S3Adapter) decodeSpec(doc resourceDocument) (s3.S3BucketSpec, error) {
 	var spec struct {
 		Region     string            `json:"region"`
@@ -230,4 +256,44 @@ func (a *S3Adapter) planningAPI(ctx restate.Context, account string) (s3.S3API, 
 		return nil, fmt.Errorf("resolve S3 planning account %q: %w", account, err)
 	}
 	return a.apiFactory(awsCfg), nil
+}
+
+func lookupS3Bucket(ctx restate.RunContext, api s3.S3API, filter LookupFilter) (s3.ObservedState, error) {
+	name := strings.TrimSpace(filter.ID)
+	if name == "" {
+		name = strings.TrimSpace(filter.Name)
+	}
+	if name == "" && len(filter.Tag) > 0 {
+		resolved, err := api.FindByTags(ctx, filter.Tag)
+		if err != nil {
+			return s3.ObservedState{}, err
+		}
+		name = strings.TrimSpace(resolved)
+	}
+	if name == "" {
+		return s3.ObservedState{}, fmt.Errorf("not found")
+	}
+	return api.DescribeBucket(ctx, name)
+}
+
+func matchesS3Filter(observed s3.ObservedState, filter LookupFilter) bool {
+	if strings.TrimSpace(filter.ID) != "" && observed.BucketName != strings.TrimSpace(filter.ID) {
+		return false
+	}
+	if strings.TrimSpace(filter.Name) != "" && observed.BucketName != strings.TrimSpace(filter.Name) {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if observed.Tags[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func bucketDomainName(name, region string) string {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(region) == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s.s3.%s.amazonaws.com", name, region)
 }

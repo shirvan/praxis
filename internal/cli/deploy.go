@@ -92,6 +92,7 @@ Use --dry-run to preview changes without provisioning:
 					return printJSON(resp)
 				}
 
+				printDataSources(resp.DataSources)
 				printPlan(resp.Plan)
 
 				if showRendered && resp.Rendered != "" {
@@ -116,6 +117,7 @@ Use --dry-run to preview changes without provisioning:
 
 			// Display the plan diff.
 			if flags.outputFormat() != OutputJSON {
+				printDataSources(planResp.DataSources)
 				printPlan(planResp.Plan)
 			}
 

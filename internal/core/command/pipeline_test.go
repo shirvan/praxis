@@ -61,10 +61,27 @@ func TestRenderResolvedTemplate_MasksSensitiveValues(t *testing.T) {
 	sensitive := resolver.NewSensitiveParams()
 	sensitive.Add("db", "spec.password")
 
-	rendered, err := renderResolvedTemplate(specs, sensitive)
+	rendered, err := renderResolvedTemplate(nil, specs, sensitive)
 	require.NoError(t, err)
 	assert.Contains(t, rendered, `"password": "***"`)
 	assert.NotContains(t, rendered, "super-secret")
+}
+
+func TestRenderResolvedTemplate_IncludesDataSources(t *testing.T) {
+	rendered, err := renderResolvedTemplate(map[string]types.DataSourceResult{
+		"existingVpc": {
+			Kind: "VPC",
+			Outputs: map[string]any{
+				"vpcId": "vpc-123",
+			},
+		},
+	}, map[string]json.RawMessage{
+		"bucket": json.RawMessage(`{"kind":"S3Bucket","spec":{"region":"us-east-1"}}`),
+	}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, rendered, `"data"`)
+	assert.Contains(t, rendered, `"existingVpc"`)
+	assert.Contains(t, rendered, `"vpcId": "vpc-123"`)
 }
 
 func TestPlanResourcesFromGraph_UsesTopologicalOrder(t *testing.T) {

@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -166,6 +167,23 @@ func (a *IAMRoleAdapter) Import(ctx restate.Context, key string, account string,
 	return types.StatusReady, outputs, nil
 }
 
+func (a *IAMRoleAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	api, err := a.planningAPI(ctx, account)
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (iamrole.ObservedState, error) {
+		return lookupIAMRole(runCtx, api, filter)
+	})
+	if err != nil {
+		return nil, classifyLookupError(err, iamrole.IsNotFound)
+	}
+	if !matchesIAMRoleFilter(observed, filter) {
+		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no IAMRole found matching filter"), 404)
+	}
+	return a.NormalizeOutputs(iamrole.IAMRoleOutputs{Arn: observed.Arn, RoleId: observed.RoleId, RoleName: observed.RoleName})
+}
+
 func (a *IAMRoleAdapter) decodeSpec(doc resourceDocument) (iamrole.IAMRoleSpec, error) {
 	var spec struct {
 		Path                     string            `json:"path"`
@@ -227,4 +245,46 @@ func (a *IAMRoleAdapter) planningAPI(ctx restate.Context, account string) (iamro
 		return nil, fmt.Errorf("resolve IAMRole planning account %q: %w", account, err)
 	}
 	return a.apiFactory(awsCfg), nil
+}
+
+func lookupIAMRole(ctx restate.RunContext, api iamrole.IAMRoleAPI, filter LookupFilter) (iamrole.ObservedState, error) {
+	roleName := normalizeIAMRoleLookupName(filter)
+	if roleName == "" && len(filter.Tag) > 0 {
+		resolved, err := api.FindByTags(ctx, filter.Tag)
+		if err != nil {
+			return iamrole.ObservedState{}, err
+		}
+		roleName = strings.TrimSpace(resolved)
+	}
+	if roleName == "" {
+		return iamrole.ObservedState{}, fmt.Errorf("not found")
+	}
+	return api.DescribeRole(ctx, roleName)
+}
+
+func normalizeIAMRoleLookupName(filter LookupFilter) string {
+	value := strings.TrimSpace(filter.ID)
+	if value == "" {
+		value = strings.TrimSpace(filter.Name)
+	}
+	if value == "" {
+		return ""
+	}
+	if strings.Contains(value, ":role/") {
+		return path.Base(value)
+	}
+	return value
+}
+
+func matchesIAMRoleFilter(observed iamrole.ObservedState, filter LookupFilter) bool {
+	lookupName := normalizeIAMRoleLookupName(filter)
+	if lookupName != "" && observed.RoleName != lookupName {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if observed.Tags[key] != value {
+			return false
+		}
+	}
+	return true
 }

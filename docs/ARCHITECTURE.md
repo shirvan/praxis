@@ -62,8 +62,8 @@ Praxis does not use Restate as a simple message broker. It uses Restate as the *
 
 The central coordination service. It hosts:
 
-- **Command Service** — a Restate Basic Service that receives user commands (apply, plan, delete, import) and orchestrates the response. Evaluates templates, builds dependency graphs, and submits deployment workflows.
-- **Template Engine** — validates and evaluates CUE templates, resolves output expressions, enforces policy constraints, and resolves SSM secret references.
+- **Command Service** — a Restate Basic Service that receives user commands (apply, plan, delete, import) and orchestrates the response. Evaluates templates, resolves data source lookups, builds dependency graphs, and submits deployment workflows.
+- **Template Engine** — validates and evaluates CUE templates, resolves output expressions, enforces policy constraints, and resolves SSM secret references. Extracts data source definitions from the `data` block for read-only lookups of existing resources (see [Templates — Data Sources](TEMPLATES.md#data-sources)).
 - **Deployment Orchestrator** — Restate Workflows that execute apply and delete operations. The scheduler dispatches resources in dependency order with maximum parallelism.
 - **Template Registry** — a Virtual Object that stores registered templates with metadata, digest tracking, and shallow rollback.
 - **Policy Registry** — a Virtual Object that stores CUE-based policy constraints scoped globally or per template.
@@ -193,7 +193,7 @@ sequenceDiagram
     User->>CLI: praxis apply webapp.cue
     CLI->>CS: ApplyRequest via Restate ingress
 
-    Note over CS: Template pipeline:<br/>Resolve source, load policies,<br/>CUE eval, SSM resolve,<br/>build DAG
+    Note over CS: Template pipeline:<br/>Resolve source, load policies,<br/>CUE eval, resolve data sources,<br/>SSM resolve, build DAG
 
     CS->>CS: Initialize DeploymentState
     CS->>WF: Submit DeploymentWorkflow

@@ -114,3 +114,7 @@ func flattenFieldDiffs(path string, value any, diffs *[]types.FieldDiff) {
 		*diffs = append(*diffs, types.FieldDiff{Path: path, NewValue: typed})
 	}
 }
+
+func unsupportedLookup(kind string) error {
+	return restate.TerminalError(fmt.Errorf("data source lookup is not supported for %q", kind), 501)
+}

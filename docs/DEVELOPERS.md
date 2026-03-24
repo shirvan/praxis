@@ -37,6 +37,7 @@ internal/
       handlers_template.go     # Template registry handlers
       handlers_policy.go       # Policy registry handlers
       pipeline.go              # Shared template evaluation pipeline
+      datasource.go            # Data source validation, resolution, expression substitution
     config/                    # Configuration loading
     dag/                       # Dependency graph engine (pure Go)
       graph.go                 # DAG construction, cycle detection
@@ -51,8 +52,9 @@ internal/
       events.go                # DeploymentEvents Virtual Object
       hydrator.go              # Dispatch-time expression hydration
     provider/                  # Driver adapter registry
-      registry.go              # Kind → service name mapping
+      registry.go              # Kind → service name mapping, Adapter interface (incl. Lookup)
       keys.go                  # Canonical resource key generation
+      lookup_helpers.go        # Shared lookup utilities (tag merging, error classification)
       s3_adapter.go            # S3 adapter
       sg_adapter.go            # SG adapter
       ami_adapter.go           # AMI adapter
@@ -92,7 +94,8 @@ internal/
       ssm.go                   # SSM Parameter Store resolver
       restate_ssm.go           # Restate-journaled SSM wrapper
     template/                  # Template engine
-      engine.go                # CUE evaluation pipeline
+      engine.go                # CUE evaluation pipeline (extracts resources + data sources)
+      types.go                 # DataSourceSpec, DataSourceFilter, EvaluationResult
   drivers/                     # Resource driver implementations
     contract.go                # Driver service contract docs
     state.go                   # Shared constants (StateKey, ReconcileInterval)
@@ -165,6 +168,9 @@ schemas/aws/                   # CUE schemas per provider/service
   rds/parameter_group.cue
   rds/subnet_group.cue
   elb/target_group.cue
+
+schemas/data/                  # Data source schemas (provider-agnostic)
+  lookup.cue                   # #Lookup definition for data block entries
 
 tests/integration/             # Integration tests (Testcontainers)
 ```

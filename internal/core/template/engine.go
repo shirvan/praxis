@@ -63,7 +63,11 @@ func (e *Engine) Evaluate(templatePath string, vars map[string]any) (map[string]
 		Dir:     templateDir,
 		Overlay: map[string]load.Source{},
 	}
-	return e.evaluateWithLoadConfig([]string{filepath.Base(templatePath)}, cfg, templatePath, vars, nil)
+	result, err := e.evaluateWithLoadConfig([]string{filepath.Base(templatePath)}, cfg, templatePath, vars, nil)
+	if err != nil {
+		return nil, err
+	}
+	return result.Resources, nil
 }
 
 // EvaluateBytes evaluates a CUE template from raw bytes instead of a file path.
@@ -71,12 +75,16 @@ func (e *Engine) Evaluate(templatePath string, vars map[string]any) (map[string]
 // The command service uses this entry point because templates arrive as request
 // payloads over Restate rather than as files on local disk.
 func (e *Engine) EvaluateBytes(content []byte, vars map[string]any) (map[string]json.RawMessage, error) {
-	return e.EvaluateBytesWithPolicies(content, nil, vars)
+	result, err := e.EvaluateBytesWithPolicies(content, nil, vars)
+	if err != nil {
+		return nil, err
+	}
+	return result.Resources, nil
 }
 
 // EvaluateBytesWithPolicies evaluates raw template bytes and applies policies
 // before resource validation and JSON extraction.
-func (e *Engine) EvaluateBytesWithPolicies(content []byte, policies []PolicySource, vars map[string]any) (map[string]json.RawMessage, error) {
+func (e *Engine) EvaluateBytesWithPolicies(content []byte, policies []PolicySource, vars map[string]any) (*EvaluationResult, error) {
 	virtualDir := os.TempDir()
 	if trimmed := strings.TrimSpace(e.schemaDir); trimmed != "" {
 		virtualDir = filepath.Join(filepath.Dir(trimmed), ".praxis-inline")
@@ -92,7 +100,7 @@ func (e *Engine) EvaluateBytesWithPolicies(content []byte, policies []PolicySour
 	return e.evaluateWithLoadConfig([]string{filepath.Base(virtualPath)}, cfg, virtualPath, vars, policies)
 }
 
-func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, templatePath string, vars map[string]any, policies []PolicySource) (map[string]json.RawMessage, error) {
+func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, templatePath string, vars map[string]any, policies []PolicySource) (*EvaluationResult, error) {
 	instances := load.Instances(patterns, cfg)
 	if len(instances) == 0 {
 		return nil, TemplateErrors{{
@@ -140,16 +148,22 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 		val = val.FillPath(cue.ParsePath("variables"), varsVal)
 	}
 
+	baselineDataSources, baselineDataErrs := e.evaluateDataSources(val)
 	baselineResults, baselineErrs := e.evaluateResources(val, schemaVal)
 	if len(policies) == 0 {
-		if len(baselineErrs) > 0 {
-			return nil, baselineErrs
+		combined := append(make(TemplateErrors, 0, len(baselineErrs)+len(baselineDataErrs)), baselineErrs...)
+		combined = append(combined, baselineDataErrs...)
+		if len(combined) > 0 {
+			return nil, combined
 		}
-		return baselineResults, nil
+		return &EvaluationResult{Resources: baselineResults, DataSources: baselineDataSources}, nil
 	}
 
-	baselineSet := make(map[string]struct{}, len(baselineErrs))
+	baselineSet := make(map[string]struct{}, len(baselineErrs)+len(baselineDataErrs))
 	for _, item := range baselineErrs {
+		baselineSet[templateErrorSignature(item)] = struct{}{}
+	}
+	for _, item := range baselineDataErrs {
 		baselineSet[templateErrorSignature(item)] = struct{}{}
 	}
 
@@ -181,12 +195,13 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 	}
 
 	if len(compiledPolicies) == 0 {
-		combined := append(make(TemplateErrors, 0, len(baselineErrs)+len(policyErrs)), baselineErrs...)
+		combined := append(make(TemplateErrors, 0, len(baselineErrs)+len(baselineDataErrs)+len(policyErrs)), baselineErrs...)
+		combined = append(combined, baselineDataErrs...)
 		combined = append(combined, policyErrs...)
 		if len(combined) > 0 {
 			return nil, combined
 		}
-		return baselineResults, nil
+		return &EvaluationResult{Resources: baselineResults, DataSources: baselineDataSources}, nil
 	}
 
 	policyUnified := val
@@ -194,12 +209,13 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 		policyUnified = policyUnified.Unify(policy.value)
 	}
 
+	dataSources, finalDataErrs := e.evaluateDataSources(policyUnified)
 	results, finalErrs := e.evaluateResources(policyUnified, schemaVal)
-	if len(finalErrs) == 0 && len(policyErrs) == 0 {
-		return results, nil
+	if len(finalErrs) == 0 && len(finalDataErrs) == 0 && len(policyErrs) == 0 {
+		return &EvaluationResult{Resources: results, DataSources: dataSources}, nil
 	}
 
-	combined := make(TemplateErrors, 0, len(finalErrs)+len(policyErrs))
+	combined := make(TemplateErrors, 0, len(finalErrs)+len(finalDataErrs)+len(policyErrs))
 	for _, item := range finalErrs {
 		signature := templateErrorSignature(item)
 		if _, exists := baselineSet[signature]; exists {
@@ -212,8 +228,83 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 		}
 		combined = append(combined, item)
 	}
+	for _, item := range finalDataErrs {
+		combined = append(combined, item)
+	}
 	combined = append(combined, policyErrs...)
 	return nil, combined
+}
+
+func (e *Engine) evaluateDataSources(val cue.Value) (map[string]DataSourceSpec, TemplateErrors) {
+	dataVal := val.LookupPath(cue.ParsePath("data"))
+	if !dataVal.Exists() {
+		return nil, nil
+	}
+
+	iter, err := dataVal.Fields(cue.Concrete(false))
+	if err != nil {
+		return nil, TemplateErrors{{
+			Kind:    ErrCUELoad,
+			Path:    "data",
+			Message: fmt.Sprintf("cannot iterate data sources: %v", err),
+		}}
+	}
+
+	results := make(map[string]DataSourceSpec)
+	var errs TemplateErrors
+	for iter.Next() {
+		name := iter.Selector().String()
+		if len(name) >= 2 && name[0] == '"' && name[len(name)-1] == '"' {
+			name = name[1 : len(name)-1]
+		}
+
+		entry := iter.Value()
+		jsonBytes, err := entry.MarshalJSON()
+		if err != nil {
+			errs = append(errs, TemplateError{
+				Kind:    ErrCUEValidation,
+				Path:    "data." + name,
+				Message: fmt.Sprintf("failed to marshal data source: %v", err),
+			})
+			continue
+		}
+
+		var spec DataSourceSpec
+		if err := json.Unmarshal(jsonBytes, &spec); err != nil {
+			errs = append(errs, TemplateError{
+				Kind:    ErrCUEValidation,
+				Path:    "data." + name,
+				Message: fmt.Sprintf("invalid data source spec: %v", err),
+			})
+			continue
+		}
+
+		if err := validateDataSourceSpec(spec); err != nil {
+			errs = append(errs, TemplateError{
+				Kind:    ErrCUEValidation,
+				Path:    "data." + name,
+				Message: err.Error(),
+			})
+			continue
+		}
+
+		results[name] = spec
+	}
+
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	return results, nil
+}
+
+func validateDataSourceSpec(spec DataSourceSpec) error {
+	if strings.TrimSpace(spec.Kind) == "" {
+		return fmt.Errorf("data source is missing 'kind' field")
+	}
+	if strings.TrimSpace(spec.Filter.ID) == "" && strings.TrimSpace(spec.Filter.Name) == "" && len(spec.Filter.Tag) == 0 {
+		return fmt.Errorf("filter must specify at least one of: id, name, tag")
+	}
+	return nil
 }
 
 func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[string]json.RawMessage, TemplateErrors) {

@@ -121,3 +121,13 @@ func TestParseDependencies_MixedInterpolation_ReturnsError(t *testing.T) {
 	assert.Nil(t, exprs)
 	assert.Contains(t, err.Error(), "must occupy the full JSON value")
 }
+
+func TestParseDependencies_UnresolvedDataExpression_ReturnsError(t *testing.T) {
+	spec := json.RawMessage(`{"spec":{"vpcId":"${data.existingVpc.outputs.vpcId}"}}`)
+
+	deps, exprs, err := ParseDependencies("sg", spec)
+	require.Error(t, err)
+	assert.Nil(t, deps)
+	assert.Nil(t, exprs)
+	assert.Contains(t, err.Error(), "unresolved data source expression")
+}

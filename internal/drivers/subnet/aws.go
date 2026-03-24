@@ -25,6 +25,7 @@ type SubnetAPI interface {
 	ModifyMapPublicIp(ctx context.Context, subnetId string, enabled bool) error
 	UpdateTags(ctx context.Context, subnetId string, tags map[string]string) error
 	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 }
 
 type realSubnetAPI struct {
@@ -199,6 +200,34 @@ func (r *realSubnetAPI) FindByManagedKey(ctx context.Context, managedKey string)
 			"ownership corruption: %d subnets claim managed-key %q: %v; manual intervention required",
 			len(matches), managedKey, matches,
 		)
+	}
+}
+
+func (r *realSubnetAPI) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+	filters := make([]ec2types.Filter, 0, len(tags))
+	for key, value := range tags {
+		filters = append(filters, ec2types.Filter{Name: aws.String("tag:" + key), Values: []string{value}})
+	}
+	out, err := r.client.DescribeSubnets(ctx, &ec2sdk.DescribeSubnetsInput{Filters: filters})
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	for _, item := range out.Subnets {
+		if id := aws.ToString(item.SubnetId); id != "" {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup: %d subnets match the given tag filters", len(matches))
 	}
 }
 

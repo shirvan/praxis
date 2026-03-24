@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -184,6 +185,33 @@ func printPlan(plan *types.PlanResult) {
 	}
 
 	fmt.Println(plan.Summary.String())
+}
+
+func printDataSources(dataSources map[string]types.DataSourceResult) {
+	if len(dataSources) == 0 {
+		return
+	}
+
+	names := make([]string, 0, len(dataSources))
+	for name := range dataSources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fmt.Println("Data sources:")
+	for _, name := range names {
+		result := dataSources[name]
+		fmt.Printf("  %s (%s)\n", name, result.Kind)
+		keys := make([]string, 0, len(result.Outputs))
+		for key := range result.Outputs {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fmt.Printf("    %s = %v\n", key, result.Outputs[key])
+		}
+	}
+	fmt.Println()
 }
 
 // operationSymbol returns the prefix for each diff operation.

@@ -207,6 +207,38 @@ func (a *SubnetAdapter) Import(ctx restate.Context, key string, account string, 
 	return types.StatusReady, outputs, nil
 }
 
+func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	api, err := a.lookupAPI(ctx, account, filter.Region)
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (subnet.ObservedState, error) {
+		return lookupSubnet(runCtx, api, filter)
+	})
+	if err != nil {
+		return nil, classifyLookupError(err, subnet.IsNotFound)
+	}
+	if !matchesSubnetFilter(observed, filter) {
+		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no Subnet found matching filter"), 404)
+	}
+	outputs, err := a.NormalizeOutputs(subnet.SubnetOutputs{
+		SubnetId:            observed.SubnetId,
+		ARN:                 subnetARN(filter.Region, observed.OwnerId, observed.SubnetId),
+		VpcId:               observed.VpcId,
+		CidrBlock:           observed.CidrBlock,
+		AvailabilityZone:    observed.AvailabilityZone,
+		AvailabilityZoneId:  observed.AvailabilityZoneId,
+		MapPublicIpOnLaunch: observed.MapPublicIpOnLaunch,
+		State:               observed.State,
+		OwnerId:             observed.OwnerId,
+		AvailableIpCount:    observed.AvailableIpCount,
+	})
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	return outputs, nil
+}
+
 func (a *SubnetAdapter) decodeSpec(doc resourceDocument) (subnet.SubnetSpec, error) {
 	var spec subnet.SubnetSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -250,4 +282,61 @@ func (a *SubnetAdapter) planningAPI(ctx restate.Context, account string) (subnet
 		return nil, fmt.Errorf("resolve Subnet planning account %q: %w", account, err)
 	}
 	return a.apiFactory(awsCfg), nil
+}
+
+func (a *SubnetAdapter) lookupAPI(ctx restate.Context, account string, region string) (subnet.SubnetAPI, error) {
+	if a.staticPlanningAPI != nil {
+		return a.staticPlanningAPI, nil
+	}
+	if a.auth == nil || a.apiFactory == nil {
+		return nil, fmt.Errorf("Subnet adapter planning API is not configured")
+	}
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("resolve Subnet planning account %q: %w", account, err)
+	}
+	if strings.TrimSpace(region) != "" {
+		awsCfg.Region = strings.TrimSpace(region)
+	}
+	return a.apiFactory(awsCfg), nil
+}
+
+func lookupSubnet(ctx restate.RunContext, api subnet.SubnetAPI, filter LookupFilter) (subnet.ObservedState, error) {
+	if strings.TrimSpace(filter.ID) != "" {
+		return api.DescribeSubnet(ctx, strings.TrimSpace(filter.ID))
+	}
+	tags := lookupTags(filter)
+	if len(tags) == 0 {
+		return subnet.ObservedState{}, fmt.Errorf("Subnet lookup requires at least one of: id, name, tag")
+	}
+	id, err := api.FindByTags(ctx, tags)
+	if err != nil {
+		return subnet.ObservedState{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return subnet.ObservedState{}, fmt.Errorf("not found")
+	}
+	return api.DescribeSubnet(ctx, id)
+}
+
+func matchesSubnetFilter(observed subnet.ObservedState, filter LookupFilter) bool {
+	if strings.TrimSpace(filter.ID) != "" && observed.SubnetId != strings.TrimSpace(filter.ID) {
+		return false
+	}
+	if strings.TrimSpace(filter.Name) != "" && observed.Tags["Name"] != strings.TrimSpace(filter.Name) {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if observed.Tags[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func subnetARN(region, ownerID, subnetID string) string {
+	if strings.TrimSpace(region) == "" || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(subnetID) == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:ec2:%s:%s:subnet/%s", region, ownerID, subnetID)
 }

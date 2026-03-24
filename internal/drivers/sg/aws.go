@@ -25,6 +25,7 @@ import (
 type SGAPI interface {
 	DescribeSecurityGroup(ctx context.Context, groupId string) (ObservedState, error)
 	FindSecurityGroup(ctx context.Context, groupName, vpcId string) (ObservedState, error)
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 	CreateSecurityGroup(ctx context.Context, spec SecurityGroupSpec) (string, error) // returns groupId
 	DeleteSecurityGroup(ctx context.Context, groupId string) error
 	AuthorizeIngress(ctx context.Context, groupId string, rules []NormalizedRule) error
@@ -70,6 +71,7 @@ func (r *realSGAPI) DescribeSecurityGroup(ctx context.Context, groupId string) (
 		GroupName:   aws.ToString(sg.GroupName),
 		Description: aws.ToString(sg.Description),
 		VpcId:       aws.ToString(sg.VpcId),
+		OwnerId:     aws.ToString(sg.OwnerId),
 		Tags:        make(map[string]string, len(sg.Tags)),
 	}
 	for _, tag := range sg.Tags {
@@ -128,6 +130,34 @@ func (r *realSGAPI) FindSecurityGroup(ctx context.Context, groupName, vpcId stri
 	}
 
 	return r.DescribeSecurityGroup(ctx, aws.ToString(out.SecurityGroups[0].GroupId))
+}
+
+func (r *realSGAPI) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+	filters := make([]ec2types.Filter, 0, len(tags))
+	for key, value := range tags {
+		filters = append(filters, ec2types.Filter{Name: aws.String("tag:" + key), Values: []string{value}})
+	}
+	out, err := r.client.DescribeSecurityGroups(ctx, &ec2sdk.DescribeSecurityGroupsInput{Filters: filters})
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	for _, item := range out.SecurityGroups {
+		if id := aws.ToString(item.GroupId); id != "" {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup: %d security groups match the given tag filters", len(matches))
+	}
 }
 
 // CreateSecurityGroup creates a new EC2 security group and returns its group ID.

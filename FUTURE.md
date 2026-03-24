@@ -6,32 +6,6 @@
 
 ---
 
-## Data Sources in Templates
-
-Reference existing cloud resources directly in CUE templates without managing them.
-
-**Technical approach:** Introduce a `data` block type alongside resource blocks in templates:
-
-```cue
-existingVpc: data.#Lookup & {
-    kind:   "VPC"
-    filter: {
-        tag: Name: "production-vpc"
-    }
-    region: "us-east-1"
-}
-
-webServer: ec2.#EC2Instance & {
-    spec: {
-        vpcId: "${data.existingVpc.outputs.vpcId}"
-    }
-}
-```
-
-During template evaluation, Core dispatches lookup queries to the appropriate driver's `Describe` or `Find` handler. The driver queries AWS using the filter criteria and returns outputs without taking ownership. Results are injected as read-only outputs available for expression hydration. This differs from `import --observe` in that data sources are ephemeral per-evaluation — they don't create persistent driver state.
-
----
-
 ## Notification Sinks & External Event Delivery
 
 Build external delivery and fan-out on top of the existing internal deployment event stream.

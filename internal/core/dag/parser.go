@@ -13,6 +13,7 @@ import (
 var (
 	exprPlaceholderRe = regexp.MustCompile(`\$\{([^}]+)\}`)
 	resourceOutputRe  = regexp.MustCompile(`\bresources\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs(?:\.|\b)`)
+	dataOutputRe      = regexp.MustCompile(`\bdata\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs(?:\.|\b)`)
 )
 
 // ParseDependencies scans a rendered resource document, discovers references to
@@ -105,6 +106,9 @@ func parseStringDependencies(resourceName, value, path string, deps map[string]s
 			continue
 		}
 		expr := strings.TrimSpace(match[1])
+		if dataOutputRe.MatchString(expr) {
+			return fmt.Errorf("resource %q contains unresolved data source expression %q at %q; data sources must be resolved before dependency parsing", resourceName, expr, path)
+		}
 		refs := resourceOutputRe.FindAllStringSubmatch(expr, -1)
 		if len(refs) == 0 {
 			continue

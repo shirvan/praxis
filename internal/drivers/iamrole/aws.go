@@ -3,6 +3,7 @@ package iamrole
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"sort"
 	"time"
@@ -19,6 +20,7 @@ import (
 type IAMRoleAPI interface {
 	CreateRole(ctx context.Context, spec IAMRoleSpec) (arn, roleID string, err error)
 	DescribeRole(ctx context.Context, roleName string) (ObservedState, error)
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 	DeleteRole(ctx context.Context, roleName string) error
 	UpdateAssumeRolePolicy(ctx context.Context, roleName, policyDocument string) error
 	UpdateRole(ctx context.Context, roleName, description string, maxSessionDuration int32) error
@@ -113,6 +115,45 @@ func (r *realIAMRoleAPI) DescribeRole(ctx context.Context, roleName string) (Obs
 		observed.CreateDate = role.CreateDate.UTC().Format(time.RFC3339)
 	}
 	return observed, nil
+}
+
+func (r *realIAMRoleAPI) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	paginator := iamsdk.NewListRolesPaginator(r.client, &iamsdk.ListRolesInput{})
+	var matches []string
+	for paginator.HasMorePages() {
+		if err := r.limiter.Wait(ctx); err != nil {
+			return "", err
+		}
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, role := range page.Roles {
+			roleName := aws.ToString(role.RoleName)
+			roleTags, err := r.listRoleTags(ctx, roleName)
+			if err != nil {
+				return "", err
+			}
+			matched := true
+			for key, value := range tags {
+				if roleTags[key] != value {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				matches = append(matches, roleName)
+			}
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup: %d IAM roles match the given tag filters", len(matches))
+	}
 }
 
 func (r *realIAMRoleAPI) DeleteRole(ctx context.Context, roleName string) error {

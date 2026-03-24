@@ -213,6 +213,39 @@ func (a *VPCAdapter) Import(ctx restate.Context, key string, account string, ref
 	return types.StatusReady, outputs, nil
 }
 
+func (a *VPCAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	api, err := a.lookupAPI(ctx, account, filter.Region)
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+
+	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (vpc.ObservedState, error) {
+		return lookupVPC(runCtx, api, filter)
+	})
+	if err != nil {
+		return nil, classifyLookupError(err, vpc.IsNotFound)
+	}
+	if !matchesVPCFilter(observed, filter) {
+		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no VPC found matching filter"), 404)
+	}
+	outputs, err := a.NormalizeOutputs(vpc.VPCOutputs{
+		VpcId:              observed.VpcId,
+		ARN:                vpcARN(filter.Region, observed.OwnerId, observed.VpcId),
+		CidrBlock:          observed.CidrBlock,
+		State:              observed.State,
+		EnableDnsHostnames: observed.EnableDnsHostnames,
+		EnableDnsSupport:   observed.EnableDnsSupport,
+		InstanceTenancy:    observed.InstanceTenancy,
+		OwnerId:            observed.OwnerId,
+		DhcpOptionsId:      observed.DhcpOptionsId,
+		IsDefault:          observed.IsDefault,
+	})
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	return outputs, nil
+}
+
 func (a *VPCAdapter) decodeSpec(doc resourceDocument) (vpc.VPCSpec, error) {
 	var spec vpc.VPCSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -253,4 +286,61 @@ func (a *VPCAdapter) planningAPI(ctx restate.Context, account string) (vpc.VPCAP
 		return nil, fmt.Errorf("resolve VPC planning account %q: %w", account, err)
 	}
 	return a.apiFactory(awsCfg), nil
+}
+
+func (a *VPCAdapter) lookupAPI(ctx restate.Context, account string, region string) (vpc.VPCAPI, error) {
+	if a.staticPlanningAPI != nil {
+		return a.staticPlanningAPI, nil
+	}
+	if a.auth == nil || a.apiFactory == nil {
+		return nil, fmt.Errorf("VPC adapter planning API is not configured")
+	}
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("resolve VPC planning account %q: %w", account, err)
+	}
+	if strings.TrimSpace(region) != "" {
+		awsCfg.Region = strings.TrimSpace(region)
+	}
+	return a.apiFactory(awsCfg), nil
+}
+
+func lookupVPC(ctx restate.RunContext, api vpc.VPCAPI, filter LookupFilter) (vpc.ObservedState, error) {
+	if strings.TrimSpace(filter.ID) != "" {
+		return api.DescribeVpc(ctx, strings.TrimSpace(filter.ID))
+	}
+	tags := lookupTags(filter)
+	if len(tags) == 0 {
+		return vpc.ObservedState{}, fmt.Errorf("VPC lookup requires at least one of: id, name, tag")
+	}
+	id, err := api.FindByTags(ctx, tags)
+	if err != nil {
+		return vpc.ObservedState{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return vpc.ObservedState{}, fmt.Errorf("not found")
+	}
+	return api.DescribeVpc(ctx, id)
+}
+
+func matchesVPCFilter(observed vpc.ObservedState, filter LookupFilter) bool {
+	if strings.TrimSpace(filter.ID) != "" && observed.VpcId != strings.TrimSpace(filter.ID) {
+		return false
+	}
+	if strings.TrimSpace(filter.Name) != "" && observed.Tags["Name"] != strings.TrimSpace(filter.Name) {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if observed.Tags[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func vpcARN(region, ownerID, vpcID string) string {
+	if strings.TrimSpace(region) == "" || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(vpcID) == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:ec2:%s:%s:vpc/%s", region, ownerID, vpcID)
 }

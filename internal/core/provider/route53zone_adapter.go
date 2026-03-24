@@ -159,6 +159,29 @@ func (a *Route53HostedZoneAdapter) Import(ctx restate.Context, key string, accou
 	return types.StatusReady, outputs, nil
 }
 
+func (a *Route53HostedZoneAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	api, err := a.planningAPI(ctx, account)
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (route53zone.ObservedState, error) {
+		return lookupHostedZone(runCtx, api, filter)
+	})
+	if err != nil {
+		return nil, classifyLookupError(err, route53zone.IsNotFound)
+	}
+	if !matchesHostedZoneFilter(observed, filter) {
+		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no Route53HostedZone found matching filter"), 404)
+	}
+	return a.NormalizeOutputs(route53zone.HostedZoneOutputs{
+		HostedZoneId: observed.HostedZoneId,
+		Name:         observed.Name,
+		NameServers:  observed.NameServers,
+		IsPrivate:    observed.IsPrivate,
+		RecordCount:  observed.RecordCount,
+	})
+}
+
 func (a *Route53HostedZoneAdapter) decodeSpec(doc resourceDocument) (route53zone.HostedZoneSpec, error) {
 	var spec route53zone.HostedZoneSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -188,4 +211,45 @@ func (a *Route53HostedZoneAdapter) planningAPI(ctx restate.Context, account stri
 		return nil, fmt.Errorf("resolve Route53HostedZone planning account %q: %w", account, err)
 	}
 	return a.apiFactory(awsCfg), nil
+}
+
+func lookupHostedZone(ctx restate.RunContext, api route53zone.HostedZoneAPI, filter LookupFilter) (route53zone.ObservedState, error) {
+	if strings.TrimSpace(filter.ID) != "" {
+		return api.DescribeHostedZone(ctx, strings.TrimSpace(filter.ID))
+	}
+	var id string
+	var err error
+	if strings.TrimSpace(filter.Name) != "" {
+		id, err = api.FindHostedZoneByName(ctx, normalizeHostedZoneLookupName(filter.Name))
+	} else if len(filter.Tag) > 0 {
+		id, err = api.FindHostedZoneByTags(ctx, filter.Tag)
+	} else {
+		return route53zone.ObservedState{}, fmt.Errorf("Route53HostedZone lookup requires at least one of: id, name, tag")
+	}
+	if err != nil {
+		return route53zone.ObservedState{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return route53zone.ObservedState{}, fmt.Errorf("not found")
+	}
+	return api.DescribeHostedZone(ctx, id)
+}
+
+func normalizeHostedZoneLookupName(name string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), "."))
+}
+
+func matchesHostedZoneFilter(observed route53zone.ObservedState, filter LookupFilter) bool {
+	if strings.TrimSpace(filter.ID) != "" && observed.HostedZoneId != strings.TrimSpace(filter.ID) {
+		return false
+	}
+	if strings.TrimSpace(filter.Name) != "" && observed.Name != normalizeHostedZoneLookupName(filter.Name) {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if observed.Tags[key] != value {
+			return false
+		}
+	}
+	return true
 }

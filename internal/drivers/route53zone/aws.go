@@ -19,6 +19,7 @@ type HostedZoneAPI interface {
 	CreateHostedZone(ctx context.Context, spec HostedZoneSpec) (string, error)
 	DescribeHostedZone(ctx context.Context, hostedZoneID string) (ObservedState, error)
 	FindHostedZoneByName(ctx context.Context, name string) (string, error)
+	FindHostedZoneByTags(ctx context.Context, tags map[string]string) (string, error)
 	UpdateComment(ctx context.Context, hostedZoneID, comment string) error
 	AssociateVPC(ctx context.Context, hostedZoneID string, vpc HostedZoneVPC) error
 	DisassociateVPC(ctx context.Context, hostedZoneID string, vpc HostedZoneVPC) error
@@ -122,6 +123,45 @@ func (r *realHostedZoneAPI) FindHostedZoneByName(ctx context.Context, name strin
 		return matches[0], nil
 	default:
 		return "", fmt.Errorf("multiple hosted zones exist for domain %q: %v; manual intervention required", target, matches)
+	}
+}
+
+func (r *realHostedZoneAPI) FindHostedZoneByTags(ctx context.Context, tags map[string]string) (string, error) {
+	paginator := route53sdk.NewListHostedZonesPaginator(r.client, &route53sdk.ListHostedZonesInput{})
+	var matches []string
+	for paginator.HasMorePages() {
+		if err := r.limiter.Wait(ctx); err != nil {
+			return "", err
+		}
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, zone := range page.HostedZones {
+			zoneID := normalizeHostedZoneID(aws.ToString(zone.Id))
+			zoneTags, err := r.listTags(ctx, route53types.TagResourceTypeHostedzone, zoneID)
+			if err != nil {
+				return "", err
+			}
+			matched := true
+			for key, value := range tags {
+				if zoneTags[key] != value {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				matches = append(matches, zoneID)
+			}
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous lookup: %d hosted zones match the given tag filters", len(matches))
 	}
 }
 

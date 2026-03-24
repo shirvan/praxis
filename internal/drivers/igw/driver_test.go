@@ -12,10 +12,10 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	"github.com/shirvan/praxis/internal/core/auth"
-	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
+	"github.com/shirvan/praxis/internal/core/auth"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/pkg/types"
 )

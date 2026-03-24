@@ -192,6 +192,31 @@ func (a *SecurityGroupAdapter) Import(ctx restate.Context, key string, account s
 	return types.StatusReady, outputs, nil
 }
 
+func (a *SecurityGroupAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	api, err := a.lookupAPI(ctx, account, filter.Region)
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (sg.ObservedState, error) {
+		return lookupSecurityGroup(runCtx, api, filter)
+	})
+	if err != nil {
+		return nil, classifyLookupError(err, sg.IsNotFound)
+	}
+	if !matchesSecurityGroupFilter(observed, filter) {
+		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no SecurityGroup found matching filter"), 404)
+	}
+	outputs, err := a.NormalizeOutputs(sg.SecurityGroupOutputs{
+		GroupId:  observed.GroupId,
+		GroupArn: securityGroupARN(filter.Region, observed.OwnerId, observed.GroupId),
+		VpcId:    observed.VpcId,
+	})
+	if err != nil {
+		return nil, restate.TerminalError(err, 500)
+	}
+	return outputs, nil
+}
+
 func (a *SecurityGroupAdapter) decodeSpec(doc resourceDocument) (sg.SecurityGroupSpec, error) {
 	var spec sg.SecurityGroupSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -216,4 +241,61 @@ func (a *SecurityGroupAdapter) planningAPI(ctx restate.Context, account string) 
 		return nil, fmt.Errorf("resolve SecurityGroup planning account %q: %w", account, err)
 	}
 	return a.apiFactory(awsCfg), nil
+}
+
+func (a *SecurityGroupAdapter) lookupAPI(ctx restate.Context, account string, region string) (sg.SGAPI, error) {
+	if a.staticPlanningAPI != nil {
+		return a.staticPlanningAPI, nil
+	}
+	if a.auth == nil || a.apiFactory == nil {
+		return nil, fmt.Errorf("SecurityGroup adapter planning API is not configured")
+	}
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("resolve SecurityGroup planning account %q: %w", account, err)
+	}
+	if strings.TrimSpace(region) != "" {
+		awsCfg.Region = strings.TrimSpace(region)
+	}
+	return a.apiFactory(awsCfg), nil
+}
+
+func lookupSecurityGroup(ctx restate.RunContext, api sg.SGAPI, filter LookupFilter) (sg.ObservedState, error) {
+	if strings.TrimSpace(filter.ID) != "" {
+		return api.DescribeSecurityGroup(ctx, strings.TrimSpace(filter.ID))
+	}
+	tags := lookupTags(filter)
+	if len(tags) == 0 {
+		return sg.ObservedState{}, fmt.Errorf("SecurityGroup lookup requires at least one of: id, name, tag")
+	}
+	id, err := api.FindByTags(ctx, tags)
+	if err != nil {
+		return sg.ObservedState{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return sg.ObservedState{}, fmt.Errorf("not found")
+	}
+	return api.DescribeSecurityGroup(ctx, id)
+}
+
+func matchesSecurityGroupFilter(observed sg.ObservedState, filter LookupFilter) bool {
+	if strings.TrimSpace(filter.ID) != "" && observed.GroupId != strings.TrimSpace(filter.ID) {
+		return false
+	}
+	if strings.TrimSpace(filter.Name) != "" && observed.Tags["Name"] != strings.TrimSpace(filter.Name) {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if observed.Tags[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func securityGroupARN(region, ownerID, groupID string) string {
+	if strings.TrimSpace(region) == "" || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(groupID) == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:ec2:%s:%s:security-group/%s", region, ownerID, groupID)
 }
