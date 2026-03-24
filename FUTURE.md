@@ -6,29 +6,6 @@
 
 ---
 
-## Lifecycle Rules
-
-Resource-level lifecycle configuration for controlling update and delete behavior.
-
-**Shipped:** `preventDestroy` and `ignoreChanges` are implemented. Templates can declare an optional `lifecycle` block on any resource:
-
-```cue
-myBucket: s3.#S3Bucket & {
-    lifecycle: {
-        preventDestroy: true
-        ignoreChanges:  ["tags.lastModified", "tags.updatedBy"]
-    }
-    spec: { ... }
-}
-```
-
-- **`preventDestroy`** — The orchestrator refuses to delete this resource (errors on `praxis delete` if the resource is included). Extends the existing observed-mode concept to managed resources. Also blocks `--replace` on protected resources.
-- **`ignoreChanges`** — The plan diff engine skips the listed field paths when computing drift. Supports exact matches and prefix matching (e.g., `"tags"` ignores all `tags.*` fields). Useful for tags managed by external systems.
-
-The lifecycle block is validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state so that the orchestrator and plan diff engine can enforce it.
-
----
-
 ## Data Sources in Templates
 
 Reference existing cloud resources directly in CUE templates without managing them.
