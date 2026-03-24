@@ -316,6 +316,11 @@ func (s *PraxisCommandService) buildResourceNodes(specs map[string]json.RawMessa
 			return nil, fmt.Errorf("resource %q: parse dependencies: %w", name, err)
 		}
 
+		lifecycle, err := parseLifecycle(raw)
+		if err != nil {
+			return nil, fmt.Errorf("resource %q: %w", name, err)
+		}
+
 		nodes = append(nodes, &types.ResourceNode{
 			Name:         name,
 			Kind:         kind,
@@ -323,6 +328,7 @@ func (s *PraxisCommandService) buildResourceNodes(specs map[string]json.RawMessa
 			Spec:         raw,
 			Dependencies: deps,
 			Expressions:  exprs,
+			Lifecycle:    lifecycle,
 		})
 	}
 
@@ -350,6 +356,7 @@ func planResourcesFromGraph(nodes []*types.ResourceNode, graph *dag.Graph) []orc
 			Spec:          node.Spec,
 			Dependencies:  append([]string(nil), node.Dependencies...),
 			Expressions:   cloneStringMap(node.Expressions),
+			Lifecycle:     node.Lifecycle,
 		})
 	}
 
@@ -453,6 +460,18 @@ func resourceKind(raw json.RawMessage) (string, error) {
 		return "", fmt.Errorf("resource kind is required")
 	}
 	return doc.Kind, nil
+}
+
+// parseLifecycle extracts the optional lifecycle block from a rendered resource
+// document. Returns nil if the resource does not declare lifecycle rules.
+func parseLifecycle(raw json.RawMessage) (*types.LifecyclePolicy, error) {
+	var doc struct {
+		Lifecycle *types.LifecyclePolicy `json:"lifecycle"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("decode lifecycle: %w", err)
+	}
+	return doc.Lifecycle, nil
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

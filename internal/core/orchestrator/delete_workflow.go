@@ -82,6 +82,15 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		}
 
 		resource := exec.plan[name]
+
+		if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, exec, name, resource.Kind,
+				fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name)); err != nil {
+				return DeploymentResult{}, err
+			}
+			continue
+		}
+
 		adapter, err := w.providers.Get(resource.Kind)
 		if err != nil {
 			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, exec, name, resource.Kind, err.Error()); err != nil {

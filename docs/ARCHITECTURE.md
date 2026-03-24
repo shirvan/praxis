@@ -286,6 +286,15 @@ stateDiagram-v2
 | **Managed** | Full lifecycle — provision, reconcile, correct drift, delete |
 | **Observed** | Import-only — detect and report drift but never modify the resource |
 
+### Lifecycle Rules
+
+Resources can declare **lifecycle rules** — protective policies that gate dangerous transitions:
+
+- **`preventDestroy`** — If `true`, the orchestrator refuses to delete the resource. Any delete operation fails terminally until the rule is removed from the template and re-applied.
+- **`ignoreChanges`** — A list of spec field paths to ignore during plan diff and reconciliation. Drift in these fields is not corrected, allowing external systems to co-manage specific fields.
+
+Lifecycle rules are declared in the template's `lifecycle` block, validated during CUE evaluation, and enforced by the orchestrator and plan diff engine. They do not alter the resource state machine — they add protective gates around the `Ready → Deleting` transition and the drift correction path. See [Templates — Lifecycle Rules](TEMPLATES.md#lifecycle-rules) for syntax.
+
 ---
 
 ## What Praxis Is Not

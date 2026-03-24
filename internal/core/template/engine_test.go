@@ -815,3 +815,95 @@ resources: {
 	assert.Equal(t, ErrPolicyViolation, tErrs[0].Kind)
 	assert.Equal(t, "network-hardening", tErrs[0].PolicyName)
 }
+
+// ── Lifecycle Block Tests ───────────────────────────
+
+func TestEngine_EvaluateBytes_LifecycleBlockWithSchema(t *testing.T) {
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas", "aws"))
+	require.NoError(t, err)
+	eng := NewEngine(absSchemaDir)
+
+	specs, err := eng.EvaluateBytes([]byte(`
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		metadata: name: "test-bucket"
+		lifecycle: {
+			preventDestroy: true
+			ignoreChanges: ["tags.lastModified"]
+		}
+		spec: {
+			region: "us-east-1"
+			tags: env: "prod"
+		}
+	}
+}
+`), nil)
+	require.NoError(t, err)
+	require.Contains(t, specs, "bucket")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(specs["bucket"], &parsed))
+
+	lc, ok := parsed["lifecycle"].(map[string]any)
+	require.True(t, ok, "lifecycle block should be present in rendered output")
+	assert.Equal(t, true, lc["preventDestroy"])
+
+	ignoreChanges, ok := lc["ignoreChanges"].([]any)
+	require.True(t, ok)
+	assert.Equal(t, "tags.lastModified", ignoreChanges[0])
+}
+
+func TestEngine_EvaluateBytes_LifecycleBlockOptional(t *testing.T) {
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas", "aws"))
+	require.NoError(t, err)
+	eng := NewEngine(absSchemaDir)
+
+	// Template without lifecycle should still work fine.
+	specs, err := eng.EvaluateBytes([]byte(`
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		metadata: name: "test-bucket"
+		spec: {
+			region: "us-east-1"
+			tags: env: "dev"
+		}
+	}
+}
+`), nil)
+	require.NoError(t, err)
+	require.Contains(t, specs, "bucket")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(specs["bucket"], &parsed))
+	_, hasLifecycle := parsed["lifecycle"]
+	assert.False(t, hasLifecycle, "lifecycle should not appear when not declared")
+}
+
+func TestEngine_EvaluateBytes_LifecycleBlockNoSchema(t *testing.T) {
+	eng := NewEngine("")
+
+	// Without schema validation, lifecycle block passes through too.
+	specs, err := eng.EvaluateBytes([]byte(`
+resources: {
+	bucket: {
+		kind: "S3Bucket"
+		lifecycle: {
+			preventDestroy: true
+		}
+		spec: {
+			region: "us-east-1"
+		}
+	}
+}
+`), nil)
+	require.NoError(t, err)
+	require.Contains(t, specs, "bucket")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(specs["bucket"], &parsed))
+	lc, ok := parsed["lifecycle"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, lc["preventDestroy"])
+}

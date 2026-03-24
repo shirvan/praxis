@@ -178,6 +178,8 @@ flowchart TD
 
 4. Schedules the next timer.
 
+The plan diff engine (in Core) also respects `lifecycle.ignoreChanges` — field diffs matching ignored paths are filtered before presenting plan results. This filtering happens in the command handlers, not in drivers. Drivers always report full drift; the orchestrator decides what to act on.
+
 ### Timer Deduplication
 
 Drivers use a `ReconcileScheduled` boolean guard in state to prevent timer fan-out. Without this, each Provision call would stack additional timers:
@@ -224,6 +226,8 @@ Users can later call Provision with a new spec to update the desired state, and 
 3. Delete the resource in AWS (`restate.Run()`)
 4. Write tombstone state (`Status: Deleted`)
 5. Do NOT schedule reconciliation
+
+The orchestrator checks `lifecycle.preventDestroy` **before** calling the driver's Delete handler. If the flag is set, the driver is never invoked — the orchestrator fails the resource with a terminal error. Drivers themselves do not inspect lifecycle rules.
 
 Properties:
 

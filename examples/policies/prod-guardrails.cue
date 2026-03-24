@@ -42,3 +42,6 @@ resources: [=~"-prod"]: {
 		}
 	}
 }
+
+// Production resources must be protected from accidental deletion.
+resources: [=~"-prod"]: lifecycle: preventDestroy: true

@@ -74,6 +74,8 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **CUE Templates.** Platform teams define typed, validated templates in CUE. End users fill in variables. Output expressions wire resource outputs into downstream specs. Policy constraints enforce organizational standards via CUE unification.
 
+**Lifecycle Protection.** Mark resources with `preventDestroy` to block accidental deletion, or `ignoreChanges` to let external systems co-manage specific fields without Praxis fighting for control.
+
 **Lightweight Operations.** The entire stack runs in Docker Compose. No etcd, no API server, no cluster to maintain. Drivers are grouped by AWS domain into independent driver packs that register with Restate.
 
 ---

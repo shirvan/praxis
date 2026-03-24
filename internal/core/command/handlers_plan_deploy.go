@@ -62,6 +62,13 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 			return PlanDeployResponse{}, err
 		}
 
+		if resource.Lifecycle != nil && len(resource.Lifecycle.IgnoreChanges) > 0 {
+			fields = filterIgnoredFields(fields, resource.Lifecycle.IgnoreChanges)
+			if op == types.OpUpdate && len(fields) == 0 {
+				op = types.OpNoOp
+			}
+		}
+
 		corediff.Add(plan, resource.Kind, resource.Key, op, fields)
 	}
 

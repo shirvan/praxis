@@ -10,24 +10,22 @@
 
 Resource-level lifecycle configuration for controlling update and delete behavior.
 
-**Technical approach:** Add an optional `lifecycle` block to resource definitions in CUE templates:
+**Shipped:** `preventDestroy` and `ignoreChanges` are implemented. Templates can declare an optional `lifecycle` block on any resource:
 
 ```cue
 myBucket: s3.#S3Bucket & {
     lifecycle: {
-        preventDestroy:      true
-        createBeforeDestroy: true
-        ignoreChanges:       ["tags.lastModified", "tags.updatedBy"]
+        preventDestroy: true
+        ignoreChanges:  ["tags.lastModified", "tags.updatedBy"]
     }
     spec: { ... }
 }
 ```
 
-- **`preventDestroy`** — The orchestrator refuses to delete this resource (errors on `praxis delete` if the resource is included). Extends the existing observed-mode concept to managed resources.
-- **`createBeforeDestroy`** — When immutable field changes require recreation, the orchestrator provisions the replacement before deleting the old resource. Requires the driver contract to support provisioning a second instance with a temporary key, then swapping.
-- **`ignoreChanges`** — The plan diff engine and reconciliation loop skip the listed field paths when computing drift. Useful for tags managed by external systems (e.g., AWS Config, cost allocation tags).
+- **`preventDestroy`** — The orchestrator refuses to delete this resource (errors on `praxis delete` if the resource is included). Extends the existing observed-mode concept to managed resources. Also blocks `--replace` on protected resources.
+- **`ignoreChanges`** — The plan diff engine skips the listed field paths when computing drift. Supports exact matches and prefix matching (e.g., `"tags"` ignores all `tags.*` fields). Useful for tags managed by external systems.
 
-The lifecycle block is parsed during template evaluation and passed through as metadata alongside the resource spec. The orchestrator and plan diff engine read it to adjust their behavior.
+The lifecycle block is validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state so that the orchestrator and plan diff engine can enforce it.
 
 ---
 
@@ -144,6 +142,16 @@ flowchart TD
 ```
 
 **Technical approach:** The Deployment Orchestrator already maintains the ordered list of provisioned resources. On failure, rollback iterates that list in reverse and calls `Delete` on each resource. For user-initiated rollbacks (`praxis rollback <stack> --to <deployment-id>`), Core diffs the current state against the target deployment record and applies the inverse changes. Deployment History provides the state snapshots needed for this.
+
+---
+
+## Create-Before-Destroy Lifecycle
+
+When immutable field changes require recreation, the orchestrator provisions the replacement before deleting the old resource.
+
+This is intentionally deferred. Implementing it properly requires the driver contract to support provisioning a second instance with a temporary key, swapping references in dependent resources, and then tearing down the old instance — all under transactional semantics that the current driver model doesn't support. The coordination complexity (temporary naming, reference swapping, partial-failure recovery) is significantly higher than `preventDestroy` or `ignoreChanges` and isn't worth the investment until there are concrete use cases driving the need.
+
+---
 
 ## Kubernetes Integration
 

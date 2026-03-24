@@ -166,7 +166,9 @@ The `DeploymentDeleteWorkflow` handles deployment teardown:
 1. Read current DeploymentState
 2. Reconstruct the dependency graph from stored resource metadata
 3. Compute reverse topological order
-4. Delete resources in reverse order (dependents before dependencies)
+4. For each resource in reverse order:
+   - **Check `lifecycle.preventDestroy`** — if `true`, fail immediately with a terminal error
+   - Delete the resource via the driver
 5. On failure: mark the resource's dependencies as Skipped (they may still be referenced)
 6. Independent branches continue in parallel
 7. Finalize deployment as Deleted or Failed
@@ -350,3 +352,33 @@ Workflows check for cancellation via `DeploymentState.IsCancelled()` at the star
 3. The deployment finalizes as `Cancelled`
 
 This graceful approach avoids leaving resources in an indeterminate state.
+
+---
+
+## Lifecycle Rules
+
+Lifecycle rules protect resources from accidental deletion and allow selective drift ignoring. They are declared in templates and enforced by the orchestrator and plan diff engine.
+
+### preventDestroy
+
+When `lifecycle.preventDestroy: true` is set on a resource:
+
+- The **delete workflow** checks the flag before calling `adapter.Delete()`. If set, the resource is marked as failed with a terminal error and the workflow does not retry.
+- The **apply workflow** checks the flag before force-replacing a resource (`--replace`). Protected resources cannot be recreated.
+- The error message is explicit:
+
+```text
+lifecycle.preventDestroy enabled; refusing to delete resource "prod-db" (RDSInstance)
+```
+
+To delete a protected resource, update the template to set `preventDestroy: false` (or remove it), re-apply, then delete.
+
+### ignoreChanges
+
+When `lifecycle.ignoreChanges: ["path1", "path2"]` is set on a resource:
+
+- The **plan diff engine** filters out field diffs matching the ignored paths before presenting results. If all diffs are filtered, the resource shows as `no-op` instead of `update`.
+- Supports exact path matching (`"tags.env"` matches only `tags.env`) and prefix matching (`"tags"` matches `tags.env`, `tags.team`, etc.).
+- Non-ignored fields are still diffed and corrected normally.
+
+This allows external systems (billing tools, compliance scanners, other IaC) to manage specific fields without Praxis fighting for control.

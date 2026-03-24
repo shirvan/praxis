@@ -28,13 +28,29 @@ type compiledPolicy struct {
 type Engine struct {
 	schemaDir string
 	ctx       *cue.Context
+
+	// lifecycleExt is a pre-compiled CUE value that permits an optional
+	// lifecycle block on every resource schema. It is unified with each
+	// schema definition before resource validation so that templates can
+	// declare lifecycle rules without modifying individual schema files.
+	lifecycleExt cue.Value
 }
+
+// lifecycleCUE defines the optional lifecycle block accepted on all resource types.
+const lifecycleCUE = `{
+	lifecycle?: {
+		preventDestroy?: bool
+		ignoreChanges?: [...string]
+	}
+}`
 
 // NewEngine creates an engine that loads provider schemas from schemaDir.
 func NewEngine(schemaDir string) *Engine {
+	ctx := cuecontext.New()
 	return &Engine{
-		schemaDir: schemaDir,
-		ctx:       cuecontext.New(),
+		schemaDir:    schemaDir,
+		ctx:          ctx,
+		lifecycleExt: ctx.CompileString(lifecycleCUE),
 	}
 }
 
@@ -255,6 +271,36 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 			continue
 		}
 
+		// Lifecycle is a Praxis-level field, not part of any driver schema.
+		// We validate it independently and strip it before schema
+		// unification so CUE closed definitions don't reject it.
+		var lifecycleJSON json.RawMessage
+		lifecycleVal := resVal.LookupPath(cue.ParsePath("lifecycle"))
+		if lifecycleVal.Exists() {
+			if err := e.lifecycleExt.LookupPath(cue.ParsePath("lifecycle")).Unify(lifecycleVal).Validate(); err != nil {
+				errs = append(errs, TemplateError{
+					Kind:    ErrCUEValidation,
+					Path:    fmt.Sprintf("resources.%s.lifecycle", name),
+					Message: fmt.Sprintf("invalid lifecycle block: %v", err),
+				})
+				continue
+			}
+			lcBytes, _ := lifecycleVal.MarshalJSON()
+			lifecycleJSON = lcBytes
+
+			// Strip lifecycle from the CUE value for schema validation.
+			rawJSON, merr := resVal.MarshalJSON()
+			if merr == nil {
+				var m map[string]json.RawMessage
+				if json.Unmarshal(rawJSON, &m) == nil {
+					delete(m, "lifecycle")
+					if stripped, jerr := json.Marshal(m); jerr == nil {
+						resVal = e.ctx.CompileBytes(stripped)
+					}
+				}
+			}
+		}
+
 		if schemaVal != nil {
 			schemaDef := schemaVal.LookupPath(cue.ParsePath("#" + kind))
 			if schemaDef.Exists() {
@@ -295,6 +341,17 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 				Message: fmt.Sprintf("failed to export JSON: %v", jerr),
 			})
 			continue
+		}
+
+		// Splice lifecycle back into output JSON if it was present.
+		if lifecycleJSON != nil {
+			var m map[string]json.RawMessage
+			if json.Unmarshal(jsonBytes, &m) == nil {
+				m["lifecycle"] = lifecycleJSON
+				if merged, merr := json.Marshal(m); merr == nil {
+					jsonBytes = merged
+				}
+			}
 		}
 
 		results[name] = json.RawMessage(jsonBytes)

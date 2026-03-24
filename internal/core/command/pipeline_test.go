@@ -103,3 +103,97 @@ resources: {
 func TestNormalizeIdentifier_CollapsesUnsafeCharacters(t *testing.T) {
 	assert.Equal(t, "my-stack-prod", normalizeIdentifier(" My.Stack / Prod "))
 }
+
+func TestParseLifecycle_Present(t *testing.T) {
+	raw := json.RawMessage(`{
+		"kind": "S3Bucket",
+		"lifecycle": {
+			"preventDestroy": true,
+			"ignoreChanges": ["tags.lastModified", "tags.updatedBy"]
+		},
+		"spec": {"region": "us-east-1"}
+	}`)
+
+	lc, err := parseLifecycle(raw)
+	require.NoError(t, err)
+	require.NotNil(t, lc)
+	assert.True(t, lc.PreventDestroy)
+	assert.Equal(t, []string{"tags.lastModified", "tags.updatedBy"}, lc.IgnoreChanges)
+}
+
+func TestParseLifecycle_Absent(t *testing.T) {
+	raw := json.RawMessage(`{"kind": "S3Bucket", "spec": {"region": "us-east-1"}}`)
+	lc, err := parseLifecycle(raw)
+	require.NoError(t, err)
+	assert.Nil(t, lc)
+}
+
+func TestParseLifecycle_Empty(t *testing.T) {
+	raw := json.RawMessage(`{"kind": "S3Bucket", "lifecycle": {}, "spec": {"region": "us-east-1"}}`)
+	lc, err := parseLifecycle(raw)
+	require.NoError(t, err)
+	require.NotNil(t, lc)
+	assert.False(t, lc.PreventDestroy)
+	assert.Nil(t, lc.IgnoreChanges)
+}
+
+func TestPlanResourcesFromGraph_PreservesLifecycle(t *testing.T) {
+	lifecycle := &types.LifecyclePolicy{PreventDestroy: true}
+	nodes := []*types.ResourceNode{
+		{Name: "bucket", Kind: "S3Bucket", Key: "bucket", Spec: json.RawMessage(`{"kind":"S3Bucket"}`), Lifecycle: lifecycle},
+	}
+
+	graph, err := dag.NewGraph(nodes)
+	require.NoError(t, err)
+
+	resources := planResourcesFromGraph(nodes, graph)
+	require.Len(t, resources, 1)
+	require.NotNil(t, resources[0].Lifecycle)
+	assert.True(t, resources[0].Lifecycle.PreventDestroy)
+}
+
+func TestFilterIgnoredFields_ExactMatch(t *testing.T) {
+	fields := []types.FieldDiff{
+		{Path: "tags.env", OldValue: "dev", NewValue: "prod"},
+		{Path: "spec.versioning", OldValue: false, NewValue: true},
+	}
+	filtered := filterIgnoredFields(fields, []string{"tags.env"})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "spec.versioning", filtered[0].Path)
+}
+
+func TestFilterIgnoredFields_PrefixMatch(t *testing.T) {
+	fields := []types.FieldDiff{
+		{Path: "tags.lastModified", OldValue: "old", NewValue: "new"},
+		{Path: "tags.updatedBy", OldValue: "old", NewValue: "new"},
+		{Path: "spec.region", OldValue: "us-east-1", NewValue: "us-west-2"},
+	}
+	filtered := filterIgnoredFields(fields, []string{"tags"})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "spec.region", filtered[0].Path)
+}
+
+func TestFilterIgnoredFields_NoMatch(t *testing.T) {
+	fields := []types.FieldDiff{
+		{Path: "spec.versioning", OldValue: false, NewValue: true},
+	}
+	filtered := filterIgnoredFields(fields, []string{"tags.env"})
+	require.Len(t, filtered, 1)
+}
+
+func TestFilterIgnoredFields_EmptyIgnoreList(t *testing.T) {
+	fields := []types.FieldDiff{
+		{Path: "spec.versioning", OldValue: false, NewValue: true},
+	}
+	filtered := filterIgnoredFields(fields, nil)
+	require.Len(t, filtered, 1)
+}
+
+func TestIsIgnoredPath_DoesNotMatchPartialPrefix(t *testing.T) {
+	// "tag" should NOT match "tags.env"
+	assert.False(t, isIgnoredPath("tags.env", []string{"tag"}))
+	// "tags.en" should NOT match "tags.env"
+	assert.False(t, isIgnoredPath("tags.env", []string{"tags.en"}))
+	// "tags" SHOULD match "tags.env" (prefix + dot)
+	assert.True(t, isIgnoredPath("tags.env", []string{"tags"}))
+}

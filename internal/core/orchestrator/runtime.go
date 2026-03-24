@@ -265,6 +265,7 @@ func planResourcesFromState(state *DeploymentState) []PlanResource {
 			Kind:         resource.Kind,
 			Key:          resource.Key,
 			Dependencies: append([]string(nil), resource.DependsOn...),
+			Lifecycle:    resource.Lifecycle,
 		})
 	}
 	return resources

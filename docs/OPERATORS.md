@@ -299,6 +299,15 @@ stateDiagram-v2
 | `Managed`  | Full lifecycle: provision, reconcile, correct drift, delete |
 | `Observed` | Import-only: detect drift but never modify the resource     |
 
+### Lifecycle Rules
+
+Templates can declare protective **lifecycle rules** on individual resources:
+
+- **`preventDestroy: true`** — blocks deletion of the resource. `praxis delete` fails with a terminal error until the rule is removed from the template and re-applied.
+- **`ignoreChanges: ["field.path", ...]`** — skips drift correction for the listed spec fields. Drift in those fields is detected but not corrected, allowing external systems to co-manage them.
+
+Lifecycle rules are visible in deployment details and plan output. See [Templates — Lifecycle Rules](TEMPLATES.md#lifecycle-rules) for syntax.
+
 ## Reconciliation
 
 Drivers reconcile automatically on a **5-minute interval** using Restate durable timers. During each cycle:

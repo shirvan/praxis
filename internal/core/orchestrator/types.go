@@ -92,6 +92,10 @@ type PlanResource struct {
 	// Expressions records the exact JSON paths that need dispatch-time
 	// hydration from dependency outputs.
 	Expressions map[string]string `json:"expressions,omitempty"`
+
+	// Lifecycle holds optional resource-level lifecycle rules parsed from the
+	// template. Nil when the template does not declare a lifecycle block.
+	Lifecycle *types.LifecyclePolicy `json:"lifecycle,omitempty"`
 }
 
 // DeploymentState is the durable per-deployment lifecycle record stored in the
@@ -124,6 +128,7 @@ type ResourceState struct {
 	DependsOn []string                       `json:"dependsOn,omitempty"`
 	Status    types.DeploymentResourceStatus `json:"status"`
 	Error     string                         `json:"error,omitempty"`
+	Lifecycle *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
 }
 
 // DeploymentResult is the final workflow output returned from both apply and

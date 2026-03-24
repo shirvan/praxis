@@ -10,6 +10,7 @@ examples/
 ├── vpc/          VPCs, subnets, gateways, route tables, peering
 ├── s3/           S3 buckets
 ├── stacks/       Multi-resource compositions (cross-domain)
+├── lifecycle/    Lifecycle rules (preventDestroy, ignoreChanges)
 ├── policies/     Policy-as-code constraints (security, cost, network)
 └── ops/          Platform deployment (Kubernetes manifests, autoscaling)
 ```
@@ -61,8 +62,30 @@ praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.jso
 | Template | Description | Resources |
 |----------|-------------|-----------|
 | `ec2-web-stack` | VPC + security group + EC2 instance | VPC → SecurityGroup → EC2Instance |
-| `three-tier-app` | Full three-tier: VPC, subnets, IGW, NAT, security groups, web + app servers, S3 | 13 resources |
+| `three-tier-app` | Full three-tier: VPC, subnets, IGW, NAT, security groups, web + app servers, S3 (with lifecycle rules) | 13 resources |
 | `network-locked-app` | Defense-in-depth: VPC + NACL + SG + EC2 | VPC → Subnet → NetworkACL + SecurityGroup → EC2Instance |
+
+### Lifecycle Rules — `examples/lifecycle/`
+
+Protective rules for controlling delete and drift behavior.
+
+| Template | Description | Features |
+|----------|-------------|----------|
+| `protected-db` | RDS instance with deletion protection | `preventDestroy` — blocks `praxis delete` until explicitly unlocked via `allowDelete` variable |
+| `external-managed` | S3 bucket co-managed with external tools | `ignoreChanges` — lets billing, compliance, and other systems manage specific tags |
+
+```bash
+# Deploy a protected database
+praxis deploy protected-db --account local -f examples/lifecycle/protected-db.vars.json --key mydb --wait
+
+# Attempt delete (fails: lifecycle.preventDestroy enabled)
+praxis delete Deployment/mydb --yes --wait
+
+# Remove protection and retry
+praxis deploy protected-db --account local -f examples/lifecycle/protected-db.vars.json \
+  --var allowDelete=true --key mydb --wait
+praxis delete Deployment/mydb --yes --wait
+```
 
 ### Policies — `examples/policies/`
 
@@ -71,7 +94,7 @@ Policies are CUE constraint files that enforce organizational rules across templ
 | Policy | Description | Enforces |
 |--------|-------------|----------|
 | `security-baseline` | Organization-wide security defaults | Encryption on S3 + EC2 root volumes, required `environment`/`app` tags |
-| `prod-guardrails` | Production environment guardrails | Monitoring on EC2, private + versioned S3, DNS on VPCs (name pattern: `*-prod`) |
+| `prod-guardrails` | Production environment guardrails | Monitoring on EC2, private + versioned S3, DNS on VPCs, `preventDestroy` on prod resources |
 | `cost-controls` | Cost control limits | Approved EC2 instance types, root volume ≤500 GiB, no provisioned IOPS |
 | `network-hardening` | Network security hardening | Private-only S3 buckets, DNS support on all VPCs |
 

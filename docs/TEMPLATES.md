@@ -67,6 +67,9 @@ resources: {
                 env: variables.environment
             }
         }
+        lifecycle: {
+            preventDestroy: variables.environment == "prod"
+        }
     }
 
     sg: ec2.#SecurityGroup & {
@@ -273,6 +276,52 @@ resources: {
 
 `_naming` resolves during CUE evaluation but does not appear as a resource.
 
+### Lifecycle Rules
+
+Declare protective rules on individual resources via an optional `lifecycle` block:
+
+```cue
+resources: {
+    database: {
+        apiVersion: "praxis.io/v1"
+        kind:       "RDSInstance"
+        metadata: name: "prod-db"
+        spec: { ... }
+
+        lifecycle: {
+            preventDestroy: true                   // block deletion
+            ignoreChanges: ["masterUserPassword"]  // ignore drift in these fields
+        }
+    }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `preventDestroy` | `bool` | `false` | If `true`, the orchestrator refuses to delete this resource. Also blocks `--replace`. |
+| `ignoreChanges` | `[...string]` | `[]` | Dot-separated spec field paths to ignore during plan diff and reconciliation. |
+
+Lifecycle rules are validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state. The orchestrator and plan diff engine enforce them.
+
+**Field path matching:** `ignoreChanges` supports exact matches and prefix matching. Specifying `"tags"` ignores all `tags.*` fields. Specifying `"tags.env"` ignores only that specific tag.
+
+**Conditional rules:** Use CUE expressions to set rules dynamically:
+
+```cue
+lifecycle: {
+    preventDestroy: variables.environment == "prod"
+}
+```
+
+**Policy integration:** Policies can enforce lifecycle rules across templates:
+
+```cue
+// All production resources must be protected
+resources: [=~"-prod"]: lifecycle: preventDestroy: true
+```
+
+See [Orchestrator — Lifecycle Rules](ORCHESTRATOR.md#lifecycle-rules) for enforcement details.
+
 ### `let` Bindings
 
 Scoped aliases that reduce duplication:
@@ -404,6 +453,7 @@ This is the same mechanism used by [policies](#policy-as-code).
 | `null` | Works | JSON marshaling preserves it |
 | `or()` / `and()` builtins | Works | Computed disjunctions |
 | Field references | Works | `spec: vpcId: resources.vpc.spec.vpcId` for intra-template refs |
+| Lifecycle rules (`lifecycle:`) | Works | `preventDestroy` and `ignoreChanges` on resources — enforced at plan/delete/reconcile time |
 
 **Not supported:** Multi-file templates (single-file is the design contract).
 

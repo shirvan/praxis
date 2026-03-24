@@ -153,6 +153,14 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 
 				// Force replacement: delete the existing resource before re-provisioning.
 				if replaceSet[name] {
+					if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
+						if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind,
+							fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to force-replace", name)); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+
 					if err := appendEvent(ctx, plan.Key, DeploymentEvent{
 						DeploymentKey: plan.Key,
 						Status:        types.DeploymentRunning,

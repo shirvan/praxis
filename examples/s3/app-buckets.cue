@@ -76,5 +76,9 @@ resources: {
 				purpose: "backups"
 			}
 		}
+		// Production backups must not be accidentally deleted.
+		lifecycle: {
+			preventDestroy: variables.environment == "prod"
+		}
 	}
 }

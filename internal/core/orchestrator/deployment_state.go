@@ -52,6 +52,7 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 			Key:       resource.Key,
 			DependsOn: dependsOn,
 			Status:    types.DeploymentResourcePending,
+			Lifecycle: resource.Lifecycle,
 		}
 	}
 

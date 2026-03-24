@@ -226,6 +226,20 @@ frontend   skipped   skipped because dependency api failed
 
 Skipped resources are not retried — fix the root-cause resource and re-apply.
 
+### Lifecycle Policy Errors
+
+When a delete operation encounters a resource with `lifecycle.preventDestroy: true`, the orchestrator returns a terminal error:
+
+```text
+$ praxis delete Deployment/my-stack --yes --wait
+Error: 1 resource(s) failed:
+  1. prod-db: lifecycle.preventDestroy enabled; refusing to delete resource "prod-db" (RDSInstance)
+```
+
+The error is terminal — the workflow does not retry. To delete the resource, update the template to remove or set `preventDestroy: false`, re-apply, then retry the delete.
+
+The same check applies when `--replace` would force-recreate a protected resource during apply.
+
 ### Error Codes
 
 Deployment details include a machine-readable `ErrorCode` field (`pkg/types/errorcode.go`) for JSON consumers. This allows CI pipelines and bots to branch on error type without string matching:

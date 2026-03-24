@@ -288,6 +288,8 @@ The plan displays each resource with a change symbol and field-level diffs:
 
 Symbols: `+` create, `~` update, `-` delete. A summary line follows with the total counts.
 
+Resources with `lifecycle.ignoreChanges` have matching diffs filtered from the plan. If all diffs are ignored, the resource shows as unchanged. Resources with `lifecycle.preventDestroy: true` that would be deleted are flagged as protected in the summary.
+
 ---
 
 ## get
@@ -422,6 +424,8 @@ praxis delete Deployment/my-webapp --yes --wait
 ```
 
 Without `--yes`, the command prompts for confirmation before proceeding. Deletion is asynchronous — use `--wait` to block until all resources have been removed!
+
+Resources with `lifecycle.preventDestroy: true` cannot be deleted. The delete workflow fails with a terminal error identifying the protected resource. To proceed, update the template to remove or disable `preventDestroy`, re-apply, then retry the delete.
 
 The same timeout behavior as `apply --wait` applies: exit code **2** on timeout, with recovery commands printed to stderr.
 

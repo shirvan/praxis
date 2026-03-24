@@ -259,5 +259,10 @@ resources: {
 				purpose: "artifacts"
 			}
 		}
+		// Protect production artifact storage from accidental deletion.
+		lifecycle: {
+			preventDestroy: variables.environment == "prod"
+			ignoreChanges: ["tags.CostCenter"]
+		}
 	}
 }

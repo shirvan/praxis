@@ -2,6 +2,27 @@ package types
 
 import "encoding/json"
 
+// LifecyclePolicy controls resource-level update and delete behavior.
+//
+// Templates declare an optional lifecycle block alongside spec. The command
+// pipeline extracts it during buildResourceNodes and threads it through to
+// the orchestrator, where it influences plan-diff filtering and delete-time
+// protection.
+type LifecyclePolicy struct {
+	// PreventDestroy makes the orchestrator refuse to delete this resource.
+	// A delete workflow that encounters a protected resource records an error
+	// rather than calling the driver's Delete handler.
+	PreventDestroy bool `json:"preventDestroy,omitempty"`
+
+	// IgnoreChanges lists field paths (relative to spec) that the plan diff
+	// engine should skip when computing drift. Useful for tags managed by
+	// external systems (e.g. cost allocation tags, AWS Config).
+	//
+	// Paths use dot notation matching the FieldDiff.Path convention,
+	// for example "tags.lastModified" or "tags.updatedBy".
+	IgnoreChanges []string `json:"ignoreChanges,omitempty"`
+}
+
 // ResourceNode represents a single node in the deployment dependency graph.
 //
 // The command service produces these nodes after template rendering, CUE
@@ -41,4 +62,8 @@ type ResourceNode struct {
 	// This lets the orchestrator perform typed replacement at the exact JSON
 	// location without rescanning the entire document for placeholders.
 	Expressions map[string]string `json:"expressions,omitempty"`
+
+	// Lifecycle holds optional resource-level lifecycle rules parsed from the
+	// template. Nil when the template does not declare a lifecycle block.
+	Lifecycle *LifecyclePolicy `json:"lifecycle,omitempty"`
 }
