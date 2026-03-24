@@ -63,7 +63,11 @@ type rootFlags struct {
 	region string
 	// account is the default AWS account for requests that touch provider APIs.
 	account string
+	// plain disables styled CLI output even when stdout is a terminal.
+	plain bool
 }
+
+var currentRootFlags *rootFlags
 
 // NewRootCmd constructs the top-level cobra command tree for the `praxis` binary.
 //
@@ -71,6 +75,7 @@ type rootFlags struct {
 // configured Restate ingress endpoint.
 func NewRootCmd() *cobra.Command {
 	flags := &rootFlags{}
+	currentRootFlags = flags
 
 	root := &cobra.Command{
 		Use:   "praxis",
@@ -93,6 +98,8 @@ drift detection, dependency ordering, and lifecycle management.`,
 		fmt.Sprintf("Restate ingress endpoint URL (env: %s)", envRestateEndpoint))
 	root.PersistentFlags().StringVarP(&flags.output, "output", "o", "table",
 		"Output format: table or json")
+	root.PersistentFlags().BoolVar(&flags.plain, "plain", false,
+		"Disable colors and styling for machine-readable output")
 	root.PersistentFlags().StringVar(&flags.region, "region", os.Getenv(envRegion),
 		fmt.Sprintf("Default AWS region for resource key resolution (env: %s)", envRegion))
 	flags.account = os.Getenv(envAccount)
@@ -125,6 +132,35 @@ func (f *rootFlags) outputFormat() OutputFormat {
 	default:
 		return OutputTable
 	}
+}
+
+// useStyles reports whether human-readable output should include color and
+// borders. Styling is disabled for --plain, JSON output, NO_COLOR, and when
+// stdout is not an interactive terminal.
+func (f *rootFlags) useStyles() bool {
+	return shouldUseStyles(f.outputFormat(), f.plain, os.Getenv("NO_COLOR") != "", isTerminal(os.Stdout))
+}
+
+func (f *rootFlags) renderer() *Renderer {
+	return newRenderer(f.useStyles())
+}
+
+func shouldUseStyles(format OutputFormat, plain, noColor, stdoutIsTTY bool) bool {
+	if plain || format == OutputJSON || noColor {
+		return false
+	}
+	return stdoutIsTTY
+}
+
+func isTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 // ---------------------------------------------------------------------------

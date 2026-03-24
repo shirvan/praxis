@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -49,6 +50,7 @@ The template name defaults to the filename without extension:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
+			renderer := flags.renderer()
 
 			content, err := os.ReadFile(filePath) //nolint:gosec // G304: path is user-supplied CLI argument
 			if err != nil {
@@ -77,7 +79,7 @@ The template name defaults to the filename without extension:
 				return printJSON(resp)
 			}
 
-			fmt.Printf("Registered template %q (digest: %s)\n", resp.Name, resp.Digest[:12])
+			renderer.successLine(fmt.Sprintf("Registered template %q (digest: %s)", resp.Name, resp.Digest[:12]))
 			return nil
 		},
 	}
@@ -94,6 +96,7 @@ func newTemplateListCmd(flags *rootFlags) *cobra.Command {
 		Short: "List registered templates",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			client := flags.newClient()
 			ctx := context.Background()
 
@@ -107,7 +110,7 @@ func newTemplateListCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if len(templates) == 0 {
-				fmt.Println("No templates registered.")
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderMuted("No templates registered."))
 				return nil
 			}
 
@@ -124,7 +127,7 @@ func newTemplateListCmd(flags *rootFlags) *cobra.Command {
 					formatTime(t.UpdatedAt),
 				})
 			}
-			printTable(headers, rows)
+			printTable(renderer, headers, rows)
 			return nil
 		},
 	}
@@ -136,6 +139,7 @@ func newTemplateDescribeCmd(flags *rootFlags) *cobra.Command {
 		Short: "Show template details and variable schema",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			client := flags.newClient()
 			ctx := context.Background()
 
@@ -148,20 +152,26 @@ func newTemplateDescribeCmd(flags *rootFlags) *cobra.Command {
 				return printJSON(record)
 			}
 
-			fmt.Printf("Template:    %s\n", record.Metadata.Name)
+			renderer.writeLabelValue("Template", 12, record.Metadata.Name)
 			if record.Metadata.Description != "" {
-				fmt.Printf("Description: %s\n", record.Metadata.Description)
+				renderer.writeLabelValue("Description", 12, record.Metadata.Description)
 			}
-			fmt.Printf("Digest:      %s\n", record.Digest[:12])
-			fmt.Printf("Created:     %s\n", formatTime(record.Metadata.CreatedAt))
-			fmt.Printf("Updated:     %s\n", formatTime(record.Metadata.UpdatedAt))
+			renderer.writeLabelValue("Digest", 12, record.Digest[:12])
+			renderer.writeLabelValue("Created", 12, formatTime(record.Metadata.CreatedAt))
+			renderer.writeLabelValue("Updated", 12, formatTime(record.Metadata.UpdatedAt))
 
 			if len(record.VariableSchema) > 0 {
-				fmt.Println()
-				fmt.Println("Variables:")
+				_, _ = fmt.Fprintln(renderer.out)
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Variables:"))
 				headers := []string{"NAME", "TYPE", "REQUIRED", "DEFAULT", "CONSTRAINT"}
 				rows := make([][]string, 0, len(record.VariableSchema))
-				for name, field := range record.VariableSchema {
+				names := make([]string, 0, len(record.VariableSchema))
+				for name := range record.VariableSchema {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				for _, name := range names {
+					field := record.VariableSchema[name]
 					def := "-"
 					if field.Default != nil {
 						def = fmt.Sprintf("%v", field.Default)
@@ -176,7 +186,7 @@ func newTemplateDescribeCmd(flags *rootFlags) *cobra.Command {
 					}
 					rows = append(rows, []string{name, field.Type, required, def, constraint})
 				}
-				printTable(headers, rows)
+				printTable(renderer, headers, rows)
 			}
 
 			return nil
@@ -190,6 +200,7 @@ func newTemplateDeleteCmd(flags *rootFlags) *cobra.Command {
 		Short: "Delete a registered template",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			client := flags.newClient()
 			ctx := context.Background()
 
@@ -202,7 +213,7 @@ func newTemplateDeleteCmd(flags *rootFlags) *cobra.Command {
 				return printJSON(map[string]string{"deleted": args[0]})
 			}
 
-			fmt.Printf("Deleted template %q\n", args[0])
+			renderer.successLine(fmt.Sprintf("Deleted template %q", args[0]))
 			return nil
 		},
 	}

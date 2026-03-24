@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/shirvan/praxis/internal/cli"
@@ -13,7 +12,7 @@ func main() {
 		if cli.IsAuthErrorMessage(msg) {
 			cli.FormatAuthError(msg)
 		} else {
-			fmt.Fprintln(os.Stderr, msg)
+			cli.PrintError(msg)
 		}
 		os.Exit(1)
 	}

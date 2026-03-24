@@ -44,6 +44,7 @@ Control the polling speed with --poll-interval:
     praxis observe Deployment/my-webapp --poll-interval 500ms`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			kind, key, err := parseKindKey(args[0])
 			if err != nil {
 				return err
@@ -62,9 +63,9 @@ Control the polling speed with --poll-interval:
 				defer cancel()
 			}
 
-			err = observeDeployment(ctx, client, key, pollInterval, flags.outputFormat())
+			err = observeDeployment(ctx, client, key, pollInterval, flags.outputFormat(), renderer)
 			if isTimeoutError(ctx, err) {
-				printTimeoutError(timeout, key)
+				printTimeoutError(renderer, timeout, key)
 				os.Exit(2)
 			}
 			return err
@@ -79,8 +80,8 @@ Control the polling speed with --poll-interval:
 
 // observeDeployment polls the event stream and deployment status, displaying
 // incremental progress until a terminal state is reached.
-func observeDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat) error {
-	fmt.Printf("Observing deployment %s...\n\n", key)
+func observeDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat, renderer *Renderer) error {
+	_, _ = fmt.Fprintf(renderer.out, "%s\n\n", renderer.renderSection(fmt.Sprintf("Observing deployment %s...", key)))
 
 	var lastSeq int64
 
@@ -102,13 +103,13 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 					return err
 				}
 			} else {
-				fmt.Printf("Status: %s (event stream unavailable, polling status)\n", detail.Status)
+				renderer.writeLabelStyledValue("Status", 8, renderer.renderStatus(string(detail.Status))+" "+renderer.renderMuted("(event stream unavailable, polling status)"))
 			}
 
 			if isTerminalStatus(detail.Status) {
 				if format != OutputJSON {
-					fmt.Println()
-					printDeploymentDetail(detail)
+					_, _ = fmt.Fprintln(renderer.out)
+					printDeploymentDetail(renderer, detail)
 				}
 				return nil
 			}
@@ -119,7 +120,7 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 					return err
 				}
 			} else {
-				printEvents(events)
+				printEvents(renderer, events)
 			}
 
 			// Update the cursor to the last event's sequence.
@@ -134,8 +135,8 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 						return fmt.Errorf("observe: fetch final state: %w", err)
 					}
 					if detail != nil && format != OutputJSON {
-						fmt.Println()
-						printDeploymentDetail(detail)
+						_, _ = fmt.Fprintln(renderer.out)
+						printDeploymentDetail(renderer, detail)
 					}
 					return nil
 				}

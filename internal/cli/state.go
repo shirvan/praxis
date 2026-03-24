@@ -56,6 +56,7 @@ Examples:
     praxis state mv Deployment/web-app/myBucket Deployment/data-stack/dataBucket`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			srcDeployment, srcResource, err := parseStatePath(args[0])
 			if err != nil {
 				return fmt.Errorf("invalid source: %w", err)
@@ -84,11 +85,11 @@ Examples:
 			}
 
 			if resp.SourceDeployment == resp.DestDeployment {
-				fmt.Printf("Renamed %s → %s in deployment %s\n",
-					resp.OldName, resp.NewName, resp.SourceDeployment)
+				renderer.successLine(fmt.Sprintf("Renamed %s -> %s in deployment %s",
+					resp.OldName, resp.NewName, resp.SourceDeployment))
 			} else {
-				fmt.Printf("Moved %s from %s to %s as %s\n",
-					resp.OldName, resp.SourceDeployment, resp.DestDeployment, resp.NewName)
+				renderer.successLine(fmt.Sprintf("Moved %s from %s to %s as %s",
+					resp.OldName, resp.SourceDeployment, resp.DestDeployment, resp.NewName))
 			}
 			return nil
 		},

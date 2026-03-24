@@ -52,6 +52,7 @@ which is useful for debugging variable resolution and output expressions.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templatePath := args[0]
+			renderer := flags.renderer()
 
 			// Read the CUE template from disk.
 			content, err := os.ReadFile(templatePath) //nolint:gosec // G304: path is user-supplied CLI argument
@@ -86,14 +87,14 @@ which is useful for debugging variable resolution and output expressions.`,
 			}
 
 			// Human-readable plan output.
-			printDataSources(resp.DataSources)
-			printPlan(resp.Plan)
+			printDataSources(renderer, resp.DataSources)
+			printPlan(renderer, resp.Plan)
 
 			// Optionally show the fully-resolved template JSON.
 			if showRendered && resp.Rendered != "" {
-				fmt.Println()
-				fmt.Println("Rendered template:")
-				fmt.Println(resp.Rendered)
+				_, _ = fmt.Fprintln(renderer.out)
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Rendered template:"))
+				_, _ = fmt.Fprintln(renderer.out, resp.Rendered)
 			}
 
 			return nil

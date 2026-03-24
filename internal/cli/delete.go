@@ -46,6 +46,7 @@ been deleted:
     praxis delete Deployment/my-webapp --yes --wait`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			kind, key, err := parseKindKey(args[0])
 			if err != nil {
 				return err
@@ -56,10 +57,10 @@ been deleted:
 
 			// Confirm with the user unless --yes is set.
 			if !yes {
-				fmt.Printf("Delete deployment %q and all its resources? [y/N]: ", key)
+				_, _ = fmt.Fprintf(renderer.out, "%s ", renderer.renderPrompt(fmt.Sprintf("Delete deployment %q and all its resources? [y/N]:", key)))
 				var confirm string
 				if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "y" && confirm != "Y") {
-					fmt.Println("Cancelled.")
+					_, _ = fmt.Fprintln(renderer.out, renderer.renderMuted("Cancelled."))
 					return nil
 				}
 			}
@@ -77,11 +78,11 @@ been deleted:
 				return printJSON(resp)
 			}
 
-			fmt.Printf("Deployment: %s\n", resp.DeploymentKey)
-			fmt.Printf("Status:     %s\n", resp.Status)
+			renderer.writeLabelValue("Deployment", 11, resp.DeploymentKey)
+			renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
 
 			if !wait {
-				fmt.Println("\nDeletion in progress. Use 'praxis get Deployment/" + key + "' to check progress.")
+				_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted("Deletion in progress. Use 'praxis get Deployment/"+key+"' to check progress."))
 				return nil
 			}
 
@@ -93,9 +94,9 @@ been deleted:
 			}
 
 			// Poll until deletion completes.
-			err = pollDeployment(ctx, client, key, 2*time.Second, flags.outputFormat())
+			err = pollDeployment(ctx, client, key, 2*time.Second, flags.outputFormat(), renderer)
 			if isTimeoutError(ctx, err) {
-				printTimeoutError(timeout, key)
+				printTimeoutError(renderer, timeout, key)
 				os.Exit(2)
 			}
 			return err

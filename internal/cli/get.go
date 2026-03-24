@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -87,6 +88,7 @@ func parseKindKey(arg string) (kind, key string, err error) {
 
 // getDeployment retrieves and displays a full deployment detail record.
 func getDeployment(ctx context.Context, client *Client, key string, format OutputFormat) error {
+	renderer := defaultRenderer()
 	detail, err := client.GetDeployment(ctx, key)
 	if err != nil {
 		return err
@@ -99,7 +101,7 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 		return printJSON(detail)
 	}
 
-	printDeploymentDetail(detail)
+	printDeploymentDetail(renderer, detail)
 	return nil
 }
 
@@ -109,6 +111,7 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 
 // getResource retrieves a single resource's status and outputs from its driver.
 func getResource(ctx context.Context, client *Client, kind, key string, format OutputFormat) error {
+	renderer := defaultRenderer()
 	status, err := client.GetResourceStatus(ctx, kind, key)
 	if err != nil {
 		return err
@@ -140,17 +143,22 @@ func getResource(ctx context.Context, client *Client, kind, key string, format O
 	}
 
 	// Human-readable resource display.
-	fmt.Printf("Resource:   %s/%s\n", kind, key)
-	fmt.Printf("Status:     %s\n", status.Status)
-	fmt.Printf("Mode:       %s\n", status.Mode)
-	fmt.Printf("Generation: %d\n", status.Generation)
+	renderer.writeLabelValue("Resource", 11, kind+"/"+key)
+	renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(status.Status)))
+	renderer.writeLabelValue("Mode", 11, string(status.Mode))
+	renderer.writeLabelValue("Generation", 11, fmt.Sprintf("%d", status.Generation))
 	if status.Error != "" {
-		fmt.Printf("Error:      %s\n", status.Error)
+		renderer.writeLabelValue("Error", 11, status.Error)
 	}
 	if len(outputs) > 0 {
-		fmt.Println("\nOutputs:")
-		for k, v := range outputs {
-			fmt.Printf("  %s = %v\n", k, v)
+		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Outputs:"))
+		keys := make([]string, 0, len(outputs))
+		for k := range outputs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, outputKey := range keys {
+			_, _ = fmt.Fprintf(renderer.out, "  %s = %v\n", outputKey, outputs[outputKey])
 		}
 	}
 	return nil

@@ -66,6 +66,7 @@ Use --dry-run to preview changes without provisioning:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := args[0]
+			renderer := flags.renderer()
 
 			variables, err := mergeVariables(vars, varsFile)
 			if err != nil {
@@ -93,13 +94,13 @@ Use --dry-run to preview changes without provisioning:
 					return printJSON(resp)
 				}
 
-				printDataSources(resp.DataSources)
-				printPlan(resp.Plan)
+				printDataSources(renderer, resp.DataSources)
+				printPlan(renderer, resp.Plan)
 
 				if showRendered && resp.Rendered != "" {
-					fmt.Println()
-					fmt.Println("Rendered template:")
-					fmt.Println(resp.Rendered)
+					_, _ = fmt.Fprintln(renderer.out)
+					_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Rendered template:"))
+					_, _ = fmt.Fprintln(renderer.out, resp.Rendered)
 				}
 				return nil
 			}
@@ -118,8 +119,8 @@ Use --dry-run to preview changes without provisioning:
 
 			// Display the plan diff.
 			if flags.outputFormat() != OutputJSON {
-				printDataSources(planResp.DataSources)
-				printPlan(planResp.Plan)
+				printDataSources(renderer, planResp.DataSources)
+				printPlan(renderer, planResp.Plan)
 			}
 
 			// If there are no changes, exit early.
@@ -132,10 +133,10 @@ Use --dry-run to preview changes without provisioning:
 
 			// Confirm with the user unless --auto-approve is set.
 			if !autoApprove {
-				fmt.Print("\nDo you want to apply these changes? (yes/no): ")
+				_, _ = fmt.Fprint(renderer.out, "\n"+renderer.renderPrompt("Do you want to apply these changes? (yes/no): "))
 				var confirm string
 				if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "yes" && confirm != "y") {
-					fmt.Println("Apply cancelled.")
+					_, _ = fmt.Fprintln(renderer.out, renderer.renderMuted("Apply cancelled."))
 					return nil
 				}
 			}
@@ -157,11 +158,11 @@ Use --dry-run to preview changes without provisioning:
 				return printJSON(resp)
 			}
 
-			fmt.Printf("Deployment: %s\n", resp.DeploymentKey)
-			fmt.Printf("Status:     %s\n", resp.Status)
+			renderer.writeLabelValue("Deployment", 11, resp.DeploymentKey)
+			renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
 
 			if !wait {
-				fmt.Println("\nUse 'praxis get Deployment/" + resp.DeploymentKey + "' to check progress.")
+				_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted("Use 'praxis get Deployment/"+resp.DeploymentKey+"' to check progress."))
 				return nil
 			}
 
@@ -171,9 +172,9 @@ Use --dry-run to preview changes without provisioning:
 				defer cancel()
 			}
 
-			err = pollDeployment(ctx, client, resp.DeploymentKey, pollInterval, flags.outputFormat())
+			err = pollDeployment(ctx, client, resp.DeploymentKey, pollInterval, flags.outputFormat(), renderer)
 			if isTimeoutError(ctx, err) {
-				printTimeoutError(timeout, resp.DeploymentKey)
+				printTimeoutError(renderer, timeout, resp.DeploymentKey)
 				os.Exit(2)
 			}
 			return err

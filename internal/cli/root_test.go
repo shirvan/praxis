@@ -6,6 +6,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestShouldUseStyles(t *testing.T) {
+	tests := []struct {
+		name      string
+		format    OutputFormat
+		plain     bool
+		noColor   bool
+		stdoutTTY bool
+		want      bool
+	}{
+		{name: "styled tty output", format: OutputTable, stdoutTTY: true, want: true},
+		{name: "plain flag disables styles", format: OutputTable, plain: true, stdoutTTY: true, want: false},
+		{name: "json disables styles", format: OutputJSON, stdoutTTY: true, want: false},
+		{name: "no color disables styles", format: OutputTable, noColor: true, stdoutTTY: true, want: false},
+		{name: "non tty disables styles", format: OutputTable, stdoutTTY: false, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, shouldUseStyles(tt.format, tt.plain, tt.noColor, tt.stdoutTTY))
+		})
+	}
+}
+
 func TestResolveResourceKey_GlobalScope(t *testing.T) {
 	flags := &rootFlags{region: "us-east-1"}
 	// S3Bucket is global — key is passed through unchanged.

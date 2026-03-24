@@ -47,6 +47,7 @@ func newWorkspaceCreateCmd(flags *rootFlags) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			renderer := flags.renderer()
 			cliCfg := LoadCLIConfig()
 
 			if err := workspace.ValidateName(name); err != nil {
@@ -77,7 +78,7 @@ func newWorkspaceCreateCmd(flags *rootFlags) *cobra.Command {
 				return err
 			}
 
-			fmt.Printf("Workspace %q created.\n", name)
+			renderer.successLine(fmt.Sprintf("Workspace %q created.", name))
 
 			names, err := client.ListWorkspaces(ctx)
 			if err != nil {
@@ -90,7 +91,7 @@ func newWorkspaceCreateCmd(flags *rootFlags) *cobra.Command {
 				if err := SaveCLIConfig(cliCfg); err != nil {
 					return fmt.Errorf("save config: %w", err)
 				}
-				fmt.Printf("Switched to workspace %q.\n", name)
+				renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
 			}
 
 			return nil
@@ -112,6 +113,7 @@ func newWorkspaceListCmd(flags *rootFlags) *cobra.Command {
 		Short: "List workspaces",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			client := flags.newClient()
 			ctx := context.Background()
 
@@ -124,7 +126,7 @@ func newWorkspaceListCmd(flags *rootFlags) *cobra.Command {
 				if flags.outputFormat() == OutputJSON {
 					return printJSON([]workspace.WorkspaceInfo{})
 				}
-				fmt.Println("No workspaces configured.")
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderMuted("No workspaces configured."))
 				return nil
 			}
 
@@ -142,14 +144,16 @@ func newWorkspaceListCmd(flags *rootFlags) *cobra.Command {
 				return printJSON(infos)
 			}
 
-			fmt.Printf("%-20s  %-20s  %-15s  %s\n", "NAME", "ACCOUNT", "REGION", "ACTIVE")
+			headers := []string{"NAME", "ACCOUNT", "REGION", "ACTIVE"}
+			rows := make([][]string, 0, len(infos))
 			for _, info := range infos {
 				marker := ""
 				if info.Name == cliCfg.ActiveWorkspace {
-					marker = "*"
+					marker = "yes"
 				}
-				fmt.Printf("%-20s  %-20s  %-15s  %s\n", info.Name, info.Account, info.Region, marker)
+				rows = append(rows, []string{info.Name, info.Account, info.Region, marker})
 			}
+			printTable(renderer, headers, rows)
 			return nil
 		},
 	}
@@ -163,6 +167,7 @@ func newWorkspaceSelectCmd(flags *rootFlags) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			renderer := flags.renderer()
 			client := flags.newClient()
 			ctx := context.Background()
 
@@ -177,7 +182,7 @@ func newWorkspaceSelectCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("save config: %w", err)
 			}
 
-			fmt.Printf("Switched to workspace %q.\n", name)
+			renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
 			return nil
 		},
 	}
@@ -190,6 +195,7 @@ func newWorkspaceShowCmd(flags *rootFlags) *cobra.Command {
 		Short: "Show workspace details",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			renderer := flags.renderer()
 			name := ""
 			if len(args) > 0 {
 				name = args[0]
@@ -213,11 +219,11 @@ func newWorkspaceShowCmd(flags *rootFlags) *cobra.Command {
 				return printJSON(info)
 			}
 
-			fmt.Printf("Name:      %s\n", info.Name)
-			fmt.Printf("Account:   %s\n", info.Account)
-			fmt.Printf("Region:    %s\n", info.Region)
+			renderer.writeLabelValue("Name", 10, info.Name)
+			renderer.writeLabelValue("Account", 10, info.Account)
+			renderer.writeLabelValue("Region", 10, info.Region)
 			if len(info.Variables) > 0 {
-				fmt.Println("Variables:")
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Variables:"))
 				keys := make([]string, 0, len(info.Variables))
 				for k := range info.Variables {
 					keys = append(keys, k)
@@ -225,7 +231,7 @@ func newWorkspaceShowCmd(flags *rootFlags) *cobra.Command {
 				sort.Strings(keys)
 				for _, k := range keys {
 					v := info.Variables[k]
-					fmt.Printf("  %s = %s\n", k, v)
+					_, _ = fmt.Fprintf(renderer.out, "  %s = %s\n", k, v)
 				}
 			}
 			return nil
@@ -241,6 +247,7 @@ func newWorkspaceDeleteCmd(flags *rootFlags) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			renderer := flags.renderer()
 			client := flags.newClient()
 			ctx := context.Background()
 
@@ -257,7 +264,7 @@ func newWorkspaceDeleteCmd(flags *rootFlags) *cobra.Command {
 				}
 			}
 
-			fmt.Printf("Workspace %q deleted.\n", name)
+			renderer.successLine(fmt.Sprintf("Workspace %q deleted.", name))
 			return nil
 		},
 	}

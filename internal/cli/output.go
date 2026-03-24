@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -41,10 +42,9 @@ func printJSON(v any) error {
 // Table output helpers
 // --------------------------------------------------------------------------
 
-// printTable renders a simple ASCII table with aligned columns to stdout.
-// It uses a tabwriter for consistent spacing across all commands.
-func printTable(headers []string, rows [][]string) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+// printPlainTable renders a simple ASCII table with aligned columns.
+func printPlainTable(out io.Writer, headers []string, rows [][]string) {
+	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	// Header row in all caps.
 	_, _ = fmt.Fprintln(w, strings.Join(headers, "\t"))
 	// Separator line under each header.
@@ -60,41 +60,45 @@ func printTable(headers []string, rows [][]string) {
 	_ = w.Flush()
 }
 
+func printTable(r *Renderer, headers []string, rows [][]string) {
+	r.printTable(headers, rows)
+}
+
 // --------------------------------------------------------------------------
 // Deployment formatters
 // --------------------------------------------------------------------------
 
 // printDeploymentDetail renders a full deployment record with per-resource
 // breakdown and outputs. This is the main display for `praxis get Deployment/<key>`.
-func printDeploymentDetail(d *types.DeploymentDetail) {
-	fmt.Printf("Deployment: %s\n", d.Key)
-	fmt.Printf("Status:     %s\n", d.Status)
+func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail) {
+	r.writeLabelValue("Deployment", 11, d.Key)
+	r.writeLabelStyledValue("Status", 11, r.renderStatus(string(d.Status)))
 	if d.TemplatePath != "" {
-		fmt.Printf("Template:   %s\n", d.TemplatePath)
+		r.writeLabelValue("Template", 11, d.TemplatePath)
 	}
 	if d.Error != "" {
-		fmt.Printf("Error:      %s\n", d.Error)
+		r.writeLabelValue("Error", 11, d.Error)
 	}
-	fmt.Printf("Created:    %s\n", formatTime(d.CreatedAt))
-	fmt.Printf("Updated:    %s\n", formatTime(d.UpdatedAt))
-	fmt.Println()
+	r.writeLabelValue("Created", 11, r.renderMuted(formatTime(d.CreatedAt)))
+	r.writeLabelValue("Updated", 11, r.renderMuted(formatTime(d.UpdatedAt)))
+	_, _ = fmt.Fprintln(r.out)
 
 	if len(d.Resources) > 0 {
 		headers := []string{"RESOURCE", "KIND", "STATUS", "ERROR"}
 		rows := make([][]string, 0, len(d.Resources))
-		for _, r := range d.Resources {
+		for _, resource := range d.Resources {
 			errMsg := "-"
-			if r.Error != "" {
-				errMsg = truncate(r.Error, 60)
+			if resource.Error != "" {
+				errMsg = truncate(resource.Error, 60)
 			}
 			rows = append(rows, []string{
-				r.Name,
-				r.Kind,
-				string(r.Status),
+				resource.Name,
+				resource.Kind,
+				renderResourceStatus(r, resource.Status),
 				errMsg,
 			})
 		}
-		printTable(headers, rows)
+		printTable(r, headers, rows)
 
 		// Print outputs section for resources that have them.
 		hasOutputs := false
@@ -105,11 +109,16 @@ func printDeploymentDetail(d *types.DeploymentDetail) {
 			}
 		}
 		if hasOutputs {
-			fmt.Println()
-			fmt.Println("Outputs:")
-			for _, r := range d.Resources {
-				for key, value := range r.Outputs {
-					fmt.Printf("  %s.%s = %v\n", r.Name, key, value)
+			_, _ = fmt.Fprintln(r.out)
+			_, _ = fmt.Fprintln(r.out, r.renderSection("Outputs:"))
+			for _, resource := range d.Resources {
+				keys := make([]string, 0, len(resource.Outputs))
+				for key := range resource.Outputs {
+					keys = append(keys, key)
+				}
+				sort.Strings(keys)
+				for _, key := range keys {
+					_, _ = fmt.Fprintf(r.out, "  %s.%s = %v\n", resource.Name, key, resource.Outputs[key])
 				}
 			}
 		}
@@ -124,21 +133,25 @@ func printDeploymentDetail(d *types.DeploymentDetail) {
 			}
 		}
 		if len(errorResources) > 0 {
-			fmt.Println()
-			fmt.Println("Errors:")
-			for _, r := range errorResources {
-				fmt.Printf("\n  %s (%s):\n", r.Name, r.Kind)
-				fmt.Printf("    %s\n", r.Error)
+			_, _ = fmt.Fprintln(r.out)
+			_, _ = fmt.Fprintln(r.out, r.renderSection("Errors:"))
+			for _, resource := range errorResources {
+				_, _ = fmt.Fprintf(r.out, "\n  %s (%s):\n", resource.Name, resource.Kind)
+				_, _ = fmt.Fprintf(r.out, "    %s\n", resource.Error)
 			}
 		}
 	}
 }
 
+func renderResourceStatus(r *Renderer, status types.DeploymentResourceStatus) string {
+	return r.renderStatus(string(status))
+}
+
 // printDeploymentSummaries renders a compact listing table for
 // `praxis list deployments`.
-func printDeploymentSummaries(summaries []types.DeploymentSummary) {
+func printDeploymentSummaries(r *Renderer, summaries []types.DeploymentSummary) {
 	if len(summaries) == 0 {
-		fmt.Println("No deployments found.")
+		_, _ = fmt.Fprintln(r.out, r.renderMuted("No deployments found."))
 		return
 	}
 	headers := []string{"KEY", "STATUS", "RESOURCES", "CREATED", "UPDATED"}
@@ -146,13 +159,13 @@ func printDeploymentSummaries(summaries []types.DeploymentSummary) {
 	for _, s := range summaries {
 		rows = append(rows, []string{
 			s.Key,
-			string(s.Status),
+			r.renderStatus(string(s.Status)),
 			fmt.Sprintf("%d", s.Resources),
 			formatTime(s.CreatedAt),
 			formatTime(s.UpdatedAt),
 		})
 	}
-	printTable(headers, rows)
+	printTable(r, headers, rows)
 }
 
 // --------------------------------------------------------------------------
@@ -161,33 +174,37 @@ func printDeploymentSummaries(summaries []types.DeploymentSummary) {
 
 // printPlan renders a plan summary to stdout. Each resource
 // is shown with its planned operation and any field-level changes.
-func printPlan(plan *types.PlanResult) {
+func printPlan(r *Renderer, plan *types.PlanResult) {
 	if plan == nil || len(plan.Resources) == 0 {
-		fmt.Println("No changes. Infrastructure is up-to-date.")
+		_, _ = fmt.Fprintln(r.out, r.renderMuted("No changes. Infrastructure is up-to-date."))
 		return
 	}
 
 	for _, rd := range plan.Resources {
 		symbol := operationSymbol(rd.Operation)
-		fmt.Printf("%s %s (%s)\n", symbol, rd.ResourceKey, rd.ResourceType)
+		_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, fmt.Sprintf("%s %s (%s)", symbol, rd.ResourceKey, rd.ResourceType)))
 
 		for _, fd := range rd.FieldDiffs {
+			line := ""
 			switch rd.Operation {
 			case types.OpCreate:
-				fmt.Printf("    + %s = %v\n", fd.Path, fd.NewValue)
+				line = fmt.Sprintf("    + %s = %v", fd.Path, fd.NewValue)
 			case types.OpDelete:
-				fmt.Printf("    - %s = %v\n", fd.Path, fd.OldValue)
+				line = fmt.Sprintf("    - %s = %v", fd.Path, fd.OldValue)
 			case types.OpUpdate:
-				fmt.Printf("    ~ %s: %v => %v\n", fd.Path, fd.OldValue, fd.NewValue)
+				line = fmt.Sprintf("    ~ %s: %v => %v", fd.Path, fd.OldValue, fd.NewValue)
+			}
+			if line != "" {
+				_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, line))
 			}
 		}
-		fmt.Println()
+		_, _ = fmt.Fprintln(r.out)
 	}
 
-	fmt.Println(plan.Summary.String())
+	_, _ = fmt.Fprintln(r.out, r.renderSection(plan.Summary.String()))
 }
 
-func printDataSources(dataSources map[string]types.DataSourceResult) {
+func printDataSources(r *Renderer, dataSources map[string]types.DataSourceResult) {
 	if len(dataSources) == 0 {
 		return
 	}
@@ -198,20 +215,20 @@ func printDataSources(dataSources map[string]types.DataSourceResult) {
 	}
 	sort.Strings(names)
 
-	fmt.Println("Data sources:")
+	_, _ = fmt.Fprintln(r.out, r.renderSection("Data sources:"))
 	for _, name := range names {
 		result := dataSources[name]
-		fmt.Printf("  %s (%s)\n", name, result.Kind)
+		_, _ = fmt.Fprintf(r.out, "  %s (%s)\n", name, result.Kind)
 		keys := make([]string, 0, len(result.Outputs))
 		for key := range result.Outputs {
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			fmt.Printf("    %s = %v\n", key, result.Outputs[key])
+			_, _ = fmt.Fprintf(r.out, "    %s = %v\n", key, result.Outputs[key])
 		}
 	}
-	fmt.Println()
+	_, _ = fmt.Fprintln(r.out)
 }
 
 // operationSymbol returns the prefix for each diff operation.
@@ -234,23 +251,27 @@ func operationSymbol(op types.DiffOperation) string {
 
 // printEvents renders deployment progress events in a human-readable timeline
 // format. Used by the `observe` command for incremental progress display.
-func printEvents(events []orchestrator.DeploymentEvent) {
+func printEvents(r *Renderer, events []orchestrator.DeploymentEvent) {
 	for i := range events {
 		e := &events[i]
 		ts := formatTime(e.CreatedAt)
 		// Build the event line: [timestamp] STATUS resource: message
-		parts := []string{fmt.Sprintf("[%s]", ts)}
+		parts := []string{r.renderMuted(fmt.Sprintf("[%s]", ts))}
 		if e.Status != "" {
-			parts = append(parts, string(e.Status))
+			parts = append(parts, r.renderStatus(string(e.Status)))
 		}
 		if e.ResourceName != "" {
-			parts = append(parts, fmt.Sprintf("%s/%s:", e.ResourceKind, e.ResourceName))
+			resource := fmt.Sprintf("%s/%s:", e.ResourceKind, e.ResourceName)
+			if r.styles {
+				resource = r.theme.Header.Render(resource)
+			}
+			parts = append(parts, resource)
 		}
 		parts = append(parts, e.Message)
 		if e.Error != "" {
-			parts = append(parts, fmt.Sprintf("(error: %s)", e.Error))
+			parts = append(parts, r.renderDiff(types.OpDelete, fmt.Sprintf("(error: %s)", e.Error)))
 		}
-		fmt.Println(strings.Join(parts, " "))
+		_, _ = fmt.Fprintln(r.out, strings.Join(parts, " "))
 	}
 }
 
@@ -259,13 +280,18 @@ func printEvents(events []orchestrator.DeploymentEvent) {
 // --------------------------------------------------------------------------
 
 // printImportResult renders the result of a resource import operation.
-func printImportResult(resp *types.ImportResponse) {
-	fmt.Printf("Key:    %s\n", resp.Key)
-	fmt.Printf("Status: %s\n", resp.Status)
+func printImportResult(r *Renderer, resp *types.ImportResponse) {
+	r.writeLabelValue("Key", 7, resp.Key)
+	r.writeLabelStyledValue("Status", 7, r.renderStatus(string(resp.Status)))
 	if len(resp.Outputs) > 0 {
-		fmt.Println("Outputs:")
-		for k, v := range resp.Outputs {
-			fmt.Printf("  %s = %v\n", k, v)
+		_, _ = fmt.Fprintln(r.out, r.renderSection("Outputs:"))
+		keys := make([]string, 0, len(resp.Outputs))
+		for k := range resp.Outputs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			_, _ = fmt.Fprintf(r.out, "  %s = %v\n", key, resp.Outputs[key])
 		}
 	}
 }
@@ -301,8 +327,12 @@ func isTimeoutError(ctx context.Context, err error) bool {
 
 // printTimeoutError emits a user-friendly message when a polling wait exceeds
 // the configured --timeout duration.
-func printTimeoutError(timeout time.Duration, deploymentKey string) {
-	fmt.Fprintf(os.Stderr, "\nError: timed out after %s waiting for deployment %q\n", timeout, deploymentKey)
-	fmt.Fprintf(os.Stderr, "Resume watching:   praxis observe Deployment/%s\n", deploymentKey)
-	fmt.Fprintf(os.Stderr, "Full details:      praxis get Deployment/%s\n", deploymentKey)
+func printTimeoutError(r *Renderer, timeout time.Duration, deploymentKey string) {
+	prefix := "Error:"
+	if r.styles {
+		prefix = r.theme.Error.Render(prefix)
+	}
+	_, _ = fmt.Fprintf(r.errOut, "\n%s timed out after %s waiting for deployment %q\n", prefix, timeout, deploymentKey)
+	_, _ = fmt.Fprintf(r.errOut, "Resume watching:   praxis observe Deployment/%s\n", deploymentKey)
+	_, _ = fmt.Fprintf(r.errOut, "Full details:      praxis get Deployment/%s\n", deploymentKey)
 }

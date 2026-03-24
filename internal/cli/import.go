@@ -61,6 +61,7 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kind := args[0]
+			renderer := flags.renderer()
 
 			if resourceID == "" {
 				return fmt.Errorf("--id is required")
@@ -99,7 +100,7 @@ Examples:
 				return printJSON(resp)
 			}
 
-			printImportResult(resp)
+			printImportResult(renderer, resp)
 			return nil
 		},
 	}

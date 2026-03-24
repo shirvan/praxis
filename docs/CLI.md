@@ -35,14 +35,36 @@ Every subcommand inherits these flags:
 |--------------|---------------------------|--------------------------|------------------------------------------|
 | `--endpoint` | `PRAXIS_RESTATE_ENDPOINT` | `http://localhost:8080`  | Restate ingress URL                      |
 | `-o, --output` | —                       | `table`                  | Output format: `table` or `json`         |
+| `--plain`    | `NO_COLOR`               | `false`                  | Disable colors and styled table borders  |
 | `--region`   | `PRAXIS_REGION`           | —                        | Default AWS region for key resolution    |
 
 The `--account` flag is available on commands that touch provider APIs (`apply`, `deploy`, `plan`, `import`). It can also be set via the `PRAXIS_ACCOUNT` environment variable.
 
 ### Output Formats
 
-- **table** (default) — Human-friendly aligned columns using a tabwriter. This is the format shown in all examples below.
+- **table** (default) — Human-friendly terminal output. On a TTY, Praxis renders colored status values, diff markers, and bordered tables. When stdout is piped or redirected, output automatically falls back to plain text.
 - **json** — Machine-readable indented JSON, suitable for scripting, piping to `jq`, and AI agents.
+
+Use `--plain` to force plain text even on a TTY. Praxis also respects `NO_COLOR=1` and disables styling automatically for non-interactive output.
+
+### Styled Output Details
+
+When styling is active (TTY, no `--plain`, no `NO_COLOR`), the CLI applies contextual colors and formatting:
+
+| Element | Styling |
+|---------|---------|
+| Plan diffs | `+` lines green (create), `~` lines yellow (update), `-` lines red (delete) |
+| Status values | `Ready` / `Complete` green, `Applying` / `Pending` yellow, `Failed` red |
+| Tables | Bordered (Lip Gloss) with bold colored headers |
+| Event stream | Timestamps dimmed, status colored, resource names bold |
+| Success messages | Green `✓` prefix |
+| Error messages | Red with bold formatting |
+| Confirmation prompts | Yellow bold |
+| Labels / keys | Dimmed secondary text |
+
+When styling is disabled (`--plain`, piped output, or `NO_COLOR=1`), all output falls back to plain `tabwriter` tables and undecorated text — fully compatible with `grep`, `awk`, and other text processing tools.
+
+The styling layer uses [Lip Gloss v2](https://github.com/charmbracelet/lipgloss) for declarative style rendering with automatic terminal color profile detection (TrueColor → 256-color → 16-color → none) and adaptive light/dark background support.
 
 ---
 

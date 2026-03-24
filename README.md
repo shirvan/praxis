@@ -187,7 +187,7 @@ See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for read
 | [Orchestrator](docs/ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete flow |
 | [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE template system, expression evaluation, registry, policy enforcement, data sources |
 | [Auth & Workspaces](docs/AUTH.md) | Everyone | Credential management, workspace isolation, account selection |
-| [CLI Reference](docs/CLI.md) | Users | All commands, account selection, output formats, timeouts |
+| [CLI Reference](docs/CLI.md) | Users | All commands, output formats, styled terminal output, timeouts |
 | [Operator Guide](docs/OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
 | [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |

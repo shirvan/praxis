@@ -50,6 +50,7 @@ Use -o json for machine-readable output.`,
 // listDeployments queries the global deployment index and renders the results.
 func listDeployments(flags *rootFlags, workspace string) error {
 	client := flags.newClient()
+	renderer := flags.renderer()
 	ctx := context.Background()
 
 	summaries, err := client.ListDeployments(ctx, workspace)
@@ -61,6 +62,6 @@ func listDeployments(flags *rootFlags, workspace string) error {
 		return printJSON(summaries)
 	}
 
-	printDeploymentSummaries(summaries)
+	printDeploymentSummaries(renderer, summaries)
 	return nil
 }

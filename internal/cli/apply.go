@@ -75,6 +75,7 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templatePath := args[0]
+			renderer := flags.renderer()
 
 			// Read the CUE template from disk.
 			content, err := os.ReadFile(templatePath) //nolint:gosec // G304: path is user-supplied CLI argument
@@ -107,7 +108,7 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 
 			// Display the plan diff.
 			if flags.outputFormat() != OutputJSON {
-				printPlan(planResp.Plan)
+				printPlan(renderer, planResp.Plan)
 			}
 
 			// If there are no changes, exit early.
@@ -120,10 +121,10 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 
 			// Confirm with the user unless --auto-approve is set.
 			if !autoApprove {
-				fmt.Print("\nDo you want to apply these changes? (yes/no): ")
+				_, _ = fmt.Fprint(renderer.out, "\n"+renderer.renderPrompt("Do you want to apply these changes? (yes/no): "))
 				var confirm string
 				if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "yes" && confirm != "y") {
-					fmt.Println("Apply cancelled.")
+					_, _ = fmt.Fprintln(renderer.out, renderer.renderMuted("Apply cancelled."))
 					return nil
 				}
 			}
@@ -146,12 +147,12 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 				return printJSON(resp)
 			}
 
-			fmt.Printf("Deployment: %s\n", resp.DeploymentKey)
-			fmt.Printf("Status:     %s\n", resp.Status)
+			renderer.writeLabelValue("Deployment", 11, resp.DeploymentKey)
+			renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
 
 			// If --wait is not set, we're done.
 			if !wait {
-				fmt.Println("\nUse 'praxis get Deployment/" + resp.DeploymentKey + "' to check progress.")
+				_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted("Use 'praxis get Deployment/"+resp.DeploymentKey+"' to check progress."))
 				return nil
 			}
 
@@ -163,9 +164,9 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 			}
 
 			// Poll until the deployment reaches a terminal state.
-			err = pollDeployment(ctx, client, resp.DeploymentKey, pollInterval, flags.outputFormat())
+			err = pollDeployment(ctx, client, resp.DeploymentKey, pollInterval, flags.outputFormat(), renderer)
 			if isTimeoutError(ctx, err) {
-				printTimeoutError(timeout, resp.DeploymentKey)
+				printTimeoutError(renderer, timeout, resp.DeploymentKey)
 				os.Exit(2)
 			}
 			return err
@@ -208,8 +209,8 @@ func parseVariables(vars []string) (map[string]any, error) {
 
 // pollDeployment queries the deployment state at regular intervals until it
 // reaches a terminal status. It prints incremental status updates for the user.
-func pollDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat) error {
-	fmt.Println("\nWaiting for deployment to complete...")
+func pollDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat, renderer *Renderer) error {
+	_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Waiting for deployment to complete..."))
 
 	var lastStatus types.DeploymentStatus
 	for {
@@ -223,17 +224,17 @@ func pollDeployment(ctx context.Context, client *Client, key string, interval ti
 
 		// Print status changes as they happen.
 		if detail.Status != lastStatus {
-			fmt.Printf("  Status: %s\n", detail.Status)
+			renderer.writeLabelStyledValue("Status", 9, renderer.renderStatus(string(detail.Status)))
 			lastStatus = detail.Status
 		}
 
 		// Check for terminal states.
 		if isTerminalStatus(detail.Status) {
-			fmt.Println()
+			_, _ = fmt.Fprintln(renderer.out)
 			if format == OutputJSON {
 				return printJSON(detail)
 			}
-			printDeploymentDetail(detail)
+			printDeploymentDetail(renderer, detail)
 			return nil
 		}
 
