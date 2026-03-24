@@ -91,7 +91,7 @@ The driver handles these as sequential calls within `Provision`, wrapped in
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-log-group.outputs.arn}              → Subscription filters, metric filters, IAM policies
 ${resources.my-log-group.outputs.logGroupName}     → Lambda function configuration, application config
 ${resources.my-log-group.outputs.retentionInDays}  → Compliance reporting
@@ -1177,6 +1177,7 @@ explicit deletion ensures convergence if someone previously set a retention peri
 ## Checklist
 
 ### Files
+
 - [ ] `schemas/aws/cloudwatch/log_group.cue`
 - [ ] `internal/drivers/loggroup/types.go`
 - [ ] `internal/drivers/loggroup/aws.go`
@@ -1190,6 +1191,7 @@ explicit deletion ensures convergence if someone previously set a retention peri
 - [ ] `tests/integration/loggroup_driver_test.go`
 
 ### Modifications
+
 - [ ] `internal/infra/awsclient/client.go` — `NewCloudWatchLogsClient()`
 - [ ] `cmd/praxis-monitoring/main.go` — Bind LogGroupDriver
 - [ ] `internal/core/provider/registry.go` — Register adapter

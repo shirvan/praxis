@@ -71,7 +71,7 @@ minimum viable public networking stack.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-igw.outputs.internetGatewayId}  → Route table routes (0.0.0.0/0 → igw-xxx)
 ```
 
@@ -109,7 +109,7 @@ checked by `FindByManagedKey` pre-flight.
 
 ## 3. File Inventory
 
-```
+```text
 ✦ internal/drivers/igw/types.go             — Spec, Outputs, ObservedState, State
 ✦ internal/drivers/igw/aws.go               — IGWAPI interface + realIGWAPI
 ✦ internal/drivers/igw/drift.go             — HasDrift(), ComputeFieldDiffs()
@@ -166,6 +166,7 @@ package igw
 ```
 
 **Key decisions**:
+
 - IGW spec is intentionally minimal — IGWs have almost no configurable properties
   beyond the VPC attachment and tags.
 - `vpcId` is the only required infrastructure field. The IGW itself is a stateless
@@ -385,7 +386,7 @@ Add `.Bind(restate.Reflect(igw.NewIGWDriver(cfg.Auth())))` to
 
 No Docker Compose changes. Justfile:
 
-```
+```text
 test-igw:
     go test ./internal/drivers/igw/... -v -count=1 -race
 ```
@@ -464,10 +465,12 @@ operations. IGW emulation is comprehensive.
 AWS models IGW creation and VPC attachment as two separate API calls. The driver
 combines them into a single Provision operation because an unattached IGW is useless.
 The two-step process is:
+
 1. `CreateInternetGateway` → creates detached IGW with ID.
 2. `AttachInternetGateway` → attaches to specified VPC.
 
 Delete reverses this:
+
 1. `DetachInternetGateway` → detaches from VPC.
 2. `DeleteInternetGateway` → removes the IGW.
 
@@ -500,7 +503,7 @@ the driver the simplest in the networking stack.
 
 In compound templates:
 
-```
+```text
 VPC → Internet Gateway → Route Table (route 0.0.0.0/0 → igw-xxx)
 ```
 

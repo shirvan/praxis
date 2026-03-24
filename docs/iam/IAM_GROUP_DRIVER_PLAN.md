@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--identity-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -42,6 +42,7 @@ imports, updates, and deletes IAM groups along with their inline policies and
 managed policy attachments.
 
 **Out of scope**:
+
 - **Group membership** — managed by the IAM User driver. The user driver calls
   `AddUserToGroup` / `RemoveUserFromGroup` to manage which groups a user belongs to.
   The group driver does not manage its member list.
@@ -78,7 +79,7 @@ group names in their `groups` list).
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-group.outputs.arn}           → Policy conditions
 ${resources.my-group.outputs.groupId}       → Audit references
 ${resources.my-group.outputs.groupName}     → IAMUser spec.groups
@@ -658,6 +659,7 @@ for organizational purposes at the AWS level.
 
 Group membership is intentionally managed by the user driver, not the group driver.
 This avoids:
+
 - **Bidirectional management**: If both user and group drivers manage membership,
   they would fight during reconciliation.
 - **Circular dependencies**: A user template listing groups and a group template

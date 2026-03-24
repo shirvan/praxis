@@ -136,7 +136,7 @@ settings:
 
 Add the ECR service SDK package:
 
-```
+```text
 require (
     github.com/aws/aws-sdk-go-v2/service/ecr v1.x.x
 )
@@ -153,6 +153,7 @@ on it:
 2. **ECR Lifecycle Policy** — depends on ECR Repository existing
 
 Within each driver, implement in this order:
+
 1. CUE schema
 2. Driver types (`types.go`)
 3. AWS API abstraction (`aws.go`)
@@ -224,7 +225,7 @@ func NewRegistry() *Registry {
 
 ### ECR Repository outputs consumed by other drivers
 
-```
+```text
 ${resources.my-repo.outputs.repositoryUri}    → ECS Task Definition container image URIs
 ${resources.my-repo.outputs.repositoryUri}    → Lambda Function spec.code.imageUri
 ${resources.my-repo.outputs.repositoryArn}    → IAM Policy resource ARNs
@@ -234,7 +235,7 @@ ${resources.my-repo.outputs.registryId}       → Cross-account pull configurati
 
 ### ECR Lifecycle Policy inputs from other drivers
 
-```
+```text
 spec.repositoryName  ←  ${resources.my-repo.outputs.repositoryName}
 spec.repositoryArn   ←  ${resources.my-repo.outputs.repositoryArn}
 ```
@@ -255,7 +256,7 @@ a JSON semantic equality check between the desired and observed policy text.
 
 ECR repository URIs follow the pattern:
 
-```
+```text
 <registryId>.dkr.ecr.<region>.amazonaws.com/<repositoryName>
 ```
 

@@ -636,10 +636,12 @@ are launched and terminated.
 
 In compound templates, subnets sit between VPCs and compute resources:
 
-```text
-VPC → Subnet → EC2 Instance
-VPC → Subnet → NAT Gateway
-VPC → Subnet → Load Balancer
+```mermaid
+flowchart LR
+    VPC --> Subnet
+    Subnet --> EC2["EC2 Instance"]
+    Subnet --> NAT["NAT Gateway"]
+    Subnet --> LB["Load Balancer"]
 ```
 
 During apply: VPC first, then subnets (depends on `vpcId`), then instances.

@@ -116,7 +116,7 @@ Lifecycle policies are terminal resources — no other driver depends on their o
 They do not produce consuming outputs. The `repositoryArn` in outputs is informational
 only.
 
-```
+```text
 ${resources.my-lcp.outputs.repositoryArn}   → Informational reference
 ${resources.my-lcp.outputs.registryId}      → Informational reference
 ```
@@ -922,7 +922,7 @@ test-ecr-lcp-integration:
 
 ### driver_test.go — Key Test Cases
 
-```
+```text
 TestProvision_CreateNew             — puts policy on a repository (policy does not exist)
 TestProvision_Update                — replaces policy on a repository (policy already exists)
 TestProvision_IdempotentSamePolicy  — PutLifecyclePolicy called; JSON semantic equality confirmed
@@ -942,7 +942,7 @@ TestGetOutputs_FullOutputs          — returns repositoryArn, repositoryName, r
 
 ### aws_test.go — Error Classification
 
-```
+```text
 TestClassifyError_RepoNotFound         — RepositoryNotFoundException → terminal 404
 TestClassifyError_PolicyNotFound       — LifecyclePolicyNotFoundException → terminal 404
 TestClassifyError_InvalidParam         — InvalidParameterException → terminal 400
@@ -951,7 +951,7 @@ TestClassifyError_ServerException      — ServerException → retryable
 
 ### drift_test.go — Drift Cases
 
-```
+```text
 TestHasDrift_NoDrift                  — identical policy text → false
 TestHasDrift_DifferentRules           — different rules → true
 TestHasDrift_JSONSemanticallyEqual    — reordered JSON keys → false (no drift)

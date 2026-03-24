@@ -74,7 +74,7 @@ attached to anything. This makes them a natural fit for a standalone driver.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-volume.outputs.volumeId}          → EC2 BlockDeviceMappings, attachment templates
 ${resources.my-volume.outputs.availabilityZone}   → EC2 instance placement constraint
 ${resources.my-volume.outputs.arn}                → IAM policies
@@ -1086,6 +1086,7 @@ driver returns a terminal error with status 429 (rate limited). The operator mus
 wait and re-apply.
 
 The driver does NOT implement automatic retry-after-cooldown because:
+
 - A 6-hour `restate.Sleep()` would tie up the Virtual Object key for 6 hours.
 - The cooldown is a rare operational event, not a normal flow.
 - Operators should know about the cooldown and plan accordingly.

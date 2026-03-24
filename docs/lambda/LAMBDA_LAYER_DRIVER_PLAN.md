@@ -92,7 +92,7 @@ reference the layer should update their `layers[]` to point to the new version A
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-layer.outputs.layerVersionArn}  → Lambda function layers[] list
 ${resources.my-layer.outputs.layerName}        → Informational / cross-references
 ${resources.my-layer.outputs.version}          → Version tracking
@@ -910,6 +910,7 @@ resource drivers.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/lambda/layer.cue`
 - [ ] `internal/drivers/lambdalayer/types.go`
 - [ ] `internal/drivers/lambdalayer/aws.go`
@@ -918,6 +919,7 @@ resource drivers.
 - [ ] `internal/core/provider/lambdalayer_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/lambdalayer/driver_test.go`
 - [ ] `internal/drivers/lambdalayer/aws_test.go`
 - [ ] `internal/drivers/lambdalayer/drift_test.go`
@@ -925,6 +927,7 @@ resource drivers.
 - [ ] `tests/integration/lambda_layer_driver_test.go`
 
 ### Integration
+
 - [ ] `cmd/praxis-compute/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter
 - [ ] `justfile` — Add test targets

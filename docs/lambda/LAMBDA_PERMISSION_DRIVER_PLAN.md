@@ -90,7 +90,7 @@ Provision.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-perm.outputs.statementId}   → Informational / dependency tracking
 ${resources.my-perm.outputs.functionName}  → Cross-references
 ```
@@ -498,6 +498,7 @@ func (LambdaPermissionDriver) ServiceName() string { return ServiceName }
 ### Provision
 
 Provision handles three cases:
+
 1. **New permission**: Add the statement.
 2. **Unchanged permission**: Return existing outputs (idempotent).
 3. **Changed permission**: Remove old statement, add new one (replace).
@@ -975,6 +976,7 @@ function's policy is the sole identity.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/lambda/permission.cue`
 - [ ] `internal/drivers/lambdaperm/types.go`
 - [ ] `internal/drivers/lambdaperm/aws.go`
@@ -983,6 +985,7 @@ function's policy is the sole identity.
 - [ ] `internal/core/provider/lambdaperm_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/lambdaperm/driver_test.go`
 - [ ] `internal/drivers/lambdaperm/aws_test.go`
 - [ ] `internal/drivers/lambdaperm/drift_test.go`
@@ -990,6 +993,7 @@ function's policy is the sole identity.
 - [ ] `tests/integration/lambda_permission_driver_test.go`
 
 ### Integration
+
 - [ ] `cmd/praxis-compute/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter
 - [ ] `justfile` — Add test targets

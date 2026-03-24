@@ -81,7 +81,7 @@ Like Elastic IPs, key pairs have minimal mutable state — only tags can drift.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-keypair.outputs.keyName}        → EC2 instance spec.keyName
 ${resources.my-keypair.outputs.keyPairId}      → IAM policies, audit references
 ${resources.my-keypair.outputs.keyFingerprint} → SSH verification
@@ -865,6 +865,7 @@ service. Add `test-keypair` and `ls-keypair` targets to the justfile.
 ### 1. Private Key Handling: Return Once, Never Store
 
 The private key material from AWS-generated key pairs is:
+
 - Returned in the Provision handler response (so the caller can capture it).
 - NOT stored in Restate Virtual Object state.
 - NOT returned on subsequent Provision calls (re-provision returns empty private key).
@@ -890,6 +891,7 @@ The duplicate error maps to a terminal 409 in the Provision handler.
 Unlike EC2/VPC/EBS (where import uses the AWS-assigned ID, producing a different VO),
 key pair import uses the key pair name, producing the same VO key as template
 management. This follows the S3 pattern and is correct because:
+
 - Key pair names are unique within a region (unlike EC2 Name tags).
 - The name is the primary API identifier for all operations.
 - Two VOs for the same key pair would be confusing and error-prone.

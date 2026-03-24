@@ -2,7 +2,7 @@
 
 > **Status: IMPLEMENTED** — The VPC driver has been fully implemented following this plan.
 > All core files, unit tests, integration tests, and wiring are in place.
-
+>
 > Target: A Restate Virtual Object driver that manages AWS VPCs, following the
 > exact patterns established by the S3 Bucket, Security Group, and EC2 Instance
 > drivers.
@@ -26,8 +26,8 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Binary Entry Point & Dockerfile](#step-9--binary-entry-point--dockerfile)
-13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
+12. [Step 9 — Add VPC to Network Driver Pack](#step-9--add-vpc-to-network-driver-pack)
+13. [Step 10 — Justfile](#step-10--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
 16. [VPC-Specific Design Decisions](#vpc-specific-design-decisions)
@@ -85,7 +85,7 @@ The driver follows the established Virtual Object contract:
 
 The VPC driver's outputs are the primary integration point for dependent resources:
 
-```
+```text
 ${resources.my-vpc.outputs.vpcId}       → Subnets, Security Groups, ELB, RDS
 ${resources.my-vpc.outputs.cidrBlock}   → Subnet CIDR planning, Network ACLs
 ${resources.my-vpc.outputs.arn}         → IAM policies
@@ -183,7 +183,7 @@ The plan-time resolution follows the EC2 adapter's state-driven pattern:
 
 Create or modify these files (✦ = new file, ✎ = modify existing):
 
-```
+```text
 ✦ internal/drivers/vpc/types.go             — Spec, Outputs, ObservedState, State structs
 ✦ internal/drivers/vpc/aws.go               — VPCAPI interface + realVPCAPI implementation
 ✦ internal/drivers/vpc/drift.go             — HasDrift(), ComputeFieldDiffs()
@@ -268,6 +268,7 @@ package vpc
 ```
 
 **Key decisions**:
+
 - `cidrBlock` uses a regex to validate CIDR format — catches typos before hitting AWS.
   AWS enforces the /16–/28 range server-side; the regex validates format only.
 - `instanceTenancy` only exposes `default` and `dedicated`. The `host` tenancy option
@@ -367,6 +368,7 @@ type VPCState struct {
 ```
 
 **Why these fields**:
+
 - `Account` is passed through from the adapter for credential resolution (same as all other drivers).
 - `InstanceTenancy` uses `omitempty` because the default value `"default"` is the common case —
   empty means "default" tenancy.
@@ -1607,6 +1609,7 @@ func (d *VPCDriver) correctDrift(ctx restate.ObjectContext, api VPCAPI, vpcId st
 > **DNS correction ordering**: The `correctDrift` function respects the AWS
 > constraint that `enableDnsHostnames=true` requires `enableDnsSupport=true`.
 > When both settings need to change:
+>
 > - **Enabling hostnames**: enable support first, then hostnames.
 > - **Disabling support**: disable hostnames first, then support.
 > The ordering logic handles all four state transitions correctly.
@@ -2049,7 +2052,7 @@ No Docker Compose changes needed — the VPC driver automatically registers with
 
 Add VPC-specific test targets:
 
-```
+```text
 # Run VPC driver unit tests only
 test-vpc:
     go test ./internal/drivers/vpc/... -v -count=1 -race
@@ -2068,6 +2071,7 @@ Create a mock `VPCAPI` using testify/mock. Test each handler with mocked AWS res
 **Test cases to implement:**
 
 #### Provision Tests
+
 1. `TestProvision_CreatesNewVpc` — happy path: CreateVpc succeeds, WaitUntilAvailable
    succeeds, DescribeVpc returns outputs with DNS settings.
 2. `TestProvision_MissingCidrBlockFails` — returns terminal error 400.
@@ -2097,6 +2101,7 @@ Create a mock `VPCAPI` using testify/mock. Test each handler with mocked AWS res
     calls ModifyDnsSupport after creation.
 
 #### Import Tests
+
 17. `TestImport_ExistingVpc` — describes VPC, synthesizes spec, returns outputs.
 18. `TestImport_NotFoundFails` — returns terminal error 404.
 19. `TestImport_DefaultsToObservedMode` — import with no explicit mode sets ModeObserved.
@@ -2104,6 +2109,7 @@ Create a mock `VPCAPI` using testify/mock. Test each handler with mocked AWS res
 21. `TestImport_DefaultVpc` — importing the default VPC works, sets IsDefault=true.
 
 #### Delete Tests
+
 22. `TestDelete_DeletesVpc` — calls DeleteVpc, sets tombstone state (ModeManaged).
 23. `TestDelete_AlreadyGone` — IsNotFound returns success (idempotent).
 24. `TestDelete_NoVpcProvisioned` — sets tombstone without API call.
@@ -2115,6 +2121,7 @@ Create a mock `VPCAPI` using testify/mock. Test each handler with mocked AWS res
     terminal error 409 with helpful message.
 
 #### Reconcile Tests
+
 28. `TestReconcile_NoDrift` — no changes when spec matches observed.
 29. `TestReconcile_DetectsDnsHostnamesDrift` — drift=true, correcting=true in
     managed mode.
@@ -2129,12 +2136,14 @@ Create a mock `VPCAPI` using testify/mock. Test each handler with mocked AWS res
     enabled before enableDnsHostnames when both need correction.
 
 #### Shared Handler Tests
+
 36. `TestGetStatus_ReturnsCurrentState` — reads state from K/V.
 37. `TestGetOutputs_ReturnsOutputs` — reads outputs from K/V.
 
 ### `internal/drivers/vpc/drift_test.go`
 
 Test cases:
+
 1. `TestHasDrift_NoDrift` — identical desired and observed returns false.
 2. `TestHasDrift_DnsHostnamesChanged` — returns true.
 3. `TestHasDrift_DnsSupportChanged` — returns true.
@@ -2160,6 +2169,7 @@ Test cases:
 ### `internal/drivers/vpc/aws_test.go`
 
 Test error classification helpers:
+
 1. `TestIsNotFound_True` — various NotFound error shapes (`InvalidVpcID.NotFound`,
    `InvalidVpcID.Malformed`).
 2. `TestIsNotFound_False` — other error types.
@@ -2178,6 +2188,7 @@ Test error classification helpers:
 ### `internal/core/provider/vpc_adapter_test.go`
 
 Test cases (follow `ec2_adapter_test.go` patterns):
+
 1. `TestVPCAdapter_DecodeSpecAndBuildKey` — parses JSON doc, returns `region~name` key.
 2. `TestVPCAdapter_BuildImportKey` — returns `region~vpcId` key.
 3. `TestVPCAdapter_Kind` — returns `VPC`.
@@ -2368,6 +2379,7 @@ AWS supports adding up to 4 secondary CIDR blocks to an existing VPC. This is a
 common pattern for expanding IP address space when the primary CIDR is exhausted.
 
 **Rationale for exclusion**:
+
 - Adds complexity to the spec (array of secondary CIDRs), drift detection (set
   comparison), and correction logic (add/remove operations).
 - The primary CIDR covers the majority of use cases.
@@ -2393,6 +2405,7 @@ deployments use IPv4 only.
 ### 6. Default VPC Protection
 
 Every AWS region has one default VPC created automatically by AWS. The default VPC:
+
 - Has a default subnet in every AZ
 - Has an internet gateway
 - Has a main route table with a route to the internet gateway
@@ -2416,6 +2429,7 @@ AWS enforces a constraint: `enableDnsHostnames = true` requires
 without DNS hostnames.
 
 **Validation layers**:
+
 1. **CUE schema**: Cannot express cross-field constraints in the current validation
    pipeline. The schema validates each field independently.
 2. **Adapter `decodeSpec`**: Does not validate cross-field constraints — this is

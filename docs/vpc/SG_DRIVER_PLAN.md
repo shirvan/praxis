@@ -22,7 +22,7 @@
 8. [Step 5 — Driver Implementation](#step-5--driver-implementation)
 9. [Step 6 — Provider Adapter](#step-6--provider-adapter)
 10. [Step 7 — Registry Integration](#step-7--registry-integration)
-11. [Step 8 — Binary Entry Point & Dockerfile](#step-8--binary-entry-point--dockerfile)
+11. [Step 8 — Network Driver Pack Entry Point & Dockerfile](#step-8--network-driver-pack-entry-point--dockerfile)
 12. [Step 9 — Docker Compose & Justfile](#step-9--docker-compose--justfile)
 13. [Step 10 — Unit Tests](#step-10--unit-tests)
 14. [Step 11 — Integration Tests](#step-11--integration-tests)
@@ -70,7 +70,7 @@ Unlike S3 (`KeyScopeGlobal` — bucket names are globally unique) and EC2 instan
 (`KeyScopeRegion` — `region~metadata.name`), security groups use `KeyScopeCustom`
 with the format:
 
-```
+```text
 vpcId~groupName
 ```
 
@@ -102,7 +102,7 @@ malformed keys from entering the system.
 
 All files below exist in the repository (✓ = implemented):
 
-```
+```text
 ✓ schemas/aws/ec2/sg.cue                   — CUE schema for SecurityGroup resource
 ✓ internal/drivers/sg/types.go              — Spec, Outputs, ObservedState, State structs
 ✓ internal/drivers/sg/aws.go               — SGAPI interface + realSGAPI implementation
@@ -426,6 +426,7 @@ sides and compares as sorted sets. Compares tags with `tagsMatch()`.
 
 **`ComputeDiff(desired, observed []NormalizedRule) (toAdd, toRemove []NormalizedRule)`**
 Pure set difference on normalized rule tuples:
+
 - `toAdd` = desired − observed (rules to authorize)
 - `toRemove` = observed − desired (rules to revoke)
 
@@ -880,6 +881,7 @@ reuse group names (common: "web-sg" in prod VPC and staging VPC).
 ### 2. Add-Before-Remove Rule Application
 
 When converging rules during Provision or Reconcile, the driver always:
+
 1. Authorizes new ingress rules
 2. Authorizes new egress rules
 3. Revokes stale ingress rules
@@ -911,6 +913,7 @@ declarative identity.
 
 `restate.Run()` panics on non-terminal errors, destroying the structured error type.
 The `IsDependencyViolation` classifier uses three string patterns as fallback:
+
 - `"DependencyViolation"` (AWS error code in the message)
 - `"resource is still in use"` (common AWS error description)
 - `"still referenced by other resources"` (Praxis error message from state)

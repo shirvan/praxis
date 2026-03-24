@@ -574,10 +574,14 @@ failed NAT GWs don't incur charges but indicate a configuration problem.
 
 In compound templates:
 
-```text
-VPC → Subnet (public) → EIP → NAT Gateway → Route Table (0.0.0.0/0 → nat-xxx)
-                                                ↑
-                                        Subnet (private) ← EC2 Instance
+```mermaid
+flowchart LR
+    VPC --> SubPub["Subnet (public)"]
+    SubPub --> EIP
+    EIP --> NATGW["NAT Gateway"]
+    NATGW --> RT["Route Table (0.0.0.0/0 → nat-xxx)"]
+    SubPriv["Subnet (private)"] -.-> RT
+    EC2["EC2 Instance"] --> SubPriv
 ```
 
 The NAT Gateway depends on the subnet and EIP. Private subnet route tables depend

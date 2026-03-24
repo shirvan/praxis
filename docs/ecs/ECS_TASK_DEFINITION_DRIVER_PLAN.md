@@ -56,7 +56,7 @@ The driver follows the established Virtual Object contract:
 
 ### Versioning Model
 
-```
+```text
 family: "myapp-web"
 ├── myapp-web:1  (INACTIVE — deregistered)
 ├── myapp-web:2  (INACTIVE — deregistered)
@@ -100,7 +100,7 @@ family itself, which accumulates revisions over time.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-taskdef.outputs.taskDefinitionArn}    → ECS Services, RunTask
 ${resources.my-taskdef.outputs.family}                → ECS Services, CLI references
 ${resources.my-taskdef.outputs.revision}              → Deployment versioning
@@ -1155,6 +1155,7 @@ func (d *ECSTaskDefinitionDriver) Import(ctx restate.ObjectContext, ref types.Im
 ### Reconcile
 
 For task definitions, reconcile checks whether:
+
 1. The latest active revision matches what the driver expects (detecting external
    registrations or deregistrations).
 2. Tags have been modified externally (tags are mutable even on task definitions).

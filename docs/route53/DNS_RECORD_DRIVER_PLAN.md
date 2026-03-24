@@ -6,7 +6,7 @@
 > **Implementation note:** This plan references a `praxis-dns` driver pack.
 > The actual implementation places the DNS Record driver in **`praxis-network`**
 > (`cmd/praxis-network/main.go`).
-
+>
 > Target: A Restate Virtual Object driver that manages Route 53 DNS Record Sets,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for standard records, alias records, and routing
@@ -58,6 +58,7 @@ routing policies, and the change-batch API model (Route 53 uses a transactional
 change batch instead of individual CRUD operations).
 
 **Out of scope**:
+
 - **Hosted zone management** — separate driver.
 - **Health check management** — separate driver. This driver only references health
   check IDs as an optional property.
@@ -111,7 +112,7 @@ change batch instead of individual CRUD operations).
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-record.outputs.fqdn}          → Application configuration, other DNS records
 ${resources.my-record.outputs.type}           → Informational
 ```
@@ -133,17 +134,20 @@ routing policy records). The key composes all identity components.
 ### Key Format
 
 **Simple routing** (no set identifier):
-```
+
+```text
 <hostedZoneId>~<fqdn>~<type>
 ```
 
 **Routing policy records** (with set identifier):
-```
+
+```text
 <hostedZoneId>~<fqdn>~<type>~<setIdentifier>
 ```
 
 Examples:
-```
+
+```text
 Z1234567890~www.example.com~A
 Z1234567890~api.example.com~CNAME
 Z1234567890~app.example.com~A~primary        (failover)
@@ -1219,9 +1223,11 @@ constraint — it relies on AWS's `InvalidChangeBatch` error, which maps to a te
 ## Checklist
 
 ### Schema
+
 - [x] `schemas/aws/route53/record.cue`
 
 ### Driver
+
 - [x] `internal/drivers/route53record/types.go`
 - [x] `internal/drivers/route53record/aws.go`
 - [x] `internal/drivers/route53record/drift.go`
@@ -1231,14 +1237,18 @@ constraint — it relies on AWS's `InvalidChangeBatch` error, which maps to a te
 - [x] `internal/drivers/route53record/drift_test.go`
 
 ### Adapter
+
 - [x] `internal/core/provider/route53record_adapter.go`
 - [x] `internal/core/provider/route53record_adapter_test.go`
 
 ### Registry
+
 - [x] Adapter registered in `NewRegistry()`
 
 ### Integration Tests
+
 - [x] `tests/integration/route53_record_driver_test.go`
 
 ### Infrastructure
+
 - [x] `cmd/praxis-dns/main.go` — `.Bind()` call

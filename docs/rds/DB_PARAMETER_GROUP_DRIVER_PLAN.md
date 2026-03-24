@@ -3,7 +3,7 @@
 > **Implementation note:** This plan references a `praxis-database` driver pack.
 > The actual implementation places the DB Parameter Group driver in **`praxis-storage`**
 > (`cmd/praxis-storage/main.go`).
-
+>
 > Target: A Restate Virtual Object driver that manages Amazon RDS DB Parameter
 > Groups and Aurora DB Cluster Parameter Groups, providing full lifecycle
 > management including creation, configuration, import, deletion, drift detection,
@@ -72,7 +72,7 @@ The driver follows the established Virtual Object contract:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-param-group.outputs.groupName}   → RDS Instance dbParameterGroupName
 ${resources.my-cluster-pg.outputs.groupName}     → Aurora Cluster dbClusterParameterGroupName
 ${resources.my-param-group.outputs.arn}          → IAM policies
@@ -87,7 +87,7 @@ ${resources.my-param-group.outputs.arn}          → IAM policies
 Parameter group names are unique per region per account. The key is
 `region~groupName`.
 
-```
+```text
 region~groupName
 ```
 
@@ -502,9 +502,10 @@ func HasDrift(desired DBParameterGroupSpec, observed ObservedState) bool {
 }
 ```
 
-**Parameter Drift Logic**
+#### Parameter Drift Logic
 
 Parameters have three-way comparison:
+
 1. **Added**: Key in desired but not in observed → drift (need to set).
 2. **Changed**: Key in both, values differ → drift (need to modify).
 3. **Removed**: Key in observed but not in desired → drift (need to reset to default).
@@ -530,6 +531,7 @@ func parametersMatch(desired, observed map[string]string) bool {
 **`ComputeFieldDiffs(desired DBParameterGroupSpec, observed ObservedState) []FieldDiffEntry`**
 
 Reports:
+
 - Immutable fields: `family`, `description` — "(immutable, ignored)".
 - Added parameters: `"parameter.<name>"` with desired value, observed "(default)".
 - Changed parameters: `"parameter.<name>"` with both values.

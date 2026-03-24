@@ -6,7 +6,7 @@
 > **Implementation note:** This plan references a `praxis-dns` driver pack.
 > The actual implementation places the Health Check driver in **`praxis-network`**
 > (`cmd/praxis-network/main.go`).
-
+>
 > Target: A Restate Virtual Object driver that manages Route 53 Health Checks,
 > providing full lifecycle management including creation, import, deletion, drift
 > detection, and drift correction for endpoint health checks, calculated health
@@ -55,6 +55,7 @@ health check, Route 53 uses the health check's status to determine whether to re
 the record in DNS responses.
 
 **Out of scope**:
+
 - **DNS records** — separate driver. This driver manages the health check resource;
   the DNS Record driver references health check IDs.
 - **CloudWatch alarms** — the health check can monitor an existing CloudWatch alarm,
@@ -116,7 +117,7 @@ Route 53 supports three categories of health checks:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-healthcheck.outputs.healthCheckId}  → Route53Record spec.healthCheckId
 ```
 
@@ -1210,6 +1211,7 @@ detects this and uses `UpdateHealthCheck` to converge the configuration.
 
 AWS does not allow changing `requestInterval` after creation. If the desired
 interval differs from the existing check, the driver has two options:
+
 1. Report as immutable drift and ignore (current behavior).
 2. Delete and recreate the health check with the new interval.
 
@@ -1258,9 +1260,11 @@ comparison to prevent false drift.
 ## Checklist
 
 ### Schema
+
 - [x] `schemas/aws/route53/health_check.cue`
 
 ### Driver
+
 - [x] `internal/drivers/route53healthcheck/types.go`
 - [x] `internal/drivers/route53healthcheck/aws.go`
 - [x] `internal/drivers/route53healthcheck/drift.go`
@@ -1270,14 +1274,18 @@ comparison to prevent false drift.
 - [x] `internal/drivers/route53healthcheck/drift_test.go`
 
 ### Adapter
+
 - [x] `internal/core/provider/route53healthcheck_adapter.go`
 - [x] `internal/core/provider/route53healthcheck_adapter_test.go`
 
 ### Registry
+
 - [x] Adapter registered in `NewRegistry()`
 
 ### Integration Tests
+
 - [x] `tests/integration/route53_health_check_driver_test.go`
 
 ### Infrastructure
+
 - [x] `cmd/praxis-dns/main.go` — `.Bind()` call

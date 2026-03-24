@@ -225,7 +225,7 @@ testing:
 
 ### Dependency Test Order
 
-```
+```text
 ECS Cluster (isolated) → ECS Task Definition (isolated) → ECS Service (uses Cluster + TaskDef)
 ```
 
@@ -235,11 +235,12 @@ ECS Cluster (isolated) → ECS Task Definition (isolated) → ECS Service (uses 
 
 Add the ECS SDK package:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/ecs v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/ecs
 go mod tidy
@@ -544,6 +545,7 @@ when `requiresCompatibilities` includes `"FARGATE"`).
 ## 12. Checklist
 
 ### Infrastructure
+
 - [ ] `go get github.com/aws/aws-sdk-go-v2/service/ecs` added
 - [ ] `cmd/praxis-compute/main.go` updated to bind ECS drivers
 - [ ] No new Dockerfile needed (reuses praxis-compute)
@@ -551,29 +553,35 @@ when `requiresCompatibilities` includes `"FARGATE"`).
 - [ ] `justfile` updated with ECS test targets
 
 ### Schemas
+
 - [ ] `schemas/aws/ecs/cluster.cue`
 - [ ] `schemas/aws/ecs/task_definition.cue`
 - [ ] `schemas/aws/ecs/service.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [ ] `internal/drivers/ecscluster/`
 - [ ] `internal/drivers/ecstaskdef/`
 - [ ] `internal/drivers/ecsservice/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/ecscluster_adapter.go`
 - [ ] `internal/core/provider/ecstaskdef_adapter.go`
 - [ ] `internal/core/provider/ecsservice_adapter.go`
 
 ### Registry
+
 - [ ] All 3 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for all 3 drivers
 - [ ] Integration tests for all 3 drivers
 - [ ] Cross-driver integration test (Cluster → TaskDef → Service)
 
 ### Documentation
+
 - [ ] [ECS_CLUSTER_DRIVER_PLAN.md](ECS_CLUSTER_DRIVER_PLAN.md)
 - [ ] [ECS_TASK_DEFINITION_DRIVER_PLAN.md](ECS_TASK_DEFINITION_DRIVER_PLAN.md)
 - [ ] [ECS_SERVICE_DRIVER_PLAN.md](ECS_SERVICE_DRIVER_PLAN.md)

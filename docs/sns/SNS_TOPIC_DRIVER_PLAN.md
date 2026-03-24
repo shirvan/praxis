@@ -87,7 +87,7 @@ resource type with its own lifecycle.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-topic.outputs.topicArn}    → SNS Subscription spec.topicArn
 ${resources.my-topic.outputs.topicArn}    → Lambda Permission spec.sourceArn
 ${resources.my-topic.outputs.topicName}   → Cross-references / display
@@ -863,6 +863,7 @@ func (SNSTopicDriver) ServiceName() string { return ServiceName }
 ### Provision
 
 Provision handles three cases:
+
 1. **New topic**: Create the topic and set attributes.
 2. **Unchanged topic**: Return existing outputs (idempotent).
 3. **Changed attributes**: Update the changed attributes.
@@ -1443,6 +1444,7 @@ ownership.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/sns/topic.cue`
 - [ ] `internal/drivers/snstopic/types.go`
 - [ ] `internal/drivers/snstopic/aws.go`
@@ -1451,6 +1453,7 @@ ownership.
 - [ ] `internal/core/provider/snstopic_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/snstopic/driver_test.go`
 - [ ] `internal/drivers/snstopic/aws_test.go`
 - [ ] `internal/drivers/snstopic/drift_test.go`
@@ -1458,6 +1461,7 @@ ownership.
 - [ ] `tests/integration/sns_topic_driver_test.go`
 
 ### Integration
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
 - [ ] `cmd/praxis-storage/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter

@@ -1,6 +1,6 @@
 # Drivers
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Developers](DEVELOPERS.md)
+> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [Developers](DEVELOPERS.md)
 
 ---
 
@@ -109,7 +109,7 @@ Provision follows a check-then-converge pattern:
 flowchart TD
     A["Load existing state
     from Restate K/V"] --> B["Resolve account credentials
-    via auth.Registry"]
+    via Auth.GetCredentials"]
     B --> C["Check if resource exists in AWS
     (restate.Run)"]
     C --> D{"Exists?"}

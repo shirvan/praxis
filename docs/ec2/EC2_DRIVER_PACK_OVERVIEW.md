@@ -423,6 +423,7 @@ references.
 ## 11. Checklist
 
 ### Schemas
+
 - [x] `schemas/aws/ec2/ec2.cue`
 - [x] `schemas/aws/ec2/ami.cue`
 - [x] `schemas/aws/ebs/ebs.cue`
@@ -431,6 +432,7 @@ references.
 - [ ] `schemas/aws/ec2/launch_template.cue` (NYI)
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [x] `internal/drivers/ec2/`
 - [x] `internal/drivers/ami/`
 - [x] `internal/drivers/ebs/`
@@ -438,6 +440,7 @@ references.
 - [x] `internal/drivers/keypair/`
 
 ### Adapters
+
 - [x] `internal/core/provider/ec2_adapter.go`
 - [x] `internal/core/provider/ami_adapter.go`
 - [x] `internal/core/provider/ebs_adapter.go`
@@ -445,13 +448,16 @@ references.
 - [x] `internal/core/provider/keypair_adapter.go`
 
 ### Registry
+
 - [x] All 5 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [x] Unit tests for all 5 drivers
 - [x] Integration tests for all 5 drivers
 
 ### Documentation
+
 - [x] [EC2_DRIVER_PLAN.md](EC2_DRIVER_PLAN.md)
 - [x] [AMI_DRIVER_PLAN.md](AMI_DRIVER_PLAN.md)
 - [x] [EBS_DRIVER_PLAN.md](EBS_DRIVER_PLAN.md)

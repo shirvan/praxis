@@ -85,7 +85,7 @@ lifecycle.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-repo.outputs.repositoryUri}    → ECS Task Definition container image URIs
 ${resources.my-repo.outputs.repositoryUri}    → Lambda Function spec.code.imageUri
 ${resources.my-repo.outputs.repositoryArn}    → IAM Policy resource statements
@@ -1073,7 +1073,7 @@ test-ecr-integration:
 
 ### driver_test.go — Key Test Cases
 
-```
+```text
 TestProvision_CreateNew              — creates a repository that does not exist
 TestProvision_IdempotentNoDrift      — no-op when repository matches spec exactly
 TestProvision_ConvergeTagMutability  — updates imageTagMutability on drift
@@ -1094,7 +1094,7 @@ TestGetOutputs_FullOutputs           — returns all output fields
 
 ### aws_test.go — Error Classification
 
-```
+```text
 TestClassifyError_AlreadyExists      — RepositoryAlreadyExistsException → terminal 409
 TestClassifyError_NotFound           — RepositoryNotFoundException → terminal 404
 TestClassifyError_InvalidParam       — InvalidParameterException → terminal 400
@@ -1105,7 +1105,7 @@ TestClassifyError_ServerException    — ServerException → retryable
 
 ### drift_test.go — Drift Cases
 
-```
+```text
 TestHasDrift_NoDrift                 — identical spec and observed → false
 TestHasDrift_TagMutabilityDrift      — imageTagMutability mismatch → true
 TestHasDrift_ScanOnPushDrift         — scanOnPush mismatch → true

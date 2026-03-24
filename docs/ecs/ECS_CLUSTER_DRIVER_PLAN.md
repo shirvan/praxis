@@ -79,7 +79,7 @@ The driver follows the established Virtual Object contract:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-cluster.outputs.clusterArn}       → ECS Services, task runs
 ${resources.my-cluster.outputs.clusterName}       → ECS Services, CLI references
 ${resources.my-cluster.outputs.status}            → Health checks, deployment gates

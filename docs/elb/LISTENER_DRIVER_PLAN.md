@@ -70,7 +70,7 @@ Target Groups (separate driver), ACM certificates (future driver).
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-listener.outputs.listenerArn}  → Listener Rule's listenerArn
 ${resources.my-listener.outputs.port}          → Informational references
 ```
@@ -84,7 +84,7 @@ ${resources.my-listener.outputs.port}          → Informational references
 Listeners are regional resources tied to a load balancer. AWS identifies listeners
 by ARN, not by name. Praxis uses a user-provided logical name as the key.
 
-```
+```text
 region~listenerName
 ```
 
@@ -405,6 +405,7 @@ state rather than computing a delta, since `ModifyListener` is idempotent.
 #### Describe Flow
 
 Composite describe:
+
 1. `DescribeListeners` — base listener attributes (port, protocol, actions, SSL)
 2. `DescribeTags` — resource tags
 
@@ -445,6 +446,7 @@ Immutable fields (`loadBalancerArn`) are not compared for drift.
 ### Action Comparison
 
 Default actions are compared structurally:
+
 - Same action count
 - Same action types in order
 - For `forward`: target group ARN equality
@@ -485,6 +487,7 @@ Listeners become usable immediately after creation (no provisioning delay).
 ### HTTPS/TLS Validation
 
 Before creating or modifying an HTTPS/TLS listener, the driver validates:
+
 - `certificateArn` is non-empty
 - `sslPolicy` is non-empty (or defaults to AWS recommended policy)
 
@@ -525,6 +528,7 @@ func (a *ListenerAdapter) Scope() KeyScope          { return KeyScopeRegion }
 ### Plan Method
 
 The Plan method checks:
+
 - `loadBalancerArn` changed → `PlanActionRecreate`
 - Other changes → `PlanActionUpdate`
 

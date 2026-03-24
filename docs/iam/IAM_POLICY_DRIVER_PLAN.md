@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--identity-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -41,6 +41,7 @@ The IAM Policy driver manages the lifecycle of **customer-managed IAM policies**
 only. It creates, imports, updates (via versioning), and deletes IAM policies.
 
 **Out of scope**:
+
 - **AWS-managed policies** (e.g., `arn:aws:iam::aws:policy/ReadOnlyAccess`) — these
   are read-only AWS resources that cannot be created, modified, or deleted.
 - **Inline policies** — managed by the IAM Role/User/Group drivers as properties of
@@ -76,7 +77,7 @@ attachment.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-policy.outputs.arn}          → IAMRole spec.managedPolicyArns
 ${resources.my-policy.outputs.policyId}     → Audit references
 ${resources.my-policy.outputs.policyName}   → CLI references
@@ -827,6 +828,7 @@ non-default version before creating a new one. This is transparent to the user.
 ### 2. Pre-Deletion Full Cleanup
 
 The Delete handler performs comprehensive cleanup before deleting the policy:
+
 1. Detach from all roles, users, and groups (via `ListEntitiesForPolicy`).
 2. Delete all non-default policy versions.
 3. Delete the policy itself.

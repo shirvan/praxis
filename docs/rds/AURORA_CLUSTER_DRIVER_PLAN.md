@@ -3,7 +3,7 @@
 > **Implementation note:** This plan references a `praxis-database` driver pack.
 > The actual implementation places the Aurora Cluster driver in **`praxis-storage`**
 > (`cmd/praxis-storage/main.go`).
-
+>
 > Target: A Restate Virtual Object driver that manages Amazon Aurora DB Clusters,
 > providing full lifecycle management including creation, configuration, import,
 > deletion, drift detection, and drift correction for cluster properties, engine
@@ -83,7 +83,7 @@ The driver follows the established Virtual Object contract:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-cluster.outputs.clusterIdentifier}    → RDS Instance dbClusterIdentifier
 ${resources.my-cluster.outputs.endpoint}              → Application config (writer endpoint)
 ${resources.my-cluster.outputs.readerEndpoint}        → Application config (reader endpoint)
@@ -100,7 +100,7 @@ ${resources.my-cluster.outputs.port}                  → Application config
 Aurora cluster identifiers are unique per region per AWS account. The key is
 `region~clusterIdentifier`, matching the RDS DB Instance pattern.
 
-```
+```text
 region~clusterIdentifier
 ```
 

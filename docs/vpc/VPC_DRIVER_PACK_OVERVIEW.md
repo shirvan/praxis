@@ -216,7 +216,7 @@ The drivers were implemented in this order, respecting the VPC dependency tree:
 
 ### Dependency Test Order
 
-```
+```text
 VPC → Subnet → SG → IGW → NAT GW → Route Table → NACL → VPC Peering
 ```
 
@@ -506,6 +506,7 @@ Internet Gateway and NAT Gateway manage lifecycle attachments:
 ## 11. Checklist
 
 ### Schemas
+
 - [x] `schemas/aws/vpc/vpc.cue`
 - [x] `schemas/aws/subnet/subnet.cue`
 - [x] `schemas/aws/ec2/sg.cue`
@@ -516,6 +517,7 @@ Internet Gateway and NAT Gateway manage lifecycle attachments:
 - [x] `schemas/aws/vpcpeering/vpcpeering.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [x] `internal/drivers/vpc/`
 - [x] `internal/drivers/subnet/`
 - [x] `internal/drivers/sg/`
@@ -526,6 +528,7 @@ Internet Gateway and NAT Gateway manage lifecycle attachments:
 - [x] `internal/drivers/vpcpeering/`
 
 ### Adapters
+
 - [x] `internal/core/provider/vpc_adapter.go`
 - [x] `internal/core/provider/subnet_adapter.go`
 - [x] `internal/core/provider/sg_adapter.go`
@@ -536,13 +539,16 @@ Internet Gateway and NAT Gateway manage lifecycle attachments:
 - [x] `internal/core/provider/vpcpeering_adapter.go`
 
 ### Registry
+
 - [x] All 8 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [x] Unit tests for all 8 drivers
 - [x] Integration tests for all 8 drivers
 
 ### Documentation
+
 - [x] [VPC_DRIVER_PLAN.md](VPC_DRIVER_PLAN.md)
 - [x] [SUBNET_DRIVER_PLAN.md](SUBNET_DRIVER_PLAN.md)
 - [x] [SG_DRIVER_PLAN.md](SG_DRIVER_PLAN.md)

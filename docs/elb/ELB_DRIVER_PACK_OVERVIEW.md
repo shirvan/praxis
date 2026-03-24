@@ -217,7 +217,7 @@ testing:
 
 ### Dependency Test Order
 
-```
+```text
 Target Group (isolated) → ALB → NLB → Listener (uses LB + TG) → Listener Rule (uses Listener + TG)
 ```
 
@@ -227,11 +227,12 @@ Target Group (isolated) → ALB → NLB → Listener (uses LB + TG) → Listener
 
 Add the ELBv2 SDK package:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2
 go mod tidy
@@ -502,11 +503,13 @@ references.
 ## 12. Checklist
 
 ### Infrastructure
+
 - [x] `go get github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2` added
 - [x] ELB drivers added to `cmd/praxis-network/main.go`
 - [x] `justfile` updated with ELB targets
 
 ### Schemas
+
 - [x] `schemas/aws/elb/alb.cue`
 - [x] `schemas/aws/elb/nlb.cue`
 - [x] `schemas/aws/elb/target_group.cue`
@@ -514,6 +517,7 @@ references.
 - [x] `schemas/aws/elb/listener_rule.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [x] `internal/drivers/alb/`
 - [x] `internal/drivers/nlb/`
 - [x] `internal/drivers/targetgroup/`
@@ -521,6 +525,7 @@ references.
 - [x] `internal/drivers/listenerrule/`
 
 ### Adapters
+
 - [x] `internal/core/provider/alb_adapter.go`
 - [x] `internal/core/provider/nlb_adapter.go`
 - [x] `internal/core/provider/targetgroup_adapter.go`
@@ -528,14 +533,17 @@ references.
 - [x] `internal/core/provider/listenerrule_adapter.go`
 
 ### Registry
+
 - [x] All 5 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [x] Unit tests for all 5 drivers
 - [x] Integration tests for all 5 drivers
 - [ ] Cross-driver integration test (TG → ALB → Listener → Listener Rule)
 
 ### Documentation
+
 - [x] [ALB_DRIVER_PLAN.md](ALB_DRIVER_PLAN.md)
 - [x] [NLB_DRIVER_PLAN.md](NLB_DRIVER_PLAN.md)
 - [x] [TARGET_GROUP_DRIVER_PLAN.md](TARGET_GROUP_DRIVER_PLAN.md)

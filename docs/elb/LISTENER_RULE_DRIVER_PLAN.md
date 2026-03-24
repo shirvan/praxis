@@ -72,7 +72,7 @@ to the default action's target group. This driver only applies to ALB listeners.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-rule.outputs.ruleArn}   → Informational references
 ${resources.my-rule.outputs.priority}  → Informational references
 ```
@@ -86,7 +86,7 @@ ${resources.my-rule.outputs.priority}  → Informational references
 Listener rules are regional resources tied to a listener. AWS identifies rules by
 ARN, not by name. Praxis uses a user-provided logical name as the key.
 
-```
+```text
 region~ruleName
 ```
 
@@ -512,6 +512,7 @@ Immutable fields (`listenerArn`) are not compared for drift.
 ### Condition Normalization
 
 Conditions are normalized for comparison:
+
 - Sorted by `field` name
 - Within each condition, `values` are sorted alphabetically
 - `httpHeaderConfig.values` are sorted
@@ -520,6 +521,7 @@ Conditions are normalized for comparison:
 ### Action Normalization
 
 Actions are normalized by:
+
 - Sorting by `order` field (or by position if order is not specified)
 - Normalizing `forwardConfig.targetGroups` by sorting on `targetGroupArn`
 - Default weights (0 or 1) are treated as equivalent
@@ -604,6 +606,7 @@ func (a *ListenerRuleAdapter) Scope() KeyScope          { return KeyScopeRegion 
 ### Plan Method
 
 The Plan method checks:
+
 - `listenerArn` changed → `PlanActionRecreate`
 - Other changes → `PlanActionUpdate`
 
@@ -714,6 +717,7 @@ deferred to a future enhancement.
 ### 4. Weighted Target Groups (Traffic Splitting)
 
 The `forwardConfig` with multiple weighted target groups enables:
+
 - **Blue-green deployments**: 100% to blue, then 100% to green
 - **Canary deployments**: 90% to stable, 10% to canary
 - **A/B testing**: Split traffic by weight

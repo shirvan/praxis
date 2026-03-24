@@ -1,6 +1,6 @@
 # Praxis Architecture
 
-> **See also:** [Drivers](DRIVERS.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [CLI](CLI.md) | [Operators](OPERATORS.md) | [Developers](DEVELOPERS.md)
+> **See also:** [Drivers](DRIVERS.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Operators](OPERATORS.md) | [Developers](DEVELOPERS.md)
 
 ---
 
@@ -302,6 +302,8 @@ stateDiagram-v2
 - [Drivers](DRIVERS.md) — how drivers work, how to build one
 - [Orchestrator](ORCHESTRATOR.md) — deployment workflows, DAG scheduling, state management
 - [Templates](TEMPLATES.md) — CUE template system, registry, policies
+- [Auth](AUTH.md) — credential management, workspaces, account selection
+- [Errors](ERRORS.md) — error handling, classification, status codes, error codes
 - [CLI](CLI.md) — command reference and usage patterns
 - [Operators](OPERATORS.md) — deployment, configuration, monitoring
 - [Developers](DEVELOPERS.md) — building, testing, contributing

@@ -3,7 +3,7 @@
 > **Implementation note:** This plan references a `praxis-database` driver pack.
 > The actual implementation places the DB Subnet Group driver in **`praxis-storage`**
 > (`cmd/praxis-storage/main.go`).
-
+>
 > Target: A Restate Virtual Object driver that manages Amazon RDS DB Subnet
 > Groups, providing full lifecycle management including creation, configuration,
 > import, deletion, drift detection, and drift correction for subnet membership
@@ -71,7 +71,7 @@ The driver follows the established Virtual Object contract:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-subnet-group.outputs.groupName}   → RDS Instance dbSubnetGroupName
 ${resources.my-subnet-group.outputs.groupName}   → Aurora Cluster dbSubnetGroupName
 ${resources.my-subnet-group.outputs.arn}          → IAM policies
@@ -86,7 +86,7 @@ ${resources.my-subnet-group.outputs.arn}          → IAM policies
 DB subnet group names are unique per region per account. The key is
 `region~groupName`.
 
-```
+```text
 region~groupName
 ```
 
@@ -444,7 +444,7 @@ func HasDrift(desired DBSubnetGroupSpec, observed ObservedState) bool {
 }
 ```
 
-**Subnet ID Comparison**
+#### Subnet ID Comparison
 
 Subnet IDs are compared as sets (order-independent):
 

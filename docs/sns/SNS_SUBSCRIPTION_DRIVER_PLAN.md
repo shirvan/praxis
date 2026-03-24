@@ -90,7 +90,7 @@ with its own lifecycle.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-sub.outputs.subscriptionArn}  → Informational references
 ${resources.my-sub.outputs.topicArn}         → Cross-references / display
 ${resources.my-sub.outputs.protocol}         → Cross-references / display
@@ -106,12 +106,13 @@ SNS subscriptions do not have a user-chosen unique name. A subscription is uniqu
 identified by the combination of topic ARN, protocol, and endpoint. The key encodes
 all three components:
 
-```
+```text
 region~topicArn~protocol~endpoint
 ```
 
 Example:
-```
+
+```text
 us-east-1~arn:aws:sns:us-east-1:123456789012:order-notifications~lambda~arn:aws:lambda:us-east-1:123456789012:function:process-order
 ```
 
@@ -458,7 +459,7 @@ func (r *realSubscriptionAPI) Subscribe(ctx context.Context, spec SNSSubscriptio
 > **Subscribe idempotency**: Calling `Subscribe` with the same topic, protocol, and
 > endpoint returns the existing subscription ARN (for confirmed subscriptions). For
 > pending subscriptions, it may resend the confirmation request.
-
+>
 > **ReturnSubscriptionArn**: Setting `ReturnSubscriptionArn=true` ensures the actual
 > subscription ARN is returned even before confirmation. Without this flag, AWS
 > returns `"pending confirmation"` as the ARN for protocols requiring confirmation.
@@ -541,7 +542,7 @@ func (r *realSubscriptionAPI) SetSubscriptionAttribute(ctx context.Context, subs
 > **Per-attribute updates**: Like topics, SNS uses `SetSubscriptionAttributes` with
 > one attribute at a time. The driver calls `SetSubscriptionAttribute` in separate
 > `restate.Run` blocks for each changed attribute.
-
+>
 > **Pending subscriptions**: Most attribute updates fail on subscriptions in
 > `PendingConfirmation` state. The driver checks `PendingConfirmation` before
 > attempting updates and returns a descriptive error.
@@ -560,7 +561,7 @@ func (r *realSubscriptionAPI) Unsubscribe(ctx context.Context, subscriptionArn s
 > **Unsubscribe behavior**: `Unsubscribe` is idempotent — calling it on a
 > non-existent or already-deleted subscription does not return an error. However,
 > calling it with an invalid ARN format returns `InvalidParameterException`.
-
+>
 > **Owner-only deletion**: Only the subscription owner or the topic owner can
 > unsubscribe. Cross-account subscriptions require careful permission management.
 
@@ -839,6 +840,7 @@ func (SNSSubscriptionDriver) ServiceName() string { return ServiceName }
 ### Provision
 
 Provision handles three cases:
+
 1. **New subscription**: Create the subscription and set attributes.
 2. **Unchanged subscription**: Return existing outputs (idempotent).
 3. **Changed attributes**: Update the changed attributes.
@@ -1574,6 +1576,7 @@ is simpler than separate protocol-specific handlers.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/sns/subscription.cue`
 - [ ] `internal/drivers/snssub/types.go`
 - [ ] `internal/drivers/snssub/aws.go`
@@ -1582,6 +1585,7 @@ is simpler than separate protocol-specific handlers.
 - [ ] `internal/core/provider/snssub_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/snssub/driver_test.go`
 - [ ] `internal/drivers/snssub/aws_test.go`
 - [ ] `internal/drivers/snssub/drift_test.go`
@@ -1589,6 +1593,7 @@ is simpler than separate protocol-specific handlers.
 - [ ] `tests/integration/sns_subscription_driver_test.go`
 
 ### Integration
+
 - [ ] `cmd/praxis-storage/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter
 - [ ] `justfile` — Add test targets

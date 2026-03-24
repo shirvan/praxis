@@ -9,7 +9,7 @@
 > in the existing **`praxis-network`** pack (`cmd/praxis-network/`). References to
 > `praxis-dns`, `cmd/praxis-dns/`, and port 9086 below reflect the original plan;
 > the canonical source of truth is `cmd/praxis-network/main.go`.
-
+>
 > This document summarizes the Route 53 driver family for Praxis: three drivers
 > covering Hosted Zones, DNS Records, and Health Checks. It describes their
 > relationships, shared infrastructure, implementation order, and the new
@@ -251,7 +251,7 @@ testing:
 
 ### Dependency Test Order
 
-```
+```text
 Hosted Zone (isolated) → Health Check (isolated) → DNS Record (uses Hosted Zone + Health Check)
 ```
 
@@ -261,11 +261,12 @@ Hosted Zone (isolated) → Health Check (isolated) → DNS Record (uses Hosted Z
 
 Add the Route 53 SDK package:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/route53 v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/route53
 go mod tidy
@@ -536,6 +537,7 @@ references.
 ## 12. Checklist
 
 ### Infrastructure
+
 - [x] `go get github.com/aws/aws-sdk-go-v2/service/route53` added
 - [x] `cmd/praxis-dns/main.go` created
 - [x] `cmd/praxis-dns/Dockerfile` created
@@ -543,29 +545,35 @@ references.
 - [x] `justfile` updated with Route 53 targets
 
 ### Schemas
+
 - [x] `schemas/aws/route53/hosted_zone.cue`
 - [x] `schemas/aws/route53/record.cue`
 - [x] `schemas/aws/route53/health_check.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [x] `internal/drivers/route53zone/`
 - [x] `internal/drivers/route53record/`
 - [x] `internal/drivers/route53healthcheck/`
 
 ### Adapters
+
 - [x] `internal/core/provider/route53zone_adapter.go`
 - [x] `internal/core/provider/route53record_adapter.go`
 - [x] `internal/core/provider/route53healthcheck_adapter.go`
 
 ### Registry
+
 - [x] All 3 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [x] Unit tests for all 3 drivers
 - [x] Integration tests for all 3 drivers
 - [x] Cross-driver integration test (Hosted Zone → Health Check → DNS Record)
 
 ### Documentation
+
 - [x] [HOSTED_ZONE_DRIVER_PLAN.md](HOSTED_ZONE_DRIVER_PLAN.md)
 - [x] [DNS_RECORD_DRIVER_PLAN.md](DNS_RECORD_DRIVER_PLAN.md)
 - [x] [HEALTH_CHECK_DRIVER_PLAN.md](HEALTH_CHECK_DRIVER_PLAN.md)

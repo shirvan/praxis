@@ -221,7 +221,7 @@ testing:
 
 ### Dependency Test Order
 
-```
+```text
 Policy (isolated) → Group (isolated) → Role (uses Policy ARNs) → User (uses Policies + Groups) → Instance Profile (uses Roles)
 ```
 
@@ -231,11 +231,12 @@ Policy (isolated) → Group (isolated) → Role (uses Policy ARNs) → User (use
 
 Add the IAM SDK package:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/iam v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/iam
 go mod tidy
@@ -413,6 +414,7 @@ references.
 ## 12. Checklist
 
 ### Infrastructure
+
 - [ ] `go get github.com/aws/aws-sdk-go-v2/service/iam` added
 - [ ] `cmd/praxis-identity/main.go` created
 - [ ] `cmd/praxis-identity/Dockerfile` created
@@ -420,6 +422,7 @@ references.
 - [ ] `justfile` updated with IAM targets
 
 ### Schemas
+
 - [ ] `schemas/aws/iam/role.cue`
 - [ ] `schemas/aws/iam/policy.cue`
 - [ ] `schemas/aws/iam/user.cue`
@@ -427,6 +430,7 @@ references.
 - [ ] `schemas/aws/iam/instance_profile.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [ ] `internal/drivers/iamrole/`
 - [ ] `internal/drivers/iampolicy/`
 - [ ] `internal/drivers/iamuser/`
@@ -434,6 +438,7 @@ references.
 - [ ] `internal/drivers/iaminstanceprofile/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/iamrole_adapter.go`
 - [ ] `internal/core/provider/iampolicy_adapter.go`
 - [ ] `internal/core/provider/iamuser_adapter.go`
@@ -441,14 +446,17 @@ references.
 - [ ] `internal/core/provider/iaminstanceprofile_adapter.go`
 
 ### Registry
+
 - [ ] All 5 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for all 5 drivers
 - [ ] Integration tests for all 5 drivers
 - [ ] Cross-driver integration test (Policy → Role → Instance Profile → EC2)
 
 ### Documentation
+
 - [ ] [IAM_ROLE_DRIVER_PLAN.md](IAM_ROLE_DRIVER_PLAN.md)
 - [ ] [IAM_POLICY_DRIVER_PLAN.md](IAM_POLICY_DRIVER_PLAN.md)
 - [ ] [IAM_USER_DRIVER_PLAN.md](IAM_USER_DRIVER_PLAN.md)

@@ -119,7 +119,7 @@ after calling an API, the driver polls until the ESM reaches a stable state
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-esm.outputs.uuid}              → Informational / management
 ${resources.my-esm.outputs.eventSourceArn}     → Cross-references
 ${resources.my-esm.outputs.functionArn}        → Cross-references
@@ -143,12 +143,13 @@ source types. The composite key captures this natural uniqueness.
 safe in Restate Virtual Object keys. The driver base64url-encodes the event source
 ARN component to produce a safe key:
 
-```
+```text
 region~functionName~base64url(eventSourceArn)
 ```
 
 Example:
-```
+
+```text
 us-east-1~my-handler~YXJuOmF3czpzcXM6dXMtZWFzdC0xOjEyMzQ1Njc4OTAxMjpteS1xdWV1ZQ
 ```
 
@@ -1336,6 +1337,7 @@ the driver simple and forward-compatible with new source types.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/lambda/event_source_mapping.cue`
 - [ ] `internal/drivers/esm/types.go`
 - [ ] `internal/drivers/esm/aws.go`
@@ -1344,6 +1346,7 @@ the driver simple and forward-compatible with new source types.
 - [ ] `internal/core/provider/esm_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/esm/driver_test.go`
 - [ ] `internal/drivers/esm/aws_test.go`
 - [ ] `internal/drivers/esm/drift_test.go`
@@ -1351,6 +1354,7 @@ the driver simple and forward-compatible with new source types.
 - [ ] `tests/integration/esm_driver_test.go`
 
 ### Integration
+
 - [ ] `cmd/praxis-compute/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter
 - [ ] `justfile` — Add test targets

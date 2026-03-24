@@ -75,7 +75,7 @@ resource type with its own lifecycle and Virtual Object key space.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-alb.outputs.loadBalancerArn}   → Listener's loadBalancerArn
 ${resources.my-alb.outputs.dnsName}            → Route 53 alias target, application config
 ${resources.my-alb.outputs.hostedZoneId}       → Route 53 alias hosted zone ID
@@ -90,7 +90,7 @@ ${resources.my-alb.outputs.vpcId}              → Informational cross-reference
 
 ALBs are regional resources. Load balancer names are unique within a region and account.
 
-```
+```text
 region~albName
 ```
 
@@ -442,6 +442,7 @@ All calls are made within a single `restate.Run` block in the driver.
 #### `DeleteALB`
 
 Before deleting, the driver must:
+
 1. Disable deletion protection if enabled (`ModifyLoadBalancerAttributes`)
 2. Call `DeleteLoadBalancer`
 
@@ -622,6 +623,7 @@ func (a *ALBAdapter) Plan(ctx restate.Context, key string, account string, desir
 ### Plan Method
 
 The Plan method:
+
 1. Extracts the ALB name from the resource doc
 2. Calls `FindALB(name)` to check if the ALB exists
 3. If it doesn't exist → `PlanActionCreate`

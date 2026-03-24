@@ -97,7 +97,7 @@ interaction is a single converge call.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-alarm.outputs.alarmArn}     → Dashboard alarm widgets, SNS subscriptions, CloudFormation
 ${resources.my-alarm.outputs.alarmName}    → CLI references, other alarm compositions
 ${resources.my-alarm.outputs.stateValue}   → Observability dashboards
@@ -1217,6 +1217,7 @@ purposes and is out of scope.
 ## Checklist
 
 ### Files
+
 - [ ] `schemas/aws/cloudwatch/metric_alarm.cue`
 - [ ] `internal/drivers/metricalarm/types.go`
 - [ ] `internal/drivers/metricalarm/aws.go`
@@ -1230,6 +1231,7 @@ purposes and is out of scope.
 - [ ] `tests/integration/metricalarm_driver_test.go`
 
 ### Modifications
+
 - [ ] `internal/infra/awsclient/client.go` — `NewCloudWatchClient()`
 - [ ] `cmd/praxis-monitoring/main.go` — Bind MetricAlarmDriver
 - [ ] `internal/core/provider/registry.go` — Register adapter

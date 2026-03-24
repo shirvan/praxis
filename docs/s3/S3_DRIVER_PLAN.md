@@ -21,7 +21,7 @@
 8. [Step 5 — Driver Implementation](#step-5--driver-implementation)
 9. [Step 6 — Provider Adapter](#step-6--provider-adapter)
 10. [Step 7 — Registry Integration](#step-7--registry-integration)
-11. [Step 8 — Binary Entry Point & Dockerfile](#step-8--binary-entry-point--dockerfile)
+11. [Step 8 — Storage Driver Pack Entry Point & Dockerfile](#step-8--storage-driver-pack-entry-point--dockerfile)
 12. [Step 9 — Docker Compose & Justfile](#step-9--docker-compose--justfile)
 13. [Step 10 — Unit Tests](#step-10--unit-tests)
 14. [Step 11 — Integration Tests](#step-11--integration-tests)
@@ -69,7 +69,7 @@ The driver follows the established Virtual Object contract:
 S3 bucket names are globally unique across all AWS accounts worldwide. This makes
 them the simplest key strategy:
 
-```
+```text
 bucketName
 ```
 
@@ -99,7 +99,7 @@ non-empty and contains no delimiters.
 
 All files below exist in the repository (✓ = implemented):
 
-```
+```text
 ✓ schemas/aws/s3/s3.cue                    — CUE schema for S3Bucket resource
 ✓ internal/drivers/s3/types.go              — Spec, Outputs, ObservedState, State structs
 ✓ internal/drivers/s3/aws.go               — S3API interface + realS3API implementation
@@ -333,6 +333,7 @@ applying the same configuration twice produces the same result.
    → empty map).
 
 AWS quirks handled:
+
 - `GetBucketLocation` returns empty string for us-east-1 → normalized to `"us-east-1"`.
 - `GetBucketEncryption` returns error (not empty) for buckets with no explicit
   encryption configuration.
@@ -406,6 +407,7 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 ```
 
 Produces field-level diffs for the plan renderer. Returns entries for:
+
 - `spec.versioning`: Shows `"Suspended"` → `"Enabled"` (or reverse).
 - `spec.encryption.algorithm`: Shows algorithm changes.
 - `tags.<key>`: Shows added, changed, or removed tags individually.
@@ -501,6 +503,7 @@ code path:
 4. Schedules reconciliation.
 
 **`specFromObserved(name string, obs ObservedState) S3BucketSpec`**:
+
 - `VersioningStatus == "Enabled"` → `Versioning: true`, else `false`.
 - Empty `EncryptionAlgo` defaults to `"AES256"` (AWS default since Jan 2023).
 - Tags are passed through directly.
@@ -549,6 +552,7 @@ Same pattern as all drivers. Uses `ReconcileScheduled` flag for dedup. Sends
 delayed self-invocation with `drivers.ReconcileInterval` (5 minutes). Detailed
 comment in the source explains why delayed one-way messages are used instead of
 `Sleep`:
+
 1. Handler completes immediately (releases exclusive lock).
 2. Other requests can be processed during the delay.
 3. No long-running invocation ties up a service deployment version.
@@ -599,6 +603,7 @@ as `BuildKey`, which is unique among drivers.
 
 **`DecodeSpec(resourceDoc json.RawMessage) (any, error)`**:
 Decodes and returns `s3.S3BucketSpec`. The `decodeSpec` helper:
+
 - Extracts `metadata.name` as `BucketName`.
 - Validates that both `metadata.name` and `spec.region` are non-empty.
 - Clears the `Account` field (injected at dispatch time).
@@ -812,6 +817,7 @@ registered. Each test gets a unique bucket name via `uniqueBucket(t)`.
 ### 1. Global Key Scope — The Simplest Strategy
 
 S3 bucket names are globally unique across all AWS accounts. This means:
+
 - No region prefix needed (unlike EC2's `region~name`).
 - No VPC prefix needed (unlike SG's `vpcId~groupName`).
 - `BuildKey` returns the bucket name directly from `metadata.name`.
@@ -826,6 +832,7 @@ Rather than separate update methods for each attribute (like the SG driver's sep
 `AuthorizeIngress`, `RevokeIngress`, `UpdateTags`), the S3 driver uses a single
 `ConfigureBucket` method that applies all configuration atomically. This works
 because:
+
 - `PutBucketVersioning` is idempotent.
 - `PutBucketEncryption` is idempotent.
 - `PutBucketTagging` replaces all tags (not additive).
@@ -837,6 +844,7 @@ No add-before-remove safety ordering is needed.
 Deleting a non-empty bucket fails with `TerminalError(409)` and a clear message:
 "bucket is not empty — empty it before deleting." Praxis **never** auto-empties
 buckets. This is an intentional safety decision:
+
 - Data loss from accidental deletion is catastrophic.
 - Users must explicitly empty the bucket (via AWS console, CLI, or another tool).
 - This matches the principle of least surprise for infrastructure tools.
@@ -852,6 +860,7 @@ This is documented for future improvement.
 ### 5. Versioning — Three-State Normalization
 
 AWS versioning has three states:
+
 1. `"Enabled"` — versioning is on.
 2. `"Suspended"` — versioning was explicitly disabled.
 3. `""` (empty string) — versioning was never configured.

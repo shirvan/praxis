@@ -62,7 +62,7 @@ graph TD
 
 ### DNS Validation Flow
 
-```
+```text
 ACMCertificate.Provision
   → RequestCertificate
   → DescribeCertificate (poll until DomainValidationOptions populated)
@@ -405,27 +405,34 @@ the resource.
 ## 11. Checklist
 
 ### Schemas
+
 - [ ] `schemas/aws/acm/certificate.cue`
 
 ### Drivers (types + aws + drift + driver)
+
 - [ ] `internal/drivers/acmcert/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/acmcert_adapter.go`
 
 ### Registry
+
 - [ ] `acmcert` adapter registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for `acmcert` driver
 - [ ] Integration tests for `acmcert` driver
 
 ### Infrastructure
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewACMClient()`
 - [ ] `cmd/praxis-network/main.go` — Bind ACM certificate driver
 - [ ] `docker-compose.yaml` — Add `acm` to LocalStack SERVICES
 - [ ] `justfile` — Add ACM test targets
 
 ### Documentation
+
 - [x] [ACM_CERTIFICATE_DRIVER_PLAN.md](ACM_CERTIFICATE_DRIVER_PLAN.md)
 - [x] This overview document

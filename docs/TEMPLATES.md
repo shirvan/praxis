@@ -1,6 +1,6 @@
 # Templates
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [CLI](CLI.md)
+> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md)
 
 ---
 
@@ -622,13 +622,13 @@ Two Restate Virtual Objects in `internal/core/registry/`:
 
 ### Registration
 
-```text
-POST to TemplateRegistry/{name}/Register
-  → Validates CUE source
-  → Computes SHA-256 digest
-  → Shifts current source to rollback buffer (depth 1)
-  → Stores record
-  → Sends index upsert via one-way message
+```mermaid
+flowchart TD
+    A["POST to TemplateRegistry/{name}/Register"] --> B["Validates CUE source"]
+    B --> C["Computes SHA-256 digest"]
+    C --> D["Shifts current source to rollback buffer (depth 1)"]
+    D --> E["Stores record"]
+    E --> F["Sends index upsert via one-way message"]
 ```
 
 ### Reference in Apply/Plan

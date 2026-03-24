@@ -91,7 +91,7 @@ another driver.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-cert.outputs.certificateArn}                               → Listener spec.certificateArn
 ${resources.my-cert.outputs.dnsValidationRecords[0].resourceRecordName}   → DNSRecord spec.name
 ${resources.my-cert.outputs.dnsValidationRecords[0].resourceRecordValue}  → DNSRecord spec.records[0]
@@ -123,6 +123,7 @@ logical identifier within a template. The key is `region~name`
 ### Tag-Based Ownership
 
 The driver tags each certificate with `praxis:managed-key=<region~name>` to:
+
 1. Detect conflicts when provisioning a certificate with the same logical name
    across two Praxis installations targeting the same AWS account.
 2. Enable `FindByManagedKey` lookups during import when only the logical key is
@@ -798,7 +799,7 @@ func classifyError(err error) error {
 > `keyAlgorithm`, `certificateAuthorityArn` — all immutable after creation. If these
 > differ between desired and observed, the driver logs a warning but does not attempt
 > to correct them (no AWS API exists to do so).
-
+>
 > **Certificate status**: `EXPIRED`, `REVOKED`, or `FAILED` status observed during
 > `Reconcile` is reported as an error in `GetStatus` but is not treated as a
 > correctable drift condition (renewal is AWS-managed; revocation is irreversible).
@@ -1595,9 +1596,11 @@ with a new Praxis name) when immutable field changes are needed.
 ## Checklist
 
 ### Schema
+
 - [ ] `schemas/aws/acm/certificate.cue` — `#ACMCertificate` definition
 
 ### Driver Files
+
 - [ ] `internal/drivers/acmcert/types.go` — Spec, Outputs, ObservedState, State
 - [ ] `internal/drivers/acmcert/aws.go` — `CertificateAPI` interface + `realCertificateAPI`
 - [ ] `internal/drivers/acmcert/drift.go` — `HasDrift`, `ComputeFieldDiffs`, `FieldDiffEntry`
@@ -1607,22 +1610,27 @@ with a new Praxis name) when immutable field changes are needed.
 - [ ] `internal/drivers/acmcert/drift_test.go` — Drift detection tests
 
 ### Provider Adapter
+
 - [ ] `internal/core/provider/acmcert_adapter.go` — `ACMCertificateAdapter`
 - [ ] `internal/core/provider/acmcert_adapter_test.go` — Adapter unit tests
 
 ### Registry
+
 - [ ] `NewACMCertificateAdapterWithRegistry` registered in `NewRegistry()`
 
 ### Infrastructure
+
 - [ ] `internal/infra/awsclient/client.go` — `NewACMClient()` factory added
 - [ ] `cmd/praxis-network/main.go` — `ACMCertificateDriver` bound
 - [ ] `docker-compose.yaml` — `acm` added to LocalStack `SERVICES`
 - [ ] `justfile` — `test-acmcert` and `test-acmcert-integration` targets added
 
 ### Tests
+
 - [ ] All unit test scenarios passing
 - [ ] All integration test scenarios passing against LocalStack
 
 ### Documentation
+
 - [x] This implementation plan
 - [x] `ACM_DRIVER_PACK_OVERVIEW.md`

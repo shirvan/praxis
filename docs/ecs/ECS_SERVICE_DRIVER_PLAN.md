@@ -103,7 +103,7 @@ orchestrator handles delete + create sequencing:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-service.outputs.serviceArn}          → Monitoring, Auto Scaling, CI/CD
 ${resources.my-service.outputs.serviceName}          → CLI references, logging
 ${resources.my-service.outputs.clusterArn}           → Cross-references
@@ -840,6 +840,7 @@ func (r *realECSServiceAPI) DescribeService(ctx context.Context, cluster, servic
 ```
 
 **Important**: `DescribeServices` behaves differently from most AWS Describe calls:
+
 1. Non-existent services return in the `failures` array, not as an error.
 2. Deleted services may still appear with `DRAINING` or `INACTIVE` status.
 3. The `include` parameter must specify `TAGS` to get tag data.
@@ -1897,7 +1898,7 @@ reflect a production-like state in LocalStack.
 
 A comprehensive test that exercises the full ECS stack:
 
-```
+```text
 Cluster (create) → Task Definition (register) → Service (create with LB) →
   → Service (update task def) → Service (scale) → Service (delete) →
   → Task Definition (delete) → Cluster (delete)
@@ -1962,6 +1963,7 @@ does not force a new deployment unless the user explicitly sets the flag again.
 ### Task Definition References
 
 The `taskDefinition` field accepts three formats:
+
 - **Family name**: `myapp-web` → ECS uses the latest ACTIVE revision.
 - **Family:revision**: `myapp-web:3` → ECS uses the specific revision.
 - **Full ARN**: `arn:aws:ecs:us-east-1:123456789012:task-definition/myapp-web:3`
@@ -2003,6 +2005,7 @@ monitoring.
 
 A future enhancement could add a `WaitForSteadyState` option that polls
 `DescribeServices` until:
+
 - `deployments[0].rolloutState == "COMPLETED"` (success)
 - `deployments[0].rolloutState == "FAILED"` (circuit breaker triggered)
 - Timeout is reached

@@ -5,7 +5,7 @@
 > the existing **`praxis-storage`** pack (`cmd/praxis-storage/`). References to
 > `praxis-database`, `cmd/praxis-database/`, and port 9086 below reflect the original
 > plan; the canonical source of truth is `cmd/praxis-storage/main.go`.
-
+>
 > This document summarizes the RDS driver family for Praxis: four drivers covering
 > RDS DB Instances, Aurora Clusters, DB Parameter Groups, and DB Subnet Groups. It
 > describes their relationships, shared infrastructure, implementation order, and the
@@ -239,7 +239,7 @@ testing:
 
 ### Dependency Test Order
 
-```
+```text
 DB Subnet Group → DB Parameter Group → RDS DB Instance → Aurora Cluster
 ```
 
@@ -249,11 +249,12 @@ DB Subnet Group → DB Parameter Group → RDS DB Instance → Aurora Cluster
 
 Add the RDS SDK package:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/rds v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/rds
 go mod tidy
@@ -538,6 +539,7 @@ restarts, the journaled result is replayed without re-waiting.
 ## 12. Checklist
 
 ### Infrastructure
+
 - [x] `go get github.com/aws/aws-sdk-go-v2/service/rds` added
 - [x] `cmd/praxis-database/main.go` created
 - [x] `cmd/praxis-database/Dockerfile` created
@@ -545,32 +547,38 @@ restarts, the journaled result is replayed without re-waiting.
 - [x] `justfile` updated with database targets
 
 ### Schemas
+
 - [x] `schemas/aws/rds/instance.cue`
 - [x] `schemas/aws/rds/aurora_cluster.cue`
 - [x] `schemas/aws/rds/parameter_group.cue`
 - [x] `schemas/aws/rds/subnet_group.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [x] `internal/drivers/rdsinstance/`
 - [x] `internal/drivers/auroracluster/`
 - [x] `internal/drivers/dbparametergroup/`
 - [x] `internal/drivers/dbsubnetgroup/`
 
 ### Adapters
+
 - [x] `internal/core/provider/rdsinstance_adapter.go`
 - [x] `internal/core/provider/auroracluster_adapter.go`
 - [x] `internal/core/provider/dbparametergroup_adapter.go`
 - [x] `internal/core/provider/dbsubnetgroup_adapter.go`
 
 ### Registry
+
 - [x] All 4 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [x] Unit tests for all 4 drivers
 - [x] Integration tests for all 4 drivers
 - [ ] Cross-driver integration test (SubnetGroup → ParameterGroup → Instance → Aurora)
 
 ### Documentation
+
 - [x] [RDS_INSTANCE_DRIVER_PLAN.md](RDS_INSTANCE_DRIVER_PLAN.md)
 - [x] [AURORA_CLUSTER_DRIVER_PLAN.md](AURORA_CLUSTER_DRIVER_PLAN.md)
 - [x] [DB_PARAMETER_GROUP_DRIVER_PLAN.md](DB_PARAMETER_GROUP_DRIVER_PLAN.md)

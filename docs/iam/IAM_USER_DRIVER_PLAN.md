@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--identity-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -42,6 +42,7 @@ updates, and deletes IAM users along with their inline policies, managed policy
 attachments, group memberships, and tags.
 
 **Out of scope**:
+
 - **Login profiles** (Console passwords) — sensitive credential management that
   should be handled separately or via AWS SSO.
 - **Access keys** — programmatic credential management. Access key rotation is a
@@ -79,7 +80,7 @@ user's credentials or authentication artifacts.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-user.outputs.arn}            → Policy conditions, cross-account trust
 ${resources.my-user.outputs.userId}         → Audit references, resource policies
 ${resources.my-user.outputs.userName}       → CLI references, group membership
@@ -394,6 +395,7 @@ func (r *realIAMUserAPI) DescribeUser(ctx context.Context, userName string) (Obs
 #### `DeleteUser` — Pre-Cleanup Required
 
 Before deleting a user, AWS requires removal of:
+
 - Login profiles
 - Access keys
 - MFA devices
@@ -579,6 +581,7 @@ Standard pattern with group membership, policy, and tag convergence:
 4. Re-schedule.
 
 **Group membership convergence during reconciliation**:
+
 - Groups in desired but not observed → `AddToGroup`.
 - Groups in observed but not desired → `RemoveFromGroup`.
 
@@ -708,6 +711,7 @@ No Docker Compose changes. Add justfile targets:
 
 The driver explicitly excludes login profiles, access keys, MFA devices, and SSH
 keys from scope. These are credential artifacts that:
+
 - Should not be stored in Restate state (security risk).
 - Should not be managed via declarative templates (rotation lifecycle is different).
 - Belong to operational tooling (AWS SSO, credential rotation scripts, security
@@ -738,6 +742,7 @@ operator. Import defaults to ModeObserved.
 ### 5. Comprehensive Delete Cleanup
 
 The Delete handler performs exhaustive cleanup:
+
 1. Group membership removal
 2. Managed policy detachment
 3. Inline policy deletion
@@ -752,6 +757,7 @@ successful journal entry).
 ### 6. Add-Before-Remove for Groups and Policies
 
 When converging group memberships and policy attachments:
+
 1. Add new memberships/attachments first.
 2. Remove stale memberships/attachments second.
 

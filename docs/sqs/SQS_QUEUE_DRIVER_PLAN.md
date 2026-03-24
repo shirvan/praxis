@@ -99,7 +99,7 @@ purging. Each operates as a distinct concern with its own lifecycle.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-queue.outputs.queueUrl}    → SQS Queue Policy spec (queueUrl)
 ${resources.my-queue.outputs.queueArn}    → Lambda Event Source Mapping spec.eventSourceArn
 ${resources.my-queue.outputs.queueArn}    → SNS Subscription spec.endpoint (sqs protocol)
@@ -986,6 +986,7 @@ func (SQSQueueDriver) ServiceName() string { return ServiceName }
 ### Provision
 
 Provision handles three cases:
+
 1. **New queue**: Create the queue with all attributes and tags.
 2. **Unchanged queue**: Return existing outputs (idempotent).
 3. **Changed attributes**: Update the changed attributes.
@@ -1654,6 +1655,7 @@ to take ownership.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/sqs/queue.cue`
 - [ ] `internal/drivers/sqs/types.go`
 - [ ] `internal/drivers/sqs/aws.go`
@@ -1662,6 +1664,7 @@ to take ownership.
 - [ ] `internal/core/provider/sqs_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/sqs/driver_test.go`
 - [ ] `internal/drivers/sqs/aws_test.go`
 - [ ] `internal/drivers/sqs/drift_test.go`
@@ -1669,6 +1672,7 @@ to take ownership.
 - [ ] `tests/integration/sqs_queue_driver_test.go`
 
 ### Integration
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
 - [ ] `cmd/praxis-storage/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter

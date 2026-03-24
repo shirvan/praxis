@@ -325,15 +325,7 @@ Every driver Virtual Object implements 6 handlers. See [DRIVERS.md](DRIVERS.md) 
 
 ### Key Design Rules
 
-**Error classification** — Use `restate.TerminalError()` for permanent failures (validation, conflict, not-found). Return regular errors for transient issues (throttling, timeouts) so Restate retries automatically.
-
-```go
-// Terminal — stops retry loop
-return restate.TerminalError(fmt.Errorf("bucket is not empty"), 409)
-
-// Retryable — Restate retries
-return fmt.Errorf("AWS API timeout: %w", err)
-```
+**Error classification** — See [Errors](ERRORS.md) for the full error model: terminal vs retryable errors, HTTP status code conventions, the shared `awserr` classifier package, structured failure summaries, and error codes.
 
 **Side effects** — Every AWS API call must be wrapped in `restate.Run()` to journal the result:
 
@@ -398,7 +390,7 @@ The EC2 driver was built from [EC2_DRIVER_PLAN.md](ec2/EC2_DRIVER_PLAN.md), whic
 ## Code Style
 
 - **Logging**: Use `slog` structured logging throughout
-- **Error handling**: Wrap errors with context using `fmt.Errorf("...: %w", err)`
+- **Error handling**: Wrap errors with context using `fmt.Errorf("...: %w", err)`. See [Errors](ERRORS.md) for classification and status code conventions
 - **Formatting**: `gofmt -s` (check with `just fmt-check`)
 - **Linting**: `golangci-lint` (run with `just lint`)
 

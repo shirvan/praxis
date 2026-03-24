@@ -444,37 +444,44 @@ references.
 ## 11. Checklist
 
 ### Schemas
+
 - [ ] `schemas/aws/lambda/function.cue`
 - [ ] `schemas/aws/lambda/layer.cue`
 - [ ] `schemas/aws/lambda/permission.cue`
 - [ ] `schemas/aws/lambda/event_source_mapping.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [ ] `internal/drivers/lambda/`
 - [ ] `internal/drivers/lambdalayer/`
 - [ ] `internal/drivers/lambdaperm/`
 - [ ] `internal/drivers/esm/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/lambda_adapter.go`
 - [ ] `internal/core/provider/lambdalayer_adapter.go`
 - [ ] `internal/core/provider/lambdaperm_adapter.go`
 - [ ] `internal/core/provider/esm_adapter.go`
 
 ### Registry
+
 - [ ] All 4 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for all 4 drivers
 - [ ] Integration tests for all 4 drivers
 
 ### Infrastructure
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewLambdaClient()`
 - [ ] `cmd/praxis-compute/main.go` — Bind all 4 Lambda drivers
 - [ ] `docker-compose.yaml` — No changes needed (praxis-compute already exposed)
 - [ ] `justfile` — Add Lambda test targets
 
 ### Documentation
+
 - [ ] [LAMBDA_FUNCTION_DRIVER_PLAN.md](LAMBDA_FUNCTION_DRIVER_PLAN.md)
 - [ ] [LAMBDA_LAYER_DRIVER_PLAN.md](LAMBDA_LAYER_DRIVER_PLAN.md)
 - [ ] [LAMBDA_PERMISSION_DRIVER_PLAN.md](LAMBDA_PERMISSION_DRIVER_PLAN.md)

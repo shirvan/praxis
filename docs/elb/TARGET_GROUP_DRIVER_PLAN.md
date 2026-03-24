@@ -79,7 +79,7 @@ Listener Rules (separate driver). Each is a distinct resource type.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-tg.outputs.targetGroupArn}  → Listener defaultActions, Listener Rule actions
 ${resources.my-tg.outputs.targetGroupName} → Informational references
 ```
@@ -93,7 +93,7 @@ ${resources.my-tg.outputs.targetGroupName} → Informational references
 Target groups are regional resources. Target group names are unique within a region
 and account.
 
-```
+```text
 region~tgName
 ```
 
@@ -467,6 +467,7 @@ Immutable fields (`name`, `protocol`, `port`, `vpcId`, `targetType`,
 ### Target Normalization
 
 Targets are normalized to a canonical form for comparison:
+
 - Sorted by `(id, port)`
 - Default port (0 or omitted) is treated as the target group's default port
 - `availabilityZone` is normalized (empty string ≡ omitted)
@@ -547,6 +548,7 @@ func (a *TargetGroupAdapter) Scope() KeyScope          { return KeyScopeRegion }
 ### Plan Method
 
 The Plan method checks for immutable field changes that require recreate:
+
 - `protocol` changed → `PlanActionRecreate`
 - `port` changed → `PlanActionRecreate`
 - `vpcId` changed → `PlanActionRecreate`

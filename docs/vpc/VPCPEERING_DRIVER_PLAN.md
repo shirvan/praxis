@@ -435,24 +435,16 @@ func ComputeFieldDiffs(desired VPCPeeringSpec, observed ObservedState) []FieldDi
 
 ### State Machine
 
-```text
-    ┌──────────────────┐
-    │  initiating-      │
-    │  request          │
-    └────────┬─────────┘
-             │ (create)
-    ┌────────▼─────────┐
-    │  pending-         │    ──── (expire after 7 days)──→ expired
-    │  acceptance       │    ──── (reject) ──→ rejected
-    └────────┬─────────┘
-             │ (accept)
-    ┌────────▼─────────┐
-    │  provisioning     │
-    └────────┬─────────┘
-             │
-    ┌────────▼─────────┐
-    │  active           │    ──── (delete) ──→ deleting → deleted
-    └───────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> initiating_request
+    initiating_request --> pending_acceptance: create
+    pending_acceptance --> expired: expire after 7 days
+    pending_acceptance --> rejected: reject
+    pending_acceptance --> provisioning: accept
+    provisioning --> active
+    active --> deleting: delete
+    deleting --> deleted
 ```
 
 The driver is responsible for moving from "pending-acceptance" → "active" via
@@ -619,10 +611,12 @@ re-provision to reset the state.
 
 In compound templates:
 
-```text
-VPC-A ──┐
-         ├── VPC Peering Connection ──→ Route Table (A → B CIDR → pcx-xxx)
-VPC-B ──┘                             Route Table (B → A CIDR → pcx-xxx)
+```mermaid
+flowchart LR
+    VPCA["VPC-A"] --> Peering["VPC Peering Connection"]
+    VPCB["VPC-B"] --> Peering
+    Peering --> RTA["Route Table (A → B CIDR → pcx-xxx)"]
+    Peering --> RTB["Route Table (B → A CIDR → pcx-xxx)"]
 ```
 
 Both VPCs must exist before the peering connection. Route tables in both VPCs

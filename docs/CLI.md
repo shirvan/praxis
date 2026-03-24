@@ -17,6 +17,11 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `list`               | Both     | List active deployments                          |
 | `delete`             | Both     | Tear down a deployment                           |
 | `import`             | Operators| Adopt an existing cloud resource                 |
+| `workspace create`   | Operators| Create or update a workspace                     |
+| `workspace list`     | Both     | List workspaces                                  |
+| `workspace select`   | Both     | Set the active workspace                         |
+| `workspace show`     | Both     | Show workspace details                           |
+| `workspace delete`   | Operators| Remove a workspace                               |
 | `observe`            | Both     | Watch deployment progress in real time           |
 | `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
@@ -361,11 +366,18 @@ praxis list <resource-type>
 
 Accepted values: `deployments`, `deployment`, `deploy`.
 
+**Flags:**
+
+| Flag           | Default | Description                   |
+|----------------|---------|-------------------------------|
+| `-w, --workspace` | —    | Filter by workspace name      |
+
 **Examples:**
 
 ```bash
 praxis list deployments
 praxis list deployments -o json
+praxis list deployments -w staging
 ```
 
 **Output:**
@@ -555,6 +567,69 @@ praxis version
 
 ```text
 praxis v0.1.0 (built 2025-01-15T10:00:00Z)
+```
+
+---
+
+## workspace
+
+Manage workspaces — named environment contexts that bind deployments with shared defaults.
+
+See [Auth & Workspaces](AUTH.md) for the full design.
+
+### workspace create
+
+Create or update a workspace.
+
+```bash
+praxis workspace create <name> --account <alias> --region <region> [flags]
+```
+
+**Flags:**
+
+| Flag        | Required | Description                                        |
+|-------------|----------|----------------------------------------------------|
+| `--account` | Yes      | AWS account alias (must be registered in Auth)     |
+| `--region`  | Yes      | Default AWS region                                 |
+| `--var`     | No       | Default variable `key=value` (repeatable)          |
+| `--select`  | No       | Set as active workspace after creation             |
+
+```bash
+praxis workspace create prod --account prod-us --region us-east-1
+praxis workspace create staging --account staging --region us-west-2 --var env=staging --select
+```
+
+### workspace list
+
+List all workspaces with account, region, and active marker.
+
+```bash
+praxis workspace list
+praxis workspace list -o json
+```
+
+### workspace select
+
+Set the active workspace. Persisted in `~/.praxis/config.json`.
+
+```bash
+praxis workspace select <name>
+```
+
+### workspace show
+
+Show workspace details. Uses the active workspace if no name is given.
+
+```bash
+praxis workspace show [name]
+```
+
+### workspace delete
+
+Delete a workspace and deregister it from the index.
+
+```bash
+praxis workspace delete <name>
 ```
 
 ---

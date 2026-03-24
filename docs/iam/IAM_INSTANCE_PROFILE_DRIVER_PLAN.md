@@ -24,7 +24,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--identity-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -40,7 +40,7 @@ An IAM Instance Profile is a container for an IAM role that can be attached to a
 EC2 instance. It is the mechanism by which EC2 instances assume IAM roles. The
 relationship is:
 
-```
+```text
 EC2 Instance ─uses→ Instance Profile ─contains→ IAM Role
 ```
 
@@ -49,12 +49,14 @@ profile itself is the entity referenced in EC2 launch configurations /
 `IamInstanceProfile` parameters.
 
 **In scope**:
+
 - Create / delete instance profiles
 - Associate / disassociate a single IAM role
 - Tags management
 - Drift detection on role association and tags
 
 **Out of scope**:
+
 - Managing the IAM role itself — that's the IAM Role driver's concern
 - EC2 instance association — that's the EC2 driver's concern
 
@@ -80,7 +82,7 @@ profile itself is the entity referenced in EC2 launch configurations /
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-profile.outputs.arn}                 → EC2 IamInstanceProfile.Arn
 ${resources.my-profile.outputs.instanceProfileName} → EC2 IamInstanceProfile.Name
 ${resources.my-profile.outputs.instanceProfileId}   → Audit references
@@ -449,6 +451,7 @@ func HasDrift(desired IAMInstanceProfileSpec, observed ObservedState) bool {
 > **Note**: Path is immutable and not checked during drift detection.
 
 **`ComputeFieldDiffs`**: Reports diffs for:
+
 - `roleName`: value comparison
 - `tags`: uses standard `computeTagDiffs` pattern
 
@@ -573,6 +576,7 @@ Add `NewIAMInstanceProfileAdapterWithRegistry(accounts)` to `NewRegistry()`.
 **File**: `cmd/praxis-identity/main.go` (modified)
 
 Add:
+
 ```go
 .Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(cfg.Auth())))
 ```

@@ -92,7 +92,7 @@ individual widgets. AWS validates the body on `PutDashboard` and returns structu
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-dashboard.outputs.dashboardArn}     → IAM policies, sharing configuration
 ${resources.my-dashboard.outputs.dashboardName}     → CLI references, console URLs
 ```
@@ -527,6 +527,7 @@ func truncateBody(body string, n int) string {
 ### Why JSON-Semantic Comparison
 
 AWS CloudWatch may normalize the dashboard body when storing it. For example:
+
 - Key ordering within JSON objects may change.
 - Whitespace may be normalized (indentation, trailing newlines).
 - Numeric values may be reformatted (e.g., `5.0` → `5`).
@@ -983,6 +984,7 @@ handler has a single code path regardless of whether the dashboard exists.
 The driver does not parse, validate, or diff the internal structure of the dashboard
 body. AWS handles validation via `DashboardValidationMessage` responses. This has
 several advantages:
+
 - **Forward-compatible**: New widget types added by AWS work immediately without
   driver changes.
 - **Simple drift detection**: Compare the whole body (JSON-semantically) rather than
@@ -1031,6 +1033,7 @@ does not exist. The driver classifies this as "already gone" and clears state.
 Unlike the Log Group driver (which needs separate calls for retention, KMS, and
 tags) and the Metric Alarm driver (which needs a separate call for tags), the
 Dashboard driver's lifecycle is entirely served by three API calls:
+
 - `PutDashboard` (create/update)
 - `GetDashboard` (describe)
 - `DeleteDashboards` (delete)
@@ -1043,6 +1046,7 @@ patterns. This makes Dashboard the simplest driver in the CloudWatch pack.
 ## Checklist
 
 ### Files
+
 - [ ] `schemas/aws/cloudwatch/dashboard.cue`
 - [ ] `internal/drivers/dashboard/types.go`
 - [ ] `internal/drivers/dashboard/aws.go`
@@ -1056,6 +1060,7 @@ patterns. This makes Dashboard the simplest driver in the CloudWatch pack.
 - [ ] `tests/integration/dashboard_driver_test.go`
 
 ### Modifications
+
 - [ ] `cmd/praxis-monitoring/main.go` — Bind DashboardDriver
 - [ ] `internal/core/provider/registry.go` — Register adapter
 - [ ] `justfile` — Add `test-dashboard` target

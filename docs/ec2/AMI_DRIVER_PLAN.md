@@ -87,7 +87,7 @@ changed. The only mutable attributes are:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-ami.outputs.imageId}        → EC2 instances, launch templates
 ${resources.my-ami.outputs.state}          → Readiness checks
 ${resources.my-ami.outputs.architecture}   → Instance type selection
@@ -122,6 +122,7 @@ for ownership tags, AMIs require `praxis:managed-key` because:
    duplicate AMI rather than managing the existing one.
 
 The ownership tag pattern matches EC2/VPC/EBS:
+
 - `praxis:managed-key = region~amiName` written at creation time.
 - `FindByManagedKey` used in convergent provision to detect pre-existing managed AMIs.
 
@@ -714,6 +715,7 @@ services. Deregistering a production AMI prevents new instances from launching
 and could break auto-scaling.
 
 Import flow:
+
 1. Accept image ID or image name.
 2. Describe the AMI.
 3. Build spec from observed state.

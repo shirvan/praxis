@@ -71,7 +71,7 @@ driver), Listener Rules (separate driver), Target Groups (separate driver).
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-nlb.outputs.loadBalancerArn}   → Listener's loadBalancerArn
 ${resources.my-nlb.outputs.dnsName}            → Route 53 alias target, application config
 ${resources.my-nlb.outputs.hostedZoneId}       → Route 53 alias hosted zone ID
@@ -86,7 +86,7 @@ ${resources.my-nlb.outputs.hostedZoneId}       → Route 53 alias hosted zone ID
 NLBs are regional resources. Load balancer names are unique within a region and
 account.
 
-```
+```text
 region~nlbName
 ```
 
@@ -346,6 +346,7 @@ func (d *NLBDriver) ServiceName() string { return ServiceName }
 ### Provision Flow
 
 Identical structure to ALB:
+
 1. Load existing state
 2. If NLB exists → check for spec changes → converge
 3. If NLB doesn't exist → `CreateLoadBalancer` → wait for `active` state → set attributes

@@ -101,7 +101,7 @@ AWS API call.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-fn.outputs.functionArn}       → Permissions, ESMs, other services
 ${resources.my-fn.outputs.functionName}      → Permissions, ESMs, CLI references
 ${resources.my-fn.outputs.version}           → Alias configuration
@@ -1322,6 +1322,7 @@ as-is from the API response for fidelity.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/lambda/function.cue`
 - [ ] `internal/drivers/lambda/types.go`
 - [ ] `internal/drivers/lambda/aws.go`
@@ -1330,6 +1331,7 @@ as-is from the API response for fidelity.
 - [ ] `internal/core/provider/lambda_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/lambda/driver_test.go`
 - [ ] `internal/drivers/lambda/aws_test.go`
 - [ ] `internal/drivers/lambda/drift_test.go`
@@ -1337,6 +1339,7 @@ as-is from the API response for fidelity.
 - [ ] `tests/integration/lambda_driver_test.go`
 
 ### Integration
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewLambdaClient()`
 - [ ] `cmd/praxis-compute/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter

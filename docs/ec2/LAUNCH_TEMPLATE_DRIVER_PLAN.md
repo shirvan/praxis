@@ -1,7 +1,7 @@
 # Launch Template Driver — Implementation Plan
 
 > **Status: Not yet implemented.** This document is a plan only.
-
+>
 > Target: A Restate Virtual Object driver that manages EC2 launch templates,
 > following the exact patterns established by the S3, Security Group, EC2, VPC,
 > EBS, Elastic IP, and Key Pair drivers.
@@ -45,6 +45,7 @@ time.
 ### Versioning Model
 
 AWS launch templates are **versioned resources**. Each template has:
+
 - A template name (unique per region, immutable after creation).
 - A template ID (AWS-assigned, immutable).
 - One or more **versions** (1, 2, 3, …), each capturing a snapshot of configuration.
@@ -89,7 +90,7 @@ tracks which version is the current default and exposes it in outputs.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-lt.outputs.launchTemplateId}      → EC2 instances, ASGs
 ${resources.my-lt.outputs.launchTemplateName}     → EC2 instances (by name)
 ${resources.my-lt.outputs.defaultVersionNumber}   → EC2 instances (specific version)
@@ -409,6 +410,7 @@ type LaunchTemplateAPI interface {
 #### `CreateLaunchTemplate`
 
 Builds `LaunchTemplateData` from `LaunchTemplateSpec`:
+
 - Maps spec fields to `ec2types.RequestLaunchTemplateData`.
 - Sets `TagSpecifications` for both the template resource and instance tags.
 - Returns the template ID and version number (always 1 for creation).
@@ -709,6 +711,7 @@ func (d *LaunchTemplateDriver) Delete(ctx restate.ObjectContext) error {
 ```
 
 Key points:
+
 - `DeleteLaunchTemplate` deletes the template and all its versions in one call.
 - No need to delete versions individually.
 - Instances already launched from the template are not affected.
@@ -849,6 +852,7 @@ No Docker Compose changes — launch templates join `praxis-compute`. Add
 
 Each Provision call that changes version-relevant spec fields creates a new launch
 template version and sets it as the default. This is the natural AWS model:
+
 - Versions are immutable snapshots; there's no "edit version" API.
 - Setting the new version as default means new instance launches use the updated
   configuration automatically.
@@ -880,6 +884,7 @@ instances. The conservative default protects running infrastructure.
 ### 5. Instance Tags vs Template Tags
 
 Two separate tag fields:
+
 - `Tags`: applied to the launch template AWS resource itself. Mutable via
   `CreateTags` / `DeleteTags` without creating a new version.
 - `InstanceTags`: applied to instances launched from the template, embedded in

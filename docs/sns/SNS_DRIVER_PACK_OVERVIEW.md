@@ -183,7 +183,7 @@ incremental testing:
 
 ### Dependency Test Order
 
-```
+```text
 SNS Topic (isolated) → SNS Subscription (uses SNS Topic)
 ```
 
@@ -429,31 +429,38 @@ references.
 ## 11. Checklist
 
 ### Schemas
+
 - [ ] `schemas/aws/sns/topic.cue`
 - [ ] `schemas/aws/sns/subscription.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [ ] `internal/drivers/snstopic/`
 - [ ] `internal/drivers/snssub/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/snstopic_adapter.go`
 - [ ] `internal/core/provider/snssub_adapter.go`
 
 ### Registry
+
 - [ ] Both adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for both drivers
 - [ ] Integration tests for both drivers
 
 ### Infrastructure
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
 - [ ] `cmd/praxis-storage/main.go` — Bind both SNS drivers
 - [ ] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
 - [ ] `justfile` — Add SNS test targets
 
 ### Documentation
+
 - [x] [SNS_TOPIC_DRIVER_PLAN.md](SNS_TOPIC_DRIVER_PLAN.md)
 - [x] [SNS_SUBSCRIPTION_DRIVER_PLAN.md](SNS_SUBSCRIPTION_DRIVER_PLAN.md)
 - [x] This overview document

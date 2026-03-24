@@ -87,7 +87,7 @@ driver.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-queue-policy.outputs.queueUrl}    → Informational cross-reference
 ${resources.my-queue-policy.outputs.queueArn}    → Informational cross-reference
 ${resources.my-queue-policy.outputs.queueName}   → Informational cross-reference
@@ -524,6 +524,7 @@ func (SQSQueuePolicyDriver) ServiceName() string { return ServiceName }
 ### Provision
 
 Provision handles three cases:
+
 1. **New policy**: Resolve queue URL, set the policy.
 2. **Unchanged policy**: Return existing outputs (idempotent).
 3. **Changed policy**: Replace the policy document.
@@ -1104,6 +1105,7 @@ to take ownership and correct drift.
 ## Checklist
 
 ### Implementation
+
 - [ ] `schemas/aws/sqs/queue_policy.cue`
 - [ ] `internal/drivers/sqspolicy/types.go`
 - [ ] `internal/drivers/sqspolicy/aws.go`
@@ -1112,6 +1114,7 @@ to take ownership and correct drift.
 - [ ] `internal/core/provider/sqspolicy_adapter.go`
 
 ### Tests
+
 - [ ] `internal/drivers/sqspolicy/driver_test.go`
 - [ ] `internal/drivers/sqspolicy/aws_test.go`
 - [ ] `internal/drivers/sqspolicy/drift_test.go`
@@ -1119,5 +1122,6 @@ to take ownership and correct drift.
 - [ ] `tests/integration/sqs_queue_policy_driver_test.go`
 
 ### Integration
+
 - [ ] `cmd/praxis-storage/main.go` — Bind driver
 - [ ] `internal/core/provider/registry.go` — Register adapter

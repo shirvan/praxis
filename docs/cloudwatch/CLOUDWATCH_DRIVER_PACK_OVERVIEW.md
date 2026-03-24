@@ -267,7 +267,7 @@ testing:
 
 ### Dependency Test Order
 
-```
+```text
 Log Group → Metric Alarm → Dashboard
 ```
 
@@ -277,12 +277,13 @@ Log Group → Metric Alarm → Dashboard
 
 Add the CloudWatch SDK packages:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/cloudwatch      v1.x.x
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs   v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/cloudwatch
 go get github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs
@@ -630,6 +631,7 @@ alarm operations.
 ## 12. Checklist
 
 ### Infrastructure
+
 - [ ] `go get github.com/aws/aws-sdk-go-v2/service/cloudwatch` added
 - [ ] `go get github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs` added
 - [ ] `cmd/praxis-monitoring/main.go` created
@@ -638,29 +640,35 @@ alarm operations.
 - [ ] `justfile` updated with monitoring targets
 
 ### Schemas
+
 - [ ] `schemas/aws/cloudwatch/log_group.cue`
 - [ ] `schemas/aws/cloudwatch/metric_alarm.cue`
 - [ ] `schemas/aws/cloudwatch/dashboard.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [ ] `internal/drivers/loggroup/`
 - [ ] `internal/drivers/metricalarm/`
 - [ ] `internal/drivers/dashboard/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/loggroup_adapter.go`
 - [ ] `internal/core/provider/metricalarm_adapter.go`
 - [ ] `internal/core/provider/dashboard_adapter.go`
 
 ### Registry
+
 - [ ] All 3 adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for all 3 drivers
 - [ ] Integration tests for all 3 drivers
 - [ ] Cross-driver integration test (LogGroup → MetricAlarm → Dashboard)
 
 ### Documentation
+
 - [x] [LOG_GROUP_DRIVER_PLAN.md](LOG_GROUP_DRIVER_PLAN.md)
 - [x] [METRIC_ALARM_DRIVER_PLAN.md](METRIC_ALARM_DRIVER_PLAN.md)
 - [x] [DASHBOARD_DRIVER_PLAN.md](DASHBOARD_DRIVER_PLAN.md)

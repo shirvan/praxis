@@ -25,7 +25,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Identity Driver Pack Entry Point](#step-9--iam-driver-pack-entry-point)
+12. [Step 9 — Identity Driver Pack Entry Point](#step-9--identity-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -77,7 +77,7 @@ resource type with its own lifecycle and Virtual Object key space.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-role.outputs.arn}              → EC2 instance profile, Lambda function role
 ${resources.my-role.outputs.roleId}           → Policy conditions, audit references
 ${resources.my-role.outputs.roleName}         → CLI references, CloudWatch log groups
@@ -92,7 +92,7 @@ ${resources.my-role.outputs.roleName}         → CLI references, CloudWatch log
 IAM is a global service — role names are unique within an AWS account regardless of
 region. This matches the S3 pattern (`KeyScopeGlobal`, key = bucket name).
 
-```
+```text
 roleName
 ```
 
@@ -893,11 +893,13 @@ Reconcile runs on a 5-minute timer and follows the standard pattern:
 6. Re-schedules.
 
 **Inline policy convergence** during reconciliation:
+
 - Policies in desired but not observed → `PutInlinePolicy` (add).
 - Policies in observed but not desired → `DeleteInlinePolicy` (remove).
 - Policies in both but documents differ → `PutInlinePolicy` (update).
 
 **Managed policy convergence**:
+
 - ARNs in desired but not observed → `AttachManagedPolicy`.
 - ARNs in observed but not desired → `DetachManagedPolicy`.
 
@@ -1164,6 +1166,7 @@ is retried.
 ### 6. Inline Policy Convergence: Add-Before-Remove
 
 When converging inline policies during Provision or Reconcile:
+
 1. Add/update new or changed policies first (`PutRolePolicy`).
 2. Remove stale policies second (`DeleteRolePolicy`).
 
@@ -1172,6 +1175,7 @@ This ensures there is never a window where the role lacks a required permission.
 ### 7. Managed Policy Convergence: Attach-Before-Detach
 
 Same principle as inline policies:
+
 1. Attach new managed policies first.
 2. Detach removed managed policies second.
 

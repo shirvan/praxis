@@ -3,7 +3,7 @@
 > **Implementation note:** This plan references a `praxis-database` driver pack.
 > The actual implementation places the RDS Instance driver in **`praxis-storage`**
 > (`cmd/praxis-storage/main.go`).
-
+>
 > Target: A Restate Virtual Object driver that manages RDS DB Instances, providing
 > full lifecycle management including creation, configuration, import, deletion,
 > drift detection, and drift correction for instance properties, storage, networking,
@@ -84,7 +84,7 @@ The driver follows the established Virtual Object contract:
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.mydb.outputs.endpoint}         → Application config, connection strings
 ${resources.mydb.outputs.port}              → Application config
 ${resources.mydb.outputs.arn}               → IAM policies, monitoring
@@ -101,7 +101,7 @@ ${resources.mydb.outputs.dbiResourceId}     → IAM auth tokens
 RDS DB instance identifiers are unique per region per AWS account. The key is
 `region~dbIdentifier`, matching the EC2 Instance pattern.
 
-```
+```text
 region~dbIdentifier
 ```
 
@@ -1181,6 +1181,7 @@ trigger a second `CreateDBInstance` call.
 ### 2. Storage Grow-Only Constraint
 
 AWS does not support shrinking RDS instance storage. The driver enforces this:
+
 - During drift detection: only reports drift when desired > observed.
 - During convergence: only calls `ModifyDBInstance` for storage when desired > observed.
 - During plan: reports shrink attempts with "(grow-only, shrink ignored)" note.
@@ -1196,6 +1197,7 @@ fields as "(write-only, drift not detectable)".
 ### 4. Aurora Cluster Instance Mode
 
 When `dbClusterIdentifier` is set, the RDS instance is a cluster member:
+
 - Storage fields (`allocatedStorage`, `storageType`, `iops`) are inherited from
   the cluster and not set on the instance.
 - `masterUsername` and `masterUserPassword` are inherited from the cluster.

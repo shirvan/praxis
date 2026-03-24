@@ -43,6 +43,7 @@ exclusively on allocating, tagging, importing, releasing, and drift-reconciling
 Elastic IP addresses.
 
 Elastic IPs are independent AWS resources with their own lifecycle:
+
 - They persist independently of any instance.
 - They incur charges when NOT associated with a running instance.
 - They can be moved between instances.
@@ -74,7 +75,7 @@ tags. Allocation and release are the primary lifecycle operations.
 
 ### Downstream Consumers
 
-```
+```text
 ${resources.my-eip.outputs.publicIp}       → DNS records, config files, security group rules
 ${resources.my-eip.outputs.allocationId}   → EC2 instance association, ENI attachment
 ${resources.my-eip.outputs.arn}            → IAM policies

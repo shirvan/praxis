@@ -190,7 +190,7 @@ incremental testing:
 
 ### Dependency Test Order
 
-```
+```text
 SQS Queue (isolated) → SQS Queue Policy (uses SQS Queue)
 ```
 
@@ -200,11 +200,12 @@ SQS Queue (isolated) → SQS Queue Policy (uses SQS Queue)
 
 Add the SQS SDK package:
 
-```
+```text
 github.com/aws/aws-sdk-go-v2/service/sqs v1.x.x
 ```
 
 Run:
+
 ```bash
 go get github.com/aws/aws-sdk-go-v2/service/sqs
 go mod tidy
@@ -221,6 +222,7 @@ entry point automatically exposes the SQS drivers via Restate's reflection-based
 service discovery.
 
 The existing registration command:
+
 ```bash
 curl -s -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
@@ -496,26 +498,32 @@ when `fifoQueue: true` is set, preventing invalid queue creation attempts.
 ## 12. Checklist
 
 ### Schemas
+
 - [ ] `schemas/aws/sqs/queue.cue`
 - [ ] `schemas/aws/sqs/queue_policy.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
+
 - [ ] `internal/drivers/sqs/`
 - [ ] `internal/drivers/sqspolicy/`
 
 ### Adapters
+
 - [ ] `internal/core/provider/sqs_adapter.go`
 - [ ] `internal/core/provider/sqspolicy_adapter.go`
 
 ### Registry
+
 - [ ] Both adapters registered in `NewRegistry()`
 
 ### Tests
+
 - [ ] Unit tests for both drivers
 - [ ] Integration tests for both drivers
 - [ ] Cross-driver integration test (SQS Queue → SQS Queue Policy)
 
 ### Infrastructure
+
 - [ ] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
 - [ ] `cmd/praxis-storage/main.go` — Bind both SQS drivers
 - [ ] `docker-compose.yaml` — No changes needed (praxis-storage already exposed)
@@ -523,6 +531,7 @@ when `fifoQueue: true` is set, preventing invalid queue creation attempts.
 - [ ] `go get github.com/aws/aws-sdk-go-v2/service/sqs`
 
 ### Documentation
+
 - [ ] [SQS_QUEUE_DRIVER_PLAN.md](SQS_QUEUE_DRIVER_PLAN.md)
 - [ ] [SQS_QUEUE_POLICY_DRIVER_PLAN.md](SQS_QUEUE_POLICY_DRIVER_PLAN.md)
 - [x] This overview document
