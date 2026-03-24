@@ -60,12 +60,8 @@ func ComputeFieldDiffs(desired TargetGroupSpec, observed ObservedState) []FieldD
 	if !stickinessEqual(desired.Stickiness, observed.Stickiness) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.stickiness", OldValue: observed.Stickiness, NewValue: desired.Stickiness})
 	}
-	for _, diff := range computeTargetDiffs(desired.Targets, observed.Targets) {
-		diffs = append(diffs, diff)
-	}
-	for _, diff := range computeTagDiffs(desired.Tags, observed.Tags) {
-		diffs = append(diffs, diff)
-	}
+	diffs = append(diffs, computeTargetDiffs(desired.Targets, observed.Targets)...)
+	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 

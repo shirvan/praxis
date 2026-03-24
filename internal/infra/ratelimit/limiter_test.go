@@ -20,7 +20,7 @@ func TestWait_AllowsBurst(t *testing.T) {
 	ctx := context.Background()
 
 	// Should allow 3 immediate requests (burst size).
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		err := l.Wait(ctx)
 		require.NoError(t, err)
 	}

@@ -3,6 +3,7 @@ package natgw
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -61,9 +62,7 @@ func (f *fakeNATGatewayAPI) CreateNATGateway(ctx context.Context, spec NATGatewa
 		id = fmt.Sprintf("nat-%d", f.createCalls)
 	}
 	tags := map[string]string{"praxis:managed-key": spec.ManagedKey}
-	for key, value := range spec.Tags {
-		tags[key] = value
-	}
+	maps.Copy(tags, spec.Tags)
 	obs := ObservedState{
 		NatGatewayId:       id,
 		SubnetId:           spec.SubnetId,
@@ -171,12 +170,8 @@ func (f *fakeNATGatewayAPI) UpdateTags(ctx context.Context, natGatewayId string,
 		}
 	}
 	obs.Tags = map[string]string{}
-	for key, value := range praxisTags {
-		obs.Tags[key] = value
-	}
-	for key, value := range tags {
-		obs.Tags[key] = value
-	}
+	maps.Copy(obs.Tags, praxisTags)
+	maps.Copy(obs.Tags, tags)
 	f.observed[natGatewayId] = obs
 	return nil
 }
@@ -194,9 +189,7 @@ func cloneObservedState(obs ObservedState) ObservedState {
 	clone := obs
 	if obs.Tags != nil {
 		clone.Tags = make(map[string]string, len(obs.Tags))
-		for key, value := range obs.Tags {
-			clone.Tags[key] = value
-		}
+		maps.Copy(clone.Tags, obs.Tags)
 	}
 	return clone
 }

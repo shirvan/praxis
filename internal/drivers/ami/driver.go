@@ -3,6 +3,7 @@ package ami
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -615,9 +616,7 @@ func desiredTags(spec AMISpec) map[string]string {
 
 func mergeTags(base, extras map[string]string) map[string]string {
 	out := make(map[string]string, len(base)+len(extras))
-	for key, value := range base {
-		out[key] = value
-	}
+	maps.Copy(out, base)
 	for key, value := range extras {
 		if strings.TrimSpace(value) != "" {
 			out[key] = value

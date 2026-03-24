@@ -63,9 +63,9 @@ func (DeploymentEvents) ListSince(ctx restate.ObjectSharedContext, seq int64) ([
 	}
 
 	filtered := make([]DeploymentEvent, 0)
-	for _, event := range state.Events {
-		if event.Sequence > seq {
-			filtered = append(filtered, event)
+	for i := range state.Events {
+		if state.Events[i].Sequence > seq {
+			filtered = append(filtered, state.Events[i])
 		}
 	}
 	return filtered, nil

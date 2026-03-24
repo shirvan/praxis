@@ -26,7 +26,7 @@ type AuthService struct {
 func NewAuthService(bootstrap *AccountsConfig) *AuthService {
 	return &AuthService{
 		bootstrap:  bootstrap,
-		stsFactory: func(cfg aws.Config) STSAPI { return NewSTSAPI(cfg) },
+		stsFactory: NewSTSAPI,
 	}
 }
 
@@ -301,9 +301,7 @@ func (a *AuthService) scheduleRefresh(ctx restate.ObjectContext, state *AuthStat
 	}
 
 	delay := time.Until(expiresAt) - 10*time.Minute
-	if delay < time.Minute {
-		delay = time.Minute
-	}
+	delay = max(delay, time.Minute)
 
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "RefreshCredentials").
 		Send(restate.Key(ctx), restate.WithDelay(delay))

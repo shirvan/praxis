@@ -193,7 +193,7 @@ func (a *LambdaLayerAdapter) planningAPI(ctx restate.Context, account string) (l
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("Lambda layer adapter planning API is not configured")
+		return nil, fmt.Errorf("lambda layer adapter planning API is not configured")
 	}
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {

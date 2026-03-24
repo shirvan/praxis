@@ -41,9 +41,7 @@ func ComputeFieldDiffs(desired ListenerRuleSpec, observed ObservedState) []Field
 	if !actionsEqual(desired.Actions, observed.Actions) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.actions", OldValue: observed.Actions, NewValue: desired.Actions})
 	}
-	for _, diff := range computeTagDiffs(desired.Tags, observed.Tags) {
-		diffs = append(diffs, diff)
-	}
+	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 
@@ -222,10 +220,7 @@ func forwardEqual(a, b RuleAction) bool {
 			return false
 		}
 	}
-	if !stickinessEqual(a.ForwardConfig.Stickiness, b.ForwardConfig.Stickiness) {
-		return false
-	}
-	return true
+	return stickinessEqual(a.ForwardConfig.Stickiness, b.ForwardConfig.Stickiness)
 }
 
 func weightsEquivalent(a, b int) bool {

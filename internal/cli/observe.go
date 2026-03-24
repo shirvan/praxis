@@ -91,7 +91,7 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 			// If events aren't available, fall back to status polling.
 			detail, statusErr := client.GetDeployment(ctx, key)
 			if statusErr != nil {
-				return fmt.Errorf("observe: events unavailable (%v) and status query failed: %w", err, statusErr)
+				return fmt.Errorf("observe: events unavailable (%w) and status query failed: %w", err, statusErr)
 			}
 			if detail == nil {
 				return fmt.Errorf("deployment %q not found", key)
@@ -126,8 +126,8 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 			lastSeq = events[len(events)-1].Sequence
 
 			// Check if any event indicates a terminal deployment status.
-			for _, e := range events {
-				if isTerminalStatus(e.Status) {
+			for i := range events {
+				if isTerminalStatus(events[i].Status) {
 					// Fetch and display the final state.
 					detail, err := client.GetDeployment(ctx, key)
 					if err != nil {

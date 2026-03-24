@@ -36,7 +36,9 @@ func NewNLBAPI(client *elbv2sdk.Client) NLBAPI {
 }
 
 func (r *realNLBAPI) CreateNLB(ctx context.Context, spec NLBSpec) (string, string, string, string, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", "", "", "", err
+	}
 	input := &elbv2sdk.CreateLoadBalancerInput{
 		Name:          aws.String(spec.Name),
 		Type:          elbv2types.LoadBalancerTypeEnumNetwork,
@@ -76,7 +78,9 @@ func (r *realNLBAPI) CreateNLB(ctx context.Context, spec NLBSpec) (string, strin
 }
 
 func (r *realNLBAPI) DescribeNLB(ctx context.Context, id string) (ObservedState, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, err
+	}
 	input := &elbv2sdk.DescribeLoadBalancersInput{}
 	if strings.HasPrefix(id, "arn:") {
 		input.LoadBalancerArns = []string{id}
@@ -130,7 +134,9 @@ type nlbAttributes struct {
 }
 
 func (r *realNLBAPI) describeAttributes(ctx context.Context, arn string) (nlbAttributes, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nlbAttributes{}, err
+	}
 	out, err := r.client.DescribeLoadBalancerAttributes(ctx, &elbv2sdk.DescribeLoadBalancerAttributesInput{LoadBalancerArn: aws.String(arn)})
 	if err != nil {
 		return nlbAttributes{}, err
@@ -148,7 +154,9 @@ func (r *realNLBAPI) describeAttributes(ctx context.Context, arn string) (nlbAtt
 }
 
 func (r *realNLBAPI) describeTags(ctx context.Context, arn string) (map[string]string, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
 	out, err := r.client.DescribeTags(ctx, &elbv2sdk.DescribeTagsInput{ResourceArns: []string{arn}})
 	if err != nil {
 		return nil, err
@@ -163,13 +171,17 @@ func (r *realNLBAPI) describeTags(ctx context.Context, arn string) (map[string]s
 }
 
 func (r *realNLBAPI) DeleteNLB(ctx context.Context, arn string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.DeleteLoadBalancer(ctx, &elbv2sdk.DeleteLoadBalancerInput{LoadBalancerArn: aws.String(arn)})
 	return err
 }
 
 func (r *realNLBAPI) SetSubnets(ctx context.Context, arn string, subnets []SubnetMapping) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	input := &elbv2sdk.SetSubnetsInput{LoadBalancerArn: aws.String(arn)}
 	for _, sm := range subnets {
 		mapping := elbv2types.SubnetMapping{SubnetId: aws.String(sm.SubnetId)}
@@ -183,7 +195,9 @@ func (r *realNLBAPI) SetSubnets(ctx context.Context, arn string, subnets []Subne
 }
 
 func (r *realNLBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddressType string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.SetIpAddressType(ctx, &elbv2sdk.SetIpAddressTypeInput{
 		LoadBalancerArn: aws.String(arn),
 		IpAddressType:   elbv2types.IpAddressType(ipAddressType),
@@ -192,7 +206,9 @@ func (r *realNLBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddress
 }
 
 func (r *realNLBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map[string]string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	var elbAttrs []elbv2types.LoadBalancerAttribute
 	for key, value := range attrs {
 		elbAttrs = append(elbAttrs, elbv2types.LoadBalancerAttribute{Key: aws.String(key), Value: aws.String(value)})
@@ -205,7 +221,9 @@ func (r *realNLBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map
 }
 
 func (r *realNLBAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	existing, err := r.describeTags(ctx, arn)
 	if err != nil {
 		return err
@@ -220,7 +238,9 @@ func (r *realNLBAPI) UpdateTags(ctx context.Context, arn string, desired map[str
 		}
 	}
 	if len(keysToRemove) > 0 {
-		r.limiter.Wait(ctx)
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
 		if _, removeErr := r.client.RemoveTags(ctx, &elbv2sdk.RemoveTagsInput{
 			ResourceArns: []string{arn},
 			TagKeys:      keysToRemove,
@@ -229,7 +249,9 @@ func (r *realNLBAPI) UpdateTags(ctx context.Context, arn string, desired map[str
 		}
 	}
 	if len(desired) > 0 {
-		r.limiter.Wait(ctx)
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
 		if _, addErr := r.client.AddTags(ctx, &elbv2sdk.AddTagsInput{
 			ResourceArns: []string{arn},
 			Tags:         toELBTags(desired),

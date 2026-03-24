@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"time"
 
@@ -200,7 +201,7 @@ func mergeVariables(vars []string, varsFile string) (map[string]any, error) {
 	result := make(map[string]any)
 
 	if varsFile != "" {
-		content, err := os.ReadFile(varsFile)
+		content, err := os.ReadFile(varsFile) //nolint:gosec // G304: path is user-supplied CLI argument
 		if err != nil {
 			return nil, fmt.Errorf("read variables file %q: %w", varsFile, err)
 		}
@@ -213,9 +214,7 @@ func mergeVariables(vars []string, varsFile string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range flagVars {
-		result[k] = v
-	}
+	maps.Copy(result, flagVars)
 
 	if len(result) == 0 {
 		return nil, nil

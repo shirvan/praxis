@@ -54,9 +54,9 @@ func (r *realRecordAPI) DescribeRecord(ctx context.Context, identity RecordIdent
 		if err != nil {
 			return ObservedState{}, err
 		}
-		for _, recordSet := range page.ResourceRecordSets {
-			candidate := fromRoute53RecordSet(identity.HostedZoneId, recordSet)
-			if candidate.Name == normalizeRecordName(identity.Name) && candidate.Type == strings.ToUpper(identity.Type) && candidate.SetIdentifier == strings.TrimSpace(identity.SetIdentifier) {
+		for i := range page.ResourceRecordSets {
+			candidate := fromRoute53RecordSet(identity.HostedZoneId, page.ResourceRecordSets[i])
+			if candidate.Name == normalizeRecordName(identity.Name) && strings.EqualFold(candidate.Type, identity.Type) && candidate.SetIdentifier == strings.TrimSpace(identity.SetIdentifier) {
 				return candidate, nil
 			}
 		}

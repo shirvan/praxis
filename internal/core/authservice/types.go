@@ -6,7 +6,7 @@ package authservice
 type CredentialResponse struct {
 	AccessKeyID     string `json:"accessKeyId"`
 	SecretAccessKey string `json:"secretAccessKey"`
-	SessionToken    string `json:"sessionToken,omitempty"`
+	SessionToken    string `json:"sessionToken,omitempty"` //nolint:gosec // G117: field name matches AWS API contract, not a hardcoded secret
 	Region          string `json:"region"`
 	EndpointURL     string `json:"endpointUrl,omitempty"`
 	ExpiresAt       string `json:"expiresAt,omitempty"`
@@ -37,7 +37,7 @@ type AuthState struct {
 type CachedCredential struct {
 	AccessKeyID     string `json:"accessKeyId"`
 	SecretAccessKey string `json:"secretAccessKey"`
-	SessionToken    string `json:"sessionToken,omitempty"`
+	SessionToken    string `json:"sessionToken,omitempty"` //nolint:gosec // G117: field name matches AWS API contract, not a hardcoded secret
 	ExpiresAt       string `json:"expiresAt,omitempty"`
 }
 

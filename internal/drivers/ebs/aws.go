@@ -212,8 +212,8 @@ func (r *realEBSAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 
 	var matches []string
-	for _, volume := range out.Volumes {
-		if id := aws.ToString(volume.VolumeId); id != "" {
+	for i := range out.Volumes {
+		if id := aws.ToString(out.Volumes[i].VolumeId); id != "" {
 			matches = append(matches, id)
 		}
 	}

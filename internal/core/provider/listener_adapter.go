@@ -99,7 +99,7 @@ func (a *ListenerAdapter) Plan(ctx restate.Context, key string, account string, 
 	}
 	outputs, getErr := restate.Object[listener.ListenerOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
 	if getErr != nil {
-		return "", nil, fmt.Errorf("Listener Plan: failed to read outputs for key %q: %w", key, getErr)
+		return "", nil, fmt.Errorf("listener plan: failed to read outputs for key %q: %w", key, getErr)
 	}
 	if outputs.ListenerArn == "" {
 		fields, fieldErr := createFieldDiffsFromSpec(desired)
@@ -177,10 +177,10 @@ func (a *ListenerAdapter) decodeSpec(doc resourceDocument) (listener.ListenerSpe
 	}
 	name := strings.TrimSpace(doc.Metadata.Name)
 	if name == "" {
-		return listener.ListenerSpec{}, fmt.Errorf("Listener metadata.name is required")
+		return listener.ListenerSpec{}, fmt.Errorf("listener metadata.name is required")
 	}
 	if spec.LoadBalancerArn == "" {
-		return listener.ListenerSpec{}, fmt.Errorf("Listener spec.loadBalancerArn is required")
+		return listener.ListenerSpec{}, fmt.Errorf("listener spec.loadBalancerArn is required")
 	}
 	spec.Account = ""
 	if spec.Tags == nil {
@@ -197,7 +197,7 @@ func (a *ListenerAdapter) planningAPI(ctx restate.Context, account string) (list
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("Listener adapter planning API is not configured")
+		return nil, fmt.Errorf("listener adapter planning API is not configured")
 	}
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {

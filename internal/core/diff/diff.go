@@ -83,7 +83,7 @@ func Render(plan *types.PlanResult) string {
 }
 
 // formatValue converts an interface{} to a display-friendly string for plan output.
-func formatValue(v interface{}) string {
+func formatValue(v any) string {
 	if v == nil {
 		return "(not set)"
 	}

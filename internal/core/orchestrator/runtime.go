@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -37,18 +38,16 @@ func newExecutionState(resources []PlanResource) *executionState {
 		failed:     make(map[string]bool, len(resources)),
 		skipped:    make(map[string]bool, len(resources)),
 	}
-	for _, resource := range resources {
-		state.order = append(state.order, resource.Name)
-		state.plan[resource.Name] = resource
-		state.statuses[resource.Name] = types.DeploymentResourcePending
+	for i := range resources {
+		state.order = append(state.order, resources[i].Name)
+		state.plan[resources[i].Name] = resources[i]
+		state.statuses[resources[i].Name] = types.DeploymentResourcePending
 	}
 	return state
 }
 
 func (s *executionState) loadOutputs(outputs map[string]map[string]any) {
-	for name, outputMap := range outputs {
-		s.outputs[name] = outputMap
-	}
+	maps.Copy(s.outputs, outputs)
 }
 
 func (s *executionState) ready(schedule *dag.Schedule) []string {
@@ -229,18 +228,18 @@ func (s *executionState) failureMap() map[string]string {
 
 func graphFromPlanResources(resources []PlanResource) (*dag.Graph, error) {
 	nodes := make([]*types.ResourceNode, 0, len(resources))
-	for _, resource := range resources {
-		spec := resource.Spec
+	for i := range resources {
+		spec := resources[i].Spec
 		if spec == nil {
 			spec = json.RawMessage(`{}`)
 		}
 		nodes = append(nodes, &types.ResourceNode{
-			Name:         resource.Name,
-			Kind:         resource.Kind,
-			Key:          resource.Key,
+			Name:         resources[i].Name,
+			Kind:         resources[i].Kind,
+			Key:          resources[i].Key,
 			Spec:         spec,
-			Dependencies: resource.Dependencies,
-			Expressions:  resource.Expressions,
+			Dependencies: resources[i].Dependencies,
+			Expressions:  resources[i].Expressions,
 		})
 	}
 	return dag.NewGraph(nodes)

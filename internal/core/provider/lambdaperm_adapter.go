@@ -190,7 +190,7 @@ func (a *LambdaPermissionAdapter) planningAPI(ctx restate.Context, account strin
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("Lambda permission adapter planning API is not configured")
+		return nil, fmt.Errorf("lambda permission adapter planning API is not configured")
 	}
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {

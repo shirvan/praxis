@@ -145,8 +145,8 @@ func (r *realAMIAPI) describeSingleImage(ctx context.Context, input *ec2sdk.Desc
 	}
 	if len(out.Images) > 1 {
 		var ids []string
-		for _, image := range out.Images {
-			ids = append(ids, aws.ToString(image.ImageId))
+		for i := range out.Images {
+			ids = append(ids, aws.ToString(out.Images[i].ImageId))
 		}
 		sort.Strings(ids)
 		return ObservedState{}, fmt.Errorf("multiple AMIs matched query: %v", ids)
@@ -351,8 +351,8 @@ func (r *realAMIAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 
 	var matches []string
-	for _, image := range out.Images {
-		if id := aws.ToString(image.ImageId); id != "" {
+	for i := range out.Images {
+		if id := aws.ToString(out.Images[i].ImageId); id != "" {
 			matches = append(matches, id)
 		}
 	}

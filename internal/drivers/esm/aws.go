@@ -72,9 +72,9 @@ func (r *realESMAPI) FindEventSourceMapping(ctx context.Context, functionName, e
 	if err != nil {
 		return "", err
 	}
-	for _, mapping := range out.EventSourceMappings {
-		if aws.ToString(mapping.EventSourceArn) == eventSourceArn {
-			return aws.ToString(mapping.UUID), nil
+	for i := range out.EventSourceMappings {
+		if aws.ToString(out.EventSourceMappings[i].EventSourceArn) == eventSourceArn {
+			return aws.ToString(out.EventSourceMappings[i].UUID), nil
 		}
 	}
 	return "", nil

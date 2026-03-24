@@ -46,7 +46,8 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 	}
 
 	plan := corediff.NewPlanResult()
-	for _, resource := range compiled.PlanResources {
+	for i := range compiled.PlanResources {
+		resource := &compiled.PlanResources[i]
 		adapter, err := s.providers.Get(resource.Kind)
 		if err != nil {
 			return PlanDeployResponse{}, restate.TerminalError(err, 400)

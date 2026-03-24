@@ -35,10 +35,12 @@ func NewListenerRuleAPI(client *elbv2sdk.Client) ListenerRuleAPI {
 }
 
 func (r *realListenerRuleAPI) CreateRule(ctx context.Context, listenerArn string, spec ListenerRuleSpec) (string, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
 	input := &elbv2sdk.CreateRuleInput{
 		ListenerArn: aws.String(listenerArn),
-		Priority:    aws.Int32(int32(spec.Priority)),
+		Priority:    aws.Int32(int32(spec.Priority)), //nolint:gosec // G115: listener rule priority is bounded to valid range
 		Conditions:  toAWSConditions(spec.Conditions),
 		Actions:     toAWSActions(spec.Actions),
 	}
@@ -56,7 +58,9 @@ func (r *realListenerRuleAPI) CreateRule(ctx context.Context, listenerArn string
 }
 
 func (r *realListenerRuleAPI) DescribeRule(ctx context.Context, ruleArn string) (ObservedState, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, err
+	}
 	out, err := r.client.DescribeRules(ctx, &elbv2sdk.DescribeRulesInput{RuleArns: []string{ruleArn}})
 	if err != nil {
 		return ObservedState{}, err
@@ -81,7 +85,9 @@ func (r *realListenerRuleAPI) FindRuleByPriority(ctx context.Context, listenerAr
 }
 
 func (r *realListenerRuleAPI) ListRules(ctx context.Context, listenerArn string) ([]ObservedState, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
 	out, err := r.client.DescribeRules(ctx, &elbv2sdk.DescribeRulesInput{ListenerArn: aws.String(listenerArn)})
 	if err != nil {
 		return nil, err
@@ -98,13 +104,17 @@ func (r *realListenerRuleAPI) ListRules(ctx context.Context, listenerArn string)
 }
 
 func (r *realListenerRuleAPI) DeleteRule(ctx context.Context, ruleArn string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.DeleteRule(ctx, &elbv2sdk.DeleteRuleInput{RuleArn: aws.String(ruleArn)})
 	return err
 }
 
 func (r *realListenerRuleAPI) ModifyRule(ctx context.Context, ruleArn string, conditions []RuleCondition, actions []RuleAction) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	input := &elbv2sdk.ModifyRuleInput{
 		RuleArn:    aws.String(ruleArn),
 		Conditions: toAWSConditions(conditions),
@@ -115,17 +125,21 @@ func (r *realListenerRuleAPI) ModifyRule(ctx context.Context, ruleArn string, co
 }
 
 func (r *realListenerRuleAPI) SetRulePriorities(ctx context.Context, ruleArn string, priority int) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.SetRulePriorities(ctx, &elbv2sdk.SetRulePrioritiesInput{
 		RulePriorities: []elbv2types.RulePriorityPair{
-			{RuleArn: aws.String(ruleArn), Priority: aws.Int32(int32(priority))},
+			{RuleArn: aws.String(ruleArn), Priority: aws.Int32(int32(priority))}, //nolint:gosec // G115: priority is bounded to valid range
 		},
 	})
 	return err
 }
 
 func (r *realListenerRuleAPI) UpdateTags(ctx context.Context, ruleArn string, desired map[string]string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	existing, err := r.describeTags(ctx, ruleArn)
 	if err != nil {
 		return err
@@ -140,7 +154,9 @@ func (r *realListenerRuleAPI) UpdateTags(ctx context.Context, ruleArn string, de
 		}
 	}
 	if len(keysToRemove) > 0 {
-		r.limiter.Wait(ctx)
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
 		if _, removeErr := r.client.RemoveTags(ctx, &elbv2sdk.RemoveTagsInput{
 			ResourceArns: []string{ruleArn}, TagKeys: keysToRemove,
 		}); removeErr != nil {
@@ -148,7 +164,9 @@ func (r *realListenerRuleAPI) UpdateTags(ctx context.Context, ruleArn string, de
 		}
 	}
 	if len(desired) > 0 {
-		r.limiter.Wait(ctx)
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
 		if _, addErr := r.client.AddTags(ctx, &elbv2sdk.AddTagsInput{
 			ResourceArns: []string{ruleArn}, Tags: toELBTags(desired),
 		}); addErr != nil {
@@ -180,7 +198,9 @@ func (r *realListenerRuleAPI) buildObservedState(ctx context.Context, rule elbv2
 }
 
 func (r *realListenerRuleAPI) describeTags(ctx context.Context, arn string) (map[string]string, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
 	out, err := r.client.DescribeTags(ctx, &elbv2sdk.DescribeTagsInput{ResourceArns: []string{arn}})
 	if err != nil {
 		return nil, err
@@ -297,13 +317,13 @@ func toAWSActions(actions []RuleAction) []elbv2types.Action {
 				for _, tg := range a.ForwardConfig.TargetGroups {
 					fc.TargetGroups = append(fc.TargetGroups, elbv2types.TargetGroupTuple{
 						TargetGroupArn: aws.String(tg.TargetGroupArn),
-						Weight:         aws.Int32(int32(tg.Weight)),
+						Weight:         aws.Int32(int32(tg.Weight)), //nolint:gosec // G115: weight is bounded to valid range
 					})
 				}
 				if a.ForwardConfig.Stickiness != nil {
 					fc.TargetGroupStickinessConfig = &elbv2types.TargetGroupStickinessConfig{
 						Enabled:         aws.Bool(a.ForwardConfig.Stickiness.Enabled),
-						DurationSeconds: aws.Int32(int32(a.ForwardConfig.Stickiness.Duration)),
+						DurationSeconds: aws.Int32(int32(a.ForwardConfig.Stickiness.Duration)), //nolint:gosec // G115: stickiness duration is bounded to valid range
 					}
 				}
 				action.ForwardConfig = fc
@@ -414,7 +434,7 @@ func parsePriority(s string) int {
 		return 0
 	}
 	var p int
-	fmt.Sscanf(s, "%d", &p)
+	_, _ = fmt.Sscanf(s, "%d", &p)
 	return p
 }
 

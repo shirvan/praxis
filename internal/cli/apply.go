@@ -77,7 +77,7 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 			templatePath := args[0]
 
 			// Read the CUE template from disk.
-			content, err := os.ReadFile(templatePath)
+			content, err := os.ReadFile(templatePath) //nolint:gosec // G304: path is user-supplied CLI argument
 			if err != nil {
 				return fmt.Errorf("read template %q: %w", templatePath, err)
 			}

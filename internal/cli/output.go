@@ -46,18 +46,18 @@ func printJSON(v any) error {
 func printTable(headers []string, rows [][]string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	// Header row in all caps.
-	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	_, _ = fmt.Fprintln(w, strings.Join(headers, "\t"))
 	// Separator line under each header.
 	separators := make([]string, len(headers))
 	for i, h := range headers {
 		separators[i] = strings.Repeat("-", len(h))
 	}
-	fmt.Fprintln(w, strings.Join(separators, "\t"))
+	_, _ = fmt.Fprintln(w, strings.Join(separators, "\t"))
 	// Data rows.
 	for _, row := range rows {
-		fmt.Fprintln(w, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
-	w.Flush()
+	_ = w.Flush()
 }
 
 // --------------------------------------------------------------------------
@@ -235,7 +235,8 @@ func operationSymbol(op types.DiffOperation) string {
 // printEvents renders deployment progress events in a human-readable timeline
 // format. Used by the `observe` command for incremental progress display.
 func printEvents(events []orchestrator.DeploymentEvent) {
-	for _, e := range events {
+	for i := range events {
+		e := &events[i]
 		ts := formatTime(e.CreatedAt)
 		// Build the event line: [timestamp] STATUS resource: message
 		parts := []string{fmt.Sprintf("[%s]", ts)}

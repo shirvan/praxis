@@ -264,10 +264,7 @@ func (r *SSMResolver) batchFetch(ctx context.Context, paths []string) (map[strin
 	var errs template.TemplateErrors
 
 	for i := 0; i < len(paths); i += ssmBatchSize {
-		end := i + ssmBatchSize
-		if end > len(paths) {
-			end = len(paths)
-		}
+		end := min(i+ssmBatchSize, len(paths))
 		batch := paths[i:end]
 
 		out, err := r.client.GetParameters(ctx, &ssm.GetParametersInput{

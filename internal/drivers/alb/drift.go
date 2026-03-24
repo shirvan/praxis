@@ -61,9 +61,7 @@ func ComputeFieldDiffs(desired ALBSpec, observed ObservedState) []FieldDiffEntry
 	if desired.IdleTimeout != observed.IdleTimeout {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.idleTimeout", OldValue: observed.IdleTimeout, NewValue: desired.IdleTimeout})
 	}
-	for _, diff := range computeTagDiffs(desired.Tags, observed.Tags) {
-		diffs = append(diffs, diff)
-	}
+	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 
@@ -135,13 +133,6 @@ func sortedStringsEqual(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-func accessLogsFromSpec(spec ALBSpec) *AccessLogConfig {
-	if spec.AccessLogs == nil {
-		return &AccessLogConfig{Enabled: false}
-	}
-	return spec.AccessLogs
 }
 
 // resolveSubnetMappings returns either SubnetMappings or converts Subnets.

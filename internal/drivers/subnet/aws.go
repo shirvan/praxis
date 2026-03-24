@@ -184,8 +184,8 @@ func (r *realSubnetAPI) FindByManagedKey(ctx context.Context, managedKey string)
 	}
 
 	var matches []string
-	for _, sub := range out.Subnets {
-		if id := aws.ToString(sub.SubnetId); id != "" {
+	for i := range out.Subnets {
+		if id := aws.ToString(out.Subnets[i].SubnetId); id != "" {
 			matches = append(matches, id)
 		}
 	}
@@ -216,8 +216,8 @@ func (r *realSubnetAPI) FindByTags(ctx context.Context, tags map[string]string) 
 		return "", err
 	}
 	var matches []string
-	for _, item := range out.Subnets {
-		if id := aws.ToString(item.SubnetId); id != "" {
+	for i := range out.Subnets {
+		if id := aws.ToString(out.Subnets[i].SubnetId); id != "" {
 			matches = append(matches, id)
 		}
 	}

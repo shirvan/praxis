@@ -41,7 +41,7 @@ func (r *realTargetGroupAPI) CreateTargetGroup(ctx context.Context, spec TargetG
 	}
 	input := &elbv2sdk.CreateTargetGroupInput{
 		Name:       aws.String(spec.Name),
-		Port:       aws.Int32(int32(spec.Port)),
+		Port:       aws.Int32(int32(spec.Port)), //nolint:gosec // G115: target group port is bounded to valid TCP range
 		Protocol:   elbv2types.ProtocolEnum(spec.Protocol),
 		TargetType: elbv2types.TargetTypeEnum(spec.TargetType),
 	}
@@ -372,7 +372,7 @@ func encodeTargets(targets []Target) []elbv2types.TargetDescription {
 	for _, target := range targets {
 		desc := elbv2types.TargetDescription{Id: aws.String(target.ID)}
 		if target.Port != 0 {
-			desc.Port = aws.Int32(int32(target.Port))
+			desc.Port = aws.Int32(int32(target.Port)) //nolint:gosec // G115: target port is bounded to valid TCP range
 		}
 		if target.AvailabilityZone != "" {
 			desc.AvailabilityZone = aws.String(target.AvailabilityZone)

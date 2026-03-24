@@ -10,6 +10,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -191,9 +192,7 @@ func (r *Registry) All() map[string]Adapter {
 		return nil
 	}
 	out := make(map[string]Adapter, len(r.byKind))
-	for kind, adapter := range r.byKind {
-		out[kind] = adapter
-	}
+	maps.Copy(out, r.byKind)
 	return out
 }
 

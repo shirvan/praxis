@@ -75,7 +75,7 @@ func seedPoliciesFromDir(cfg config.Config) {
 		}
 
 		path := filepath.Join(cfg.PolicyDir, entry.Name())
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) //nolint:gosec // G304: path is constructed from configured policy directory
 		if err != nil {
 			slog.Error("failed to read seeded policy", "path", path, "err", err.Error())
 			continue
@@ -88,7 +88,7 @@ func seedPoliciesFromDir(cfg config.Config) {
 		}
 
 		var lastErr error
-		for attempt := 0; attempt < 20; attempt++ {
+		for range 20 {
 			_, err = ingress.Service[types.AddPolicyRequest, restate.Void](client, "PraxisCommandService", "AddPolicy").Request(context.Background(), request)
 			if err == nil {
 				lastErr = nil

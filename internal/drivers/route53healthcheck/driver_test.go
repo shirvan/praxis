@@ -3,6 +3,7 @@ package route53healthcheck
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -133,12 +134,8 @@ func (f *fakeHealthCheckAPI) UpdateTags(ctx context.Context, healthCheckID strin
 		}
 	}
 	obs.Tags = map[string]string{}
-	for key, value := range praxisTags {
-		obs.Tags[key] = value
-	}
-	for key, value := range tags {
-		obs.Tags[key] = value
-	}
+	maps.Copy(obs.Tags, praxisTags)
+	maps.Copy(obs.Tags, tags)
 	f.checks[healthCheckID] = obs
 	return nil
 }
@@ -161,9 +158,7 @@ func cloneObserved(obs ObservedState) ObservedState {
 	clone := obs
 	if obs.Tags != nil {
 		clone.Tags = make(map[string]string, len(obs.Tags))
-		for key, value := range obs.Tags {
-			clone.Tags[key] = value
-		}
+		maps.Copy(clone.Tags, obs.Tags)
 	}
 	if obs.ChildHealthChecks != nil {
 		clone.ChildHealthChecks = make([]string, len(obs.ChildHealthChecks))
@@ -181,9 +176,7 @@ func copyTags(tags map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		out[key] = value
-	}
+	maps.Copy(out, tags)
 	return out
 }
 

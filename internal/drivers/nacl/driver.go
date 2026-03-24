@@ -288,7 +288,7 @@ func (d *NetworkACLDriver) Delete(ctx restate.ObjectContext) error {
 	}
 
 	for _, association := range observed.Associations {
-		association := association
+
 		_, err = restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 			return api.ReplaceNetworkACLAssociation(rc, association.AssociationId, defaultACLID)
 		})
@@ -484,7 +484,6 @@ func (d *NetworkACLDriver) applyRuleDiff(ctx restate.ObjectContext, api NetworkA
 	sortRules(toRemove)
 
 	for _, rule := range toAdd {
-		rule := rule
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.CreateEntry(rc, networkAclID, rule, egress)
 			if runErr != nil {
@@ -504,7 +503,6 @@ func (d *NetworkACLDriver) applyRuleDiff(ctx restate.ObjectContext, api NetworkA
 	}
 
 	for _, rule := range toReplace {
-		rule := rule
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.ReplaceEntry(rc, networkAclID, rule, egress)
 			if runErr != nil {
@@ -521,7 +519,6 @@ func (d *NetworkACLDriver) applyRuleDiff(ctx restate.ObjectContext, api NetworkA
 	}
 
 	for _, rule := range toRemove {
-		rule := rule
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.DeleteEntry(rc, networkAclID, rule.RuleNumber, egress)
 			if runErr != nil {
@@ -554,7 +551,6 @@ func (d *NetworkACLDriver) applyAssociationDiff(ctx restate.ObjectContext, api N
 		if _, ok := observedBySubnet[subnetID]; ok {
 			continue
 		}
-		subnetID := subnetID
 		associationID, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 			return api.FindAssociationIdForSubnet(rc, subnetID)
 		})
@@ -587,7 +583,6 @@ func (d *NetworkACLDriver) applyAssociationDiff(ctx restate.ObjectContext, api N
 	}
 
 	for _, association := range toRemove {
-		association := association
 		associationID := association.AssociationId
 		if associationID == "" {
 			associationID, err = restate.Run(ctx, func(rc restate.RunContext) (string, error) {

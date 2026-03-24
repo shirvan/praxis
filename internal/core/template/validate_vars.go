@@ -2,6 +2,7 @@ package template
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -128,10 +129,8 @@ func validateEnum(name string, allowed []string, val any) error {
 	if !ok {
 		return nil // type validation handles the mismatch
 	}
-	for _, a := range allowed {
-		if s == a {
-			return nil
-		}
+	if slices.Contains(allowed, s) {
+		return nil
 	}
 	return fmt.Errorf("variable %q: value %q not in allowed set [%s]", name, s, strings.Join(allowed, ", "))
 }

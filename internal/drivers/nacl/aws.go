@@ -151,7 +151,7 @@ func (r *realNetworkACLAPI) DeleteEntry(ctx context.Context, networkAclId string
 	}
 	_, err := r.client.DeleteNetworkAclEntry(ctx, &ec2sdk.DeleteNetworkAclEntryInput{
 		NetworkAclId: aws.String(networkAclId),
-		RuleNumber:   aws.Int32(int32(ruleNumber)),
+		RuleNumber:   aws.Int32(int32(ruleNumber)), //nolint:gosec // G115: NACL rule numbers are 1-32766, within int32 range
 		Egress:       aws.Bool(egress),
 	})
 	return err
@@ -336,7 +336,7 @@ func networkACLEntryInput(networkAclId string, rule NetworkACLRule, egress bool)
 	}
 	input := &ec2sdk.CreateNetworkAclEntryInput{
 		NetworkAclId: aws.String(networkAclId),
-		RuleNumber:   aws.Int32(int32(rule.RuleNumber)),
+		RuleNumber:   aws.Int32(int32(rule.RuleNumber)), //nolint:gosec // G115: NACL rule numbers are 1-32766, within int32 range
 		Protocol:     aws.String(protocol),
 		RuleAction:   ec2types.RuleAction(strings.ToLower(rule.RuleAction)),
 		Egress:       aws.Bool(egress),
@@ -353,7 +353,7 @@ func replaceNetworkACLEntryInput(networkAclId string, rule NetworkACLRule, egres
 	}
 	input := &ec2sdk.ReplaceNetworkAclEntryInput{
 		NetworkAclId: aws.String(networkAclId),
-		RuleNumber:   aws.Int32(int32(rule.RuleNumber)),
+		RuleNumber:   aws.Int32(int32(rule.RuleNumber)), //nolint:gosec // G115: NACL rule numbers are 1-32766, within int32 range
 		Protocol:     aws.String(protocol),
 		RuleAction:   ec2types.RuleAction(strings.ToLower(rule.RuleAction)),
 		Egress:       aws.Bool(egress),
@@ -367,19 +367,19 @@ func applyRulePorts(target any, protocol string, rule NetworkACLRule) {
 	switch input := target.(type) {
 	case *ec2sdk.CreateNetworkAclEntryInput:
 		if protocol == "1" {
-			input.IcmpTypeCode = &ec2types.IcmpTypeCode{Type: aws.Int32(int32(rule.FromPort)), Code: aws.Int32(int32(rule.ToPort))}
+			input.IcmpTypeCode = &ec2types.IcmpTypeCode{Type: aws.Int32(int32(rule.FromPort)), Code: aws.Int32(int32(rule.ToPort))} //nolint:gosec // G115: NACL rule ports are bounded to valid range
 			return
 		}
 		if protocol != "-1" {
-			input.PortRange = &ec2types.PortRange{From: aws.Int32(int32(rule.FromPort)), To: aws.Int32(int32(rule.ToPort))}
+			input.PortRange = &ec2types.PortRange{From: aws.Int32(int32(rule.FromPort)), To: aws.Int32(int32(rule.ToPort))} //nolint:gosec // G115: NACL rule ports are bounded to valid range
 		}
 	case *ec2sdk.ReplaceNetworkAclEntryInput:
 		if protocol == "1" {
-			input.IcmpTypeCode = &ec2types.IcmpTypeCode{Type: aws.Int32(int32(rule.FromPort)), Code: aws.Int32(int32(rule.ToPort))}
+			input.IcmpTypeCode = &ec2types.IcmpTypeCode{Type: aws.Int32(int32(rule.FromPort)), Code: aws.Int32(int32(rule.ToPort))} //nolint:gosec // G115: NACL rule ports are bounded to valid range
 			return
 		}
 		if protocol != "-1" {
-			input.PortRange = &ec2types.PortRange{From: aws.Int32(int32(rule.FromPort)), To: aws.Int32(int32(rule.ToPort))}
+			input.PortRange = &ec2types.PortRange{From: aws.Int32(int32(rule.FromPort)), To: aws.Int32(int32(rule.ToPort))} //nolint:gosec // G115: NACL rule ports are bounded to valid range
 		}
 	}
 }

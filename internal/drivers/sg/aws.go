@@ -79,26 +79,26 @@ func (r *realSGAPI) DescribeSecurityGroup(ctx context.Context, groupId string) (
 	}
 
 	// Normalize ingress rules
-	for _, perm := range sg.IpPermissions {
-		for _, cidr := range perm.IpRanges {
+	for i := range sg.IpPermissions {
+		for _, cidr := range sg.IpPermissions[i].IpRanges {
 			obs.IngressRules = append(obs.IngressRules, NormalizedRule{
 				Direction: "ingress",
-				Protocol:  normalizeProtocol(aws.ToString(perm.IpProtocol)),
-				FromPort:  aws.ToInt32(perm.FromPort),
-				ToPort:    aws.ToInt32(perm.ToPort),
+				Protocol:  normalizeProtocol(aws.ToString(sg.IpPermissions[i].IpProtocol)),
+				FromPort:  aws.ToInt32(sg.IpPermissions[i].FromPort),
+				ToPort:    aws.ToInt32(sg.IpPermissions[i].ToPort),
 				Target:    "cidr:" + aws.ToString(cidr.CidrIp),
 			})
 		}
 	}
 
 	// Normalize egress rules
-	for _, perm := range sg.IpPermissionsEgress {
-		for _, cidr := range perm.IpRanges {
+	for i := range sg.IpPermissionsEgress {
+		for _, cidr := range sg.IpPermissionsEgress[i].IpRanges {
 			obs.EgressRules = append(obs.EgressRules, NormalizedRule{
 				Direction: "egress",
-				Protocol:  normalizeProtocol(aws.ToString(perm.IpProtocol)),
-				FromPort:  aws.ToInt32(perm.FromPort),
-				ToPort:    aws.ToInt32(perm.ToPort),
+				Protocol:  normalizeProtocol(aws.ToString(sg.IpPermissionsEgress[i].IpProtocol)),
+				FromPort:  aws.ToInt32(sg.IpPermissionsEgress[i].FromPort),
+				ToPort:    aws.ToInt32(sg.IpPermissionsEgress[i].ToPort),
 				Target:    "cidr:" + aws.ToString(cidr.CidrIp),
 			})
 		}
@@ -145,8 +145,8 @@ func (r *realSGAPI) FindByTags(ctx context.Context, tags map[string]string) (str
 		return "", err
 	}
 	var matches []string
-	for _, item := range out.SecurityGroups {
-		if id := aws.ToString(item.GroupId); id != "" {
+	for i := range out.SecurityGroups {
+		if id := aws.ToString(out.SecurityGroups[i].GroupId); id != "" {
 			matches = append(matches, id)
 		}
 	}

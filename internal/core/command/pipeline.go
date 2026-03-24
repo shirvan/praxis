@@ -3,6 +3,7 @@ package command
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -176,8 +177,8 @@ func (s *PraxisCommandService) submitDeployment(
 	// Validate --replace resource names exist in the plan.
 	if len(forceReplace) > 0 {
 		planNames := make(map[string]bool, len(compiled.PlanResources))
-		for _, r := range compiled.PlanResources {
-			planNames[r.Name] = true
+		for i := range compiled.PlanResources {
+			planNames[compiled.PlanResources[i].Name] = true
 		}
 		for _, name := range forceReplace {
 			if !planNames[name] {
@@ -523,9 +524,7 @@ func cloneStringMap(input map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(input))
-	for key, value := range input {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, input)
 	return cloned
 }
 

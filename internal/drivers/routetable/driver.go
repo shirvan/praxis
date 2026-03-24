@@ -273,7 +273,6 @@ func (d *RouteTableDriver) Delete(ctx restate.ObjectContext) error {
 		if association.Main || association.AssociationId == "" {
 			continue
 		}
-		association := association
 		_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			if runErr := api.DisassociateSubnet(rc, association.AssociationId); runErr != nil {
 				if IsAssociationNotFound(runErr) {
@@ -292,10 +291,10 @@ func (d *RouteTableDriver) Delete(ctx restate.ObjectContext) error {
 	}
 
 	routes := filterManagedRoutes(observed.Routes)
-	for _, route := range routes {
-		route := route
+	for i := range routes {
+
 		_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-			if runErr := api.DeleteRoute(rc, routeTableID, route.DestinationCidrBlock); runErr != nil {
+			if runErr := api.DeleteRoute(rc, routeTableID, routes[i].DestinationCidrBlock); runErr != nil {
 				if IsRouteNotFound(runErr) {
 					return restate.Void{}, nil
 				}
@@ -305,7 +304,7 @@ func (d *RouteTableDriver) Delete(ctx restate.ObjectContext) error {
 		})
 		if err != nil {
 			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("delete route %s: %v", route.DestinationCidrBlock, err)
+			state.Error = fmt.Sprintf("delete route %s: %v", routes[i].DestinationCidrBlock, err)
 			restate.Set(ctx, drivers.StateKey, state)
 			return err
 		}
@@ -475,9 +474,9 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 			toReplace = append(toReplace, route)
 		}
 	}
-	for destination, route := range observedRoutes {
+	for destination := range observedRoutes {
 		if _, ok := desiredRoutes[destination]; !ok {
-			toRemove = append(toRemove, route)
+			toRemove = append(toRemove, observedRoutes[destination])
 		}
 	}
 	sort.Slice(toAdd, func(i, j int) bool {
@@ -491,7 +490,6 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 	})
 
 	for _, route := range toAdd {
-		route := route
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			if runErr := api.CreateRoute(rc, routeTableID, route); runErr != nil {
 				if IsRouteAlreadyExists(runErr) {
@@ -516,7 +514,6 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 	}
 
 	for _, route := range toReplace {
-		route := route
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			if runErr := api.ReplaceRoute(rc, routeTableID, route); runErr != nil {
 				if IsRouteNotFound(runErr) {
@@ -540,10 +537,9 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 		}
 	}
 
-	for _, route := range toRemove {
-		route := route
+	for i := range toRemove {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-			if runErr := api.DeleteRoute(rc, routeTableID, route.DestinationCidrBlock); runErr != nil {
+			if runErr := api.DeleteRoute(rc, routeTableID, toRemove[i].DestinationCidrBlock); runErr != nil {
 				if IsRouteNotFound(runErr) {
 					return restate.Void{}, nil
 				}
@@ -552,7 +548,7 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 			return restate.Void{}, nil
 		})
 		if err != nil {
-			return fmt.Errorf("delete route %s: %w", route.DestinationCidrBlock, err)
+			return fmt.Errorf("delete route %s: %w", toRemove[i].DestinationCidrBlock, err)
 		}
 	}
 
@@ -585,7 +581,6 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 	})
 
 	for _, subnetID := range toAssociate {
-		subnetID := subnetID
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 			associationID, runErr := api.AssociateSubnet(rc, routeTableID, subnetID)
 			if runErr != nil {
@@ -602,7 +597,6 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 	}
 
 	for _, association := range toDisassociate {
-		association := association
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			if runErr := api.DisassociateSubnet(rc, association.AssociationId); runErr != nil {
 				if IsAssociationNotFound(runErr) {

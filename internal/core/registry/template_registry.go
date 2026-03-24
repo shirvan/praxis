@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -169,8 +170,6 @@ func cloneLabels(labels map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(labels))
-	for key, value := range labels {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, labels)
 	return cloned
 }

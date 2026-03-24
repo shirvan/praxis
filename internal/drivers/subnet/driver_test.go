@@ -3,6 +3,7 @@ package subnet
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -64,9 +65,7 @@ func (f *fakeSubnetAPI) CreateSubnet(ctx context.Context, spec SubnetSpec) (stri
 		id = fmt.Sprintf("subnet-%d", f.createCalls)
 	}
 	tags := map[string]string{"praxis:managed-key": spec.ManagedKey}
-	for key, value := range spec.Tags {
-		tags[key] = value
-	}
+	maps.Copy(tags, spec.Tags)
 	f.observed[id] = ObservedState{
 		SubnetId:            id,
 		VpcId:               spec.VpcId,
@@ -165,12 +164,8 @@ func (f *fakeSubnetAPI) UpdateTags(ctx context.Context, subnetID string, tags ma
 		}
 	}
 	obs.Tags = map[string]string{}
-	for key, value := range praxisTags {
-		obs.Tags[key] = value
-	}
-	for key, value := range tags {
-		obs.Tags[key] = value
-	}
+	maps.Copy(obs.Tags, praxisTags)
+	maps.Copy(obs.Tags, tags)
 	f.observed[subnetID] = obs
 	return nil
 }
@@ -188,7 +183,8 @@ func (f *fakeSubnetAPI) FindByTags(ctx context.Context, tags map[string]string) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var matches []string
-	for id, observed := range f.observed {
+	for id := range f.observed {
+		observed := f.observed[id]
 		matched := true
 		for key, value := range tags {
 			if observed.Tags[key] != value {
@@ -214,9 +210,7 @@ func cloneObserved(obs ObservedState) ObservedState {
 	clone := obs
 	if obs.Tags != nil {
 		clone.Tags = make(map[string]string, len(obs.Tags))
-		for key, value := range obs.Tags {
-			clone.Tags[key] = value
-		}
+		maps.Copy(clone.Tags, obs.Tags)
 	}
 	return clone
 }

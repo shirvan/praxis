@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -161,7 +162,7 @@ func (r *realLambdaAPI) DescribeFunction(ctx context.Context, functionName strin
 		return ObservedState{}, err
 	}
 	if output.Configuration == nil {
-		return ObservedState{}, fmt.Errorf("Lambda function %s returned empty configuration", functionName)
+		return ObservedState{}, fmt.Errorf("lambda function %s returned empty configuration", functionName)
 	}
 	conf := output.Configuration
 	observed := ObservedState{
@@ -264,7 +265,7 @@ func (r *realLambdaAPI) WaitForFunctionStable(ctx context.Context, functionName 
 			return nil
 		}
 		if obs.LastUpdateStatus == string(lambdatypes.LastUpdateStatusFailed) {
-			return restate.TerminalError(fmt.Errorf("Lambda function %s update failed", functionName), 500)
+			return restate.TerminalError(fmt.Errorf("lambda function %s update failed", functionName), 500)
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out waiting for Lambda function %s to stabilize", functionName)
@@ -320,9 +321,7 @@ func normalizeEnv(values map[string]string) map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(values))
-	for key, value := range values {
-		out[key] = value
-	}
+	maps.Copy(out, values)
 	return out
 }
 
@@ -331,9 +330,7 @@ func withManagedKey(managedKey string, tags map[string]string) map[string]string
 		return nil
 	}
 	out := make(map[string]string, len(tags)+1)
-	for key, value := range tags {
-		out[key] = value
-	}
+	maps.Copy(out, tags)
 	if managedKey != "" {
 		out["praxis:managed-key"] = managedKey
 	}

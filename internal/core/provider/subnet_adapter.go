@@ -129,7 +129,7 @@ func (a *SubnetAdapter) Plan(ctx restate.Context, key string, account string, de
 
 	outputs, getErr := restate.Object[subnet.SubnetOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
 	if getErr != nil {
-		return "", nil, fmt.Errorf("Subnet Plan: failed to read outputs for key %q: %w", key, getErr)
+		return "", nil, fmt.Errorf("subnet plan: failed to read outputs for key %q: %w", key, getErr)
 	}
 	if outputs.SubnetId == "" {
 		fields, fieldErr := createFieldDiffsFromSpec(desired)
@@ -246,19 +246,19 @@ func (a *SubnetAdapter) decodeSpec(doc resourceDocument) (subnet.SubnetSpec, err
 	}
 	name := strings.TrimSpace(doc.Metadata.Name)
 	if name == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("Subnet metadata.name is required")
+		return subnet.SubnetSpec{}, fmt.Errorf("subnet metadata.name is required")
 	}
 	if strings.TrimSpace(spec.Region) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("Subnet spec.region is required")
+		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.region is required")
 	}
 	if strings.TrimSpace(spec.VpcId) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("Subnet spec.vpcId is required")
+		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.vpcId is required")
 	}
 	if strings.TrimSpace(spec.CidrBlock) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("Subnet spec.cidrBlock is required")
+		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.cidrBlock is required")
 	}
 	if strings.TrimSpace(spec.AvailabilityZone) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("Subnet spec.availabilityZone is required")
+		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.availabilityZone is required")
 	}
 	if spec.Tags == nil {
 		spec.Tags = make(map[string]string)
@@ -275,7 +275,7 @@ func (a *SubnetAdapter) planningAPI(ctx restate.Context, account string) (subnet
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("Subnet adapter planning API is not configured")
+		return nil, fmt.Errorf("subnet adapter planning API is not configured")
 	}
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
@@ -289,7 +289,7 @@ func (a *SubnetAdapter) lookupAPI(ctx restate.Context, account string, region st
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("Subnet adapter planning API is not configured")
+		return nil, fmt.Errorf("subnet adapter planning API is not configured")
 	}
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
@@ -307,7 +307,7 @@ func lookupSubnet(ctx restate.RunContext, api subnet.SubnetAPI, filter LookupFil
 	}
 	tags := lookupTags(filter)
 	if len(tags) == 0 {
-		return subnet.ObservedState{}, fmt.Errorf("Subnet lookup requires at least one of: id, name, tag")
+		return subnet.ObservedState{}, fmt.Errorf("subnet lookup requires at least one of: id, name, tag")
 	}
 	id, err := api.FindByTags(ctx, tags)
 	if err != nil {

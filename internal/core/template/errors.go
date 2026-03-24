@@ -68,16 +68,16 @@ func (e TemplateErrors) Error() string {
 	b.WriteString("Template evaluation failed\n")
 	for _, te := range e {
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("  %s\n", te.Path))
+		fmt.Fprintf(&b, "  %s\n", te.Path)
 		if te.Source != "" {
-			b.WriteString(fmt.Sprintf("  |-- %s\n", te.Source))
+			fmt.Fprintf(&b, "  |-- %s\n", te.Source)
 		}
-		b.WriteString(fmt.Sprintf("  |-- %s\n", te.Message))
+		fmt.Fprintf(&b, "  |-- %s\n", te.Message)
 		if te.Detail != "" {
-			b.WriteString(fmt.Sprintf("  |__ %s\n", te.Detail))
+			fmt.Fprintf(&b, "  |__ %s\n", te.Detail)
 		}
 	}
-	b.WriteString(fmt.Sprintf("\n%d error(s) in template evaluation.\n", len(e)))
+	fmt.Fprintf(&b, "\n%d error(s) in template evaluation.\n", len(e))
 	return b.String()
 }
 

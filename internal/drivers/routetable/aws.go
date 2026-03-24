@@ -92,20 +92,20 @@ func (r *realRouteTableAPI) DescribeRouteTable(ctx context.Context, routeTableId
 	for _, tag := range routeTable.Tags {
 		observed.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
-	for _, route := range routeTable.Routes {
-		destination := strings.TrimSpace(aws.ToString(route.DestinationCidrBlock))
+	for i := range routeTable.Routes {
+		destination := strings.TrimSpace(aws.ToString(routeTable.Routes[i].DestinationCidrBlock))
 		if destination == "" {
 			continue
 		}
 		observed.Routes = append(observed.Routes, ObservedRoute{
 			DestinationCidrBlock:   destination,
-			GatewayId:              aws.ToString(route.GatewayId),
-			NatGatewayId:           aws.ToString(route.NatGatewayId),
-			VpcPeeringConnectionId: aws.ToString(route.VpcPeeringConnectionId),
-			TransitGatewayId:       aws.ToString(route.TransitGatewayId),
-			NetworkInterfaceId:     aws.ToString(route.NetworkInterfaceId),
-			State:                  string(route.State),
-			Origin:                 string(route.Origin),
+			GatewayId:              aws.ToString(routeTable.Routes[i].GatewayId),
+			NatGatewayId:           aws.ToString(routeTable.Routes[i].NatGatewayId),
+			VpcPeeringConnectionId: aws.ToString(routeTable.Routes[i].VpcPeeringConnectionId),
+			TransitGatewayId:       aws.ToString(routeTable.Routes[i].TransitGatewayId),
+			NetworkInterfaceId:     aws.ToString(routeTable.Routes[i].NetworkInterfaceId),
+			State:                  string(routeTable.Routes[i].State),
+			Origin:                 string(routeTable.Routes[i].Origin),
 		})
 	}
 	for _, association := range routeTable.Associations {
@@ -264,8 +264,8 @@ func (r *realRouteTableAPI) FindByManagedKey(ctx context.Context, managedKey str
 		return "", err
 	}
 	var matches []string
-	for _, routeTable := range out.RouteTables {
-		if id := aws.ToString(routeTable.RouteTableId); id != "" {
+	for i := range out.RouteTables {
+		if id := aws.ToString(out.RouteTables[i].RouteTableId); id != "" {
 			matches = append(matches, id)
 		}
 	}

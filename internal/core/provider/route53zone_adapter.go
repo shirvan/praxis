@@ -219,11 +219,12 @@ func lookupHostedZone(ctx restate.RunContext, api route53zone.HostedZoneAPI, fil
 	}
 	var id string
 	var err error
-	if strings.TrimSpace(filter.Name) != "" {
+	switch {
+	case strings.TrimSpace(filter.Name) != "":
 		id, err = api.FindHostedZoneByName(ctx, normalizeHostedZoneLookupName(filter.Name))
-	} else if len(filter.Tag) > 0 {
+	case len(filter.Tag) > 0:
 		id, err = api.FindHostedZoneByTags(ctx, filter.Tag)
-	} else {
+	default:
 		return route53zone.ObservedState{}, fmt.Errorf("Route53HostedZone lookup requires at least one of: id, name, tag")
 	}
 	if err != nil {

@@ -3,6 +3,7 @@ package nacl
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -86,9 +87,7 @@ func (f *fakeNetworkACLAPI) CreateNetworkACL(ctx context.Context, spec NetworkAC
 		id = fmt.Sprintf("acl-%d", f.createCalls)
 	}
 	tags := map[string]string{"praxis:managed-key": spec.ManagedKey}
-	for key, value := range spec.Tags {
-		tags[key] = value
-	}
+	maps.Copy(tags, spec.Tags)
 	f.observed[id] = ObservedState{NetworkAclId: id, VpcId: spec.VpcId, Tags: tags}
 	if spec.ManagedKey != "" {
 		f.managedKeys[spec.ManagedKey] = id
@@ -272,12 +271,8 @@ func (f *fakeNetworkACLAPI) UpdateTags(ctx context.Context, networkAclId string,
 		}
 	}
 	obs.Tags = map[string]string{}
-	for key, value := range praxisTags {
-		obs.Tags[key] = value
-	}
-	for key, value := range tags {
-		obs.Tags[key] = value
-	}
+	maps.Copy(obs.Tags, praxisTags)
+	maps.Copy(obs.Tags, tags)
 	f.observed[networkAclId] = obs
 	return nil
 }
@@ -352,9 +347,7 @@ func cloneObservedState(obs ObservedState) ObservedState {
 	clone.Associations = append([]NetworkACLAssociation(nil), obs.Associations...)
 	if obs.Tags != nil {
 		clone.Tags = make(map[string]string, len(obs.Tags))
-		for key, value := range obs.Tags {
-			clone.Tags[key] = value
-		}
+		maps.Copy(clone.Tags, obs.Tags)
 	}
 	return clone
 }

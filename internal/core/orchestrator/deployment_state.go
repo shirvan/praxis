@@ -43,7 +43,8 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 	}
 
 	resources := make(map[string]*ResourceState, len(plan.Resources))
-	for _, resource := range plan.Resources {
+	for i := range plan.Resources {
+		resource := &plan.Resources[i]
 		dependsOn := append([]string(nil), resource.Dependencies...)
 		sort.Strings(dependsOn)
 		resources[resource.Name] = &ResourceState{

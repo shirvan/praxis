@@ -49,14 +49,15 @@ func NormalizeRoute(r Route) string {
 
 func filterManagedRoutes(routes []ObservedRoute) []ObservedRoute {
 	filtered := make([]ObservedRoute, 0, len(routes))
-	for _, route := range routes {
+	for i := range routes {
+		route := &routes[i]
 		if route.Origin == "CreateRouteTable" || route.Origin == "EnableVgwRoutePropagation" {
 			continue
 		}
 		if strings.TrimSpace(route.DestinationCidrBlock) == "" {
 			continue
 		}
-		filtered = append(filtered, route)
+		filtered = append(filtered, *route)
 	}
 	sort.Slice(filtered, func(i, j int) bool {
 		return filtered[i].DestinationCidrBlock < filtered[j].DestinationCidrBlock
@@ -302,8 +303,8 @@ func desiredRouteMap(routes []Route) map[string]Route {
 
 func observedRouteMap(routes []ObservedRoute) map[string]ObservedRoute {
 	indexed := make(map[string]ObservedRoute, len(routes))
-	for _, route := range routes {
-		indexed[route.DestinationCidrBlock] = route
+	for i := range routes {
+		indexed[routes[i].DestinationCidrBlock] = routes[i]
 	}
 	return indexed
 }
@@ -363,9 +364,10 @@ func observedRouteToRoute(route ObservedRoute) Route {
 }
 
 func specFromObserved(observed ObservedState) RouteTableSpec {
-	routes := make([]Route, 0, len(filterManagedRoutes(observed.Routes)))
-	for _, route := range filterManagedRoutes(observed.Routes) {
-		routes = append(routes, observedRouteToRoute(route))
+	managedRoutes := filterManagedRoutes(observed.Routes)
+	routes := make([]Route, 0, len(managedRoutes))
+	for i := range managedRoutes {
+		routes = append(routes, observedRouteToRoute(managedRoutes[i]))
 	}
 	associations := make([]Association, 0, len(observed.Associations))
 	for _, association := range observed.Associations {

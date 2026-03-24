@@ -33,8 +33,8 @@ func ParsePolicyScopeKey(key string) (types.PolicyScope, string, error) {
 		return types.PolicyScopeGlobal, "", nil
 	}
 	const prefix = "template:"
-	if strings.HasPrefix(trimmed, prefix) {
-		templateName := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+	if templateName, ok := strings.CutPrefix(trimmed, prefix); ok {
+		templateName = strings.TrimSpace(templateName)
 		if templateName == "" {
 			return "", "", fmt.Errorf("template-scoped policy key requires a template name")
 		}

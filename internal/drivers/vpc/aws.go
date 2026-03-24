@@ -252,8 +252,8 @@ func (r *realVPCAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 
 	var matches []string
-	for _, v := range out.Vpcs {
-		if id := aws.ToString(v.VpcId); id != "" {
+	for i := range out.Vpcs {
+		if id := aws.ToString(out.Vpcs[i].VpcId); id != "" {
 			matches = append(matches, id)
 		}
 	}
@@ -285,8 +285,8 @@ func (r *realVPCAPI) FindByTags(ctx context.Context, tags map[string]string) (st
 		return "", err
 	}
 	var matches []string
-	for _, item := range out.Vpcs {
-		if id := aws.ToString(item.VpcId); id != "" {
+	for i := range out.Vpcs {
+		if id := aws.ToString(out.Vpcs[i].VpcId); id != "" {
 			matches = append(matches, id)
 		}
 	}

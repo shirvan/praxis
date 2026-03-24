@@ -83,9 +83,6 @@ func applyDefaults(spec AuroraClusterSpec) AuroraClusterSpec {
 	if spec.BackupRetentionPeriod == 0 {
 		spec.BackupRetentionPeriod = 7
 	}
-	if spec.StorageEncrypted == false {
-		// retain explicit false if set
-	}
 	if spec.VpcSecurityGroupIds == nil {
 		spec.VpcSecurityGroupIds = []string{}
 	}

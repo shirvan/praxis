@@ -204,7 +204,7 @@ func (r *realEC2API) ModifyInstanceType(ctx context.Context, instanceId, newType
 		_, err = r.client.StopInstances(ctx, &ec2sdk.StopInstancesInput{InstanceIds: []string{instanceId}})
 		if err != nil {
 			var apiErr smithy.APIError
-			if !(errors.As(err, &apiErr) && apiErr.ErrorCode() == "IncorrectInstanceState") {
+			if !errors.As(err, &apiErr) || apiErr.ErrorCode() != "IncorrectInstanceState" {
 				return fmt.Errorf("stop instance for type change: %w", err)
 			}
 		}
@@ -329,8 +329,8 @@ func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (s
 
 	var matches []string
 	for _, reservation := range out.Reservations {
-		for _, inst := range reservation.Instances {
-			if id := aws.ToString(inst.InstanceId); id != "" {
+		for i := range reservation.Instances {
+			if id := aws.ToString(reservation.Instances[i].InstanceId); id != "" {
 				matches = append(matches, id)
 			}
 		}

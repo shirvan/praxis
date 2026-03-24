@@ -112,9 +112,6 @@ func applyDefaults(spec RDSInstanceSpec) RDSInstanceSpec {
 	if spec.BackupRetentionPeriod == 0 && spec.DBClusterIdentifier == "" {
 		spec.BackupRetentionPeriod = 7
 	}
-	if spec.AutoMinorVersionUpgrade == false {
-		// retain explicit false for zero value; no-op
-	}
 	if spec.VpcSecurityGroupIds == nil {
 		spec.VpcSecurityGroupIds = []string{}
 	}

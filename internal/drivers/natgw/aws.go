@@ -174,15 +174,15 @@ func (r *realNATGatewayAPI) FindByManagedKey(ctx context.Context, managedKey str
 	}
 
 	var matches []string
-	for _, gw := range out.NatGateways {
-		if managedKeyTagValue(gw.Tags) != managedKey {
+	for i := range out.NatGateways {
+		if managedKeyTagValue(out.NatGateways[i].Tags) != managedKey {
 			continue
 		}
-		state := string(gw.State)
+		state := string(out.NatGateways[i].State)
 		if state != string(ec2types.NatGatewayStatePending) && state != string(ec2types.NatGatewayStateAvailable) {
 			continue
 		}
-		if id := aws.ToString(gw.NatGatewayId); id != "" {
+		if id := aws.ToString(out.NatGateways[i].NatGatewayId); id != "" {
 			matches = append(matches, id)
 		}
 	}

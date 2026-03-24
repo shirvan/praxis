@@ -51,9 +51,7 @@ func ComputeFieldDiffs(desired NLBSpec, observed ObservedState) []FieldDiffEntry
 	if desired.DeletionProtection != observed.DeletionProtection {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.deletionProtection", OldValue: observed.DeletionProtection, NewValue: desired.DeletionProtection})
 	}
-	for _, diff := range computeTagDiffs(desired.Tags, observed.Tags) {
-		diffs = append(diffs, diff)
-	}
+	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 

@@ -3,6 +3,7 @@ package routetable
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -49,9 +50,7 @@ func (f *fakeRouteTableAPI) CreateRouteTable(ctx context.Context, spec RouteTabl
 	f.createCalls++
 	id := f.nextID
 	tags := map[string]string{"praxis:managed-key": spec.ManagedKey}
-	for key, value := range spec.Tags {
-		tags[key] = value
-	}
+	maps.Copy(tags, spec.Tags)
 	f.observed[id] = ObservedState{RouteTableId: id, VpcId: spec.VpcId, Tags: tags}
 	f.managedKeys[spec.ManagedKey] = id
 	return id, nil
@@ -68,9 +67,7 @@ func (f *fakeRouteTableAPI) DescribeRouteTable(ctx context.Context, routeTableId
 	cloned.Routes = append([]ObservedRoute(nil), obs.Routes...)
 	cloned.Associations = append([]ObservedAssociation(nil), obs.Associations...)
 	cloned.Tags = map[string]string{}
-	for key, value := range obs.Tags {
-		cloned.Tags[key] = value
-	}
+	maps.Copy(cloned.Tags, obs.Tags)
 	return cloned, nil
 }
 
@@ -98,9 +95,9 @@ func (f *fakeRouteTableAPI) DeleteRoute(ctx context.Context, routeTableId string
 	f.deleteRouteCalls = append(f.deleteRouteCalls, destinationCidr)
 	obs := f.observed[routeTableId]
 	filtered := make([]ObservedRoute, 0, len(obs.Routes))
-	for _, route := range obs.Routes {
-		if route.DestinationCidrBlock != destinationCidr {
-			filtered = append(filtered, route)
+	for i := range obs.Routes {
+		if obs.Routes[i].DestinationCidrBlock != destinationCidr {
+			filtered = append(filtered, obs.Routes[i])
 		}
 	}
 	obs.Routes = filtered
@@ -113,8 +110,8 @@ func (f *fakeRouteTableAPI) ReplaceRoute(ctx context.Context, routeTableId strin
 	defer f.mu.Unlock()
 	f.replaceRouteCalls = append(f.replaceRouteCalls, route)
 	obs := f.observed[routeTableId]
-	for i, existing := range obs.Routes {
-		if existing.DestinationCidrBlock == route.DestinationCidrBlock {
+	for i := range obs.Routes {
+		if obs.Routes[i].DestinationCidrBlock == route.DestinationCidrBlock {
 			obs.Routes[i] = ObservedRoute{DestinationCidrBlock: route.DestinationCidrBlock, GatewayId: route.GatewayId, NatGatewayId: route.NatGatewayId, VpcPeeringConnectionId: route.VpcPeeringConnectionId, TransitGatewayId: route.TransitGatewayId, NetworkInterfaceId: route.NetworkInterfaceId, VpcEndpointId: route.VpcEndpointId, Origin: "CreateRoute", State: "active"}
 			f.observed[routeTableId] = obs
 			return nil
@@ -157,9 +154,7 @@ func (f *fakeRouteTableAPI) UpdateTags(ctx context.Context, routeTableId string,
 	f.updateCalls++
 	obs := f.observed[routeTableId]
 	merged := map[string]string{"praxis:managed-key": obs.Tags["praxis:managed-key"]}
-	for key, value := range tags {
-		merged[key] = value
-	}
+	maps.Copy(merged, tags)
 	obs.Tags = merged
 	f.observed[routeTableId] = obs
 	return nil

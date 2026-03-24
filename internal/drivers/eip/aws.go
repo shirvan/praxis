@@ -173,8 +173,8 @@ func (r *realEIPAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 
 	var matches []string
-	for _, addr := range out.Addresses {
-		if id := aws.ToString(addr.AllocationId); id != "" {
+	for i := range out.Addresses {
+		if id := aws.ToString(out.Addresses[i].AllocationId); id != "" {
 			matches = append(matches, id)
 		}
 	}

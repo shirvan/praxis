@@ -58,9 +58,7 @@ func ComputeFieldDiffs(desired ListenerSpec, observed ObservedState) []FieldDiff
 	if !actionsEqual(desired.DefaultActions, observed.DefaultActions) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.defaultActions", OldValue: observed.DefaultActions, NewValue: desired.DefaultActions})
 	}
-	for _, diff := range computeTagDiffs(desired.Tags, observed.Tags) {
-		diffs = append(diffs, diff)
-	}
+	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 

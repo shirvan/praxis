@@ -3,6 +3,7 @@ package iaminstanceprofile
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -120,9 +121,7 @@ func (f *fakeIAMInstanceProfileAPI) TagInstanceProfile(ctx context.Context, name
 	if obs.Tags == nil {
 		obs.Tags = map[string]string{}
 	}
-	for key, value := range tags {
-		obs.Tags[key] = value
-	}
+	maps.Copy(obs.Tags, tags)
 	f.profiles[name] = obs
 	return nil
 }
@@ -150,9 +149,7 @@ func cloneTags(tags map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	clone := make(map[string]string, len(tags))
-	for key, value := range tags {
-		clone[key] = value
-	}
+	maps.Copy(clone, tags)
 	return clone
 }
 

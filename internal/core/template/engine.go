@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -228,9 +229,7 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 		}
 		combined = append(combined, item)
 	}
-	for _, item := range finalDataErrs {
-		combined = append(combined, item)
-	}
+	combined = append(combined, finalDataErrs...)
 	combined = append(combined, policyErrs...)
 	return nil, combined
 }
@@ -524,10 +523,8 @@ func templateErrorSignature(item TemplateError) string {
 }
 
 func appendUniqueString(items []string, candidate string) []string {
-	for _, item := range items {
-		if item == candidate {
-			return items
-		}
+	if slices.Contains(items, candidate) {
+		return items
 	}
 	return append(items, candidate)
 }

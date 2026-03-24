@@ -33,10 +33,12 @@ func NewListenerAPI(client *elbv2sdk.Client) ListenerAPI {
 }
 
 func (r *realListenerAPI) CreateListener(ctx context.Context, spec ListenerSpec) (string, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
 	input := &elbv2sdk.CreateListenerInput{
 		LoadBalancerArn: aws.String(spec.LoadBalancerArn),
-		Port:            aws.Int32(int32(spec.Port)),
+		Port:            aws.Int32(int32(spec.Port)), //nolint:gosec // G115: listener port is bounded to valid TCP range
 		Protocol:        elbv2types.ProtocolEnum(spec.Protocol),
 		DefaultActions:  toAWSActions(spec.DefaultActions),
 	}
@@ -63,7 +65,9 @@ func (r *realListenerAPI) CreateListener(ctx context.Context, spec ListenerSpec)
 }
 
 func (r *realListenerAPI) DescribeListener(ctx context.Context, arn string) (ObservedState, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, err
+	}
 	out, err := r.client.DescribeListeners(ctx, &elbv2sdk.DescribeListenersInput{ListenerArns: []string{arn}})
 	if err != nil {
 		return ObservedState{}, err
@@ -75,14 +79,16 @@ func (r *realListenerAPI) DescribeListener(ctx context.Context, arn string) (Obs
 }
 
 func (r *realListenerAPI) FindListenerByPort(ctx context.Context, lbArn string, port int) (ObservedState, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, err
+	}
 	out, err := r.client.DescribeListeners(ctx, &elbv2sdk.DescribeListenersInput{LoadBalancerArn: aws.String(lbArn)})
 	if err != nil {
 		return ObservedState{}, err
 	}
-	for _, l := range out.Listeners {
-		if aws.ToInt32(l.Port) == int32(port) {
-			return r.buildObservedState(ctx, l)
+	for i := range out.Listeners {
+		if aws.ToInt32(out.Listeners[i].Port) == int32(port) { //nolint:gosec // G115: listener port is bounded to valid TCP range
+			return r.buildObservedState(ctx, out.Listeners[i])
 		}
 	}
 	return ObservedState{}, fmt.Errorf("ListenerNotFound: no listener on port %d for %s", port, lbArn)
@@ -116,16 +122,20 @@ func (r *realListenerAPI) buildObservedState(ctx context.Context, l elbv2types.L
 }
 
 func (r *realListenerAPI) DeleteListener(ctx context.Context, arn string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.DeleteListener(ctx, &elbv2sdk.DeleteListenerInput{ListenerArn: aws.String(arn)})
 	return err
 }
 
 func (r *realListenerAPI) ModifyListener(ctx context.Context, arn string, spec ListenerSpec) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	input := &elbv2sdk.ModifyListenerInput{
 		ListenerArn:    aws.String(arn),
-		Port:           aws.Int32(int32(spec.Port)),
+		Port:           aws.Int32(int32(spec.Port)), //nolint:gosec // G115: listener port is bounded to valid TCP range
 		Protocol:       elbv2types.ProtocolEnum(spec.Protocol),
 		DefaultActions: toAWSActions(spec.DefaultActions),
 	}
@@ -143,7 +153,9 @@ func (r *realListenerAPI) ModifyListener(ctx context.Context, arn string, spec L
 }
 
 func (r *realListenerAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
 	existing, err := r.describeTags(ctx, arn)
 	if err != nil {
 		return err
@@ -158,7 +170,9 @@ func (r *realListenerAPI) UpdateTags(ctx context.Context, arn string, desired ma
 		}
 	}
 	if len(keysToRemove) > 0 {
-		r.limiter.Wait(ctx)
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
 		if _, removeErr := r.client.RemoveTags(ctx, &elbv2sdk.RemoveTagsInput{
 			ResourceArns: []string{arn}, TagKeys: keysToRemove,
 		}); removeErr != nil {
@@ -166,7 +180,9 @@ func (r *realListenerAPI) UpdateTags(ctx context.Context, arn string, desired ma
 		}
 	}
 	if len(desired) > 0 {
-		r.limiter.Wait(ctx)
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
 		if _, addErr := r.client.AddTags(ctx, &elbv2sdk.AddTagsInput{
 			ResourceArns: []string{arn}, Tags: toELBTags(desired),
 		}); addErr != nil {
@@ -177,7 +193,9 @@ func (r *realListenerAPI) UpdateTags(ctx context.Context, arn string, desired ma
 }
 
 func (r *realListenerAPI) describeTags(ctx context.Context, arn string) (map[string]string, error) {
-	r.limiter.Wait(ctx)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
 	out, err := r.client.DescribeTags(ctx, &elbv2sdk.DescribeTagsInput{ResourceArns: []string{arn}})
 	if err != nil {
 		return nil, err

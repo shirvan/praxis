@@ -61,7 +61,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				UpdatedAt: now,
 			}); finalizeErr != nil {
 				return DeploymentResult{}, restate.TerminalError(
-					fmt.Errorf("invalid deployment graph: %w (additionally, failed to finalize deployment: %v)", err, finalizeErr),
+					fmt.Errorf("invalid deployment graph: %w (additionally, failed to finalize deployment: %w)", err, finalizeErr),
 					400,
 				)
 			}

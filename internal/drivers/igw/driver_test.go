@@ -3,6 +3,7 @@ package igw
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -71,9 +72,7 @@ func (f *fakeIGWAPI) CreateInternetGateway(ctx context.Context, spec IGWSpec) (s
 		id = fmt.Sprintf("igw-%d", f.createCalls)
 	}
 	tags := map[string]string{"praxis:managed-key": spec.ManagedKey}
-	for key, value := range spec.Tags {
-		tags[key] = value
-	}
+	maps.Copy(tags, spec.Tags)
 	f.observed[id] = ObservedState{InternetGatewayId: id, Tags: tags}
 	if spec.ManagedKey != "" {
 		f.managedKeys[spec.ManagedKey] = id
@@ -175,12 +174,8 @@ func (f *fakeIGWAPI) UpdateTags(ctx context.Context, internetGatewayID string, t
 		}
 	}
 	obs.Tags = map[string]string{}
-	for key, value := range praxisTags {
-		obs.Tags[key] = value
-	}
-	for key, value := range tags {
-		obs.Tags[key] = value
-	}
+	maps.Copy(obs.Tags, praxisTags)
+	maps.Copy(obs.Tags, tags)
 	f.observed[internetGatewayID] = obs
 	return nil
 }
@@ -198,9 +193,7 @@ func cloneObserved(obs ObservedState) ObservedState {
 	clone := obs
 	if obs.Tags != nil {
 		clone.Tags = make(map[string]string, len(obs.Tags))
-		for key, value := range obs.Tags {
-			clone.Tags[key] = value
-		}
+		maps.Copy(clone.Tags, obs.Tags)
 	}
 	return clone
 }

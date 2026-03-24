@@ -8,6 +8,7 @@ package command
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 
@@ -117,9 +118,7 @@ func (s *PraxisCommandService) resolveWorkspaceDefaults(
 			for k, v := range wsInfo.Variables {
 				merged[k] = v
 			}
-			for k, v := range variables {
-				merged[k] = v
-			}
+			maps.Copy(merged, variables)
 			mergedVars = merged
 		}
 	}

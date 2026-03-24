@@ -5,14 +5,63 @@ run:
 
 linters:
   enable:
-    - errcheck
-    - govet
-    - staticcheck
-    - unused
-    - ineffassign
+    # --- Existing ---
+    - errcheck       # unchecked errors
+    - govet          # go vet passes
+    - staticcheck    # comprehensive static analysis
+    - unused         # unused code
+    - ineffassign    # ineffective assignments
 
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
+    # --- Error handling ---
+    - errorlint      # proper %w wrapping; prevents broken errors.Is/As chains
+
+    # --- Security (OWASP) ---
+    - gosec          # hardcoded credentials, weak crypto, path traversal, SSRF, etc.
+
+    # --- HTTP resource management ---
+    - bodyclose      # http.Response.Body must be closed (critical for AWS SDK calls)
+    - noctx          # detects HTTP requests made without a context
+
+    # --- Code correctness & quality ---
+    - gocritic       # broad set of stable bug/perf/style checks
+    - copyloopvar    # loop variable capture bugs
+    - durationcheck  # prevents time.Duration multiplication mistakes
+
+    # --- Modern Go idioms ---
+    - modernize      # suggests using any, min/max, slices, strings.Cut, etc.
+    - intrange       # use integer range (for i := range n) where applicable
+    - usestdlibvars  # use http.MethodGET, http.StatusOK instead of raw strings/ints
+
+    # --- Hygiene ---
+    - misspell       # typos in comments and strings
+    - nolintlint     # requires specific linter names and explanations in //nolint
+
+  settings:
+    gocritic:
+      # Only run the stable, low-noise tag set
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - hugeParam    # too noisy for driver/struct-heavy code
+
+    gosec:
+      # Filter to medium+ confidence to reduce false positives
+      confidence: medium
+      severity: low
+
+    nolintlint:
+      require-explanation: true   # //nolint:linter // reason required
+      require-specific: true      # must name the specific linter(s)
+
+    usestdlibvars:
+      http-method: true
+      http-status-code: true
+      time-weekday: true
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec      # test files routinely use insecure patterns intentionally

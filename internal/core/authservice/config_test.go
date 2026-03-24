@@ -137,8 +137,8 @@ func TestLoadBootstrapFromEnv_CustomValues(t *testing.T) {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 	t.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	os.Unsetenv("PRAXIS_ACCOUNT_ROLE_ARN")
-	os.Unsetenv("PRAXIS_ACCOUNT_EXTERNAL_ID")
+	_ = os.Unsetenv("PRAXIS_ACCOUNT_ROLE_ARN")
+	_ = os.Unsetenv("PRAXIS_ACCOUNT_EXTERNAL_ID")
 
 	cfg := LoadBootstrapFromEnv()
 	require.NotNil(t, cfg)

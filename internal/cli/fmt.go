@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -40,7 +41,7 @@ recursively to find *.cue files.`,
 			}
 
 			if len(paths) == 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), "no .cue files found")
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "no .cue files found")
 				return nil
 			}
 
@@ -53,9 +54,9 @@ recursively to find *.cue files.`,
 				if changed {
 					unformatted++
 					if check {
-						fmt.Fprintln(cmd.OutOrStdout(), path)
+						_, _ = fmt.Fprintln(cmd.OutOrStdout(), path)
 					} else {
-						fmt.Fprintf(cmd.OutOrStdout(), "formatted %s\n", path)
+						_, _ = fmt.Fprintf(cmd.OutOrStdout(), "formatted %s\n", path)
 					}
 				}
 			}
@@ -78,7 +79,7 @@ recursively to find *.cue files.`,
 // written — the function only reports whether it would change. Returns true if
 // the file content differs from the formatted output.
 func formatFile(path string, check bool) (bool, error) {
-	original, err := os.ReadFile(path)
+	original, err := os.ReadFile(path) //nolint:gosec // G304: path is user-supplied CLI argument
 	if err != nil {
 		return false, err
 	}
@@ -88,7 +89,7 @@ func formatFile(path string, check bool) (bool, error) {
 		return false, fmt.Errorf("parse error: %w", err)
 	}
 
-	if string(original) == string(formatted) {
+	if bytes.Equal(original, formatted) {
 		return false, nil
 	}
 

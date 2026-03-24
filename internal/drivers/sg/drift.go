@@ -84,14 +84,14 @@ func ComputeDiff(desired, observed []NormalizedRule) (toAdd, toRemove []Normaliz
 		observedSet[r.ruleKey()] = r
 	}
 
-	// toAdd = desired - observed
+	// items to add: in desired but not observed
 	for key, rule := range desiredSet {
 		if _, exists := observedSet[key]; !exists {
 			toAdd = append(toAdd, rule)
 		}
 	}
 
-	// toRemove = observed - desired
+	// items to remove: in observed but not desired
 	for key, rule := range observedSet {
 		if _, exists := desiredSet[key]; !exists {
 			toRemove = append(toRemove, rule)

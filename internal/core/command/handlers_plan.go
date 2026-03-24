@@ -23,7 +23,8 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 	}
 
 	plan := corediff.NewPlanResult()
-	for _, resource := range compiled.PlanResources {
+	for i := range compiled.PlanResources {
+		resource := &compiled.PlanResources[i]
 		adapter, err := s.providers.Get(resource.Kind)
 		if err != nil {
 			return PlanResponse{}, restate.TerminalError(err, 400)

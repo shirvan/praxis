@@ -131,10 +131,7 @@ func (r *realDBParameterGroupAPI) UpdateParameters(ctx context.Context, spec DBP
 		}
 	}
 	for start := 0; start < len(toSet); start += 20 {
-		end := start + 20
-		if end > len(toSet) {
-			end = len(toSet)
-		}
+		end := min(start+20, len(toSet))
 		if err := r.limiter.Wait(ctx); err != nil {
 			return err
 		}
@@ -151,10 +148,7 @@ func (r *realDBParameterGroupAPI) UpdateParameters(ctx context.Context, spec DBP
 		}
 	}
 	for start := 0; start < len(toReset); start += 20 {
-		end := start + 20
-		if end > len(toReset) {
-			end = len(toReset)
-		}
+		end := min(start+20, len(toReset))
 		if err := r.limiter.Wait(ctx); err != nil {
 			return err
 		}

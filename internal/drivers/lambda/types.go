@@ -78,7 +78,7 @@ type ObservedState struct {
 	Timeout          int32             `json:"timeout,omitempty"`
 	Environment      map[string]string `json:"environment,omitempty"`
 	Layers           []string          `json:"layers,omitempty"`
-	VpcConfig        VPCConfigSpec     `json:"vpcConfig,omitempty"`
+	VpcConfig        VPCConfigSpec     `json:"vpcConfig,omitzero"`
 	DeadLetterTarget string            `json:"deadLetterTarget,omitempty"`
 	TracingMode      string            `json:"tracingMode,omitempty"`
 	Architectures    []string          `json:"architectures,omitempty"`

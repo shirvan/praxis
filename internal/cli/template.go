@@ -50,7 +50,7 @@ The template name defaults to the filename without extension:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
 
-			content, err := os.ReadFile(filePath)
+			content, err := os.ReadFile(filePath) //nolint:gosec // G304: path is user-supplied CLI argument
 			if err != nil {
 				return fmt.Errorf("read template %q: %w", filePath, err)
 			}

@@ -376,7 +376,7 @@ func (d *AuroraClusterDriver) scheduleReconcile(ctx restate.ObjectContext, state
 
 func (d *AuroraClusterDriver) apiForAccount(ctx restate.ObjectContext, account string) (AuroraClusterAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
-		return nil, "", fmt.Errorf("Aurora cluster driver is not configured")
+		return nil, "", fmt.Errorf("aurora cluster driver is not configured")
 	}
 	awsCfg, err := d.auth.GetCredentials(ctx, account)
 	if err != nil {

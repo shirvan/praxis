@@ -2,6 +2,7 @@ package awserr
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/aws/smithy-go"
@@ -23,12 +24,7 @@ func HasCode(err error, codes ...string) bool {
 	if code == "" {
 		return false
 	}
-	for _, c := range codes {
-		if code == c {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(codes, code)
 }
 
 // HasCodePrefix returns true if the error's AWS code starts with any of the prefixes.
