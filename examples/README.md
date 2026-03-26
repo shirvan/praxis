@@ -6,6 +6,7 @@ Real-world Praxis template examples organized by AWS domain.
 
 ```
 examples/
+├── acm/          ACM certificates, DNS validation, HTTPS stacks
 ├── ec2/          EC2 instances, key pairs, EBS volumes
 ├── vpc/          VPCs, subnets, gateways, route tables, peering
 ├── s3/           S3 buckets
@@ -48,6 +49,14 @@ praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.jso
 | `multi-az-vpc` | Production VPC: 2-AZ public/private subnets, IGW, NAT, route tables | VPC -> IGW -> 4x Subnet -> ElasticIP -> NATGateway -> 2x RouteTable |
 | `vpc-peering` | Two peered VPCs with cross-VPC routing | 2x VPC -> VPCPeering -> 2x Subnet -> 2x RouteTable |
 | `dynamic-subnets` | Generate N subnets from a struct list variable | VPC -> Nx Subnet (comprehension) |
+
+### ACM — `examples/acm/`
+
+| Template | Description | Resources |
+|----------|-------------|-----------|
+| `basic-certificate` | DNS-validated certificate for a single domain | ACMCertificate |
+| `wildcard-certificate` | Wildcard certificate (*.domain) with ECDSA and apex SAN | ACMCertificate |
+| `https-stack` | Full HTTPS flow: certificate + Route 53 validation + ALB listener | ACMCertificate → DNSRecord + Listener |
 
 ### S3 — `examples/s3/`
 

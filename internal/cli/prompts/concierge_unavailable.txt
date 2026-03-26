@@ -1,0 +1,8 @@
+Concierge is not available.
+
+The Praxis Concierge is an optional component. To use it:
+
+  1. Start the praxis-concierge container (see docker-compose.yaml)
+  2. Configure a provider:  praxis concierge configure --provider openai --api-key <key> --model gpt-4o
+
+Run 'praxis --help' for available commands.

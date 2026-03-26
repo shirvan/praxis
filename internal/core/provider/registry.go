@@ -123,6 +123,7 @@ func NewRegistry(auth authservice.AuthClient) *Registry {
 		NewS3AdapterWithAuth(auth),
 		NewEBSAdapterWithAuth(auth),
 		NewAMIAdapterWithAuth(auth),
+		NewACMCertificateAdapterWithAuth(auth),
 		NewEC2AdapterWithAuth(auth),
 		NewKeyPairAdapterWithAuth(auth),
 		NewIAMRoleAdapterWithAuth(auth),

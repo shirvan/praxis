@@ -1,0 +1,8 @@
+{
+  "name": "api",
+  "environment": "prod",
+  "domainName": "api.example.com",
+  "hostedZoneId": "Z0123456789ABCDEFGHIJ",
+  "albArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/api-lb/1234567890abcdef",
+  "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-targets/1234567890abcdef"
+}

@@ -114,7 +114,7 @@ CloudEvents allows custom extension attributes for domain-specific metadata. The
 | `deployment` | String | Deployment key |
 | `workspace` | String | Workspace name |
 | `generation` | Integer | Deployment generation number |
-| `resourcekind` | String | Resource kind (e.g., `"S3Bucket"`, `"SecurityGroup"`) — empty for deployment-level events |
+| `resourcekind` | String | Resource kind (e.g., `"S3Bucket"`, `"SecurityGroup"`, `"ACMCertificate"`) — empty for deployment-level events |
 | `category` | String | Event category: `"lifecycle"`, `"drift"`, `"policy"`, `"command"`, `"system"` |
 | `severity` | String | `"info"`, `"warn"`, `"error"` |
 

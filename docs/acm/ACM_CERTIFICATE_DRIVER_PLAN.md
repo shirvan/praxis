@@ -1597,40 +1597,42 @@ with a new Praxis name) when immutable field changes are needed.
 
 ### Schema
 
-- [ ] `schemas/aws/acm/certificate.cue` — `#ACMCertificate` definition
+- [x] `schemas/aws/acm/certificate.cue` — `#ACMCertificate` definition
 
 ### Driver Files
 
-- [ ] `internal/drivers/acmcert/types.go` — Spec, Outputs, ObservedState, State
-- [ ] `internal/drivers/acmcert/aws.go` — `CertificateAPI` interface + `realCertificateAPI`
-- [ ] `internal/drivers/acmcert/drift.go` — `HasDrift`, `ComputeFieldDiffs`, `FieldDiffEntry`
-- [ ] `internal/drivers/acmcert/driver.go` — `ACMCertificateDriver` Virtual Object
-- [ ] `internal/drivers/acmcert/driver_test.go` — Unit tests
-- [ ] `internal/drivers/acmcert/aws_test.go` — Error classification tests
-- [ ] `internal/drivers/acmcert/drift_test.go` — Drift detection tests
+- [x] `internal/drivers/acmcert/types.go` — Spec, Outputs, ObservedState, State
+- [x] `internal/drivers/acmcert/aws.go` — `CertificateAPI` interface + `realCertificateAPI`
+- [x] `internal/drivers/acmcert/drift.go` — `HasDrift`, `ComputeFieldDiffs`, `FieldDiffEntry`
+- [x] `internal/drivers/acmcert/driver.go` — `ACMCertificateDriver` Virtual Object
+- [x] `internal/drivers/acmcert/driver_test.go` — Unit tests
+- [x] `internal/drivers/acmcert/aws_test.go` — Error classification tests
+- [x] `internal/drivers/acmcert/drift_test.go` — Drift detection tests
 
 ### Provider Adapter
 
-- [ ] `internal/core/provider/acmcert_adapter.go` — `ACMCertificateAdapter`
-- [ ] `internal/core/provider/acmcert_adapter_test.go` — Adapter unit tests
+- [x] `internal/core/provider/acmcert_adapter.go` — `ACMCertificateAdapter`
+- [x] `internal/core/provider/acmcert_adapter_test.go` — Adapter unit tests
 
 ### Registry
 
-- [ ] `NewACMCertificateAdapterWithRegistry` registered in `NewRegistry()`
+- [x] `NewACMCertificateAdapterWithAuth` registered in `NewRegistry()`
 
 ### Infrastructure
 
-- [ ] `internal/infra/awsclient/client.go` — `NewACMClient()` factory added
-- [ ] `cmd/praxis-network/main.go` — `ACMCertificateDriver` bound
-- [ ] `docker-compose.yaml` — `acm` added to LocalStack `SERVICES`
-- [ ] `justfile` — `test-acmcert` and `test-acmcert-integration` targets added
+- [x] `internal/infra/awsclient/client.go` — `NewACMClient()` factory added
+- [x] `cmd/praxis-network/main.go` — `ACMCertificateDriver` bound
+- [x] `docker-compose.yaml` — `acm` added to LocalStack `SERVICES`
+- [x] `justfile` — `test-acm`, `test-acmcert`, and `test-acm-integration` targets added
 
 ### Tests
 
-- [ ] All unit test scenarios passing
-- [ ] All integration test scenarios passing against LocalStack
+- [x] All unit test scenarios passing
+- [x] All integration test scenarios passing against LocalStack
 
 ### Documentation
 
 - [x] This implementation plan
 - [x] `ACM_DRIVER_PACK_OVERVIEW.md`
+- [x] `docs/DRIVERS.md` — ACMCertificate added to overview, resource keys, and driver pack tables
+- [x] `docs/EVENTS.md` — ACMCertificate added to resourcekind examples

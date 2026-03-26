@@ -226,6 +226,14 @@ test-ebs:
 test-eip:
     go test ./internal/drivers/eip/... -v -count=1 -race
 
+# Run ACM certificate driver unit tests only
+test-acm:
+    go test ./internal/drivers/acmcert/... -v -count=1 -race
+
+# Run ACM certificate driver unit tests only
+test-acmcert:
+    go test ./internal/drivers/acmcert/... -v -count=1 -race
+
 # Run IGW driver unit tests only
 test-igw:
     go test ./internal/drivers/igw/... -v -count=1 -race
@@ -326,6 +334,10 @@ test-listener:
 # Run Listener Rule driver unit tests only
 test-listenerrule:
     go test ./internal/drivers/listenerrule/... -v -count=1 -race
+
+# Run ACM certificate integration tests only
+test-acm-integration:
+	go test ./tests/integration/ -run TestACMCertificate -v -count=1 -tags=integration -timeout=5m
 
 # Run Event Source Mapping driver unit tests only
 test-esm:

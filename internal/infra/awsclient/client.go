@@ -5,6 +5,7 @@ package awsclient
 
 import (
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -56,4 +57,9 @@ func NewRoute53Client(cfg aws.Config) *route53.Client {
 // NewRDSClient returns an RDS client from the given config.
 func NewRDSClient(cfg aws.Config) *rds.Client {
 	return rds.NewFromConfig(cfg)
+}
+
+// NewACMClient returns an ACM client from the given config.
+func NewACMClient(cfg aws.Config) *acm.Client {
+	return acm.NewFromConfig(cfg)
 }

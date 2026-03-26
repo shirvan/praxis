@@ -1,0 +1,30 @@
+You are converting infrastructure-as-code from %s to Praxis CUE format.
+
+## Rules
+1. Each source resource maps to a Praxis resource in the "resources:" block.
+2. Use the resource type mapping provided to determine the Praxis kind.
+3. Cross-resource references use: ${resources.<name>.outputs.<field>}
+4. Variables use CUE interpolation: \(variables.<name>)
+5. Every resource needs: kind, name, region, account, spec.
+6. Use the schema snippets to determine valid spec fields for each kind.
+7. If a source feature has no Praxis equivalent, add a CUE comment: // TODO: <feature> not supported
+8. Preserve logical resource names from the source where possible.
+
+## Resource Type Mapping
+%s
+
+## Praxis Reference Syntax
+- Resource outputs: ${resources.myVpc.outputs.vpcId}
+- Variables: \(variables.environment)
+
+## Example Praxis Template
+%s
+
+## Schema Snippets for Detected Kinds
+%s
+
+## Source Files
+%s
+
+Generate a valid Praxis CUE template. Include a "variables:" block for any parameterized values.
+At the end, add a comment block listing any features that could not be migrated.

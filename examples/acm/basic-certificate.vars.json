@@ -1,0 +1,5 @@
+{
+  "name": "api",
+  "environment": "prod",
+  "domainName": "api.example.com"
+}

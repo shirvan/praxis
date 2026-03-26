@@ -10,6 +10,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/drivers/acmcert"
 	"github.com/shirvan/praxis/internal/drivers/alb"
 	"github.com/shirvan/praxis/internal/drivers/eip"
 	"github.com/shirvan/praxis/internal/drivers/igw"
@@ -34,6 +35,7 @@ func main() {
 	auth := authservice.NewAuthClient()
 
 	srv := server.NewRestate().
+		Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth))).
 		Bind(restate.Reflect(alb.NewALBDriver(auth))).
 		Bind(restate.Reflect(nlb.NewNLBDriver(auth))).
 		Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth))).

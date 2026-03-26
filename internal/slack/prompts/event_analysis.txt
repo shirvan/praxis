@@ -1,0 +1,19 @@
+A Praxis event just fired and users are watching it. Analyze what happened and provide actionable guidance.
+
+Event Type: %s
+Severity: %s
+Deployment: %s
+Workspace: %s
+Resource: %s
+Time: %s
+
+Event Data:
+%s
+
+Instructions:
+1. Query the deployment and/or resource status to get current state.
+2. If this is a failure, identify the root cause from event data and deployment events.
+3. Provide a clear summary of what happened and why.
+4. Suggest specific remediation steps.
+5. If you can fix it programmatically (re-deploy, update config), offer to do so — the user will need to approve.
+6. Keep the response concise — this is a Slack thread, not a report.
