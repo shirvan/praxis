@@ -736,8 +736,8 @@ handling — this matches the AWS API convention.
    rules and route table routes).
 
 3. **Should the driver support IPv6 rules?**
-   Not in v1. IPv6 NACL rules use separate `ipv6CidrBlock` field. Deferring to
-   v2 to keep the initial implementation focused.
+   Not initially. IPv6 NACL rules use separate `ipv6CidrBlock` field. Deferring
+   to a future release to keep the initial implementation focused.
 
 4. **Should the driver validate rule number gaps?**
    No. The driver accepts any valid rule numbers (1-32766). Suggesting increments

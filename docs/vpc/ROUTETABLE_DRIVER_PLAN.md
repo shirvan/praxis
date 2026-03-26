@@ -620,7 +620,7 @@ driver must `DisassociateRouteTable` to restore the desired state.
    No. Consistent with VPC and Subnet drivers — IPv6 is out of scope.
 
 3. **Should the driver support route table replacement (main RT swap)?**
-   Not in v1. Replacing the main route table is a `ReplaceRouteTableAssociation`
+   Not initially. Replacing the main route table is a `ReplaceRouteTableAssociation`
    call that's complex and rarely needed outside VPC peering/migration scenarios.
 
 4. **Should the driver validate that route targets exist?**

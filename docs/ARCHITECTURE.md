@@ -301,8 +301,8 @@ Lifecycle rules are declared in the template's `lifecycle` block, validated duri
 
 - **Not a Kubernetes replacement.** Praxis manages cloud infrastructure resources, not container workloads.
 - **Not a CI/CD pipeline.** Praxis is the target of a pipeline, not the pipeline itself.
-- **Not multi-cloud (yet).** 0.1.0 targets AWS only. The driver model supports multi-cloud — the architecture is ready, the implementations are not.
-- **Not multi-tenant.** The 0.1.0 trust model is operator-managed. There is no built-in auth or RBAC.
+- **Not multi-cloud (yet).** Praxis currently targets AWS only. The driver model supports multi-cloud — the architecture is ready, the implementations are not.
+- **Not multi-tenant.** The current trust model is operator-managed. There is no built-in auth or RBAC.
 
 ---
 

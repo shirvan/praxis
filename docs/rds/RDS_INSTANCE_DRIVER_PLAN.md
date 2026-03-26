@@ -1255,7 +1255,7 @@ uses state-driven discovery due to mutable Name tags).
    would require migrating to a new VO — equivalent to delete + recreate.
 
 3. **Should storage autoscaling be supported?**
-   Not in v1. `MaxAllocatedStorage` enables RDS storage autoscaling, but it adds
+   Not included initially. `MaxAllocatedStorage` enables RDS storage autoscaling, but it adds
    complexity (observed storage may exceed desired). A future enhancement can add
    `maxAllocatedStorage` to the spec.
 
@@ -1266,7 +1266,7 @@ uses state-driven discovery due to mutable Name tags).
    in `DescribeDBInstances` output is logged but not exposed in outputs.
 
 5. **Should engine version upgrades be handled differently for major vs minor?**
-   In v1, all version changes use `ModifyDBInstance` with `ApplyImmediately=true`.
+   Currently, all version changes use `ModifyDBInstance` with `ApplyImmediately=true`.
    Major version upgrades require `AllowMajorVersionUpgrade=true` — the driver sets
    this automatically when the major version component changes. A future enhancement
    could add a `requireApprovalForMajorUpgrade` flag.

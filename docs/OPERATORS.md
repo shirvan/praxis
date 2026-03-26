@@ -194,7 +194,7 @@ Praxis Core and every driver load the same `.env` file. Copy `.env.example` to `
 | `PRAXIS_ACCOUNT_ROLE_ARN`           | For `role`        | Role ARN Praxis should assume                        |
 | `PRAXIS_ACCOUNT_EXTERNAL_ID`        | Optional          | External ID for role assumption                      |
 
-Praxis 0.1.0 supports exactly one configured account per deployed stack. Users select the account by name via `--account` or `PRAXIS_ACCOUNT`.
+Praxis currently supports exactly one configured account per deployed stack. Users select the account by name via `--account` or `PRAXIS_ACCOUNT`.
 
 **Credential sources:**
 

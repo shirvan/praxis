@@ -637,7 +637,7 @@ praxis version
 ```
 
 ```text
-praxis v0.1.0 (built 2025-01-15T10:00:00Z)
+praxis <version> (built <timestamp>)
 ```
 
 ---

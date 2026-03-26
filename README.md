@@ -161,7 +161,7 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 
 ---
 
-## Current Scope (0.7.0)
+## Current Scope
 
 - **Cloud:** AWS
 - **Drivers (36):**

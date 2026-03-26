@@ -2,11 +2,11 @@
 
 > **See also:** [Drivers](DRIVERS.md) | [Architecture](ARCHITECTURE.md)
 
-This document tracks AWS driver coverage across Praxis releases. Driver priority is informed by Terraform AWS provider adoption, Crossplane provider-upjet-aws coverage, and industry cloud usage data. The full roadmap targets approximately 90% coverage of real-world AWS infrastructure patterns.
+This document tracks current and planned AWS driver coverage. Driver priority is informed by Terraform AWS provider adoption, Crossplane provider-upjet-aws coverage, and industry cloud usage data. The full roadmap targets approximately 90% coverage of real-world AWS infrastructure patterns.
 
 ---
 
-## Currently Released
+## Currently Available
 
 39 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, and observability.
 
@@ -54,7 +54,7 @@ This document tracks AWS driver coverage across Praxis releases. Driver priority
 
 ---
 
-## 1.0
+## Next Up
 
 Completes the services required for a standard web-application stack on AWS: container registry and messaging.
 
@@ -68,7 +68,7 @@ Completes the services required for a standard web-application stack on AWS: con
 
 ## Future
 
-Planned drivers ordered by real-world usage frequency. Together with the current and 1.0 drivers, these reach approximately 90% of infrastructure patterns users deploy in production.
+Planned drivers ordered by real-world usage frequency. Together with the currently available and near-term drivers, these reach approximately 90% of infrastructure patterns users deploy in production.
 
 ### Tier 1 — Containers, Compute & Data
 

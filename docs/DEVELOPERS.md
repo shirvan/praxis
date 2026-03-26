@@ -402,15 +402,22 @@ The EC2 driver was built from [EC2_DRIVER_PLAN.md](ec2/EC2_DRIVER_PLAN.md), whic
 
 ## Release
 
-Praxis uses [semver](https://semver.org/) with this convention:
+Praxis uses [semver](https://semver.org/). Releases are **manual** — you control what version ships and with what notes. No automated release-on-push.
 
-| Level | Purpose | Example |
+### Versioning
+
+All services currently share a **single monolithic version**. After the initial public release, each service will move to independent per-service versioning.
+
+| Component | Binary / Image | Current Versioning |
 | --- | --- | --- |
-| **Major** | Big architecture changes (shared, post-1.0.0) | `v1.0.0` → `v2.0.0` |
-| **Minor** | Driver-level releases, new features | `v0.1.0` → `v0.2.0` |
-| **Patch** | Hotfixes and patches | `v0.1.0` → `v0.1.1` |
-
-Releases are **manual** — you control what version ships and with what notes. No automated release-on-push.
+| **CLI** | `praxis` | Shared tag |
+| **Core** | `praxis-core` | Shared tag |
+| **Network Pack** | `praxis-network` | Shared tag |
+| **Compute Pack** | `praxis-compute` | Shared tag |
+| **Storage Pack** | `praxis-storage` | Shared tag |
+| **Identity Pack** | `praxis-identity` | Shared tag |
+| **Monitoring Pack** | `praxis-monitoring` | Shared tag |
+| **Notifications** | `praxis-notifications` | Shared tag |
 
 ### Release Workflow
 
@@ -421,9 +428,9 @@ sequenceDiagram
     participant GHCR as ghcr.io
     participant Rel as GitHub Releases
 
-    Dev->>Dev: just release-preflight v0.1.0
+    Dev->>Dev: just release-preflight <tag>
     Note over Dev: lint, test, build
-    Dev->>GH: just release v0.1.0 (tag + push)
+    Dev->>GH: just release <tag> (tag + push)
     GH->>GH: lint, test, cross-compile CLI
     GH->>GHCR: Push Docker images
     GH->>Rel: Create draft release + tarballs
@@ -432,29 +439,29 @@ sequenceDiagram
 
 ```bash
 # 1. Run pre-release checks (lint, test, build)
-just release-preflight v0.1.0
+just release-preflight <tag>
 
 # 2. Tag and push — triggers GitHub Actions to build artifacts and create a draft release
-just release v0.1.0
+just release <tag>
 
 # 3. Go to GitHub Releases, edit the draft, add release notes, and publish
 ```
 
 ### What Happens
 
-1. `just release v0.1.0` validates the version, checks for a clean working tree on `main`, creates an annotated git tag, and pushes it.
+1. `just release <tag>` validates the tag, checks for a clean working tree on `main`, creates an annotated git tag, and pushes it.
 2. GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) runs: lint → test → cross-compile CLI (darwin/arm64, darwin/amd64, linux/amd64) → create a **draft** GitHub Release with tarballs and checksums attached.
-3. Docker images for all services (`praxis-core`, `praxis-storage`, `praxis-network`, `praxis-compute`) are built and pushed to `ghcr.io/shirvan/praxis-*`.
+3. Docker images for all services are built and pushed to `ghcr.io/shirvan/praxis-*`.
 4. You edit the draft release on GitHub to add your release notes, then publish.
 
 ### Local-Only Build (No Tag)
 
 ```bash
 # Build release artifacts locally without tagging (for inspection)
-just release-build v0.1.0
+just release-build <tag>
 ```
 
-This runs the `release-build` recipe which cross-compiles the CLI and service binaries into `dist/v0.1.0/`.
+This runs the `release-build` recipe which cross-compiles the CLI and service binaries into `dist/<tag>/`.
 
 ### CI
 

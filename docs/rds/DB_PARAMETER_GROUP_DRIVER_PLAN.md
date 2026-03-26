@@ -760,12 +760,12 @@ creation. No `WaitUntilAvailable` method is needed.
    clean and state compact.
 
 3. **Should the driver support `pending-reboot` ApplyMethod?**
-   Not in v1. The driver always uses `immediate`. Static parameters that require
+   Not initially. The driver always uses `immediate`. Static parameters that require
    a reboot will show as "pending-reboot" status on the instance — this is the
    responsibility of the instance/cluster driver.
 
 4. **Should the driver support copying parameter groups?**
-   Not in v1. `CopyDBParameterGroup` / `CopyDBClusterParameterGroup` is a
+   Not initially. `CopyDBParameterGroup` / `CopyDBClusterParameterGroup` is a
    convenience feature. Users can achieve the same by defining a new group with
    the same parameters.
 

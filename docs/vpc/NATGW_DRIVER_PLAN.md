@@ -609,7 +609,7 @@ and "available" NAT GWs are considered live matches.
    for private subnets. Private NAT GWs are for VPC-to-VPC/on-premises routing.
 
 3. **Should the driver support secondary IP addresses?**
-   Not in v1. AWS supports assigning secondary private IPs to NAT Gateways for
+   Not initially. AWS supports assigning secondary private IPs to NAT Gateways for
    high-throughput scenarios. This adds complexity and serves a narrow use case.
 
 4. **Should the driver validate that the subnet has an IGW route?**

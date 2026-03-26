@@ -919,12 +919,12 @@ extends both the cluster and instance drivers.
    be their own driver. The built-in writer and reader endpoints are managed implicitly.
 
 3. **Should Serverless v2 scaling be supported?**
-   Not in v1. Serverless v2 requires additional spec fields
+   Not initially. Serverless v2 requires additional spec fields
    (`minCapacity`, `maxCapacity`) and changes to how instances are provisioned.
    A future enhancement can add `serverlessV2ScalingConfig` to the spec.
 
 4. **Should the driver support restore from snapshot?**
-   Not in v1. `RestoreDBClusterFromSnapshot` is a separate creation path with
+   Not initially. `RestoreDBClusterFromSnapshot` is a separate creation path with
    snapshot-specific parameters. A future enhancement could add a `restoreFrom`
    spec field.
 
