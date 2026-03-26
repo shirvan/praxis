@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	cloudwatch "github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -91,21 +90,6 @@ func IsInvalidParam(err error) bool {
 
 func IsThrottled(err error) bool {
 	return awserr.IsThrottled(err)
-}
-
-func formatValidationMessages(messages []ValidationMessage) []any {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]any, 0, len(messages))
-	for _, message := range messages {
-		out = append(out, map[string]any{"dataPath": message.DataPath, "message": message.Message})
-	}
-	return out
-}
-
-func validationTimestamp() string {
-	return time.Now().UTC().Format(time.RFC3339)
 }
 
 var _ cwtypes.DashboardValidationMessage

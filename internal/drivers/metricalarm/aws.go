@@ -1,8 +1,8 @@
 package metricalarm
 
 import (
-	"cmp"
 	"context"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -247,9 +247,7 @@ func syncTagDiff(desired, observed map[string]string, managedKey string) (map[st
 
 func managedTags(tags map[string]string, managedKey string) map[string]string {
 	out := make(map[string]string, len(tags)+1)
-	for key, value := range filterPraxisTags(tags) {
-		out[key] = value
-	}
+	maps.Copy(out, filterPraxisTags(tags))
 	if strings.TrimSpace(managedKey) != "" {
 		out["praxis:managed-key"] = managedKey
 	}
@@ -267,12 +265,4 @@ func normalizeObserved(observed ObservedState) ObservedState {
 	slices.Sort(observed.OKActions)
 	slices.Sort(observed.InsufficientDataActions)
 	return observed
-}
-
-func compareSlices(a, b []string) int {
-	aCopy := append([]string(nil), a...)
-	bCopy := append([]string(nil), b...)
-	slices.Sort(aCopy)
-	slices.Sort(bCopy)
-	return slices.CompareFunc(aCopy, bCopy, cmp.Compare)
 }

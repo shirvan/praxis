@@ -104,7 +104,7 @@ func (a *DashboardAdapter) Plan(ctx restate.Context, key, account string, desire
 	}
 	outputs, getErr := restate.Object[dashboard.DashboardOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
 	if getErr != nil {
-		return "", nil, fmt.Errorf("Dashboard Plan: failed to read outputs for key %q: %w", key, getErr)
+		return "", nil, fmt.Errorf("dashboard plan: failed to read outputs for key %q: %w", key, getErr)
 	}
 	if outputs.DashboardName == "" {
 		fields, fieldErr := createFieldDiffsFromSpec(desired)
@@ -188,14 +188,14 @@ func (a *DashboardAdapter) Import(ctx restate.Context, key, account string, ref 
 func (a *DashboardAdapter) decodeSpec(doc resourceDocument) (dashboard.DashboardSpec, error) {
 	var spec dashboard.DashboardSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return dashboard.DashboardSpec{}, fmt.Errorf("decode Dashboard spec: %w", err)
+		return dashboard.DashboardSpec{}, fmt.Errorf("decode dashboard spec: %w", err)
 	}
 	name := strings.TrimSpace(doc.Metadata.Name)
 	if name == "" {
-		return dashboard.DashboardSpec{}, fmt.Errorf("Dashboard metadata.name is required")
+		return dashboard.DashboardSpec{}, fmt.Errorf("dashboard metadata.name is required")
 	}
 	if strings.TrimSpace(spec.Region) == "" {
-		return dashboard.DashboardSpec{}, fmt.Errorf("Dashboard spec.region is required")
+		return dashboard.DashboardSpec{}, fmt.Errorf("dashboard spec.region is required")
 	}
 	spec.DashboardName = name
 	return spec, nil
@@ -206,7 +206,7 @@ func (a *DashboardAdapter) planningAPI(ctx restate.Context, account string) (das
 		return a.staticPlanningAPI, nil
 	}
 	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("Dashboard adapter planning API is not configured")
+		return nil, fmt.Errorf("dashboard adapter planning API is not configured")
 	}
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {

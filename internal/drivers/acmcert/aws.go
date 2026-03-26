@@ -3,6 +3,7 @@ package acmcert
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -161,7 +162,8 @@ func (r *realCertificateAPI) FindByManagedKey(ctx context.Context, managedKey st
 		if err != nil {
 			return "", err
 		}
-		for _, summary := range page.CertificateSummaryList {
+		for i := range page.CertificateSummaryList {
+			summary := &page.CertificateSummaryList[i]
 			certificateArn := aws.ToString(summary.CertificateArn)
 			if certificateArn == "" {
 				continue
@@ -252,9 +254,7 @@ func toSDKTags(tags map[string]string) []acmtypes.Tag {
 
 func withManagedKey(managedKey string, tags map[string]string) map[string]string {
 	out := make(map[string]string, len(tags)+1)
-	for key, value := range tags {
-		out[key] = value
-	}
+	maps.Copy(out, tags)
 	if managedKey != "" {
 		out["praxis:managed-key"] = managedKey
 	}

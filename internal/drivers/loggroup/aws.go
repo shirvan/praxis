@@ -2,6 +2,7 @@ package loggroup
 
 import (
 	"context"
+	"maps"
 	"sort"
 	"strings"
 
@@ -66,7 +67,8 @@ func (r *realLogGroupAPI) DescribeLogGroup(ctx context.Context, logGroupName str
 	if err != nil {
 		return ObservedState{}, false, err
 	}
-	for _, group := range out.LogGroups {
+	for i := range out.LogGroups {
+		group := &out.LogGroups[i]
 		if aws.ToString(group.LogGroupName) != logGroupName {
 			continue
 		}
@@ -173,9 +175,7 @@ func (r *realLogGroupAPI) ListTagsForResource(ctx context.Context, arn string) (
 		return nil, err
 	}
 	tags := make(map[string]string, len(out.Tags))
-	for key, value := range out.Tags {
-		tags[key] = value
-	}
+	maps.Copy(tags, out.Tags)
 	return tags, nil
 }
 
@@ -205,9 +205,7 @@ func IsServiceUnavailable(err error) bool {
 
 func managedTags(tags map[string]string, managedKey string) map[string]string {
 	out := make(map[string]string, len(tags)+1)
-	for key, value := range tags {
-		out[key] = value
-	}
+	maps.Copy(out, tags)
 	if strings.TrimSpace(managedKey) != "" {
 		out["praxis:managed-key"] = managedKey
 	}
