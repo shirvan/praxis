@@ -17,8 +17,9 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/restatedev/sdk-go/testing"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/drivers/sg"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -42,10 +43,9 @@ func setupSGDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := localstackAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := sg.NewSecurityGroupDriver(nil)
+	driver := sg.NewSecurityGroupDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), ec2Client
+	return setupDriverEventingEnv(t, driver), ec2Client
 }
 
 // getDefaultVpcId returns the default VPC ID from LocalStack.
@@ -187,6 +187,8 @@ func TestSGReconcile_DetectsDrift(t *testing.T) {
 	sgName := uniqueSGName(t)
 	vpcId := getDefaultVpcId(t, ec2Client)
 	key := fmt.Sprintf("%s~%s", vpcId, sgName)
+	streamKey := "dep-sg-drift-" + sgName
+	registerDriftEventOwner(t, client, key, streamKey, sgName, sg.ServiceName)
 
 	// Provision with one ingress rule
 	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
@@ -223,6 +225,8 @@ func TestSGReconcile_DetectsDrift(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "drift should be detected")
 	assert.True(t, result.Correcting, "managed mode should correct drift")
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected), orchestrator.EventTypeDriftDetected)
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected), orchestrator.EventTypeDriftCorrected)
 
 	// Verify the extra rule was removed
 	desc, err := ec2Client.DescribeSecurityGroups(context.Background(), &ec2sdk.DescribeSecurityGroupsInput{
@@ -236,6 +240,35 @@ func TestSGReconcile_DetectsDrift(t *testing.T) {
 			t.Error("port 22 rule should have been removed during drift correction")
 		}
 	}
+}
+
+func TestSGReconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	client, ec2Client := setupSGDriver(t)
+	sgName := uniqueSGName(t)
+	vpcId := getDefaultVpcId(t, ec2Client)
+	key := fmt.Sprintf("%s~%s", vpcId, sgName)
+	streamKey := "dep-sg-external-delete-" + sgName
+	registerDriftEventOwner(t, client, key, streamKey, sgName, sg.ServiceName)
+
+	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+		client, "SecurityGroup", key, "Provision",
+	).Request(t.Context(), sg.SecurityGroupSpec{
+		Account:     integrationAccountName,
+		GroupName:   sgName,
+		Description: "Delete test",
+		VpcId:       vpcId,
+	})
+	require.NoError(t, err)
+
+	_, err = ec2Client.DeleteSecurityGroup(context.Background(), &ec2sdk.DeleteSecurityGroupInput{GroupId: aws.String(outputs.GroupId)})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "SecurityGroup", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftExternalDelete), orchestrator.EventTypeDriftExternalDelete)
 }
 
 func TestSGGetStatus_ReturnsReady(t *testing.T) {

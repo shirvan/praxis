@@ -23,6 +23,9 @@ type WorkspaceConfig struct {
 	// Variables are default template variables inherited by deployments.
 	// Explicit variables in an apply request override these.
 	Variables map[string]string `json:"variables,omitempty"`
+
+	// Events stores workspace-scoped event configuration such as retention.
+	Events *EventSettings `json:"events,omitempty"`
 }
 
 // WorkspaceInfo is the read-only view returned by the Get handler.
@@ -31,6 +34,33 @@ type WorkspaceInfo struct {
 	Account   string            `json:"account"`
 	Region    string            `json:"region"`
 	Variables map[string]string `json:"variables,omitempty"`
+	Events    *EventSettings    `json:"events,omitempty"`
+}
+
+// EventSettings groups workspace-scoped event-system configuration.
+type EventSettings struct {
+	Retention *EventRetentionPolicy `json:"retention,omitempty"`
+}
+
+// EventRetentionPolicy controls how long operational events remain in the
+// local Restate-backed event store before pruning.
+type EventRetentionPolicy struct {
+	MaxAge                 string `json:"maxAge,omitempty"`
+	MaxEventsPerDeployment int    `json:"maxEventsPerDeployment,omitempty"`
+	MaxIndexEntries        int    `json:"maxIndexEntries,omitempty"`
+	SweepInterval          string `json:"sweepInterval,omitempty"`
+	ShipBeforeDelete       bool   `json:"shipBeforeDelete,omitempty"`
+	DrainSink              string `json:"drainSink,omitempty"`
+}
+
+func DefaultEventRetentionPolicy() EventRetentionPolicy {
+	return EventRetentionPolicy{
+		MaxAge:                 "90d",
+		MaxEventsPerDeployment: 10000,
+		MaxIndexEntries:        100000,
+		SweepInterval:          "24h",
+		ShipBeforeDelete:       false,
+	}
 }
 
 // ValidateName checks that a string is a valid workspace name.

@@ -204,6 +204,20 @@ services:
       # image, while still documenting the runtime contract explicitly.
       - "./schemas:/schemas:ro"
 
+  praxis-notifications:
+    build:
+      context: .
+      dockerfile: cmd/praxis-notifications/Dockerfile
+    container_name: praxis-notifications
+    depends_on:
+      restate:
+        condition: service_healthy
+    ports:
+      - "9086:9080"
+    environment:
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+      - PRAXIS_SCHEMA_DIR=/schemas
+
 volumes:
   # Keep infra data in named volumes so operators can opt into clean slates via
   # `just down` while normal restarts remain fast.

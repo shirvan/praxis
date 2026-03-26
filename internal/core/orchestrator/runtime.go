@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/dag"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -334,9 +336,41 @@ func removeDeploymentSummary(ctx restate.Context, deploymentKey string) error {
 	return err
 }
 
-func appendEvent(ctx restate.Context, deploymentKey string, event DeploymentEvent) error {
-	_, err := restate.WithRequestType[DeploymentEvent, restate.Void](
-		restate.Object[restate.Void](ctx, DeploymentEventsServiceName, deploymentKey, "Append"),
+func upsertResourceEventOwner(ctx restate.Context, resourceKey string, owner eventing.ResourceEventOwner) error {
+	_, err := restate.WithRequestType[eventing.ResourceEventOwner, restate.Void](
+		restate.Object[restate.Void](ctx, eventing.ResourceEventOwnerServiceName, resourceKey, "Upsert"),
+	).Request(owner)
+	return err
+}
+
+func deleteResourceEventOwner(ctx restate.Context, resourceKey string) error {
+	_, err := restate.WithRequestType[restate.Void, restate.Void](
+		restate.Object[restate.Void](ctx, eventing.ResourceEventOwnerServiceName, resourceKey, "Delete"),
+	).Request(restate.Void{})
+	return err
+}
+
+func EmitDeploymentCloudEvent(ctx restate.Context, event cloudevents.Event) error {
+	deploymentKey := strings.TrimSpace(eventStringExtension(event, EventExtensionDeployment))
+	if deploymentKey == "" {
+		return fmt.Errorf("CloudEvent %q is missing %q extension", event.Type(), EventExtensionDeployment)
+	}
+	if event.Time().IsZero() {
+		now, err := currentTime(ctx)
+		if err != nil {
+			return err
+		}
+		event.SetTime(now)
+	}
+	_, err := restate.WithRequestType[cloudevents.Event, restate.Void](
+		restate.Object[restate.Void](ctx, EventBusServiceName, EventBusGlobalKey, "Emit"),
+	).Request(event)
+	return err
+}
+
+func EmitCloudEvent(ctx restate.Context, event cloudevents.Event) error {
+	_, err := restate.WithRequestType[cloudevents.Event, restate.Void](
+		restate.Object[restate.Void](ctx, EventBusServiceName, EventBusGlobalKey, "Emit"),
 	).Request(event)
 	return err
 }

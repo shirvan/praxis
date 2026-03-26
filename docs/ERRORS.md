@@ -1,6 +1,6 @@
 # Errors
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Auth](AUTH.md) | [CLI](CLI.md) | [Developers](DEVELOPERS.md)
+> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [CLI](CLI.md) | [Developers](DEVELOPERS.md)
 
 ---
 
@@ -68,7 +68,7 @@ Workflow: Run()
   │    On failure: recordApplyFailure()
   │      ├─ markFailed(name, errMsg)           ← per-resource error string
   │      ├─ updateDeploymentResource(Error:)   ← stored in state
-  │      ├─ appendEvent(Error:)                ← event log
+  │      ├─ EmitDeploymentCloudEvent(Error:)   ← event log
   │      └─ skipAffectedDependents()           ← cascading skip messages
   │
   └─ Final:

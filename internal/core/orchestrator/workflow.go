@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"time"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -84,11 +85,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-		DeploymentKey: plan.Key,
-		Status:        types.DeploymentRunning,
-		Message:       "deployment workflow started",
-	}); err != nil {
+	startedEvent, err := NewDeploymentStartedEvent(plan.Key, plan.Workspace, state.Generation, now)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	if err := EmitDeploymentCloudEvent(ctx, startedEvent); err != nil {
 		return DeploymentResult{}, err
 	}
 
@@ -112,11 +113,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			}
 			if cancelled {
 				cancellationRequested = true
-				if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-					DeploymentKey: plan.Key,
-					Status:        types.DeploymentRunning,
-					Message:       "deployment cancellation requested; draining in-flight resources",
-				}); err != nil {
+				cancelEvent, eventErr := NewCommandCancelEvent(plan.Key, plan.Workspace, state.Generation, time.Time{})
+				if eventErr != nil {
+					return DeploymentResult{}, eventErr
+				}
+				if err := EmitDeploymentCloudEvent(ctx, cancelEvent); err != nil {
 					return DeploymentResult{}, err
 				}
 			}
@@ -129,7 +130,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 
 				hydratedSpec, err := HydrateExprs(resource.Spec, resource.Expressions, exec.outputs)
 				if err != nil {
-					if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to hydrate spec: %v", err)); err != nil {
+					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to hydrate spec: %v", err)); err != nil {
 						return DeploymentResult{}, err
 					}
 					continue
@@ -137,7 +138,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 
 				adapter, err := w.providers.Get(resource.Kind)
 				if err != nil {
-					if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, err.Error()); err != nil {
+					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, err.Error()); err != nil {
 						return DeploymentResult{}, err
 					}
 					continue
@@ -145,7 +146,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 
 				decodedSpec, err := adapter.DecodeSpec(hydratedSpec)
 				if err != nil {
-					if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to decode driver spec: %v", err)); err != nil {
+					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to decode driver spec: %v", err)); err != nil {
 						return DeploymentResult{}, err
 					}
 					continue
@@ -154,32 +155,37 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				// Force replacement: delete the existing resource before re-provisioning.
 				if replaceSet[name] {
 					if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
-						if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind,
+						policyEvent, eventErr := NewPolicyPreventedDestroyEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, name, resource.Kind, "force-replace")
+						if eventErr != nil {
+							return DeploymentResult{}, eventErr
+						}
+						if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+							return DeploymentResult{}, err
+						}
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind,
 							fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to force-replace", name)); err != nil {
 							return DeploymentResult{}, err
 						}
 						continue
 					}
 
-					if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-						DeploymentKey: plan.Key,
-						Status:        types.DeploymentRunning,
-						ResourceName:  name,
-						ResourceKind:  resource.Kind,
-						Message:       fmt.Sprintf("force-replacing %s: deleting before re-provision", name),
-					}); err != nil {
+					replaceEvent, eventErr := NewResourceReplaceStartedEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, name, resource.Kind)
+					if eventErr != nil {
+						return DeploymentResult{}, eventErr
+					}
+					if err := EmitDeploymentCloudEvent(ctx, replaceEvent); err != nil {
 						return DeploymentResult{}, err
 					}
 
 					delInvocation, err := adapter.Delete(ctx, resource.Key)
 					if err != nil {
-						if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete dispatch failed: %v", err)); err != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete dispatch failed: %v", err)); err != nil {
 							return DeploymentResult{}, err
 						}
 						continue
 					}
 					if err := delInvocation.Done(); err != nil {
-						if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete failed: %v", err)); err != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete failed: %v", err)); err != nil {
 							return DeploymentResult{}, err
 						}
 						continue
@@ -188,7 +194,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 
 				invocation, err := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)
 				if err != nil {
-					if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to dispatch driver call: %v", err)); err != nil {
+					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to dispatch driver call: %v", err)); err != nil {
 						return DeploymentResult{}, err
 					}
 					continue
@@ -202,13 +208,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				}); err != nil {
 					return DeploymentResult{}, err
 				}
-				if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-					DeploymentKey: plan.Key,
-					Status:        types.DeploymentRunning,
-					ResourceName:  name,
-					ResourceKind:  resource.Kind,
-					Message:       fmt.Sprintf("dispatched %s resource", resource.Kind),
-				}); err != nil {
+				dispatchedEvent, eventErr := NewResourceDispatchedEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, name, resource.Kind)
+				if eventErr != nil {
+					return DeploymentResult{}, eventErr
+				}
+				if err := EmitDeploymentCloudEvent(ctx, dispatchedEvent); err != nil {
 					return DeploymentResult{}, err
 				}
 			}
@@ -241,7 +245,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		outputs, err := invocation.Outputs()
 		if err != nil {
 			resource := exec.plan[resourceName]
-			if err := w.recordApplyFailure(ctx, plan.Key, exec, schedule, resourceName, resource.Kind, err.Error()); err != nil {
+			if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, err.Error()); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
@@ -256,13 +260,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			return DeploymentResult{}, err
 		}
 		resource := exec.plan[resourceName]
-		if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-			DeploymentKey: plan.Key,
-			Status:        types.DeploymentRunning,
-			ResourceName:  resourceName,
-			ResourceKind:  resource.Kind,
-			Message:       fmt.Sprintf("resource %s is ready", resourceName),
-		}); err != nil {
+		readyEvent, eventErr := NewResourceReadyEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, resourceName, resource.Kind, outputs)
+		if eventErr != nil {
+			return DeploymentResult{}, eventErr
+		}
+		if err := EmitDeploymentCloudEvent(ctx, readyEvent); err != nil {
 			return DeploymentResult{}, err
 		}
 	}
@@ -280,13 +282,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			}); err != nil {
 				return DeploymentResult{}, err
 			}
-			if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-				DeploymentKey: plan.Key,
-				Status:        types.DeploymentCancelled,
-				ResourceName:  name,
-				ResourceKind:  resource.Kind,
-				Message:       exec.errors[name],
-			}); err != nil {
+			skippedEvent, eventErr := NewResourceSkippedEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, name, resource.Kind, types.DeploymentCancelled, exec.errors[name])
+			if eventErr != nil {
+				return DeploymentResult{}, eventErr
+			}
+			if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
 				return DeploymentResult{}, err
 			}
 		}
@@ -315,12 +315,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := appendEvent(ctx, plan.Key, DeploymentEvent{
-		DeploymentKey: plan.Key,
-		Status:        finalStatus,
-		Message:       fmt.Sprintf("deployment finished with status %s", finalStatus),
-		Error:         finalError,
-	}); err != nil {
+	terminalEvent, err := NewDeploymentTerminalEvent(plan.Key, plan.Workspace, state.Generation, now, finalStatus, finalError)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
 		return DeploymentResult{}, err
 	}
 
@@ -330,6 +329,8 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 func (w *DeploymentWorkflow) recordApplyFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,
+	workspace string,
+	generation int64,
 	exec *executionState,
 	schedule *dag.Schedule,
 	resourceName string,
@@ -344,14 +345,11 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 	}); err != nil {
 		return err
 	}
-	if err := appendEvent(ctx, deploymentKey, DeploymentEvent{
-		DeploymentKey: deploymentKey,
-		Status:        types.DeploymentRunning,
-		ResourceName:  resourceName,
-		ResourceKind:  resourceKind,
-		Message:       fmt.Sprintf("resource %s failed", resourceName),
-		Error:         errMsg,
-	}); err != nil {
+	errorEvent, eventErr := NewResourceErrorEvent(deploymentKey, workspace, generation, time.Time{}, resourceName, resourceKind, types.DeploymentRunning, errMsg)
+	if eventErr != nil {
+		return eventErr
+	}
+	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
 		return err
 	}
 
@@ -365,13 +363,11 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 		}); err != nil {
 			return err
 		}
-		if err := appendEvent(ctx, deploymentKey, DeploymentEvent{
-			DeploymentKey: deploymentKey,
-			Status:        types.DeploymentRunning,
-			ResourceName:  name,
-			ResourceKind:  resource.Kind,
-			Message:       exec.errors[name],
-		}); err != nil {
+		skippedEvent, eventErr := NewResourceSkippedEvent(deploymentKey, workspace, generation, time.Time{}, name, resource.Kind, types.DeploymentRunning, exec.errors[name])
+		if eventErr != nil {
+			return eventErr
+		}
+		if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
 			return err
 		}
 	}

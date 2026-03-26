@@ -1,6 +1,6 @@
 # Orchestrator
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Drivers](DRIVERS.md) | [Templates](TEMPLATES.md) | [Auth](AUTH.md) | [Errors](ERRORS.md)
+> **See also:** [Architecture](ARCHITECTURE.md) | [Drivers](DRIVERS.md) | [Templates](TEMPLATES.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md)
 
 ---
 

@@ -15,7 +15,27 @@ func ErrorCode(err error) string {
 	if errors.As(err, &apiErr) {
 		return apiErr.ErrorCode()
 	}
-	return ""
+	message := errString(err)
+	if message == "" {
+		return ""
+	}
+	const marker = "api error "
+	_, after, found := strings.Cut(message, marker)
+	if !found {
+		return ""
+	}
+	code, _, hasColon := strings.Cut(after, ":")
+	if !hasColon || strings.TrimSpace(code) == "" {
+		return ""
+	}
+	return strings.TrimSpace(code)
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // HasCode returns true if the error's AWS error code matches any of the given codes.

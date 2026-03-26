@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
 
 // newObserveCmd builds the `praxis observe` subcommand.
@@ -24,6 +26,9 @@ func newObserveCmd(flags *rootFlags) *cobra.Command {
 	var (
 		pollInterval time.Duration
 		timeout      time.Duration
+		severity     string
+		resource     string
+		typePrefix   string
 	)
 
 	cmd := &cobra.Command{
@@ -63,7 +68,12 @@ Control the polling speed with --poll-interval:
 				defer cancel()
 			}
 
-			err = observeDeployment(ctx, client, key, pollInterval, flags.outputFormat(), renderer)
+			query := orchestrator.EventQuery{
+				TypePrefix: typePrefix,
+				Severity:   severity,
+				Resource:   resource,
+			}
+			err = observeDeployment(ctx, client, key, pollInterval, query, flags.outputFormat(), renderer)
 			if isTimeoutError(ctx, err) {
 				printTimeoutError(renderer, timeout, key)
 				os.Exit(2)
@@ -74,81 +84,56 @@ Control the polling speed with --poll-interval:
 
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 1*time.Second, "How frequently to poll for new events")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to observe (0 for no limit)")
+	cmd.Flags().StringVar(&severity, "severity", "", "Filter by severity (info, warn, error)")
+	cmd.Flags().StringVar(&resource, "resource", "", "Filter by resource name")
+	cmd.Flags().StringVar(&typePrefix, "type", "", "Filter by event type prefix")
 
 	return cmd
 }
 
 // observeDeployment polls the event stream and deployment status, displaying
 // incremental progress until a terminal state is reached.
-func observeDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat, renderer *Renderer) error {
+func observeDeployment(ctx context.Context, client *Client, key string, interval time.Duration, query orchestrator.EventQuery, format OutputFormat, renderer *Renderer) error {
 	_, _ = fmt.Fprintf(renderer.out, "%s\n\n", renderer.renderSection(fmt.Sprintf("Observing deployment %s...", key)))
 
 	var lastSeq int64
 
 	for {
-		// Try to get new events since the last seen sequence number.
-		events, err := client.GetDeploymentEvents(ctx, key, lastSeq)
+		events, err := client.GetDeploymentCloudEvents(ctx, key, lastSeq)
 		if err != nil {
-			// If events aren't available, fall back to status polling.
-			detail, statusErr := client.GetDeployment(ctx, key)
-			if statusErr != nil {
-				return fmt.Errorf("observe: events unavailable (%w) and status query failed: %w", err, statusErr)
-			}
-			if detail == nil {
-				return fmt.Errorf("deployment %q not found", key)
-			}
-
+			return fmt.Errorf("observe: fetch events: %w", err)
+		}
+		filtered := filterCloudEvents(events, query)
+		if len(filtered) > 0 {
 			if format == OutputJSON {
-				if err := printJSON(detail); err != nil {
+				if err := printJSON(filtered); err != nil {
 					return err
 				}
 			} else {
-				renderer.writeLabelStyledValue("Status", 8, renderer.renderStatus(string(detail.Status))+" "+renderer.renderMuted("(event stream unavailable, polling status)"))
+				printCloudEvents(renderer, filtered)
 			}
-
-			if isTerminalStatus(detail.Status) {
-				if format != OutputJSON {
+		}
+		if len(events) > 0 {
+			lastSeq = events[len(events)-1].Sequence
+		}
+		for i := range events {
+			if isTerminalCloudEvent(events[i]) {
+				detail, detailErr := client.GetDeployment(ctx, key)
+				if detailErr != nil {
+					return fmt.Errorf("observe: fetch final state: %w", detailErr)
+				}
+				if detail != nil && format != OutputJSON {
 					_, _ = fmt.Fprintln(renderer.out)
 					printDeploymentDetail(renderer, detail)
 				}
 				return nil
 			}
-		} else if len(events) > 0 {
-			// Display new events.
-			if format == OutputJSON {
-				if err := printJSON(events); err != nil {
-					return err
-				}
-			} else {
-				printEvents(renderer, events)
-			}
-
-			// Update the cursor to the last event's sequence.
-			lastSeq = events[len(events)-1].Sequence
-
-			// Check if any event indicates a terminal deployment status.
-			for i := range events {
-				if isTerminalStatus(events[i].Status) {
-					// Fetch and display the final state.
-					detail, err := client.GetDeployment(ctx, key)
-					if err != nil {
-						return fmt.Errorf("observe: fetch final state: %w", err)
-					}
-					if detail != nil && format != OutputJSON {
-						_, _ = fmt.Fprintln(renderer.out)
-						printDeploymentDetail(renderer, detail)
-					}
-					return nil
-				}
-			}
 		}
 
-		// Wait before the next poll.
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(interval):
-			// Continue polling.
 		}
 	}
 }

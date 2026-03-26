@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -345,6 +346,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 			state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
+			drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
 			return types.ReconcileResult{Error: state.Error}, nil
 		}
 		// Transient AWS error — schedule retry, report error.
@@ -370,6 +372,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 	// --- Ready + Managed + drift: correct ---
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting", "bucket", state.Desired.BucketName)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		_, configErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ConfigureBucket(rc, state.Desired)
 		})
@@ -380,6 +383,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 
@@ -388,6 +392,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		ctx.Log().Info("drift detected (observed mode, not correcting)", "bucket", state.Desired.BucketName)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 

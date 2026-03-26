@@ -350,14 +350,6 @@ func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidInstanceID.NotFound", "InvalidInstanceID.Malformed")
 }
 
-func IsTerminated(err error) bool {
-	if err == nil {
-		return false
-	}
-	errText := err.Error()
-	return strings.Contains(errText, "terminated") || strings.Contains(errText, "InvalidInstanceID.NotFound")
-}
-
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound", "InvalidSubnetID.NotFound", "InvalidGroup.NotFound")
 }

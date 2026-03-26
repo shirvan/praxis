@@ -1,0 +1,52 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#SinkEventData": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "deploymentKey": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "eventType": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "sinkName": {
+                    "type": "string"
+                },
+                "sinkType": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "message",
+                "sinkName"
+            ]
+        }
+    },
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "error": {
+            "type": "string"
+        },
+        "eventType": {
+            "type": "string"
+        },
+        "sinkName": {
+            "type": "string"
+        }
+    },
+    "$ref": "#/$defs/#SinkEventData",
+    "required": [
+        "error",
+        "eventType",
+        "sinkName"
+    ]
+}

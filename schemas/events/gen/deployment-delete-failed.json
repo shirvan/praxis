@@ -1,0 +1,42 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#DeploymentEventData": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/$defs/#DeploymentStatus"
+                }
+            },
+            "required": [
+                "message"
+            ]
+        },
+        "#DeploymentStatus": {
+            "enum": [
+                "Pending",
+                "Running",
+                "Complete",
+                "Failed",
+                "Deleting",
+                "Deleted",
+                "Cancelled"
+            ]
+        }
+    },
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "status": {
+            "const": "Failed"
+        }
+    },
+    "$ref": "#/$defs/#DeploymentEventData"
+}

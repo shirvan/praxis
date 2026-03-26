@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // newDeleteCmd builds the `praxis delete` subcommand.
@@ -23,14 +25,15 @@ import (
 //	praxis delete Deployment/my-webapp -o json
 func newDeleteCmd(flags *rootFlags) *cobra.Command {
 	var (
-		yes     bool
-		wait    bool
-		timeout time.Duration
+		yes      bool
+		wait     bool
+		rollback bool
+		timeout  time.Duration
 	)
 
 	cmd := &cobra.Command{
 		Use:   "delete Deployment/<key>",
-		Short: "Tear down a deployment and all its resources",
+		Short: "Tear down or roll back a deployment",
 		Long: `Delete initiates a deployment-wide resource teardown. Resources are deleted
 in reverse dependency order — dependents are removed before the resources
 they depend on.
@@ -68,7 +71,12 @@ been deleted:
 			client := flags.newClient()
 			ctx := context.Background()
 
-			resp, err := client.DeleteDeployment(ctx, key)
+			var resp *types.DeleteDeploymentResponse
+			if rollback {
+				resp, err = client.RollbackDeployment(ctx, key)
+			} else {
+				resp, err = client.DeleteDeployment(ctx, key)
+			}
 			if err != nil {
 				return err
 			}
@@ -82,7 +90,11 @@ been deleted:
 			renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
 
 			if !wait {
-				_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted("Deletion in progress. Use 'praxis get Deployment/"+key+"' to check progress."))
+				message := "Deletion in progress. Use 'praxis get Deployment/" + key + "' to check progress."
+				if rollback {
+					message = "Rollback in progress. Use 'praxis get Deployment/" + key + "' to check progress."
+				}
+				_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted(message))
 				return nil
 			}
 
@@ -105,6 +117,7 @@ been deleted:
 
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for deletion to complete")
+	cmd.Flags().BoolVar(&rollback, "rollback", false, "Delete only resources proven ready by the event store for a failed or cancelled deployment")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait for completion (0 for no limit)")
 
 	return cmd

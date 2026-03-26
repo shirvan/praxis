@@ -13,7 +13,7 @@ dist/
 /praxis-network
 /praxis-storage
 /praxis-identity
-/praxis-observability
+/praxis-notifications
 
 # Test binary
 *.test

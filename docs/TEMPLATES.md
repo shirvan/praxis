@@ -1,6 +1,6 @@
 # Templates
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md)
+> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md)
 
 ---
 
@@ -1153,7 +1153,7 @@ praxis deploy stack1 --var name=orders-api --dry-run
 | **CUE knowledge required** | Yes | No |
 | **Use case** | Development, testing, operator workflows | Production deployments |
 
-Both use the same underlying pipeline and orchestration. `Apply` is preserved for backward compatibility and operator use.
+Both use the same underlying pipeline and orchestration. `Apply` is the operator-facing entry point; `Deploy` is the user-facing entry point.
 
 ---
 

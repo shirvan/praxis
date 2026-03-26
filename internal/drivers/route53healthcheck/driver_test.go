@@ -17,9 +17,20 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+type hcDriftRecorder struct{}
+
+func (hcDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (hcDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	return nil
+}
 
 type fakeHealthCheckAPI struct {
 	mu sync.Mutex
@@ -191,7 +202,10 @@ func setupHealthCheckDriver(t *testing.T, api HealthCheckAPI) *ingress.Client {
 	driver := NewHealthCheckDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) HealthCheckAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(hcDriftRecorder{}),
+	)
 	return env.Ingress()
 }
 

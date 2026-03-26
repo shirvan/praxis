@@ -27,6 +27,10 @@ func TestErrorCode(t *testing.T) {
 		err := fmt.Errorf("some random error")
 		assert.Equal(t, "", ErrorCode(err))
 	})
+	t.Run("extracts code from wrapped message text", func(t *testing.T) {
+		err := fmt.Errorf("[404] operation error EC2: DescribeVpcs, api error InvalidVpcID.NotFound: VpcID does not exist")
+		assert.Equal(t, "InvalidVpcID.NotFound", ErrorCode(err))
+	})
 	t.Run("returns empty for nil", func(t *testing.T) {
 		assert.Equal(t, "", ErrorCode(nil))
 	})

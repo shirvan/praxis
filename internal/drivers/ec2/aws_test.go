@@ -63,12 +63,6 @@ func TestIsInsufficientCapacity_False(t *testing.T) {
 	assert.False(t, IsInsufficientCapacity(&mockAPIError{code: "InvalidParameterValue"}))
 }
 
-func TestIsTerminated(t *testing.T) {
-	assert.False(t, IsTerminated(nil))
-	assert.True(t, IsTerminated(errors.New("InvalidInstanceID.NotFound")))
-	assert.False(t, IsTerminated(errors.New("network error")))
-}
-
 func TestBase64Encode(t *testing.T) {
 	assert.Equal(t, "aGVsbG8=", base64Encode("hello"))
 }

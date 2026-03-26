@@ -24,7 +24,7 @@ func TestHasDrift_NoDrift(t *testing.T) {
 }
 
 func TestHasDrift_PathDrift(t *testing.T) {
-	assert.True(t, HasDrift(IAMGroupSpec{Path: "/app/"}, ObservedState{Path: "/legacy/"}))
+	assert.True(t, HasDrift(IAMGroupSpec{Path: "/app/"}, ObservedState{Path: "/ops/"}))
 }
 
 func TestHasDrift_InlinePolicyChanged(t *testing.T) {
@@ -49,13 +49,13 @@ func TestComputeFieldDiffs(t *testing.T) {
 			ManagedPolicyArns: []string{"arn:2"},
 		},
 		ObservedState{
-			Path:              "/legacy/",
+			Path:              "/ops/",
 			InlinePolicies:    map[string]string{"old": `{"Version":"2012-10-17","Statement":[]}`},
 			ManagedPolicyArns: []string{"arn:1"},
 		},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path", OldValue: "/legacy/", NewValue: "/app/"})
+	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path", OldValue: "/ops/", NewValue: "/app/"})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.inlinePolicies.new", OldValue: nil, NewValue: `{"Statement":[],"Version":"2012-10-17"}`})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.inlinePolicies.old", OldValue: `{"Statement":[],"Version":"2012-10-17"}`, NewValue: nil})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.managedPolicyArns", OldValue: []string{"arn:1"}, NewValue: []string{"arn:2"}})

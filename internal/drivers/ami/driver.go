@@ -12,6 +12,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -359,6 +360,7 @@ func (d *AMIDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 			state.LastReconcile = now
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
+			drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
 			return types.ReconcileResult{Error: state.Error}, nil
 		}
 		state.LastReconcile = now
@@ -380,6 +382,7 @@ func (d *AMIDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 
 	drift := HasDrift(state.Desired, observed)
 	if drift && state.Mode == types.ModeManaged {
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		if err := d.correctDrift(ctx, api, observed.ImageId, state.Desired, observed); err != nil {
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
@@ -387,11 +390,13 @@ func (d *AMIDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 	if drift && state.Mode == types.ModeObserved {
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 

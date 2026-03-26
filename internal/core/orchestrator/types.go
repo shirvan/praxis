@@ -16,6 +16,10 @@ const (
 	// asynchronous delete flows.
 	DeploymentDeleteWorkflowServiceName = "DeploymentDeleteWorkflow"
 
+	// DeploymentRollbackWorkflowServiceName is the dedicated workflow used for
+	// rollback flows that delete only resources proven ready by the event store.
+	DeploymentRollbackWorkflowServiceName = "DeploymentRollbackWorkflow"
+
 	// DeploymentStateServiceName is the Restate Virtual Object that stores the
 	// durable per-deployment lifecycle record.
 	DeploymentStateServiceName = "DeploymentStateObj"
@@ -23,11 +27,32 @@ const (
 	// DeploymentIndexServiceName is the fixed-key listing object.
 	DeploymentIndexServiceName = "DeploymentIndex"
 
-	// DeploymentEventsServiceName stores append-only deployment progress events.
-	DeploymentEventsServiceName = "DeploymentEvents"
+	// EventBusServiceName is the CloudEvents entrypoint used by producers.
+	EventBusServiceName = "EventBus"
+
+	// DeploymentEventStoreServiceName stores CloudEvents in chunked per-deployment streams.
+	DeploymentEventStoreServiceName = "DeploymentEventStore"
+
+	// EventIndexServiceName stores cross-deployment event query state.
+	EventIndexServiceName = "EventIndex"
+
+	// SinkRouterServiceName fan-outs stored events to configured sinks.
+	SinkRouterServiceName = "SinkRouter"
+
+	// NotificationSinkConfigServiceName stores registered notification sinks.
+	NotificationSinkConfigServiceName = "NotificationSinkConfig"
 
 	// DeploymentIndexGlobalKey is the well-known key used by DeploymentIndex.
 	DeploymentIndexGlobalKey = "global"
+
+	// EventIndexGlobalKey is the fixed key used by the cross-deployment event index.
+	EventIndexGlobalKey = "global"
+
+	// EventBusGlobalKey is the fixed key used by the event bus object.
+	EventBusGlobalKey = "global"
+
+	// NotificationSinkConfigGlobalKey is the fixed key used by sink configuration.
+	NotificationSinkConfigGlobalKey = "global"
 )
 
 // DeploymentPlan is the input accepted by DeploymentWorkflow.Run.
@@ -182,17 +207,68 @@ type DeleteRequest struct {
 	DeploymentKey string `json:"deploymentKey"`
 }
 
-// DeploymentEvent is the append-only progress/event feed for one deployment.
-//
-// The fields are intentionally generic so both humans and agents can consume the
-// stream without depending on driver-specific details.
-type DeploymentEvent struct {
-	Sequence      int64                  `json:"sequence"`
-	DeploymentKey string                 `json:"deploymentKey"`
-	Status        types.DeploymentStatus `json:"status,omitempty"`
-	ResourceName  string                 `json:"resourceName,omitempty"`
-	ResourceKind  string                 `json:"resourceKind,omitempty"`
-	Message       string                 `json:"message"`
-	Error         string                 `json:"error,omitempty"`
-	CreatedAt     time.Time              `json:"createdAt"`
+type RollbackResource struct {
+	Sequence int64  `json:"sequence"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+}
+
+type RollbackPlan struct {
+	DeploymentKey string             `json:"deploymentKey"`
+	Resources     []RollbackResource `json:"resources,omitempty"`
+}
+
+type EventSequenceRange struct {
+	DeploymentKey string `json:"deploymentKey"`
+	StartSequence int64  `json:"startSequence"`
+	EndSequence   int64  `json:"endSequence"`
+}
+
+type EventStorePruneRequest struct {
+	Before           time.Time `json:"before,omitzero"`
+	MaxEvents        int       `json:"maxEvents,omitempty"`
+	ShipBeforeDelete bool      `json:"shipBeforeDelete,omitempty"`
+	DrainSink        string    `json:"drainSink,omitempty"`
+	BatchSize        int       `json:"batchSize,omitempty"`
+}
+
+type EventStorePruneResult struct {
+	DeploymentKey   string               `json:"deploymentKey"`
+	PrunedEvents    int                  `json:"prunedEvents"`
+	PrunedChunks    int                  `json:"prunedChunks"`
+	RemainingEvents int64                `json:"remainingEvents"`
+	ShippedEvents   int                  `json:"shippedEvents"`
+	RemovedRanges   []EventSequenceRange `json:"removedRanges,omitempty"`
+}
+
+type EventIndexPruneRequest struct {
+	Workspace     string               `json:"workspace,omitempty"`
+	Before        time.Time            `json:"before,omitzero"`
+	MaxEntries    int                  `json:"maxEntries,omitempty"`
+	RemovedRanges []EventSequenceRange `json:"removedRanges,omitempty"`
+}
+
+type EventIndexPruneResult struct {
+	Removed   int `json:"removed"`
+	Remaining int `json:"remaining"`
+}
+
+type DrainBatchRequest struct {
+	SinkName string                `json:"sinkName"`
+	Records  []SequencedCloudEvent `json:"records"`
+}
+
+type RetentionSweepRequest struct {
+	Workspace string `json:"workspace"`
+}
+
+type RetentionSweepResult struct {
+	Workspace          string   `json:"workspace"`
+	DeploymentsScanned int      `json:"deploymentsScanned"`
+	DeploymentsPruned  int      `json:"deploymentsPruned"`
+	PrunedEvents       int      `json:"prunedEvents"`
+	PrunedChunks       int      `json:"prunedChunks"`
+	ShippedEvents      int      `json:"shippedEvents"`
+	IndexEntriesPruned int      `json:"indexEntriesPruned"`
+	FailedDeployments  []string `json:"failedDeployments,omitempty"`
 }

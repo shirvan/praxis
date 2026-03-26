@@ -1,6 +1,6 @@
 # Auth & Workspaces
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Developers](DEVELOPERS.md)
+> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Events](EVENTS.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Developers](DEVELOPERS.md)
 
 ---
 
@@ -575,7 +575,7 @@ internal/core/authservice/client_test.go       — AuthClient unit tests
 internal/core/authservice/config_test.go       — AccountConfig validation tests
 internal/core/authservice/errors_test.go       — AuthError formatting + classification tests
 
-# Legacy Auth (backward compatibility for tests)
+# Direct Auth (used by tests)
 internal/core/auth/auth.go                     — Registry (direct credential resolution without Restate)
 internal/core/auth/auth_test.go                — Registry tests
 

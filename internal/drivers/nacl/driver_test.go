@@ -6,6 +6,7 @@ import (
 	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +18,49 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+const networkACLDriftRecorderObjectServiceName = "NetworkACLTestDriftRecorder"
+
+type networkACLDriftRecorder struct{}
+
+func (networkACLDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (networkACLDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	_, err := restate.WithRequestType[eventing.DriftReportRequest, restate.Void](
+		restate.Object[restate.Void](ctx, networkACLDriftRecorderObjectServiceName, req.ResourceKey, "Append"),
+	).Request(req)
+	return err
+}
+
+type networkACLDriftRecorderObject struct{}
+
+func (networkACLDriftRecorderObject) ServiceName() string {
+	return networkACLDriftRecorderObjectServiceName
+}
+
+func (networkACLDriftRecorderObject) Append(ctx restate.ObjectContext, req eventing.DriftReportRequest) error {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil {
+		return err
+	}
+	reports = append(reports, req)
+	restate.Set(ctx, "reports", reports)
+	return nil
+}
+
+func (networkACLDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]eventing.DriftReportRequest, error) {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil || reports == nil {
+		return nil, err
+	}
+	return reports, nil
+}
 
 type ruleCall struct {
 	NetworkAclID string
@@ -363,8 +404,38 @@ func setupNetworkACLDriver(t *testing.T, api NetworkACLAPI) *ingress.Client {
 	driver := NewNetworkACLDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) NetworkACLAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(networkACLDriftRecorder{}),
+		restate.Reflect(networkACLDriftRecorderObject{}),
+	)
 	return env.Ingress()
+}
+
+func pollNetworkACLEventTypes(t *testing.T, client *ingress.Client, resourceKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		records, err := ingress.Object[restate.Void, []eventing.DriftReportRequest](client, networkACLDriftRecorderObjectServiceName, resourceKey, "List").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.EventType)
+			seen[record.EventType] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			return typesSeen
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func testNetworkACLSpec(key, vpcID string) NetworkACLSpec {
@@ -580,6 +651,7 @@ func TestReconcile_DetectsRuleDrift(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
 	assert.Len(t, api.observed["acl-123"].IngressRules, 1)
+	assert.Equal(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollNetworkACLEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
 }
 
 func TestReconcile_DetectsAssociationDrift(t *testing.T) {
@@ -606,6 +678,7 @@ func TestReconcile_DetectsAssociationDrift(t *testing.T) {
 	assert.True(t, result.Correcting)
 	assert.Len(t, api.observed["acl-123"].Associations, 1)
 	assert.Equal(t, "subnet-a", api.observed["acl-123"].Associations[0].SubnetId)
+	assert.Equal(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollNetworkACLEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
 }
 
 func TestReconcile_DetectsTagDrift(t *testing.T) {
@@ -627,6 +700,7 @@ func TestReconcile_DetectsTagDrift(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
 	assert.Equal(t, "dev", api.observed["acl-123"].Tags["env"])
+	assert.Equal(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollNetworkACLEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
 }
 
 func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
@@ -649,6 +723,25 @@ func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.False(t, result.Correcting)
 	assert.Equal(t, "prod", api.observed["acl-123"].Tags["env"])
+	assert.Equal(t, []string{eventing.DriftEventDetected}, pollNetworkACLEventTypes(t, client, key, eventing.DriftEventDetected))
+}
+
+func TestReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
+	api := newFakeNetworkACLAPI()
+	client := setupNetworkACLDriver(t, api)
+	key := "vpc-123~public"
+
+	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	delete(api.observed, "acl-123")
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Equal(t, []string{eventing.DriftEventExternalDelete}, pollNetworkACLEventTypes(t, client, key, eventing.DriftEventExternalDelete))
 }
 
 func TestGetOutputs_ReturnsOutputs(t *testing.T) {

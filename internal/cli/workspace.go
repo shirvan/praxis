@@ -73,6 +73,7 @@ func newWorkspaceCreateCmd(flags *rootFlags) *cobra.Command {
 				Account:   account,
 				Region:    region,
 				Variables: variables,
+				Events:    nil,
 			}
 			if err := client.ConfigureWorkspace(ctx, cfg); err != nil {
 				return err
@@ -233,6 +234,11 @@ func newWorkspaceShowCmd(flags *rootFlags) *cobra.Command {
 					v := info.Variables[k]
 					_, _ = fmt.Fprintf(renderer.out, "  %s = %s\n", k, v)
 				}
+			}
+			if info.Events != nil && info.Events.Retention != nil {
+				_, _ = fmt.Fprintln(renderer.out)
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Event Retention:"))
+				printEventRetentionPolicy(renderer, info.Events.Retention)
 			}
 			return nil
 		},

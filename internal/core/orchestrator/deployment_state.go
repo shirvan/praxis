@@ -6,6 +6,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -70,6 +71,31 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		UpdatedAt:    plan.CreatedAt,
 	}
 	restate.Set(ctx, "state", state)
+
+	activeKeys := make(map[string]bool, len(plan.Resources))
+	for i := range plan.Resources {
+		resource := plan.Resources[i]
+		activeKeys[resource.Key] = true
+		if err := upsertResourceEventOwner(ctx, resource.Key, eventing.ResourceEventOwner{
+			StreamKey:    plan.Key,
+			Workspace:    plan.Workspace,
+			Generation:   generation,
+			ResourceName: resource.Name,
+			ResourceKind: resource.Kind,
+		}); err != nil {
+			return 0, err
+		}
+	}
+	if existing != nil {
+		for _, resource := range existing.Resources {
+			if resource == nil || activeKeys[resource.Key] {
+				continue
+			}
+			if err := deleteResourceEventOwner(ctx, resource.Key); err != nil {
+				return 0, err
+			}
+		}
+	}
 	return generation, nil
 }
 
@@ -138,6 +164,16 @@ func (DeploymentStateObj) Finalize(ctx restate.ObjectContext, final FinalizeRequ
 	state.Error = final.Error
 	state.UpdatedAt = final.UpdatedAt
 	restate.Set(ctx, "state", state)
+	if final.Status == types.DeploymentDeleted {
+		for _, resource := range state.Resources {
+			if resource == nil || resource.Key == "" {
+				continue
+			}
+			if err := deleteResourceEventOwner(ctx, resource.Key); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -279,6 +315,15 @@ func (DeploymentStateObj) MoveResource(ctx restate.ObjectContext, req MoveResour
 	}
 	state.UpdatedAt = now
 	restate.Set(ctx, "state", state)
+	if err := upsertResourceEventOwner(ctx, rs.Key, eventing.ResourceEventOwner{
+		StreamKey:    state.Key,
+		Workspace:    state.Workspace,
+		Generation:   state.Generation,
+		ResourceName: rs.Name,
+		ResourceKind: rs.Kind,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -323,6 +368,9 @@ func (DeploymentStateObj) RemoveResource(ctx restate.ObjectContext, name string)
 
 	state.UpdatedAt = now
 	restate.Set(ctx, "state", state)
+	if err := deleteResourceEventOwner(ctx, rs.Key); err != nil {
+		return nil, err
+	}
 	return rs, nil
 }
 
@@ -351,6 +399,15 @@ func (DeploymentStateObj) AddResource(ctx restate.ObjectContext, rs ResourceStat
 	state.Resources[rs.Name] = &rs
 	state.UpdatedAt = now
 	restate.Set(ctx, "state", state)
+	if err := upsertResourceEventOwner(ctx, rs.Key, eventing.ResourceEventOwner{
+		StreamKey:    state.Key,
+		Workspace:    state.Workspace,
+		Generation:   state.Generation,
+		ResourceName: rs.Name,
+		ResourceKind: rs.Kind,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 

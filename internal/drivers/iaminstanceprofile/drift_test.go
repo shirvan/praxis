@@ -35,7 +35,7 @@ func TestTagsMatch_IgnoresPraxisTags(t *testing.T) {
 func TestComputeFieldDiffs_PathImmutable(t *testing.T) {
 	diffs := ComputeFieldDiffs(
 		IAMInstanceProfileSpec{Path: "/app/", RoleName: "app-role", Tags: map[string]string{"Name": "profile"}},
-		ObservedState{Path: "/legacy/", RoleName: "app-role", Tags: map[string]string{"Name": "profile"}},
+		ObservedState{Path: "/ops/", RoleName: "app-role", Tags: map[string]string{"Name": "profile"}},
 	)
 
 	require.Len(t, diffs, 1)

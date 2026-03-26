@@ -17,8 +17,9 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/restatedev/sdk-go/testing"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/drivers/eip"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -40,10 +41,9 @@ func setupEIPDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := localstackAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := eip.NewElasticIPDriver(nil)
+	driver := eip.NewElasticIPDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), ec2Client
+	return setupDriverEventingEnv(t, driver), ec2Client
 }
 
 func TestEIPProvision_AllocatesAddress(t *testing.T) {
@@ -139,6 +139,8 @@ func TestEIPReconcile_DetectsAndFixesTagDrift(t *testing.T) {
 	client, ec2Client := setupEIPDriver(t)
 	name := uniqueEIPName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
+	streamKey := "dep-eip-drift-" + name
+	registerDriftEventOwner(t, client, key, streamKey, name, eip.ServiceName)
 
 	out, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
 		Account:    integrationAccountName,
@@ -158,11 +160,37 @@ func TestEIPReconcile_DetectsAndFixesTagDrift(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected), orchestrator.EventTypeDriftDetected)
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected), orchestrator.EventTypeDriftCorrected)
 
 	desc, err := ec2Client.DescribeAddresses(context.Background(), &ec2sdk.DescribeAddressesInput{AllocationIds: []string{out.AllocationId}})
 	require.NoError(t, err)
 	require.Len(t, desc.Addresses, 1)
 	assert.Contains(t, desc.Addresses[0].Tags, ec2types.Tag{Key: aws.String("env"), Value: aws.String("managed")})
+}
+
+func TestEIPReconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	client, ec2Client := setupEIPDriver(t)
+	name := uniqueEIPName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+	streamKey := "dep-eip-external-delete-" + name
+	registerDriftEventOwner(t, client, key, streamKey, name, eip.ServiceName)
+
+	out, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
+		Account:    integrationAccountName,
+		Region:     "us-east-1",
+		ManagedKey: key,
+		Tags:       map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+
+	_, err = ec2Client.ReleaseAddress(context.Background(), &ec2sdk.ReleaseAddressInput{AllocationId: aws.String(out.AllocationId)})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, "ElasticIP", key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftExternalDelete), orchestrator.EventTypeDriftExternalDelete)
 }
 
 func TestEIPGetStatus_ReturnsReady(t *testing.T) {

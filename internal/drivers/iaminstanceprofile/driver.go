@@ -10,6 +10,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -318,6 +319,7 @@ func (d *IAMInstanceProfileDriver) Reconcile(ctx restate.ObjectContext) (types.R
 			state.LastReconcile = now
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
+			drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
 			return types.ReconcileResult{Error: state.Error}, nil
 		}
 		state.LastReconcile = now
@@ -338,6 +340,7 @@ func (d *IAMInstanceProfileDriver) Reconcile(ctx restate.ObjectContext) (types.R
 
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting iam instance profile", "instanceProfileName", name)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		correctionErr := d.correctDrift(ctx, api, name, state.Desired, observed)
 		if correctionErr != nil {
 			restate.Set(ctx, drivers.StateKey, state)
@@ -353,6 +356,7 @@ func (d *IAMInstanceProfileDriver) Reconcile(ctx restate.ObjectContext) (types.R
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 
@@ -360,6 +364,7 @@ func (d *IAMInstanceProfileDriver) Reconcile(ctx restate.ObjectContext) (types.R
 		ctx.Log().Info("drift detected (observed mode, not correcting)", "instanceProfileName", name)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 

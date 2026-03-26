@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -434,30 +435,37 @@ func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 		return types.ReconcileResult{}, err
 	}
 
-	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+	type describeResult struct {
+		Observed ObservedState `json:"observed"`
+		Deleted  bool          `json:"deleted"`
+	}
+
+	describe, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
 		obs, err := api.DescribeVpc(rc, vpcId)
 		if err != nil {
 			if IsNotFound(err) {
-				return ObservedState{}, restate.TerminalError(err, 404)
+				return describeResult{Deleted: true}, nil
 			}
-			return ObservedState{}, err
+			return describeResult{}, err
 		}
-		return obs, nil
+		return describeResult{Observed: obs}, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("VPC %s was deleted externally", vpcId)
-			state.LastReconcile = now
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Error: state.Error}, nil
-		}
 		state.LastReconcile = now
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
 	}
+	if describe.Deleted {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("VPC %s was deleted externally", vpcId)
+		state.LastReconcile = now
+		restate.Set(ctx, drivers.StateKey, state)
+		d.scheduleReconcile(ctx, &state)
+		d.reportDriftEvent(ctx, eventing.DriftEventExternalDelete, state.Error)
+		return types.ReconcileResult{Error: state.Error}, nil
+	}
+	observed := describe.Observed
 
 	state.Observed = observed
 	state.LastReconcile = now
@@ -472,6 +480,7 @@ func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting", "vpcId", vpcId)
+		d.reportDriftEvent(ctx, eventing.DriftEventDetected, "")
 		correctionErr := d.correctDrift(ctx, api, vpcId, state.Desired, observed)
 		if correctionErr != nil {
 			restate.Set(ctx, drivers.StateKey, state)
@@ -480,6 +489,7 @@ func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		d.reportDriftEvent(ctx, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 
@@ -487,6 +497,7 @@ func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 		ctx.Log().Info("drift detected (observed mode, not correcting)", "vpcId", vpcId)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		d.reportDriftEvent(ctx, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 
@@ -559,6 +570,15 @@ func (d *VPCDriver) GetOutputs(ctx restate.ObjectSharedContext) (VPCOutputs, err
 		return VPCOutputs{}, err
 	}
 	return state.Outputs, nil
+}
+
+func (d *VPCDriver) reportDriftEvent(ctx restate.ObjectContext, eventType, errorMessage string) {
+	restate.ServiceSend(ctx, eventing.ResourceEventBridgeServiceName, "ReportDrift").Send(eventing.DriftReportRequest{
+		ResourceKey:  restate.Key(ctx),
+		ResourceKind: ServiceName,
+		EventType:    eventType,
+		Error:        errorMessage,
+	})
 }
 
 func (d *VPCDriver) scheduleReconcile(ctx restate.ObjectContext, state *VPCState) {

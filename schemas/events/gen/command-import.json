@@ -1,0 +1,59 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#CommandEventData": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "action": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "resourceId": {
+                    "type": "string"
+                },
+                "status": {
+                    "enum": [
+                        "Pending",
+                        "Running",
+                        "Complete",
+                        "Failed",
+                        "Deleting",
+                        "Deleted",
+                        "Cancelled"
+                    ]
+                }
+            },
+            "required": [
+                "action",
+                "message"
+            ]
+        }
+    },
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "action": {
+            "const": "import"
+        },
+        "region": {
+            "type": "string"
+        },
+        "resourceId": {
+            "type": "string"
+        }
+    },
+    "$ref": "#/$defs/#CommandEventData",
+    "required": [
+        "region",
+        "resourceId"
+    ]
+}

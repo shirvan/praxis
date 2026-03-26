@@ -67,7 +67,7 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-notifications
     just wait-stack
     just register
 
@@ -94,6 +94,10 @@ logs-compute:
 # Follow logs for the Identity driver pack.
 logs-identity:
     docker compose logs -f praxis-identity
+
+# Follow logs for the notifications event service.
+logs-notifications:
+    docker compose logs -f praxis-notifications
 
 # Follow logs for all driver packs together.
 logs-drivers:
@@ -134,6 +138,11 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-core:9080"}' | jq .
     @echo "✓ Praxis core services registered"
+    @echo "Registering Praxis Notifications (event bus + sinks)..."
+    @curl -s -X POST http://localhost:9070/deployments \
+        -H 'content-type: application/json' \
+        -d '{"uri": "http://praxis-notifications:9080"}' | jq .
+    @echo "✓ Praxis notifications services registered"
 
 # ─── Build ──────────────────────────────────────────────────
 
@@ -141,6 +150,7 @@ register:
 build:
     go build -o bin/praxis ./cmd/praxis
     go build -o bin/praxis-core ./cmd/praxis-core
+    go build -o bin/praxis-notifications ./cmd/praxis-notifications
     go build -o bin/praxis-storage ./cmd/praxis-storage
     go build -o bin/praxis-network ./cmd/praxis-network
     go build -o bin/praxis-compute ./cmd/praxis-compute
@@ -149,6 +159,38 @@ build:
 # Build CLI binary only
 build-cli:
     go build -o bin/praxis ./cmd/praxis
+
+# Generate JSON Schema artifacts for CloudEvent payload definitions.
+generate-event-schemas:
+    mkdir -p schemas/events/gen
+    cue export schemas/events/command.cue --out jsonschema -e '#CommandApplyData' > schemas/events/gen/command-apply.json
+    cue export schemas/events/command.cue --out jsonschema -e '#CommandDeleteData' > schemas/events/gen/command-delete.json
+    cue export schemas/events/command.cue --out jsonschema -e '#CommandImportData' > schemas/events/gen/command-import.json
+    cue export schemas/events/command.cue --out jsonschema -e '#CommandCancelData' > schemas/events/gen/command-cancel.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentSubmittedData' > schemas/events/gen/deployment-submitted.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentStartedData' > schemas/events/gen/deployment-started.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentCompletedData' > schemas/events/gen/deployment-completed.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentFailedData' > schemas/events/gen/deployment-failed.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentCancelledData' > schemas/events/gen/deployment-cancelled.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteStartedData' > schemas/events/gen/deployment-delete-started.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteCompletedData' > schemas/events/gen/deployment-delete-completed.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteFailedData' > schemas/events/gen/deployment-delete-failed.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceReplaceStartedData' > schemas/events/gen/resource-replace-started.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceDispatchedData' > schemas/events/gen/resource-dispatched.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceReadyData' > schemas/events/gen/resource-ready.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceErrorData' > schemas/events/gen/resource-error.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceSkippedData' > schemas/events/gen/resource-skipped.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceDeleteStartedData' > schemas/events/gen/resource-delete-started.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceDeletedData' > schemas/events/gen/resource-deleted.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceDeleteErrorData' > schemas/events/gen/resource-delete-error.json
+    cue export schemas/events/drift.cue --out jsonschema -e '#DriftDetectedData' > schemas/events/gen/drift-detected.json
+    cue export schemas/events/drift.cue --out jsonschema -e '#DriftCorrectedData' > schemas/events/gen/drift-corrected.json
+    cue export schemas/events/drift.cue --out jsonschema -e '#DriftExternalDeleteData' > schemas/events/gen/drift-external-delete.json
+    cue export schemas/events/policy.cue --out jsonschema -e '#PolicyPreventedDestroyData' > schemas/events/gen/policy-prevented-destroy.json
+    cue export schemas/events/system.cue --out jsonschema -e '#SinkRegisteredData' > schemas/events/gen/system-sink-registered.json
+    cue export schemas/events/system.cue --out jsonschema -e '#SinkRemovedData' > schemas/events/gen/system-sink-removed.json
+    cue export schemas/events/system.cue --out jsonschema -e '#SinkDeliveryFailedData' > schemas/events/gen/system-sink-delivery-failed.json
+    cue export schemas/events/system.cue --out jsonschema -e '#RetentionEventData' > schemas/events/gen/system-retention-event.json
 
 # Build Core binary only
 build-core:

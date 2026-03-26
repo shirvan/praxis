@@ -216,7 +216,7 @@ package sqs
   This avoids circular dependencies and keeps the template simpler.
 
 - **Policy Version defaults to `2012-10-17`**: The latest IAM policy version. The
-  older `2008-10-17` is supported for legacy compatibility but not recommended.
+  older `2008-10-17` is an outdated version and should not be used.
 
 ---
 

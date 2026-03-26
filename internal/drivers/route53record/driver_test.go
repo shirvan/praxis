@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
@@ -16,9 +17,49 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+const route53RecordDriftRecorderObjectServiceName = "Route53RecordTestDriftRecorder"
+
+type route53RecordDriftRecorder struct{}
+
+func (route53RecordDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (route53RecordDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	_, err := restate.WithRequestType[eventing.DriftReportRequest, restate.Void](
+		restate.Object[restate.Void](ctx, route53RecordDriftRecorderObjectServiceName, req.ResourceKey, "Append"),
+	).Request(req)
+	return err
+}
+
+type route53RecordDriftRecorderObject struct{}
+
+func (route53RecordDriftRecorderObject) ServiceName() string {
+	return route53RecordDriftRecorderObjectServiceName
+}
+
+func (route53RecordDriftRecorderObject) Append(ctx restate.ObjectContext, req eventing.DriftReportRequest) error {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil {
+		return err
+	}
+	reports = append(reports, req)
+	restate.Set(ctx, "reports", reports)
+	return nil
+}
+
+func (route53RecordDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]eventing.DriftReportRequest, error) {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil || reports == nil {
+		return nil, err
+	}
+	return reports, nil
+}
 
 type fakeRecordAPI struct {
 	mu sync.Mutex
@@ -81,7 +122,7 @@ func (f *fakeRecordAPI) DescribeRecord(ctx context.Context, identity RecordIdent
 	key := recordKey(identity)
 	obs, ok := f.records[key]
 	if !ok {
-		return ObservedState{}, fmt.Errorf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId)
+		return ObservedState{}, &mockAPIError{code: "InvalidInput", message: fmt.Sprintf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId)}
 	}
 	return obs, nil
 }
@@ -109,8 +150,38 @@ func setupRecordDriver(t *testing.T, api RecordAPI) *ingress.Client {
 	driver := NewDNSRecordDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) RecordAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(route53RecordDriftRecorder{}),
+		restate.Reflect(route53RecordDriftRecorderObject{}),
+	)
 	return env.Ingress()
+}
+
+func pollRoute53RecordEventTypes(t *testing.T, client *ingress.Client, resourceKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		records, err := ingress.Object[restate.Void, []eventing.DriftReportRequest](client, route53RecordDriftRecorderObjectServiceName, resourceKey, "List").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.EventType)
+			seen[record.EventType] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			return typesSeen
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func testRecordSpec(hostedZoneId, name, recordType string) RecordSpec {
@@ -244,6 +315,54 @@ func TestRecordReconcile_TTLDriftCorrected(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
+	assert.Equal(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollRoute53RecordEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
+}
+
+func TestRecordReconcile_ObservedModeReportsOnly_EmitsDetected(t *testing.T) {
+	api := newFakeRecordAPI()
+	api.records["Z123|example.com|A"] = ObservedState{
+		HostedZoneId:    "Z123",
+		Name:            "example.com",
+		Type:            "A",
+		TTL:             300,
+		ResourceRecords: []string{"1.2.3.4"},
+	}
+	client := setupRecordDriver(t, api)
+	key := "Z123~example.com~A"
+
+	_, err := ingress.Object[types.ImportRef, RecordOutputs](client, ServiceName, key, "Import").Request(t.Context(), types.ImportRef{ResourceID: "Z123/example.com/A", Account: "test"})
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	rk := "Z123|example.com|A"
+	obs := api.records[rk]
+	obs.TTL = 60
+	api.records[rk] = obs
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift)
+	assert.False(t, result.Correcting)
+	assert.Equal(t, []string{eventing.DriftEventDetected}, pollRoute53RecordEventTypes(t, client, key, eventing.DriftEventDetected))
+}
+
+func TestRecordReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
+	api := newFakeRecordAPI()
+	client := setupRecordDriver(t, api)
+	key := "Z123~example.com~A"
+
+	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "example.com", "A"))
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	delete(api.records, "Z123|example.com|A")
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Equal(t, []string{eventing.DriftEventExternalDelete}, pollRoute53RecordEventTypes(t, client, key, eventing.DriftEventExternalDelete))
 }
 
 func TestRecordGetOutputs_ReturnsCurrentState(t *testing.T) {

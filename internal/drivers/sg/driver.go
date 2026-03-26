@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -280,30 +281,37 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	}
 
 	// --- Describe current AWS state ---
-	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+	type describeResult struct {
+		Observed ObservedState `json:"observed"`
+		Deleted  bool          `json:"deleted"`
+	}
+
+	describe, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
 		obs, err := api.DescribeSecurityGroup(rc, state.Outputs.GroupId)
 		if err != nil {
 			if IsNotFound(err) {
-				return ObservedState{}, restate.TerminalError(err, 404)
+				return describeResult{Deleted: true}, nil
 			}
-			return ObservedState{}, err
+			return describeResult{}, err
 		}
-		return obs, nil
+		return describeResult{Observed: obs}, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("security group %s was deleted externally", state.Outputs.GroupId)
-			state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Error: state.Error}, nil
-		}
 		state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
 	}
+	if describe.Deleted {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("security group %s was deleted externally", state.Outputs.GroupId)
+		state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+		restate.Set(ctx, drivers.StateKey, state)
+		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
+		return types.ReconcileResult{Error: state.Error}, nil
+	}
+	observed := describe.Observed
 
 	state.Observed = observed
 	state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
@@ -320,6 +328,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	// --- Ready + Managed + drift: correct with add-before-remove ---
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting", "groupId", state.Outputs.GroupId)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 
 		// Apply rule diff
 		if ruleErr := d.applyRuleDiff(ctx, api, state.Outputs.GroupId, state.Desired, observed); ruleErr != nil {
@@ -342,6 +351,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 
@@ -350,6 +360,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 		ctx.Log().Info("drift detected (observed mode, not correcting)", "groupId", state.Outputs.GroupId)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 

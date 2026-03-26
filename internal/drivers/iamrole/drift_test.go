@@ -71,7 +71,7 @@ func TestComputeFieldDiffs_AllFields(t *testing.T) {
 			Tags:                     map[string]string{"env": "prod"},
 		},
 		ObservedState{
-			Path:                     "/legacy/",
+			Path:                     "/ops/",
 			AssumeRolePolicyDocument: `{"Version":"2012-10-17","Statement":[{"Action":"sts:TagSession","Effect":"Allow"}]}`,
 			Description:              "old",
 			MaxSessionDuration:       3600,
@@ -82,7 +82,7 @@ func TestComputeFieldDiffs_AllFields(t *testing.T) {
 		},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: "/legacy/", NewValue: "/app/"})
+	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: "/ops/", NewValue: "/app/"})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.description", OldValue: "old", NewValue: "new"})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.maxSessionDuration", OldValue: int32(3600), NewValue: int32(7200)})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.permissionsBoundary", OldValue: "old-boundary", NewValue: "new-boundary"})

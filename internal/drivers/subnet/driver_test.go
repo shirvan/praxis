@@ -6,6 +6,7 @@ import (
 	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +18,49 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+const subnetDriftRecorderObjectServiceName = "SubnetTestDriftRecorder"
+
+type subnetDriftRecorder struct{}
+
+func (subnetDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (subnetDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	_, err := restate.WithRequestType[eventing.DriftReportRequest, restate.Void](
+		restate.Object[restate.Void](ctx, subnetDriftRecorderObjectServiceName, req.ResourceKey, "Append"),
+	).Request(req)
+	return err
+}
+
+type subnetDriftRecorderObject struct{}
+
+func (subnetDriftRecorderObject) ServiceName() string {
+	return subnetDriftRecorderObjectServiceName
+}
+
+func (subnetDriftRecorderObject) Append(ctx restate.ObjectContext, req eventing.DriftReportRequest) error {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil {
+		return err
+	}
+	reports = append(reports, req)
+	restate.Set(ctx, "reports", reports)
+	return nil
+}
+
+func (subnetDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]eventing.DriftReportRequest, error) {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil || reports == nil {
+		return nil, err
+	}
+	return reports, nil
+}
 
 type fakeSubnetAPI struct {
 	mu sync.Mutex
@@ -226,8 +267,38 @@ func setupSubnetDriver(t *testing.T, api SubnetAPI) *ingress.Client {
 	driver := NewSubnetDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) SubnetAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(subnetDriftRecorder{}),
+		restate.Reflect(subnetDriftRecorderObject{}),
+	)
 	return env.Ingress()
+}
+
+func pollSubnetEventTypes(t *testing.T, client *ingress.Client, streamKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		records, err := ingress.Object[restate.Void, []eventing.DriftReportRequest](client, subnetDriftRecorderObjectServiceName, streamKey, "List").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.EventType)
+			seen[record.EventType] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			return typesSeen
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func testSubnetSpec(key, vpcID string, tags map[string]string) SubnetSpec {
@@ -464,6 +535,7 @@ func TestReconcile_DetectsMapPublicIpDrift(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
 	assert.Equal(t, 2, api.modifyCalls)
+	assert.ElementsMatch(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollSubnetEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
 }
 
 func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
@@ -497,4 +569,23 @@ func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.False(t, result.Correcting)
 	assert.Equal(t, 0, api.modifyCalls)
+	assert.Contains(t, pollSubnetEventTypes(t, client, key, eventing.DriftEventDetected), eventing.DriftEventDetected)
+}
+
+func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	api := newFakeSubnetAPI()
+	client := setupSubnetDriver(t, api)
+	key := "vpc-123~public-a"
+
+	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", nil))
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	delete(api.observed, outputs.SubnetId)
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Contains(t, pollSubnetEventTypes(t, client, key, eventing.DriftEventExternalDelete), eventing.DriftEventExternalDelete)
 }

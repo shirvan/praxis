@@ -21,11 +21,14 @@ import (
 // They are repeated here rather than importing the internal packages because
 // the CLI should depend only on stable contract strings.
 const (
-	commandServiceName = "PraxisCommandService"
-	stateServiceName   = "DeploymentStateObj"
-	indexServiceName   = "DeploymentIndex"
-	eventsServiceName  = "DeploymentEvents"
-	indexGlobalKey     = "global"
+	commandServiceName         = "PraxisCommandService"
+	stateServiceName           = "DeploymentStateObj"
+	indexServiceName           = "DeploymentIndex"
+	cloudEventStoreName        = "DeploymentEventStore"
+	cloudEventIndexName        = "EventIndex"
+	notificationSinkConfigName = "NotificationSinkConfig"
+	sinkRouterServiceName      = "SinkRouter"
+	indexGlobalKey             = "global"
 )
 
 // --------------------------------------------------------------------------
@@ -89,6 +92,18 @@ func (c *Client) DeleteDeployment(ctx context.Context, key string) (*types.Delet
 	return &resp, nil
 }
 
+// RollbackDeployment starts a rollback that deletes only the resources proven
+// ready by the CloudEvents store for a failed or cancelled deployment.
+func (c *Client) RollbackDeployment(ctx context.Context, key string) (*types.DeleteDeploymentResponse, error) {
+	resp, err := ingress.Service[types.DeleteDeploymentRequest, types.DeleteDeploymentResponse](
+		c.rc, commandServiceName, "RollbackDeployment",
+	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key})
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ImportResource adopts an existing cloud resource under Praxis management.
 func (c *Client) ImportResource(ctx context.Context, req types.ImportRequest) (*types.ImportResponse, error) {
 	resp, err := ingress.Service[types.ImportRequest, types.ImportResponse](
@@ -128,16 +143,91 @@ func (c *Client) ListDeployments(ctx context.Context, workspace string) ([]types
 	return resp, nil
 }
 
-// GetDeploymentEvents returns deployment progress events with sequence > since.
-// This is used by the observe command for incremental progress polling.
-func (c *Client) GetDeploymentEvents(ctx context.Context, key string, since int64) ([]orchestrator.DeploymentEvent, error) {
-	resp, err := ingress.Object[int64, []orchestrator.DeploymentEvent](
-		c.rc, eventsServiceName, key, "ListSince",
+// GetDeploymentCloudEvents returns CloudEvents for one deployment with
+// sequence > since from the new chunked event store.
+func (c *Client) GetDeploymentCloudEvents(ctx context.Context, key string, since int64) ([]orchestrator.SequencedCloudEvent, error) {
+	resp, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
+		c.rc, cloudEventStoreName, key, "ListSince",
 	).Request(ctx, since)
 	if err != nil {
-		return nil, fmt.Errorf("get events for %q: %w", key, err)
+		return nil, fmt.Errorf("get CloudEvents for %q: %w", key, err)
 	}
 	return resp, nil
+}
+
+// QueryCloudEvents runs a cross-deployment query against the global event index.
+func (c *Client) QueryCloudEvents(ctx context.Context, query orchestrator.EventQuery) ([]orchestrator.SequencedCloudEvent, error) {
+	resp, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+		c.rc, cloudEventIndexName, indexGlobalKey, "Query",
+	).Request(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query events: %w", err)
+	}
+	return resp, nil
+}
+
+// UpsertNotificationSink creates or updates a sink configuration.
+func (c *Client) UpsertNotificationSink(ctx context.Context, sink orchestrator.NotificationSink) error {
+	_, err := ingress.Object[orchestrator.NotificationSink, restate.Void](
+		c.rc, notificationSinkConfigName, indexGlobalKey, "Upsert",
+	).Request(ctx, sink)
+	if err != nil {
+		return fmt.Errorf("upsert sink %q: %w", sink.Name, err)
+	}
+	return nil
+}
+
+// ListNotificationSinks returns the configured notification sinks.
+func (c *Client) ListNotificationSinks(ctx context.Context) ([]orchestrator.NotificationSink, error) {
+	resp, err := ingress.Object[restate.Void, []orchestrator.NotificationSink](
+		c.rc, notificationSinkConfigName, indexGlobalKey, "List",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, fmt.Errorf("list notification sinks: %w", err)
+	}
+	return resp, nil
+}
+
+// GetNotificationSink returns one configured sink by name.
+func (c *Client) GetNotificationSink(ctx context.Context, name string) (*orchestrator.NotificationSink, error) {
+	resp, err := ingress.Object[string, *orchestrator.NotificationSink](
+		c.rc, notificationSinkConfigName, indexGlobalKey, "Get",
+	).Request(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("get notification sink %q: %w", name, err)
+	}
+	return resp, nil
+}
+
+// GetNotificationSinkHealth returns the aggregate health/read model for all sinks.
+func (c *Client) GetNotificationSinkHealth(ctx context.Context) (orchestrator.NotificationSinkHealth, error) {
+	resp, err := ingress.Object[restate.Void, orchestrator.NotificationSinkHealth](
+		c.rc, notificationSinkConfigName, indexGlobalKey, "Health",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return orchestrator.NotificationSinkHealth{}, fmt.Errorf("get notification sink health: %w", err)
+	}
+	return resp, nil
+}
+
+// RemoveNotificationSink deletes one configured sink by name.
+func (c *Client) RemoveNotificationSink(ctx context.Context, name string) error {
+	_, err := ingress.Object[string, restate.Void](
+		c.rc, notificationSinkConfigName, indexGlobalKey, "Remove",
+	).Request(ctx, name)
+	if err != nil {
+		return fmt.Errorf("remove notification sink %q: %w", name, err)
+	}
+	return nil
+}
+
+// TestNotificationSink delivers a synthetic event to one sink.
+func (c *Client) TestNotificationSink(ctx context.Context, name string) error {
+	_, err := ingress.Service[string, restate.Void](c.rc, sinkRouterServiceName, "Test").Request(ctx, name)
+	if err != nil {
+		return fmt.Errorf("test notification sink %q: %w", name, err)
+	}
+	return nil
 }
 
 // --------------------------------------------------------------------------
@@ -297,6 +387,25 @@ func (c *Client) ListWorkspaces(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return resp, nil
+}
+
+// GetWorkspaceEventRetention returns the current event retention policy for a workspace.
+func (c *Client) GetWorkspaceEventRetention(ctx context.Context, name string) (*workspace.EventRetentionPolicy, error) {
+	resp, err := ingress.Object[restate.Void, workspace.EventRetentionPolicy](
+		c.rc, workspaceServiceName, name, "GetEventRetention",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SetWorkspaceEventRetention updates the event retention policy for a workspace.
+func (c *Client) SetWorkspaceEventRetention(ctx context.Context, name string, policy workspace.EventRetentionPolicy) error {
+	_, err := ingress.Object[workspace.EventRetentionPolicy, restate.Void](
+		c.rc, workspaceServiceName, name, "SetEventRetention",
+	).Request(ctx, policy)
+	return err
 }
 
 // --------------------------------------------------------------------------

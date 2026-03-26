@@ -6,6 +6,7 @@ import (
 	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +18,49 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+const igwDriftRecorderObjectServiceName = "IGWTestDriftRecorder"
+
+type igwDriftRecorder struct{}
+
+func (igwDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (igwDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	_, err := restate.WithRequestType[eventing.DriftReportRequest, restate.Void](
+		restate.Object[restate.Void](ctx, igwDriftRecorderObjectServiceName, req.ResourceKey, "Append"),
+	).Request(req)
+	return err
+}
+
+type igwDriftRecorderObject struct{}
+
+func (igwDriftRecorderObject) ServiceName() string {
+	return igwDriftRecorderObjectServiceName
+}
+
+func (igwDriftRecorderObject) Append(ctx restate.ObjectContext, req eventing.DriftReportRequest) error {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil {
+		return err
+	}
+	reports = append(reports, req)
+	restate.Set(ctx, "reports", reports)
+	return nil
+}
+
+func (igwDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]eventing.DriftReportRequest, error) {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil || reports == nil {
+		return nil, err
+	}
+	return reports, nil
+}
 
 type attachCall struct {
 	InternetGatewayID string
@@ -209,8 +250,38 @@ func setupIGWDriver(t *testing.T, api IGWAPI) *ingress.Client {
 	driver := NewIGWDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) IGWAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(igwDriftRecorder{}),
+		restate.Reflect(igwDriftRecorderObject{}),
+	)
 	return env.Ingress()
+}
+
+func pollIGWEventTypes(t *testing.T, client *ingress.Client, streamKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		records, err := ingress.Object[restate.Void, []eventing.DriftReportRequest](client, igwDriftRecorderObjectServiceName, streamKey, "List").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.EventType)
+			seen[record.EventType] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			return typesSeen
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func testSpec(key, vpcID string, tags map[string]string) IGWSpec {
@@ -399,6 +470,7 @@ func TestReconcile_DetachedIGWReattaches(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
 	assert.Equal(t, "vpc-123", api.observed["igw-123"].AttachedVpcId)
+	assert.ElementsMatch(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollIGWEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
 }
 
 func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
@@ -425,6 +497,25 @@ func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.False(t, result.Correcting)
 	assert.Len(t, api.attachCalls, 0)
+	assert.Contains(t, pollIGWEventTypes(t, client, key, eventing.DriftEventDetected), eventing.DriftEventDetected)
+}
+
+func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	api := newFakeIGWAPI()
+	client := setupIGWDriver(t, api)
+	key := "us-east-1~web-igw"
+
+	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	delete(api.observed, "igw-123")
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Contains(t, pollIGWEventTypes(t, client, key, eventing.DriftEventExternalDelete), eventing.DriftEventExternalDelete)
 }
 
 func TestGetOutputs_ReturnsCurrentState(t *testing.T) {

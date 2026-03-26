@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"time"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -65,11 +66,11 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := appendEvent(ctx, req.DeploymentKey, DeploymentEvent{
-		DeploymentKey: req.DeploymentKey,
-		Status:        types.DeploymentDeleting,
-		Message:       "deployment delete workflow started",
-	}); err != nil {
+	startedEvent, err := NewDeploymentDeleteStartedEvent(req.DeploymentKey, state.Workspace, state.Generation, now)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	if err := EmitDeploymentCloudEvent(ctx, startedEvent); err != nil {
 		return DeploymentResult{}, err
 	}
 
@@ -84,7 +85,14 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		resource := exec.plan[name]
 
 		if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, exec, name, resource.Kind,
+			policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
+			if eventErr != nil {
+				return DeploymentResult{}, eventErr
+			}
+			if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+				return DeploymentResult{}, err
+			}
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind,
 				fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name)); err != nil {
 				return DeploymentResult{}, err
 			}
@@ -93,7 +101,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 
 		adapter, err := w.providers.Get(resource.Kind)
 		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, exec, name, resource.Kind, err.Error()); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error()); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
@@ -106,26 +114,24 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		}); err != nil {
 			return DeploymentResult{}, err
 		}
-		if err := appendEvent(ctx, req.DeploymentKey, DeploymentEvent{
-			DeploymentKey: req.DeploymentKey,
-			Status:        types.DeploymentDeleting,
-			ResourceName:  name,
-			ResourceKind:  resource.Kind,
-			Message:       fmt.Sprintf("deleting %s resource", resource.Kind),
-		}); err != nil {
+		deleteEvent, eventErr := NewResourceDeleteStartedEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind)
+		if eventErr != nil {
+			return DeploymentResult{}, eventErr
+		}
+		if err := EmitDeploymentCloudEvent(ctx, deleteEvent); err != nil {
 			return DeploymentResult{}, err
 		}
 
 		invocation, err := adapter.Delete(ctx, resource.Key)
 		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, exec, name, resource.Kind, fmt.Sprintf("failed to dispatch delete: %v", err)); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("failed to dispatch delete: %v", err)); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
 		}
 
 		if err := invocation.Done(); err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, exec, name, resource.Kind, err.Error()); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error()); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
@@ -138,13 +144,11 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		}); err != nil {
 			return DeploymentResult{}, err
 		}
-		if err := appendEvent(ctx, req.DeploymentKey, DeploymentEvent{
-			DeploymentKey: req.DeploymentKey,
-			Status:        types.DeploymentDeleting,
-			ResourceName:  name,
-			ResourceKind:  resource.Kind,
-			Message:       fmt.Sprintf("resource %s deleted", name),
-		}); err != nil {
+		deletedEvent, eventErr := NewResourceDeletedEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind)
+		if eventErr != nil {
+			return DeploymentResult{}, eventErr
+		}
+		if err := EmitDeploymentCloudEvent(ctx, deletedEvent); err != nil {
 			return DeploymentResult{}, err
 		}
 	}
@@ -180,12 +184,11 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			return DeploymentResult{}, err
 		}
 	}
-	if err := appendEvent(ctx, req.DeploymentKey, DeploymentEvent{
-		DeploymentKey: req.DeploymentKey,
-		Status:        finalStatus,
-		Message:       fmt.Sprintf("deployment delete finished with status %s", finalStatus),
-		Error:         finalError,
-	}); err != nil {
+	terminalEvent, err := NewDeploymentDeleteTerminalEvent(req.DeploymentKey, state.Workspace, state.Generation, now, finalStatus, finalError)
+	if err != nil {
+		return DeploymentResult{}, err
+	}
+	if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
 		return DeploymentResult{}, err
 	}
 
@@ -195,6 +198,8 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,
+	workspace string,
+	generation int64,
 	exec *executionState,
 	resourceName string,
 	resourceKind string,
@@ -208,14 +213,11 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	}); err != nil {
 		return err
 	}
-	if err := appendEvent(ctx, deploymentKey, DeploymentEvent{
-		DeploymentKey: deploymentKey,
-		Status:        types.DeploymentDeleting,
-		ResourceName:  resourceName,
-		ResourceKind:  resourceKind,
-		Message:       fmt.Sprintf("resource %s failed to delete", resourceName),
-		Error:         errMsg,
-	}); err != nil {
+	errorEvent, eventErr := NewResourceDeleteErrorEvent(deploymentKey, workspace, generation, time.Time{}, resourceName, resourceKind, errMsg)
+	if eventErr != nil {
+		return eventErr
+	}
+	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
 		return err
 	}
 
@@ -229,13 +231,11 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 		}); err != nil {
 			return err
 		}
-		if err := appendEvent(ctx, deploymentKey, DeploymentEvent{
-			DeploymentKey: deploymentKey,
-			Status:        types.DeploymentDeleting,
-			ResourceName:  name,
-			ResourceKind:  resource.Kind,
-			Message:       exec.errors[name],
-		}); err != nil {
+		skippedEvent, eventErr := NewResourceSkippedEvent(deploymentKey, workspace, generation, time.Time{}, name, resource.Kind, types.DeploymentDeleting, exec.errors[name])
+		if eventErr != nil {
+			return eventErr
+		}
+		if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
 			return err
 		}
 	}

@@ -1,0 +1,35 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "error": {
+            "type": "string"
+        },
+        "message": {
+            "type": "string"
+        },
+        "operation": {
+            "enum": [
+                "delete",
+                "force-replace"
+            ]
+        },
+        "policy": {
+            "const": "lifecycle.preventDestroy"
+        },
+        "resourceKind": {
+            "type": "string"
+        },
+        "resourceName": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "error",
+        "message",
+        "operation",
+        "resourceKind",
+        "resourceName"
+    ]
+}

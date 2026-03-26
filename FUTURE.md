@@ -20,34 +20,34 @@ Events follow a common envelope: `{type, resource, timestamp, deployment, payloa
 
 ---
 
-## AI Agent Concierge
+## Concierge
 
-A bring-your-own-API AI assistant that is Praxis-aware. The agent understands Praxis concepts (stacks, resources, drivers, templates, drift) and can query internal APIs to gather state, explain what happened, suggest fixes, and perform actions on the user's behalf.
+A bring-your-own-API assistant that is Praxis-aware. The concierge understands Praxis concepts (stacks, resources, drivers, templates, drift) and can query internal APIs to gather state, explain what happened, suggest fixes, and perform actions on the user's behalf.
 
 **Supported providers:** Ollama (local), OpenAI API, Claude API. Users configure their preferred provider and API key; Praxis routes requests accordingly.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Agent as Agent Service<br/>(Restate)
+    participant Concierge as Concierge Service<br/>(Restate)
     participant LLM
     participant API as Praxis Core APIs
 
-    User->>Agent: praxis ask "why did my deploy fail?"
-    Agent->>LLM: Prompt + tool definitions
-    LLM-->>Agent: Call getDeploymentStatus(key)
-    Agent->>API: getDeploymentStatus
-    API-->>Agent: Status + error details
-    Agent->>LLM: Tool result
-    LLM-->>Agent: Call getReconcileHistory(resource)
-    Agent->>API: getReconcileHistory
-    API-->>Agent: History entries
-    Agent->>LLM: Tool result
-    LLM-->>Agent: Final explanation
-    Agent-->>User: "Deploy failed because sg-xyz was<br/>deleted externally. Re-apply to fix."
+    User->>Concierge: praxis ask "why did my deploy fail?"
+    Concierge->>LLM: Prompt + tool definitions
+    LLM-->>Concierge: Call getDeploymentStatus(key)
+    Concierge->>API: getDeploymentStatus
+    API-->>Concierge: Status + error details
+    Concierge->>LLM: Tool result
+    LLM-->>Concierge: Call getReconcileHistory(resource)
+    Concierge->>API: getReconcileHistory
+    API-->>Concierge: History entries
+    Concierge->>LLM: Tool result
+    LLM-->>Concierge: Final explanation
+    Concierge-->>User: "Deploy failed because sg-xyz was<br/>deleted externally. Re-apply to fix."
 ```
 
-**Technical approach:** A Restate service that wraps LLM API calls in durable execution. The agent is given tool definitions that map to Praxis Core's internal APIs — `getDeploymentStatus`, `listResources`, `getReconcileHistory`, `getDrift`, `explainDAG`, etc. On each user prompt, the agent calls the LLM with the tool schema; the LLM decides which tools to invoke; results are fed back for a final response. Ollama runs locally (no network), OpenAI and Claude are external API calls wrapped in `restate.Run` for journaling. The agent can be exposed via the CLI (`praxis ask "why did my last deploy fail?"`).
+**Technical approach:** A Restate service that wraps LLM API calls in durable execution. The concierge is given tool definitions that map to Praxis Core's internal APIs — `getDeploymentStatus`, `listResources`, `getReconcileHistory`, `getDrift`, `explainDAG`, etc. On each user prompt, the concierge calls the LLM with the tool schema; the LLM decides which tools to invoke; results are fed back for a final response. Ollama runs locally (no network), OpenAI and Claude are external API calls wrapped in `restate.Run` for journaling. The concierge can be exposed via the CLI (`praxis ask "why did my last deploy fail?"`).
 
 ---
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -354,30 +355,37 @@ func (d *NetworkACLDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 		return types.ReconcileResult{}, err
 	}
 
-	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+	type describeResult struct {
+		Observed ObservedState `json:"observed"`
+		Deleted  bool          `json:"deleted"`
+	}
+
+	describe, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
 		obs, runErr := api.DescribeNetworkACL(rc, state.Outputs.NetworkAclId)
 		if runErr != nil {
 			if IsNotFound(runErr) {
-				return ObservedState{}, restate.TerminalError(runErr, 404)
+				return describeResult{Deleted: true}, nil
 			}
-			return ObservedState{}, runErr
+			return describeResult{}, runErr
 		}
-		return obs, nil
+		return describeResult{Observed: obs}, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("network ACL %s was deleted externally", state.Outputs.NetworkAclId)
-			state.LastReconcile = now
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Error: state.Error}, nil
-		}
 		state.LastReconcile = now
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
 	}
+	if describe.Deleted {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("network ACL %s was deleted externally", state.Outputs.NetworkAclId)
+		state.LastReconcile = now
+		restate.Set(ctx, drivers.StateKey, state)
+		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
+		return types.ReconcileResult{Error: state.Error}, nil
+	}
+	observed := describe.Observed
 
 	state.Observed = observed
 	state.LastReconcile = now
@@ -391,6 +399,7 @@ func (d *NetworkACLDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting network ACL", "networkAclId", state.Outputs.NetworkAclId)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		if correctionErr := d.applyDesiredState(ctx, api, state.Outputs.NetworkAclId, state.Desired, observed); correctionErr != nil {
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
@@ -398,6 +407,7 @@ func (d *NetworkACLDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 
@@ -405,6 +415,7 @@ func (d *NetworkACLDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 		ctx.Log().Info("drift detected (observed mode, not correcting)", "networkAclId", state.Outputs.NetworkAclId)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -372,30 +373,37 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 		return types.ReconcileResult{}, err
 	}
 
-	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+	type describeResult struct {
+		Observed ObservedState `json:"observed"`
+		Deleted  bool          `json:"deleted"`
+	}
+
+	describe, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
 		obs, err := api.DescribeInstance(rc, instanceId)
 		if err != nil {
 			if IsNotFound(err) {
-				return ObservedState{}, restate.TerminalError(err, 404)
+				return describeResult{Deleted: true}, nil
 			}
-			return ObservedState{}, err
+			return describeResult{}, err
 		}
-		return obs, nil
+		return describeResult{Observed: obs}, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("instance %s was terminated externally", instanceId)
-			state.LastReconcile = now
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Error: state.Error}, nil
-		}
 		state.LastReconcile = now
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
 	}
+	if describe.Deleted {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("instance %s was terminated externally", instanceId)
+		state.LastReconcile = now
+		restate.Set(ctx, drivers.StateKey, state)
+		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
+		return types.ReconcileResult{Error: state.Error}, nil
+	}
+	observed := describe.Observed
 
 	if observed.State == "terminated" || observed.State == "shutting-down" {
 		state.Status = types.StatusError
@@ -404,6 +412,7 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 		state.LastReconcile = now
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
 		return types.ReconcileResult{Error: state.Error}, nil
 	}
 
@@ -419,6 +428,7 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting", "instanceId", instanceId)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		correctionErr := d.correctDrift(ctx, api, instanceId, state.Desired, observed)
 		if correctionErr != nil {
 			restate.Set(ctx, drivers.StateKey, state)
@@ -427,6 +437,7 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
 	}
 
@@ -434,6 +445,7 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 		ctx.Log().Info("drift detected (observed mode, not correcting)", "instanceId", instanceId)
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 

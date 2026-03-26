@@ -220,14 +220,19 @@ func (s *PraxisCommandService) submitDeployment(
 		return "", "", err
 	}
 
-	_, err = restate.WithRequestType[orchestrator.DeploymentEvent, restate.Void](
-		restate.Object[restate.Void](ctx, orchestrator.DeploymentEventsServiceName, deploymentKey, "Append"),
-	).Request(orchestrator.DeploymentEvent{
-		DeploymentKey: deploymentKey,
-		Status:        types.DeploymentPending,
-		Message:       "apply request accepted",
-		CreatedAt:     createdAt,
-	})
+	commandEvent, err := orchestrator.NewCommandApplyEvent(deploymentKey, workspace, account, generation, createdAt)
+	if err != nil {
+		return "", "", err
+	}
+	if err := orchestrator.EmitCloudEvent(ctx, commandEvent); err != nil {
+		return "", "", err
+	}
+
+	event, err := orchestrator.NewDeploymentSubmittedEvent(deploymentKey, workspace, generation, createdAt)
+	if err != nil {
+		return "", "", err
+	}
+	err = orchestrator.EmitDeploymentCloudEvent(ctx, event)
 	if err != nil {
 		return "", "", err
 	}

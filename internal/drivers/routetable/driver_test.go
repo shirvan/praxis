@@ -6,6 +6,7 @@ import (
 	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +18,49 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+const routeTableDriftRecorderObjectServiceName = "RouteTableTestDriftRecorder"
+
+type routeTableDriftRecorder struct{}
+
+func (routeTableDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (routeTableDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	_, err := restate.WithRequestType[eventing.DriftReportRequest, restate.Void](
+		restate.Object[restate.Void](ctx, routeTableDriftRecorderObjectServiceName, req.ResourceKey, "Append"),
+	).Request(req)
+	return err
+}
+
+type routeTableDriftRecorderObject struct{}
+
+func (routeTableDriftRecorderObject) ServiceName() string {
+	return routeTableDriftRecorderObjectServiceName
+}
+
+func (routeTableDriftRecorderObject) Append(ctx restate.ObjectContext, req eventing.DriftReportRequest) error {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil {
+		return err
+	}
+	reports = append(reports, req)
+	restate.Set(ctx, "reports", reports)
+	return nil
+}
+
+func (routeTableDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]eventing.DriftReportRequest, error) {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil || reports == nil {
+		return nil, err
+	}
+	return reports, nil
+}
 
 type fakeRouteTableAPI struct {
 	mu                sync.Mutex
@@ -168,11 +209,57 @@ func (f *fakeRouteTableAPI) FindByManagedKey(ctx context.Context, managedKey str
 
 func setupRouteTableDriver(t *testing.T, api *fakeRouteTableAPI) *ingress.Client {
 	t.Helper()
+	t.Setenv("PRAXIS_ACCOUNT_NAME", "test")
+	t.Setenv("PRAXIS_ACCOUNT_REGION", "us-east-1")
+	t.Setenv("PRAXIS_ACCOUNT_CREDENTIAL_SOURCE", "static")
+	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
+	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 	driver := NewRouteTableDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) RouteTableAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(routeTableDriftRecorder{}),
+		restate.Reflect(routeTableDriftRecorderObject{}),
+	)
 	return env.Ingress()
+}
+
+func pollRouteTableEventTypes(t *testing.T, client *ingress.Client, resourceKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for {
+		records, err := ingress.Object[restate.Void, []eventing.DriftReportRequest](client, routeTableDriftRecorderObjectServiceName, resourceKey, "List").Request(t.Context(), restate.Void{})
+		if err != nil {
+			lastErr = err
+			if time.Now().After(deadline) {
+				require.NoError(t, err)
+			}
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.EventType)
+			seen[record.EventType] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			if !complete && lastErr != nil {
+				require.NoError(t, lastErr)
+			}
+			return typesSeen
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func TestProvision_CreatesNewRouteTable(t *testing.T) {
@@ -265,4 +352,79 @@ func TestImport_DefaultsToObservedMode(t *testing.T) {
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Equal(t, types.ModeObserved, status.Mode)
+}
+
+func TestReconcile_RouteDriftCorrected_EmitsEvents(t *testing.T) {
+	api := newFakeRouteTableAPI()
+	client := setupRouteTableDriver(t, api)
+	key := "vpc-123~public-rt"
+
+	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+		Account:    "test",
+		Region:     "us-east-1",
+		VpcId:      "vpc-123",
+		ManagedKey: key,
+		Routes:     []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}},
+		Tags:       map[string]string{"Name": "public-rt"},
+	})
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	obs := api.observed["rtb-123"]
+	obs.Tags["Name"] = "stale-rt"
+	api.observed["rtb-123"] = obs
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift)
+	assert.True(t, result.Correcting)
+	assert.Equal(t, "public-rt", api.observed["rtb-123"].Tags["Name"])
+	assert.Equal(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollRouteTableEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
+}
+
+func TestReconcile_ObservedModeReportsOnly_EmitsDetected(t *testing.T) {
+	api := newFakeRouteTableAPI()
+	api.observed["rtb-123"] = ObservedState{RouteTableId: "rtb-123", VpcId: "vpc-123", Tags: map[string]string{"env": "dev"}}
+	client := setupRouteTableDriver(t, api)
+	key := "us-east-1~rtb-123"
+
+	_, err := ingress.Object[types.ImportRef, RouteTableOutputs](client, ServiceName, key, "Import").Request(t.Context(), types.ImportRef{ResourceID: "rtb-123", Account: "test"})
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	obs := api.observed["rtb-123"]
+	obs.Tags["env"] = "prod"
+	api.observed["rtb-123"] = obs
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift)
+	assert.False(t, result.Correcting)
+	assert.Equal(t, []string{eventing.DriftEventDetected}, pollRouteTableEventTypes(t, client, key, eventing.DriftEventDetected))
+}
+
+func TestReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
+	api := newFakeRouteTableAPI()
+	client := setupRouteTableDriver(t, api)
+	key := "vpc-123~public-rt"
+
+	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+		Account:    "test",
+		Region:     "us-east-1",
+		VpcId:      "vpc-123",
+		ManagedKey: key,
+		Tags:       map[string]string{"Name": "public-rt"},
+	})
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	delete(api.observed, "rtb-123")
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Equal(t, []string{eventing.DriftEventExternalDelete}, pollRouteTableEventTypes(t, client, key, eventing.DriftEventExternalDelete))
 }

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +18,49 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
+
+const natGatewayDriftRecorderObjectServiceName = "NATGatewayTestDriftRecorder"
+
+type natGatewayDriftRecorder struct{}
+
+func (natGatewayDriftRecorder) ServiceName() string {
+	return eventing.ResourceEventBridgeServiceName
+}
+
+func (natGatewayDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftReportRequest) error {
+	_, err := restate.WithRequestType[eventing.DriftReportRequest, restate.Void](
+		restate.Object[restate.Void](ctx, natGatewayDriftRecorderObjectServiceName, req.ResourceKey, "Append"),
+	).Request(req)
+	return err
+}
+
+type natGatewayDriftRecorderObject struct{}
+
+func (natGatewayDriftRecorderObject) ServiceName() string {
+	return natGatewayDriftRecorderObjectServiceName
+}
+
+func (natGatewayDriftRecorderObject) Append(ctx restate.ObjectContext, req eventing.DriftReportRequest) error {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil {
+		return err
+	}
+	reports = append(reports, req)
+	restate.Set(ctx, "reports", reports)
+	return nil
+}
+
+func (natGatewayDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]eventing.DriftReportRequest, error) {
+	reports, err := restate.Get[[]eventing.DriftReportRequest](ctx, "reports")
+	if err != nil || reports == nil {
+		return nil, err
+	}
+	return reports, nil
+}
 
 type fakeNATGatewayAPI struct {
 	mu sync.Mutex
@@ -205,8 +246,38 @@ func setupNATGatewayDriver(t *testing.T, api NATGatewayAPI) *ingress.Client {
 	driver := NewNATGatewayDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) NATGatewayAPI {
 		return api
 	})
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(driver),
+		restate.Reflect(natGatewayDriftRecorder{}),
+		restate.Reflect(natGatewayDriftRecorderObject{}),
+	)
 	return env.Ingress()
+}
+
+func pollNATGatewayEventTypes(t *testing.T, client *ingress.Client, streamKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		records, err := ingress.Object[restate.Void, []eventing.DriftReportRequest](client, natGatewayDriftRecorderObjectServiceName, streamKey, "List").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.EventType)
+			seen[record.EventType] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			return typesSeen
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func publicSpec(key string, tags map[string]string) NATGatewaySpec {
@@ -458,6 +529,7 @@ func TestReconcile_DetectsTagDrift(t *testing.T) {
 	assert.True(t, result.Drift)
 	assert.True(t, result.Correcting)
 	assert.Equal(t, "managed", api.observed["nat-123"].Tags["env"])
+	assert.ElementsMatch(t, []string{eventing.DriftEventDetected, eventing.DriftEventCorrected}, pollNATGatewayEventTypes(t, client, key, eventing.DriftEventDetected, eventing.DriftEventCorrected))
 }
 
 func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
@@ -479,6 +551,25 @@ func TestReconcile_ObservedModeReportsOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, state.Drift)
 	assert.False(t, state.Correcting)
+	assert.Contains(t, pollNATGatewayEventTypes(t, client, key, eventing.DriftEventDetected), eventing.DriftEventDetected)
+}
+
+func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	api := newFakeNATGatewayAPI()
+	client := setupNATGatewayDriver(t, api)
+	key := "us-east-1~nat-a"
+
+	_, err := ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), publicSpec(key, nil))
+	require.NoError(t, err)
+
+	api.mu.Lock()
+	delete(api.observed, "nat-123")
+	api.mu.Unlock()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Contains(t, pollNATGatewayEventTypes(t, client, key, eventing.DriftEventExternalDelete), eventing.DriftEventExternalDelete)
 }
 
 func TestReconcile_FailedStateReported(t *testing.T) {

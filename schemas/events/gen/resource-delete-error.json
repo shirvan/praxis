@@ -1,0 +1,60 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#DeploymentStatus": {
+            "enum": [
+                "Pending",
+                "Running",
+                "Complete",
+                "Failed",
+                "Deleting",
+                "Deleted",
+                "Cancelled"
+            ]
+        },
+        "#ResourceEventData": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "outputs": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "resourceKind": {
+                    "type": "string"
+                },
+                "resourceName": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/$defs/#DeploymentStatus"
+                }
+            },
+            "required": [
+                "message",
+                "resourceKind",
+                "resourceName"
+            ]
+        }
+    },
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "error": {
+            "type": "string"
+        },
+        "status": {
+            "const": "Deleting"
+        }
+    },
+    "$ref": "#/$defs/#ResourceEventData",
+    "required": [
+        "error"
+    ]
+}

@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -249,30 +250,149 @@ func operationSymbol(op types.DiffOperation) string {
 // Event formatters
 // --------------------------------------------------------------------------
 
-// printEvents renders deployment progress events in a human-readable timeline
-// format. Used by the `observe` command for incremental progress display.
-func printEvents(r *Renderer, events []orchestrator.DeploymentEvent) {
+func printCloudEvents(r *Renderer, events []orchestrator.SequencedCloudEvent) {
 	for i := range events {
-		e := &events[i]
-		ts := formatTime(e.CreatedAt)
-		// Build the event line: [timestamp] STATUS resource: message
+		e := events[i].Event
+		ts := formatTime(e.Time())
 		parts := []string{r.renderMuted(fmt.Sprintf("[%s]", ts))}
-		if e.Status != "" {
-			parts = append(parts, r.renderStatus(string(e.Status)))
+		status := cloudEventStatus(e)
+		if status != "" {
+			parts = append(parts, r.renderStatus(status))
+		} else {
+			parts = append(parts, r.renderMuted(e.Type()))
 		}
-		if e.ResourceName != "" {
-			resource := fmt.Sprintf("%s/%s:", e.ResourceKind, e.ResourceName)
+		if e.Subject() != "" {
+			resource := fmt.Sprintf("%s/%s:", cloudEventResourceKind(e), e.Subject())
 			if r.styles {
 				resource = r.theme.Header.Render(resource)
 			}
 			parts = append(parts, resource)
 		}
-		parts = append(parts, e.Message)
-		if e.Error != "" {
-			parts = append(parts, r.renderDiff(types.OpDelete, fmt.Sprintf("(error: %s)", e.Error)))
+		message := cloudEventMessage(e)
+		if message == "" {
+			message = e.Type()
+		}
+		parts = append(parts, message)
+		if errMsg := cloudEventError(e); errMsg != "" {
+			parts = append(parts, r.renderDiff(types.OpDelete, fmt.Sprintf("(error: %s)", errMsg)))
 		}
 		_, _ = fmt.Fprintln(r.out, strings.Join(parts, " "))
 	}
+}
+
+func filterCloudEvents(events []orchestrator.SequencedCloudEvent, query orchestrator.EventQuery) []orchestrator.SequencedCloudEvent {
+	out := make([]orchestrator.SequencedCloudEvent, 0, len(events))
+	for _, event := range events {
+		if matchesCloudEvent(event, query) {
+			out = append(out, event)
+		}
+	}
+	return out
+}
+
+func matchesCloudEvent(record orchestrator.SequencedCloudEvent, query orchestrator.EventQuery) bool {
+	event := record.Event
+	if query.DeploymentKey != "" && cloudEventExtension(event, orchestrator.EventExtensionDeployment) != query.DeploymentKey {
+		return false
+	}
+	if query.Workspace != "" && cloudEventExtension(event, orchestrator.EventExtensionWorkspace) != query.Workspace {
+		return false
+	}
+	if query.TypePrefix != "" && !strings.HasPrefix(event.Type(), query.TypePrefix) {
+		return false
+	}
+	if query.Severity != "" && cloudEventExtension(event, orchestrator.EventExtensionSeverity) != query.Severity {
+		return false
+	}
+	if query.Resource != "" && event.Subject() != query.Resource {
+		return false
+	}
+	if !query.Since.IsZero() && event.Time().Before(query.Since) {
+		return false
+	}
+	if !query.Until.IsZero() && event.Time().After(query.Until) {
+		return false
+	}
+	return true
+}
+
+func isTerminalCloudEvent(record orchestrator.SequencedCloudEvent) bool {
+	status := types.DeploymentStatus(cloudEventStatus(record.Event))
+	if status != "" && isTerminalStatus(status) {
+		return true
+	}
+	switch record.Event.Type() {
+	case orchestrator.EventTypeDeploymentCompleted,
+		orchestrator.EventTypeDeploymentFailed,
+		orchestrator.EventTypeDeploymentCancelled,
+		orchestrator.EventTypeDeploymentDeleteDone,
+		orchestrator.EventTypeDeploymentDeleteFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func cloudEventPayload(event orchestrator.SequencedCloudEvent) map[string]any {
+	var payload map[string]any
+	if err := event.Event.DataAs(&payload); err != nil {
+		return nil
+	}
+	return payload
+}
+
+func cloudEventDataString(event any, key string) string {
+	switch typed := event.(type) {
+	case orchestrator.SequencedCloudEvent:
+		payload := cloudEventPayload(typed)
+		if payload == nil {
+			return ""
+		}
+		value, ok := payload[key]
+		if !ok || value == nil {
+			return ""
+		}
+		if s, ok := value.(string); ok {
+			return s
+		}
+		return fmt.Sprint(value)
+	default:
+		return ""
+	}
+}
+
+func cloudEventMessage(event cloudevents.Event) string {
+	return cloudEventDataString(orchestrator.SequencedCloudEvent{Event: event}, "message")
+}
+
+func cloudEventError(event cloudevents.Event) string {
+	return cloudEventDataString(orchestrator.SequencedCloudEvent{Event: event}, "error")
+}
+
+func cloudEventStatus(event cloudevents.Event) string {
+	return cloudEventDataString(orchestrator.SequencedCloudEvent{Event: event}, "status")
+}
+
+func cloudEventResourceKind(event cloudevents.Event) string {
+	kind := cloudEventExtension(event, orchestrator.EventExtensionResourceKind)
+	if kind != "" {
+		return kind
+	}
+	if payloadKind := cloudEventDataString(orchestrator.SequencedCloudEvent{Event: event}, "resourceKind"); payloadKind != "" {
+		return payloadKind
+	}
+	return "Resource"
+}
+
+func cloudEventExtension(event cloudevents.Event, key string) string {
+	value, ok := event.Extensions()[key]
+	if !ok || value == nil {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return fmt.Sprint(value)
 }
 
 // --------------------------------------------------------------------------

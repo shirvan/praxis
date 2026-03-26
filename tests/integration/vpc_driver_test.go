@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,10 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	restatetest "github.com/restatedev/sdk-go/testing"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/drivers/vpc"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -49,10 +53,71 @@ func setupVPCDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := localstackAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := vpc.NewVPCDriver(nil)
+	authClient := authservice.NewAuthClient()
+	driver := vpc.NewVPCDriver(authClient)
+	absSchemaDir, err := filepath.Abs("../../schemas")
+	require.NoError(t, err)
 
-	env := restatetest.Start(t, restate.Reflect(driver))
+	env := restatetest.Start(t,
+		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
+		restate.Reflect(driver),
+		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
+		restate.Reflect(orchestrator.DeploymentEventStore{}),
+		restate.Reflect(orchestrator.EventIndex{}),
+		restate.Reflect(orchestrator.ResourceEventOwnerObj{}),
+		restate.Reflect(orchestrator.ResourceEventBridge{}),
+		restate.Reflect(orchestrator.SinkRouter{}),
+		restate.Reflect(orchestrator.NewNotificationSinkConfig(absSchemaDir)),
+	)
 	return env.Ingress(), ec2Client
+}
+
+func registerVPCEventOwner(t *testing.T, client *ingress.Client, resourceKey, streamKey, resourceName string) {
+	t.Helper()
+	_, err := ingress.Object[eventing.ResourceEventOwner, restate.Void](
+		client,
+		eventing.ResourceEventOwnerServiceName,
+		resourceKey,
+		"Upsert",
+	).Request(t.Context(), eventing.ResourceEventOwner{
+		StreamKey:    streamKey,
+		Workspace:    "integration",
+		Generation:   1,
+		ResourceName: resourceName,
+		ResourceKind: vpc.ServiceName,
+	})
+	require.NoError(t, err)
+}
+
+func pollEventTypes(t *testing.T, client *ingress.Client, streamKey string, expected ...string) []string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		records, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
+			client,
+			orchestrator.DeploymentEventStoreServiceName,
+			streamKey,
+			"ListSince",
+		).Request(t.Context(), 0)
+		require.NoError(t, err)
+		typesSeen := make([]string, 0, len(records))
+		seen := make(map[string]bool, len(records))
+		for _, record := range records {
+			typesSeen = append(typesSeen, record.Event.Type())
+			seen[record.Event.Type()] = true
+		}
+		complete := true
+		for _, want := range expected {
+			if !seen[want] {
+				complete = false
+				break
+			}
+		}
+		if complete || time.Now().After(deadline) {
+			return typesSeen
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 func TestVPCProvision_CreatesVPC(t *testing.T) {
@@ -233,6 +298,8 @@ func TestVPCReconcile_DetectsDrift(t *testing.T) {
 	name := uniqueVpcName(t)
 	cidr := uniqueCidr()
 	key := fmt.Sprintf("us-east-1~%s", name)
+	streamKey := "dep-vpc-drift-" + name
+	registerVPCEventOwner(t, client, key, streamKey, name)
 
 	// Provision with DNS hostnames enabled
 	outputs, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
@@ -264,6 +331,9 @@ func TestVPCReconcile_DetectsDrift(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "drift should be detected")
 	assert.True(t, result.Correcting, "managed mode should correct drift")
+	eventTypes := pollEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected)
+	assert.Contains(t, eventTypes, orchestrator.EventTypeDriftDetected)
+	assert.Contains(t, eventTypes, orchestrator.EventTypeDriftCorrected)
 
 	// Verify DNS hostnames was restored
 	dnsOut, err := ec2Client.DescribeVpcAttribute(context.Background(), &ec2sdk.DescribeVpcAttributeInput{
@@ -272,6 +342,50 @@ func TestVPCReconcile_DetectsDrift(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, aws.ToBool(dnsOut.EnableDnsHostnames.Value), "DNS hostnames should be restored")
+}
+
+func TestVPCReconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	client, ec2Client := setupVPCDriver(t)
+	name := uniqueVpcName(t)
+	cidr := uniqueCidr()
+	key := fmt.Sprintf("us-east-1~%s", name)
+	streamKey := "dep-vpc-external-delete-" + name
+	registerVPCEventOwner(t, client, key, streamKey, name)
+
+	outputs, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+		client, "VPC", key, "Provision",
+	).Request(t.Context(), vpc.VPCSpec{
+		Account:            integrationAccountName,
+		Region:             "us-east-1",
+		CidrBlock:          cidr,
+		EnableDnsHostnames: true,
+		EnableDnsSupport:   true,
+		ManagedKey:         key,
+		Tags:               map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+
+	_, err = ec2Client.DeleteVpc(context.Background(), &ec2sdk.DeleteVpcInput{VpcId: aws.String(outputs.VpcId)})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "VPC", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally")
+
+	eventTypes := pollEventTypes(t, client, streamKey, orchestrator.EventTypeDriftExternalDelete)
+	assert.Contains(t, eventTypes, orchestrator.EventTypeDriftExternalDelete)
+
+	records, err := ingress.Object[string, []orchestrator.SequencedCloudEvent](
+		client,
+		orchestrator.DeploymentEventStoreServiceName,
+		streamKey,
+		"ListByType",
+	).Request(t.Context(), orchestrator.EventTypeDriftExternalDelete)
+	require.NoError(t, err)
+	require.NotEmpty(t, records)
+	assert.Equal(t, name, records[0].Event.Subject())
 }
 
 func TestVPCProvision_MissingCidrBlock(t *testing.T) {

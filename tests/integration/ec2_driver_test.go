@@ -17,9 +17,11 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/restatedev/sdk-go/testing"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/drivers/ec2"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -40,10 +42,9 @@ func setupEC2Driver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := localstackAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := ec2.NewEC2InstanceDriver(nil)
+	driver := ec2.NewEC2InstanceDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), ec2Client
+	return setupDriverEventingEnv(t, driver), ec2Client
 }
 
 func getDefaultSubnetId(t *testing.T, ec2Client *ec2sdk.Client) string {
@@ -240,4 +241,87 @@ func TestEC2GetStatus_ReturnsReady(t *testing.T) {
 	assert.Equal(t, types.StatusReady, status.Status)
 	assert.Equal(t, types.ModeManaged, status.Mode)
 	assert.Greater(t, status.Generation, int64(0))
+}
+
+func TestEC2Reconcile_EmitsDriftEvents(t *testing.T) {
+	client, ec2Client := setupEC2Driver(t)
+	name := uniqueInstanceName(t)
+	subnetId := getDefaultSubnetId(t, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", name)
+	streamKey := "dep-ec2-drift-" + name
+	registerDriftEventOwner(t, client, key, streamKey, name, ec2.ServiceName)
+
+	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+		client, "EC2Instance", key, "Provision",
+	).Request(t.Context(), ec2.EC2InstanceSpec{
+		Account:      integrationAccountName,
+		Region:       "us-east-1",
+		ImageId:      "ami-0123456789abcdef0",
+		InstanceType: "t3.micro",
+		SubnetId:     subnetId,
+		Monitoring:   false,
+		ManagedKey:   key,
+		Tags:         map[string]string{"Name": name, "env": "managed"},
+	})
+	require.NoError(t, err)
+
+	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{
+		Resources: []string{outputs.InstanceId},
+		Tags:      []ec2types.Tag{{Key: aws.String("env")}},
+	})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "EC2Instance", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift)
+	assert.True(t, result.Correcting)
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected), orchestrator.EventTypeDriftDetected)
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftDetected, orchestrator.EventTypeDriftCorrected), orchestrator.EventTypeDriftCorrected)
+
+	desc, err := ec2Client.DescribeInstances(context.Background(), &ec2sdk.DescribeInstancesInput{InstanceIds: []string{outputs.InstanceId}})
+	require.NoError(t, err)
+	var tags []ec2types.Tag
+	for _, reservation := range desc.Reservations {
+		for _, instance := range reservation.Instances {
+			if aws.ToString(instance.InstanceId) == outputs.InstanceId {
+				tags = instance.Tags
+			}
+		}
+	}
+	assert.Contains(t, tags, ec2types.Tag{Key: aws.String("env"), Value: aws.String("managed")})
+}
+
+func TestEC2Reconcile_EmitsExternalDeleteEvent(t *testing.T) {
+	client, ec2Client := setupEC2Driver(t)
+	name := uniqueInstanceName(t)
+	subnetId := getDefaultSubnetId(t, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", name)
+	streamKey := "dep-ec2-external-delete-" + name
+	registerDriftEventOwner(t, client, key, streamKey, name, ec2.ServiceName)
+
+	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+		client, "EC2Instance", key, "Provision",
+	).Request(t.Context(), ec2.EC2InstanceSpec{
+		Account:      integrationAccountName,
+		Region:       "us-east-1",
+		ImageId:      "ami-0123456789abcdef0",
+		InstanceType: "t3.micro",
+		SubnetId:     subnetId,
+		ManagedKey:   key,
+		Tags:         map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+
+	_, err = ec2Client.TerminateInstances(context.Background(), &ec2sdk.TerminateInstancesInput{InstanceIds: []string{outputs.InstanceId}})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "EC2Instance", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "instance")
+	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftExternalDelete), orchestrator.EventTypeDriftExternalDelete)
+	assert.Equal(t, eventing.DriftEventExternalDelete, strings.TrimPrefix(orchestrator.EventTypeDriftExternalDelete, "dev.praxis.drift."))
 }

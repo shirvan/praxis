@@ -45,10 +45,10 @@ func TestHasDrift_TagDrift(t *testing.T) {
 func TestComputeFieldDiffs_ImmutableFields(t *testing.T) {
 	diffs := ComputeFieldDiffs(
 		IAMPolicySpec{Path: "/app/", Description: "new", PolicyDocument: `{}`, Tags: map[string]string{}},
-		ObservedState{Path: "/legacy/", Description: "old", PolicyDocument: `{}`, Tags: map[string]string{}},
+		ObservedState{Path: "/ops/", Description: "old", PolicyDocument: `{}`, Tags: map[string]string{}},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: "/legacy/", NewValue: "/app/"})
+	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: "/ops/", NewValue: "/app/"})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.description (immutable, ignored)", OldValue: "old", NewValue: "new"})
 }
 

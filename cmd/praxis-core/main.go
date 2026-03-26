@@ -38,14 +38,14 @@ func main() {
 
 	srv := server.NewRestate().
 		Bind(restate.Reflect(authservice.NewAuthService(bootstrap))).
-		Bind(restate.Reflect(workspace.WorkspaceService{})).
+		Bind(restate.Reflect(workspace.NewWorkspaceService(cfg.SchemaDir))).
 		Bind(restate.Reflect(workspace.WorkspaceIndex{})).
 		Bind(restate.Reflect(command.NewPraxisCommandService(cfg, authClient, providers))).
 		Bind(restate.Reflect(orchestrator.NewDeploymentWorkflow(providers))).
 		Bind(restate.Reflect(orchestrator.NewDeploymentDeleteWorkflow(providers))).
+		Bind(restate.Reflect(orchestrator.NewDeploymentRollbackWorkflow(providers))).
 		Bind(restate.Reflect(orchestrator.DeploymentStateObj{})).
 		Bind(restate.Reflect(orchestrator.DeploymentIndex{})).
-		Bind(restate.Reflect(orchestrator.DeploymentEvents{})).
 		Bind(restate.Reflect(registry.TemplateRegistry{})).
 		Bind(restate.Reflect(registry.TemplateIndex{})).
 		Bind(restate.Reflect(registry.PolicyRegistry{}))

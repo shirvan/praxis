@@ -828,7 +828,7 @@ Add these at the bottom of `aws.go`. Follow the exact pattern from the S3/SG dri
 | `IsNotFound` | 404 | Instance does not exist |
 | `IsInvalidParam` | 400 | User input error (bad AMI, bad subnet, etc.) |
 | `IsInsufficientCapacity` | **503** | AWS supply constraint — not a user error |
-| `IsTerminated` | (used internally) | Instance in terminated state — currently unused in handler code (Reconcile checks `observed.State` directly); retained for driver extensions that operate on error objects rather than state structs |
+| `IsTerminated` | (used internally) | Instance in terminated state — Reconcile checks `observed.State` directly |
 
 ```go
 // IsNotFound returns true if the AWS error indicates the instance does not exist.

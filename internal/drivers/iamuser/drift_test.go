@@ -32,7 +32,7 @@ func TestHasDrift_NoDrift(t *testing.T) {
 }
 
 func TestHasDrift_PathDrift(t *testing.T) {
-	assert.True(t, HasDrift(IAMUserSpec{Path: "/app/"}, ObservedState{Path: "/legacy/"}))
+	assert.True(t, HasDrift(IAMUserSpec{Path: "/app/"}, ObservedState{Path: "/ops/"}))
 }
 
 func TestHasDrift_PermissionsBoundaryDrift(t *testing.T) {
@@ -78,7 +78,7 @@ func TestComputeFieldDiffs_AllMutableFields(t *testing.T) {
 			Tags:                map[string]string{"env": "prod"},
 		},
 		ObservedState{
-			Path:                "/legacy/",
+			Path:                "/ops/",
 			PermissionsBoundary: "old-boundary",
 			InlinePolicies:      map[string]string{"inline": `{"Version":"2012-10-17","Statement":[{"Action":"s3:PutObject"}]}`},
 			ManagedPolicyArns:   []string{"a"},
@@ -87,7 +87,7 @@ func TestComputeFieldDiffs_AllMutableFields(t *testing.T) {
 		},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path", OldValue: "/legacy/", NewValue: "/app/"})
+	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path", OldValue: "/ops/", NewValue: "/app/"})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.permissionsBoundary", OldValue: "old-boundary", NewValue: "new-boundary"})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.managedPolicyArns", OldValue: []string{"a"}, NewValue: []string{"a", "b"}})
 	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.groups", OldValue: []string{"dev"}, NewValue: []string{"dev", "ops"}})

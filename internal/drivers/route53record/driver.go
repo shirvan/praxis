@@ -10,6 +10,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -231,30 +232,37 @@ func (d *RecordDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 	if err != nil {
 		return types.ReconcileResult{}, err
 	}
-	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+	type describeResult struct {
+		Observed ObservedState `json:"observed"`
+		Deleted  bool          `json:"deleted"`
+	}
+
+	describe, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
 		obs, runErr := api.DescribeRecord(rc, identity)
 		if runErr != nil {
 			if IsNotFound(runErr) {
-				return ObservedState{}, restate.TerminalError(runErr, 404)
+				return describeResult{Deleted: true}, nil
 			}
-			return ObservedState{}, runErr
+			return describeResult{}, runErr
 		}
-		return obs, nil
+		return describeResult{Observed: obs}, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("record %s %s was deleted externally", identity.Name, identity.Type)
-			state.LastReconcile = now
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Error: state.Error}, nil
-		}
 		state.LastReconcile = now
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
 	}
+	if describe.Deleted {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("record %s %s was deleted externally", identity.Name, identity.Type)
+		state.LastReconcile = now
+		restate.Set(ctx, drivers.StateKey, state)
+		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
+		return types.ReconcileResult{Error: state.Error}, nil
+	}
+	observed := describe.Observed
 	state.Observed = observed
 	state.LastReconcile = now
 	drift := HasDrift(state.Desired, observed)
@@ -264,6 +272,7 @@ func (d *RecordDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 		return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 	}
 	if drift && state.Mode == types.ModeManaged {
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		_, correctionErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.UpsertRecord(rc, state.Desired)
 			if runErr != nil {
@@ -280,7 +289,14 @@ func (d *RecordDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
 		return types.ReconcileResult{Drift: true, Correcting: true}, nil
+	}
+	if drift && state.Mode == types.ModeObserved {
+		restate.Set(ctx, drivers.StateKey, state)
+		d.scheduleReconcile(ctx, &state)
+		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
+		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 	restate.Set(ctx, drivers.StateKey, state)
 	d.scheduleReconcile(ctx, &state)
