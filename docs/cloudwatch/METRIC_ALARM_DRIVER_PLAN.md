@@ -1218,21 +1218,21 @@ purposes and is out of scope.
 
 ### Files
 
-- [ ] `schemas/aws/cloudwatch/metric_alarm.cue`
-- [ ] `internal/drivers/metricalarm/types.go`
-- [ ] `internal/drivers/metricalarm/aws.go`
-- [ ] `internal/drivers/metricalarm/drift.go`
-- [ ] `internal/drivers/metricalarm/driver.go`
-- [ ] `internal/drivers/metricalarm/driver_test.go`
-- [ ] `internal/drivers/metricalarm/aws_test.go`
-- [ ] `internal/drivers/metricalarm/drift_test.go`
-- [ ] `internal/core/provider/metricalarm_adapter.go`
-- [ ] `internal/core/provider/metricalarm_adapter_test.go`
-- [ ] `tests/integration/metricalarm_driver_test.go`
+- [x] `schemas/aws/cloudwatch/metric_alarm.cue`
+- [x] `internal/drivers/metricalarm/types.go`
+- [x] `internal/drivers/metricalarm/aws.go`
+- [x] `internal/drivers/metricalarm/drift.go`
+- [x] `internal/drivers/metricalarm/driver.go`
+- [x] `internal/drivers/metricalarm/driver_test.go`
+- [x] `internal/drivers/metricalarm/aws_test.go`
+- [x] `internal/drivers/metricalarm/drift_test.go`
+- [x] `internal/core/provider/metricalarm_adapter.go`
+- [x] `internal/core/provider/metricalarm_adapter_test.go`
+- [x] `tests/integration/metricalarm_driver_test.go`
 
 ### Modifications
 
-- [ ] `internal/infra/awsclient/client.go` — `NewCloudWatchClient()`
-- [ ] `cmd/praxis-monitoring/main.go` — Bind MetricAlarmDriver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `justfile` — Add `test-metricalarm` target
+- [x] `internal/infra/awsclient/client.go` — `NewCloudWatchClient()`
+- [x] `cmd/praxis-monitoring/main.go` — Bind MetricAlarmDriver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `justfile` — Add `test-metricalarm` target

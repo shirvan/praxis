@@ -6,6 +6,8 @@ package awsclient
 import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -62,4 +64,14 @@ func NewRDSClient(cfg aws.Config) *rds.Client {
 // NewACMClient returns an ACM client from the given config.
 func NewACMClient(cfg aws.Config) *acm.Client {
 	return acm.NewFromConfig(cfg)
+}
+
+// NewCloudWatchClient returns a CloudWatch client from the given config.
+func NewCloudWatchClient(cfg aws.Config) *cloudwatch.Client {
+	return cloudwatch.NewFromConfig(cfg)
+}
+
+// NewCloudWatchLogsClient returns a CloudWatch Logs client from the given config.
+func NewCloudWatchLogsClient(cfg aws.Config) *cloudwatchlogs.Client {
+	return cloudwatchlogs.NewFromConfig(cfg)
 }

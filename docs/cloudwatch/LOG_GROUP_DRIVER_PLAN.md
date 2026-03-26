@@ -1178,21 +1178,21 @@ explicit deletion ensures convergence if someone previously set a retention peri
 
 ### Files
 
-- [ ] `schemas/aws/cloudwatch/log_group.cue`
-- [ ] `internal/drivers/loggroup/types.go`
-- [ ] `internal/drivers/loggroup/aws.go`
-- [ ] `internal/drivers/loggroup/drift.go`
-- [ ] `internal/drivers/loggroup/driver.go`
-- [ ] `internal/drivers/loggroup/driver_test.go`
-- [ ] `internal/drivers/loggroup/aws_test.go`
-- [ ] `internal/drivers/loggroup/drift_test.go`
-- [ ] `internal/core/provider/loggroup_adapter.go`
-- [ ] `internal/core/provider/loggroup_adapter_test.go`
-- [ ] `tests/integration/loggroup_driver_test.go`
+- [x] `schemas/aws/cloudwatch/log_group.cue`
+- [x] `internal/drivers/loggroup/types.go`
+- [x] `internal/drivers/loggroup/aws.go`
+- [x] `internal/drivers/loggroup/drift.go`
+- [x] `internal/drivers/loggroup/driver.go`
+- [x] `internal/drivers/loggroup/driver_test.go`
+- [x] `internal/drivers/loggroup/aws_test.go`
+- [x] `internal/drivers/loggroup/drift_test.go`
+- [x] `internal/core/provider/loggroup_adapter.go`
+- [x] `internal/core/provider/loggroup_adapter_test.go`
+- [x] `tests/integration/loggroup_driver_test.go`
 
 ### Modifications
 
-- [ ] `internal/infra/awsclient/client.go` — `NewCloudWatchLogsClient()`
-- [ ] `cmd/praxis-monitoring/main.go` — Bind LogGroupDriver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `justfile` — Add `test-loggroup` target
+- [x] `internal/infra/awsclient/client.go` — `NewCloudWatchLogsClient()`
+- [x] `cmd/praxis-monitoring/main.go` — Bind LogGroupDriver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `justfile` — Add `test-loggroup` target

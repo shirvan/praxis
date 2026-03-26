@@ -67,7 +67,7 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-notifications
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications
     just wait-stack
     just register
 
@@ -95,13 +95,17 @@ logs-compute:
 logs-identity:
     docker compose logs -f praxis-identity
 
+# Follow logs for the monitoring driver pack.
+logs-monitoring:
+    docker compose logs -f praxis-monitoring
+
 # Follow logs for the notifications event service.
 logs-notifications:
     docker compose logs -f praxis-notifications
 
 # Follow logs for all driver packs together.
 logs-drivers:
-    docker compose logs -f praxis-storage praxis-network praxis-compute praxis-identity
+    docker compose logs -f praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring
 
 # Follow logs for all services
 logs-all:
@@ -133,6 +137,11 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-identity:9080"}' | jq .
     @echo "✓ Identity driver pack registered"
+    @echo "Registering monitoring driver pack with Restate..."
+    @curl -s -X POST http://localhost:9070/deployments \
+        -H 'content-type: application/json' \
+        -d '{"uri": "http://praxis-monitoring:9080"}' | jq .
+    @echo "✓ Monitoring driver pack registered"
     @echo "Registering Praxis Core (command service + orchestrator)..."
     @curl -s -X POST http://localhost:9070/deployments \
         -H 'content-type: application/json' \
@@ -155,6 +164,7 @@ build:
     go build -o bin/praxis-network ./cmd/praxis-network
     go build -o bin/praxis-compute ./cmd/praxis-compute
     go build -o bin/praxis-identity ./cmd/praxis-identity
+    go build -o bin/praxis-monitoring ./cmd/praxis-monitoring
 
 # Build CLI binary only
 build-cli:
@@ -314,6 +324,19 @@ test-lambdaperm:
 # Run ELB driver pack unit tests (ALB, NLB, TG, Listener, Listener Rule)
 test-elb:
     go test ./internal/drivers/alb/... ./internal/drivers/nlb/... ./internal/drivers/targetgroup/... ./internal/drivers/listener/... ./internal/drivers/listenerrule/... -v -count=1 -race
+
+# Run CloudWatch monitoring driver tests.
+test-monitoring:
+    go test ./internal/drivers/loggroup/... ./internal/drivers/metricalarm/... ./internal/drivers/dashboard/... ./internal/core/provider/... -v -count=1 -race
+
+test-loggroup:
+    go test ./internal/drivers/loggroup/... -v -count=1 -race
+
+test-metricalarm:
+    go test ./internal/drivers/metricalarm/... -v -count=1 -race
+
+test-dashboard:
+    go test ./internal/drivers/dashboard/... -v -count=1 -race
 
 # Run ALB driver unit tests only
 test-alb:

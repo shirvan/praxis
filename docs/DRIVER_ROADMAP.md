@@ -8,7 +8,7 @@ This document tracks AWS driver coverage across Praxis releases. Driver priority
 
 ## Currently Released
 
-36 drivers across 4 driver packs, covering core networking, compute, storage, database, DNS, identity management, and load balancing.
+39 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, and observability.
 
 | Pack | Driver | Resource Types | Key Scope |
 |---|---|---|---|
@@ -29,6 +29,7 @@ This document tracks AWS driver coverage across Praxis releases. Driver priority
 | | Target Group | ELB target groups | Region (`region~tgName`) |
 | | Listener | ELB listeners | Region (`region~listenerName`) |
 | | Listener Rule | ELB listener rules | Region (`region~ruleName`) |
+| | ACM Certificate | ACM certificates, DNS validation records | Region (`region~domainName`) |
 | **Compute** | EC2 Instance | EC2 instances | Region (`region~name`) |
 | | AMI | Amazon Machine Images | Region (`region~amiName`) |
 | | KeyPair | EC2 key pairs | Region (`region~keyName`) |
@@ -42,6 +43,9 @@ This document tracks AWS driver coverage across Praxis releases. Driver priority
 | | DB Subnet Group | DB subnet groups | Region (`region~groupName`) |
 | | DB Parameter Group | DB parameter groups | Region (`region~groupName`) |
 | | Aurora Cluster | Aurora DB clusters | Region (`region~clusterIdentifier`) |
+| **Monitoring** | Log Group | CloudWatch log groups | Region (`region~logGroupName`) |
+| | Metric Alarm | CloudWatch metric alarms | Region (`region~alarmName`) |
+| | Dashboard | CloudWatch dashboards | Region (`region~dashboardName`) |
 | **Identity** | IAM Role | IAM roles | Global (`roleName`) |
 | | IAM Policy | IAM policies | Global (`policyName`) |
 | | IAM User | IAM users | Global (`userName`) |
@@ -52,12 +56,10 @@ This document tracks AWS driver coverage across Praxis releases. Driver priority
 
 ## 1.0
 
-Completes the services required for a standard web-application stack on AWS: TLS certificates, container registry, messaging, and observability. Introduces the **Monitoring** driver pack.
+Completes the services required for a standard web-application stack on AWS: container registry and messaging.
 
 | Driver | Description | Driver Pack |
 |---|---|---|
-| **ACM** | Certificates, DNS validation records | `praxis-network` |
-| **CloudWatch** | Log groups, metric alarms, dashboards | `praxis-monitoring` |
 | **ECR** | Repositories, lifecycle policies | `praxis-compute` |
 | **SNS** | Topics, subscriptions | `praxis-storage` |
 | **SQS** | Queues, queue policies | `praxis-storage` |

@@ -1,0 +1,234 @@
+package loggroup
+
+import (
+	"context"
+	"sort"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	cloudwatchlogs "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	cwltypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
+)
+
+type LogGroupAPI interface {
+	CreateLogGroup(ctx context.Context, spec LogGroupSpec) error
+	DescribeLogGroup(ctx context.Context, logGroupName string) (ObservedState, bool, error)
+	PutRetentionPolicy(ctx context.Context, logGroupName string, retentionInDays int32) error
+	DeleteRetentionPolicy(ctx context.Context, logGroupName string) error
+	AssociateKmsKey(ctx context.Context, logGroupName, kmsKeyID string) error
+	DisassociateKmsKey(ctx context.Context, logGroupName string) error
+	DeleteLogGroup(ctx context.Context, logGroupName string) error
+	TagResource(ctx context.Context, arn string, tags map[string]string) error
+	UntagResource(ctx context.Context, arn string, tagKeys []string) error
+	ListTagsForResource(ctx context.Context, arn string) (map[string]string, error)
+}
+
+type realLogGroupAPI struct {
+	client  *cloudwatchlogs.Client
+	limiter *ratelimit.Limiter
+}
+
+func NewLogGroupAPI(client *cloudwatchlogs.Client) LogGroupAPI {
+	return &realLogGroupAPI{
+		client:  client,
+		limiter: ratelimit.New("cloudwatch-log-group", 20, 10),
+	}
+}
+
+func (r *realLogGroupAPI) CreateLogGroup(ctx context.Context, spec LogGroupSpec) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	input := &cloudwatchlogs.CreateLogGroupInput{
+		LogGroupName: aws.String(spec.LogGroupName),
+		Tags:         managedTags(spec.Tags, spec.ManagedKey),
+	}
+	if spec.LogGroupClass != "" && spec.LogGroupClass != "STANDARD" {
+		input.LogGroupClass = cwltypes.LogGroupClass(spec.LogGroupClass)
+	}
+	if spec.KmsKeyID != "" {
+		input.KmsKeyId = aws.String(spec.KmsKeyID)
+	}
+	_, err := r.client.CreateLogGroup(ctx, input)
+	return err
+}
+
+func (r *realLogGroupAPI) DescribeLogGroup(ctx context.Context, logGroupName string) (ObservedState, bool, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, false, err
+	}
+	out, err := r.client.DescribeLogGroups(ctx, &cloudwatchlogs.DescribeLogGroupsInput{
+		LogGroupNamePrefix: aws.String(logGroupName),
+	})
+	if err != nil {
+		return ObservedState{}, false, err
+	}
+	for _, group := range out.LogGroups {
+		if aws.ToString(group.LogGroupName) != logGroupName {
+			continue
+		}
+		observed := ObservedState{
+			ARN:           aws.ToString(group.Arn),
+			LogGroupName:  aws.ToString(group.LogGroupName),
+			LogGroupClass: string(group.LogGroupClass),
+			KmsKeyID:      aws.ToString(group.KmsKeyId),
+			CreationTime:  aws.ToInt64(group.CreationTime),
+			StoredBytes:   aws.ToInt64(group.StoredBytes),
+			Tags:          map[string]string{},
+		}
+		if group.RetentionInDays != nil {
+			days := aws.ToInt32(group.RetentionInDays)
+			if days > 0 {
+				observed.RetentionInDays = aws.Int32(days)
+			}
+		}
+		return observed, true, nil
+	}
+	return ObservedState{}, false, nil
+}
+
+func (r *realLogGroupAPI) PutRetentionPolicy(ctx context.Context, logGroupName string, retentionInDays int32) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.PutRetentionPolicy(ctx, &cloudwatchlogs.PutRetentionPolicyInput{
+		LogGroupName:    aws.String(logGroupName),
+		RetentionInDays: aws.Int32(retentionInDays),
+	})
+	return err
+}
+
+func (r *realLogGroupAPI) DeleteRetentionPolicy(ctx context.Context, logGroupName string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.DeleteRetentionPolicy(ctx, &cloudwatchlogs.DeleteRetentionPolicyInput{LogGroupName: aws.String(logGroupName)})
+	return err
+}
+
+func (r *realLogGroupAPI) AssociateKmsKey(ctx context.Context, logGroupName, kmsKeyID string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.AssociateKmsKey(ctx, &cloudwatchlogs.AssociateKmsKeyInput{
+		LogGroupName: aws.String(logGroupName),
+		KmsKeyId:     aws.String(kmsKeyID),
+	})
+	return err
+}
+
+func (r *realLogGroupAPI) DisassociateKmsKey(ctx context.Context, logGroupName string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.DisassociateKmsKey(ctx, &cloudwatchlogs.DisassociateKmsKeyInput{LogGroupName: aws.String(logGroupName)})
+	return err
+}
+
+func (r *realLogGroupAPI) DeleteLogGroup(ctx context.Context, logGroupName string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.DeleteLogGroup(ctx, &cloudwatchlogs.DeleteLogGroupInput{LogGroupName: aws.String(logGroupName)})
+	return err
+}
+
+func (r *realLogGroupAPI) TagResource(ctx context.Context, arn string, tags map[string]string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.TagResource(ctx, &cloudwatchlogs.TagResourceInput{
+		ResourceArn: aws.String(arn),
+		Tags:        tags,
+	})
+	return err
+}
+
+func (r *realLogGroupAPI) UntagResource(ctx context.Context, arn string, tagKeys []string) error {
+	if len(tagKeys) == 0 {
+		return nil
+	}
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.UntagResource(ctx, &cloudwatchlogs.UntagResourceInput{
+		ResourceArn: aws.String(arn),
+		TagKeys:     tagKeys,
+	})
+	return err
+}
+
+func (r *realLogGroupAPI) ListTagsForResource(ctx context.Context, arn string) (map[string]string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	out, err := r.client.ListTagsForResource(ctx, &cloudwatchlogs.ListTagsForResourceInput{ResourceArn: aws.String(arn)})
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]string, len(out.Tags))
+	for key, value := range out.Tags {
+		tags[key] = value
+	}
+	return tags, nil
+}
+
+func IsNotFound(err error) bool {
+	return awserr.HasCode(err, "ResourceNotFoundException")
+}
+
+func IsAlreadyExists(err error) bool {
+	return awserr.HasCode(err, "ResourceAlreadyExistsException")
+}
+
+func IsInvalidParam(err error) bool {
+	return awserr.HasCode(err, "InvalidParameterException")
+}
+
+func IsConflict(err error) bool {
+	return awserr.HasCode(err, "OperationAbortedException")
+}
+
+func IsLimitExceeded(err error) bool {
+	return awserr.HasCode(err, "LimitExceededException")
+}
+
+func IsServiceUnavailable(err error) bool {
+	return awserr.HasCode(err, "ServiceUnavailableException")
+}
+
+func managedTags(tags map[string]string, managedKey string) map[string]string {
+	out := make(map[string]string, len(tags)+1)
+	for key, value := range tags {
+		out[key] = value
+	}
+	if strings.TrimSpace(managedKey) != "" {
+		out["praxis:managed-key"] = managedKey
+	}
+	return out
+}
+
+func tagDiff(desired, observed map[string]string, managedKey string) (map[string]string, []string) {
+	want := managedTags(filterPraxisTags(desired), managedKey)
+	have := managedTags(filterPraxisTags(observed), managedKey)
+	toAdd := map[string]string{}
+	for key, value := range want {
+		if current, ok := have[key]; !ok || current != value {
+			toAdd[key] = value
+		}
+	}
+	var toRemove []string
+	for key := range have {
+		if _, ok := want[key]; !ok {
+			toRemove = append(toRemove, key)
+		}
+	}
+	sort.Strings(toRemove)
+	return toAdd, toRemove
+}

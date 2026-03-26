@@ -10,6 +10,7 @@
 #   - praxis-network: SG, VPC, EIP, IGW, Route 53, ALB, NLB, TargetGroup, Listener, ListenerRule (future: CloudFront, API GW)
 #   - praxis-compute: AMI, EC2, Lambda (future: Auto Scaling, ECS, EKS)
 #   - praxis-identity: IAM Role, Policy, User, Group, Instance Profile
+#   - praxis-monitoring: CloudWatch Log Groups, Metric Alarms, Dashboards
 #
 # The stack is intentionally explicit rather than clever. The goal is that a
 # human operator or an AI agent can read this file and understand the topology,
@@ -31,7 +32,7 @@ services:
       - "4566:4566"
     environment:
       # Only enable the AWS APIs that Praxis requires.
-      - SERVICES=s3,ssm,sts,ec2,iam,route53,rds,lambda,sqs,elbv2,acm
+      - SERVICES=s3,ssm,sts,ec2,iam,route53,rds,lambda,sqs,elbv2,acm,cloudwatch,logs
       - DEFAULT_REGION=us-east-1
       - DEBUG=0
     volumes:
@@ -203,6 +204,23 @@ services:
       # Mount schemas read-only so local edits are visible without baking a new
       # image, while still documenting the runtime contract explicitly.
       - "./schemas:/schemas:ro"
+
+  praxis-monitoring:
+    build:
+      context: .
+      dockerfile: cmd/praxis-monitoring/Dockerfile
+    container_name: praxis-monitoring
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
+    ports:
+      - "9087:9080"
+    environment:
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
   praxis-notifications:
     build:

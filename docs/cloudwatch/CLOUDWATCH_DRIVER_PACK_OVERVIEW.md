@@ -632,39 +632,39 @@ alarm operations.
 
 ### Infrastructure
 
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/cloudwatch` added
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs` added
-- [ ] `cmd/praxis-monitoring/main.go` created
-- [ ] `cmd/praxis-monitoring/Dockerfile` created
-- [ ] `docker-compose.yaml` updated with `praxis-monitoring` service
-- [ ] `justfile` updated with monitoring targets
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/cloudwatch` added
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs` added
+- [x] `cmd/praxis-monitoring/main.go` created
+- [x] `cmd/praxis-monitoring/Dockerfile` created
+- [x] `docker-compose.yaml` updated with `praxis-monitoring` service
+- [x] `justfile` updated with monitoring targets
 
 ### Schemas
 
-- [ ] `schemas/aws/cloudwatch/log_group.cue`
-- [ ] `schemas/aws/cloudwatch/metric_alarm.cue`
-- [ ] `schemas/aws/cloudwatch/dashboard.cue`
+- [x] `schemas/aws/cloudwatch/log_group.cue`
+- [x] `schemas/aws/cloudwatch/metric_alarm.cue`
+- [x] `schemas/aws/cloudwatch/dashboard.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
 
-- [ ] `internal/drivers/loggroup/`
-- [ ] `internal/drivers/metricalarm/`
-- [ ] `internal/drivers/dashboard/`
+- [x] `internal/drivers/loggroup/`
+- [x] `internal/drivers/metricalarm/`
+- [x] `internal/drivers/dashboard/`
 
 ### Adapters
 
-- [ ] `internal/core/provider/loggroup_adapter.go`
-- [ ] `internal/core/provider/metricalarm_adapter.go`
-- [ ] `internal/core/provider/dashboard_adapter.go`
+- [x] `internal/core/provider/loggroup_adapter.go`
+- [x] `internal/core/provider/metricalarm_adapter.go`
+- [x] `internal/core/provider/dashboard_adapter.go`
 
 ### Registry
 
-- [ ] All 3 adapters registered in `NewRegistry()`
+- [x] All 3 adapters registered in `NewRegistry()`
 
 ### Tests
 
-- [ ] Unit tests for all 3 drivers
-- [ ] Integration tests for all 3 drivers
+- [x] Unit tests for all 3 drivers
+- [x] Integration tests for all 3 drivers
 - [ ] Cross-driver integration test (LogGroup → MetricAlarm → Dashboard)
 
 ### Documentation

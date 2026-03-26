@@ -1047,20 +1047,20 @@ patterns. This makes Dashboard the simplest driver in the CloudWatch pack.
 
 ### Files
 
-- [ ] `schemas/aws/cloudwatch/dashboard.cue`
-- [ ] `internal/drivers/dashboard/types.go`
-- [ ] `internal/drivers/dashboard/aws.go`
-- [ ] `internal/drivers/dashboard/drift.go`
-- [ ] `internal/drivers/dashboard/driver.go`
-- [ ] `internal/drivers/dashboard/driver_test.go`
-- [ ] `internal/drivers/dashboard/aws_test.go`
-- [ ] `internal/drivers/dashboard/drift_test.go`
-- [ ] `internal/core/provider/dashboard_adapter.go`
-- [ ] `internal/core/provider/dashboard_adapter_test.go`
-- [ ] `tests/integration/dashboard_driver_test.go`
+- [x] `schemas/aws/cloudwatch/dashboard.cue`
+- [x] `internal/drivers/dashboard/types.go`
+- [x] `internal/drivers/dashboard/aws.go`
+- [x] `internal/drivers/dashboard/drift.go`
+- [x] `internal/drivers/dashboard/driver.go`
+- [x] `internal/drivers/dashboard/driver_test.go`
+- [x] `internal/drivers/dashboard/aws_test.go`
+- [x] `internal/drivers/dashboard/drift_test.go`
+- [x] `internal/core/provider/dashboard_adapter.go`
+- [x] `internal/core/provider/dashboard_adapter_test.go`
+- [x] `tests/integration/dashboard_driver_test.go`
 
 ### Modifications
 
-- [ ] `cmd/praxis-monitoring/main.go` — Bind DashboardDriver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `justfile` — Add `test-dashboard` target
+- [x] `cmd/praxis-monitoring/main.go` — Bind DashboardDriver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `justfile` — Add `test-dashboard` target
