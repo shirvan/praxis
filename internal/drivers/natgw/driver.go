@@ -1,3 +1,22 @@
+// Package natgw implements the Praxis driver for managing AWS NAT Gateways.
+//
+// The driver exposes a Restate Virtual Object named by `ServiceName` and
+// implements the lifecycle handlers (Provision, Import, Delete, Reconcile,
+// plus shared status/output getters). The implementation follows the same
+// convergent, idempotent pattern used across Praxis drivers:
+//   - Provision: ensure desired state, create when missing, converge when
+//     configuration drifts, and surface terminal errors for unrecoverable
+//     conditions (ownership conflicts, invalid input).
+//   - Import: capture provider state as the baseline desired/observed state so
+//     the first reconcile sees no drift.
+//   - Reconcile: periodic, durable reconciliation that either corrects drift
+//     (Managed mode) or reports it (Observed mode). External deletes transition
+//     the object into an Error status rather than re-creating resources.
+//
+// The driver uses Restate's durable `Run` wrapper for all non-deterministic
+// operations (API calls, time retrieval) so that executions are journaled and
+// replay-safe. All state is stored in the object's per-key K/V via
+// `restate.Get`/`restate.Set`.
 package natgw
 
 import (
@@ -15,17 +34,33 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// NATGatewayDriver manages the lifecycle of an AWS NAT Gateway.
+//
+// Each instance is a Restate Virtual Object keyed by a stable resource ID
+// (e.g. the template's metadata.name). The driver is responsible for:
+//   - creating/updating/deleting NAT Gateways
+//   - maintaining an internal state record (`NATGatewayState`) that holds the
+//     desired spec, last observed AWS state, outputs, generation, and status
+//   - scheduling periodic reconciliations using durable delayed messages
+//
+// The driver resolves AWS clients per-request using an `authservice.AuthClient`.
+// The `apiFactory` field exists to inject mocked APIs for tests.
 type NATGatewayDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) NATGatewayAPI
 }
 
+// NewNATGatewayDriver constructs a production-ready driver that resolves
+// real AWS EC2 clients via the provided `auth` registry.
 func NewNATGatewayDriver(auth authservice.AuthClient) *NATGatewayDriver {
 	return NewNATGatewayDriverWithFactory(auth, func(cfg aws.Config) NATGatewayAPI {
 		return NewNATGatewayAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewNATGatewayDriverWithFactory allows tests to inject a custom NATGatewayAPI
+// factory (e.g., a fake client). If `factory` is nil, it falls back to the
+// production EC2-based implementation.
 func NewNATGatewayDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) NATGatewayAPI) *NATGatewayDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) NATGatewayAPI {
@@ -35,10 +70,30 @@ func NewNATGatewayDriverWithFactory(auth authservice.AuthClient, factory func(aw
 	return &NATGatewayDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name used to register this
+// driver. The value is defined in the package and forms the public API path
+// (e.g., /S3Bucket/<key>/Provision for the S3 driver).
 func (d *NATGatewayDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision ensures the NAT Gateway matches the provided `spec`.
+//
+// Behavior summary:
+//   - Validates input and applies defaults.
+//   - Loads the current object state and records the desired spec.
+//   - If an existing NAT Gateway is tracked, it describes it and handles
+//     terminal conditions (failed state -> delete-and-recreate).
+//   - If no gateway exists, creates one and waits until it reaches an
+//     available state (or transitions to Error on failure).
+//   - Always configures tags on update paths and returns a stable Outputs
+//     object representing the resource (ARN/IDs/IPs in `NATGatewayOutputs`).
+//
+// Idempotency & retries:
+//   - All provider calls are wrapped with `restate.Run` so successful calls
+//     are journaled and not re-executed on replay.
+//   - Transient AWS errors are returned for Restate to retry; unrecoverable
+//     errors are returned as TerminalError with appropriate HTTP-like codes.
 func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewaySpec) (NATGatewayOutputs, error) {
 	ctx.Log().Info("provisioning NAT gateway", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -77,6 +132,8 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 		})
 		if descErr != nil {
 			if IsNotFound(descErr) {
+				// Resource recorded in state was deleted externally; fall through
+				// to the create path below.
 				natGatewayID = ""
 				currentObserved = ObservedState{}
 			} else {
@@ -88,6 +145,9 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 		} else {
 			currentObserved = described
 			if IsFailed(described.State) {
+				// If the observed gateway is in a terminal failed state, attempt
+				// to remove it and recreate. Transition to Error on deletion
+				// failures.
 				if err := d.deleteAndWait(ctx, api, described.NatGatewayId); err != nil {
 					state.Status = types.StatusError
 					state.Error = err.Error()
@@ -101,6 +161,8 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 		}
 	}
 
+	// If a managed key was provided, ensure no other Praxis resource in the
+	// same region is already claiming it.
 	if natGatewayID == "" && spec.ManagedKey != "" {
 		conflictID, conflictErr := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 			id, runErr := api.FindByManagedKey(rc, spec.ManagedKey)
@@ -155,6 +217,7 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 			return NATGatewayOutputs{}, err
 		}
 	} else if !tagsMatch(spec.Tags, currentObserved.Tags) {
+		// Update tags on an existing gateway if they differ from desired.
 		_, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, natGatewayID, spec.Tags)
 		})
@@ -167,6 +230,7 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 		}
 	}
 
+	// Describe the final state and commit outputs.
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 		obs, runErr := api.DescribeNATGateway(rc, natGatewayID)
 		if runErr != nil {
