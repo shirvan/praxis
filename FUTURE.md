@@ -6,59 +6,6 @@
 
 ---
 
-## Notification Sinks & External Event Delivery
-
-Build external delivery and fan-out on top of the existing internal deployment event stream.
-
-**Technical approach:** Praxis already records deployment events and exposes them to the CLI via polling. The remaining work is a lightweight event bus within Core that forwards those events to pluggable sinks and broadens the event catalog where needed:
-
-- **Webhooks** — POST JSON payloads to user-configured endpoints (Slack, PagerDuty, custom)
-- **Structured Logging** — JSON log lines to stdout for ingestion by existing log pipelines (Datadog, CloudWatch, ELK)
-- **CLI streaming enhancements** — richer filtering, watch mode, and higher-fidelity event payloads for existing `praxis observe`
-
-Events follow a common envelope: `{type, resource, timestamp, deployment, payload}`.
-
----
-
-## Concierge
-
-A bring-your-own-API assistant that is Praxis-aware. The concierge understands Praxis concepts (stacks, resources, drivers, templates, drift) and can query internal APIs to gather state, explain what happened, suggest fixes, and perform actions on the user's behalf.
-
-**Supported providers:** Ollama (local), OpenAI API, Claude API. Users configure their preferred provider and API key; Praxis routes requests accordingly.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Concierge as Concierge Service<br/>(Restate)
-    participant LLM
-    participant API as Praxis Core APIs
-
-    User->>Concierge: praxis ask "why did my deploy fail?"
-    Concierge->>LLM: Prompt + tool definitions
-    LLM-->>Concierge: Call getDeploymentStatus(key)
-    Concierge->>API: getDeploymentStatus
-    API-->>Concierge: Status + error details
-    Concierge->>LLM: Tool result
-    LLM-->>Concierge: Call getReconcileHistory(resource)
-    Concierge->>API: getReconcileHistory
-    API-->>Concierge: History entries
-    Concierge->>LLM: Tool result
-    LLM-->>Concierge: Final explanation
-    Concierge-->>User: "Deploy failed because sg-xyz was<br/>deleted externally. Re-apply to fix."
-```
-
-**Technical approach:** A Restate service that wraps LLM API calls in durable execution. The concierge is given tool definitions that map to Praxis Core's internal APIs — `getDeploymentStatus`, `listResources`, `getReconcileHistory`, `getDrift`, `explainDAG`, etc. On each user prompt, the concierge calls the LLM with the tool schema; the LLM decides which tools to invoke; results are fed back for a final response. Ollama runs locally (no network), OpenAI and Claude are external API calls wrapped in `restate.Run` for journaling. The concierge can be exposed via the CLI (`praxis ask "why did my last deploy fail?"`).
-
----
-
-## Historical Revisions & Audit Trail
-
-Extend the current deployment state and per-deployment event feed into an immutable historical record across generations and re-applies.
-
-**Technical approach:** Praxis already stores current deployment state, resource status, and append-only deployment events. The missing layer is durable revision history: preserve every apply/delete generation with template version, input values, resolved DAG, per-resource result, timestamps, and triggering identity. Query it via `praxis history <stack>` or the API, and support `praxis diff <deployment-a> <deployment-b>` for comparing historical revisions.
-
----
-
 ## Dependency Visualization
 
 Render the resource dependency DAG as a visual graph so users can understand provisioning order and debug dependency issues.
@@ -67,7 +14,15 @@ Render the resource dependency DAG as a visual graph so users can understand pro
 
 ---
 
-## Multi-Stack References
+## Kubernetes Integration
+
+A Kubernetes driver service that manages Deployments, Services, and Ingresses in a target cluster.
+
+**Technical approach:** A standard Restate Virtual Object driver that wraps the Kubernetes client-go SDK. Allows Praxis to orchestrate both cloud infrastructure and application deployment from a single composition — e.g. a compound template that provisions an RDS database and deploys a Kubernetes workload that connects to it.
+
+---
+
+## Cross-Stack References
 
 Allow one deployment to reference the outputs of another deployment. A "networking" stack produces a VPC ID; an "application" stack consumes it.
 
@@ -104,14 +59,6 @@ This is intentionally deferred. Implementing it properly requires the driver con
 
 ---
 
-## Kubernetes Integration
-
-A Kubernetes driver service that manages Deployments, Services, and Ingresses in a target cluster.
-
-**Technical approach:** A standard Restate Virtual Object driver that wraps the Kubernetes client-go SDK. Allows Praxis to orchestrate both cloud infrastructure and application deployment from a single composition — e.g. a compound template that provisions an RDS database and deploys a Kubernetes workload that connects to it.
-
----
-
 ## Multi-Cloud
 
 Support for GCP and Azure as additional cloud providers.
@@ -120,7 +67,7 @@ Support for GCP and Azure as additional cloud providers.
 
 ---
 
-## Multi-Account
+## Cross-Account
 
 Manage resources across multiple AWS accounts (or multiple GCP projects / Azure subscriptions) from a single Praxis instance.
 
