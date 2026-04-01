@@ -125,6 +125,8 @@ func NewRegistry(auth authservice.AuthClient) *Registry {
 		NewAMIAdapterWithAuth(auth),
 		NewACMCertificateAdapterWithAuth(auth),
 		NewEC2AdapterWithAuth(auth),
+		NewECRRepositoryAdapterWithAuth(auth),
+		NewECRLifecyclePolicyAdapterWithAuth(auth),
 		NewKeyPairAdapterWithAuth(auth),
 		NewIAMRoleAdapterWithAuth(auth),
 		NewIAMPolicyAdapterWithAuth(auth),

@@ -8,7 +8,7 @@ This document tracks current and planned AWS driver coverage. Driver priority is
 
 ## Currently Available
 
-39 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, and observability.
+41 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, observability, and container registry management.
 
 | Pack | Driver | Resource Types | Key Scope |
 |---|---|---|---|
@@ -33,6 +33,8 @@ This document tracks current and planned AWS driver coverage. Driver priority is
 | **Compute** | EC2 Instance | EC2 instances | Region (`region~name`) |
 | | AMI | Amazon Machine Images | Region (`region~amiName`) |
 | | KeyPair | EC2 key pairs | Region (`region~keyName`) |
+| | ECR Repository | ECR repositories | Region (`region~repositoryName`) |
+| | ECR Lifecycle Policy | Repository lifecycle policies | Custom (`region~repositoryName`) |
 | | Lambda Function | Lambda functions | Region (`region~functionName`) |
 | | Lambda Layer | Lambda layers | Region (`region~layerName`) |
 | | Lambda Permission | Lambda resource-based policy statements | Custom (`region~functionName~statementId`) |
@@ -56,11 +58,10 @@ This document tracks current and planned AWS driver coverage. Driver priority is
 
 ## Next Up
 
-Completes the services required for a standard web-application stack on AWS: container registry and messaging.
+Completes the next messaging primitives required for a standard web-application stack on AWS.
 
 | Driver | Description | Driver Pack |
 |---|---|---|
-| **ECR** | Repositories, lifecycle policies | `praxis-compute` |
 | **SNS** | Topics, subscriptions | `praxis-storage` |
 | **SQS** | Queues, queue policies | `praxis-storage` |
 

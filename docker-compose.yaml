@@ -8,7 +8,7 @@
 # - Driver packs group related drivers by AWS domain:
 #   - praxis-storage: S3, EBS, RDS, Aurora (future: DynamoDB, SQS, SNS)
 #   - praxis-network: SG, VPC, EIP, IGW, Route 53, ALB, NLB, TargetGroup, Listener, ListenerRule (future: CloudFront, API GW)
-#   - praxis-compute: AMI, EC2, Lambda (future: Auto Scaling, ECS, EKS)
+#   - praxis-compute: AMI, EC2, ECR, Lambda (future: Auto Scaling, ECS, EKS)
 #   - praxis-identity: IAM Role, Policy, User, Group, Instance Profile
 #   - praxis-monitoring: CloudWatch Log Groups, Metric Alarms, Dashboards
 #
@@ -32,7 +32,7 @@ services:
       - "4566:4566"
     environment:
       # Only enable the AWS APIs that Praxis requires.
-      - SERVICES=s3,ssm,sts,ec2,iam,route53,rds,lambda,sqs,elbv2,acm,cloudwatch,logs
+      - SERVICES=s3,ssm,sts,ec2,ecr,iam,route53,rds,lambda,sqs,elbv2,acm,cloudwatch,logs
       - DEFAULT_REGION=us-east-1
       - DEBUG=0
     volumes:

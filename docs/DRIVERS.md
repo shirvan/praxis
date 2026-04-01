@@ -6,7 +6,7 @@
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. The IAM drivers manage Roles, Policies, Users, Groups, and Instance Profiles. The Route 53 drivers manage Hosted Zones, DNS Records, and Health Checks. The Lambda drivers manage Lambda Functions, Layers, Permissions, and Event Source Mappings. The RDS drivers manage RDS Instances, DB Subnet Groups, DB Parameter Groups, and Aurora Clusters. The ELB drivers manage ALBs, NLBs, Target Groups, Listeners, and Listener Rules. The ACM driver manages AWS Certificate Manager certificates. The CloudWatch drivers manage Log Groups, Metric Alarms, and Dashboards. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. The IAM drivers manage Roles, Policies, Users, Groups, and Instance Profiles. The Route 53 drivers manage Hosted Zones, DNS Records, and Health Checks. The Lambda drivers manage Lambda Functions, Layers, Permissions, and Event Source Mappings. The RDS drivers manage RDS Instances, DB Subnet Groups, DB Parameter Groups, and Aurora Clusters. The ELB drivers manage ALBs, NLBs, Target Groups, Listeners, and Listener Rules. The ACM driver manages AWS Certificate Manager certificates. The CloudWatch drivers manage Log Groups, Metric Alarms, and Dashboards. The ECR drivers manage ECR Repositories and Lifecycle Policies. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
 Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, and ACMCertificate drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
@@ -93,6 +93,8 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 - Target Group: `us-east-1~web-targets` (region-scoped, using `~` as separator)
 - Listener: `us-east-1~web-https` (region-scoped, using `~` as separator)
 - Listener Rule: `us-east-1~api-route` (region-scoped, using `~` as separator)
+- ECR Repository: `us-east-1~my-repo` (region-scoped, using `~` as separator)
+- ECR Lifecycle Policy: `us-east-1~my-repo` (region + repository name)
 
 Each Virtual Object holds:
 
@@ -320,6 +322,8 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | Listener | Region | `<region>~<listenerName>` | `us-east-1~web-https` |
 | ListenerRule | Region | `<region>~<ruleName>` | `us-east-1~api-route` |
 | ACMCertificate | Region | `<region>~<name>` | `us-east-1~api-cert` |
+| ECRRepository | Region | `<region>~<repositoryName>` | `us-east-1~my-repo` |
+| ECRLifecyclePolicy | Custom | `<region>~<repositoryName>` | `us-east-1~my-repo` |
 
 The `~` separator is URL-safe and does not collide with characters valid in AWS resource names.
 
@@ -425,7 +429,7 @@ cmd/praxis-<pack>/
 | --- | --- | --- |
 | Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster |
 | Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule, ACMCertificate |
-| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping |
+| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy |
 | Identity | `cmd/praxis-identity/` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile |
 
 See [Driver Roadmap](DRIVER_ROADMAP.md) for 1.0 and future planned drivers.
@@ -640,3 +644,19 @@ Manages AWS ELB Listener Rules. Spec fields: `region`, `name`, `listenerArn`, `p
 Outputs: `ruleArn`, `listenerArn`, `priority`.
 
 Key: `<region>~<ruleName>`. Scope: Region.
+
+### ECRRepository
+
+Manages AWS ECR repositories. Spec fields: `region`, `repositoryName`, `imageTagMutability`, `imageScanningConfiguration`, `encryptionConfiguration`, `repositoryPolicy`, `forceDelete`, `tags`.
+
+Outputs: `repositoryArn`, `repositoryName`, `repositoryUri`, `registryId`.
+
+Key: `<region>~<repositoryName>`. Scope: Region.
+
+### ECRLifecyclePolicy
+
+Manages AWS ECR lifecycle policies (sub-resource of an ECR repository). Spec fields: `region`, `repositoryName`, `lifecyclePolicyText`.
+
+Outputs: `repositoryName`, `repositoryArn`, `registryId`.
+
+Key: `<region>~<repositoryName>`. Scope: Custom.

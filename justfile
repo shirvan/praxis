@@ -236,6 +236,17 @@ test-ebs:
 test-eip:
     go test ./internal/drivers/eip/... -v -count=1 -race
 
+# Run ECR repository driver unit tests only
+test-ecr-repo:
+	go test ./internal/drivers/ecrrepo/... -v -count=1 -race
+
+# Run ECR lifecycle policy driver unit tests only
+test-ecr-policy:
+	go test ./internal/drivers/ecrpolicy/... -v -count=1 -race
+
+# Run all ECR driver unit tests
+test-ecr: test-ecr-repo test-ecr-policy
+
 # Run ACM certificate driver unit tests only
 test-acm:
     go test ./internal/drivers/acmcert/... -v -count=1 -race

@@ -164,9 +164,9 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 ## Current Scope
 
 - **Cloud:** AWS
-- **Drivers (36):**
+- **Drivers (38):**
   - *Network:* VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule
-  - *Compute:* EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping
+  - *Compute:* EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy
   - *Storage:* S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster
   - *Identity:* IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile
 - **Accounts:** One operator-defined account per deployed stack

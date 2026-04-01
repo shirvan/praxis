@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
@@ -34,6 +35,11 @@ func NewS3Client(cfg aws.Config) *s3.Client {
 // NewEC2Client returns an EC2 client from the given config.
 func NewEC2Client(cfg aws.Config) *ec2.Client {
 	return ec2.NewFromConfig(cfg)
+}
+
+// NewECRClient returns an ECR client from the given config.
+func NewECRClient(cfg aws.Config) *ecr.Client {
+	return ecr.NewFromConfig(cfg)
 }
 
 // NewELBv2Client returns an ELBv2 client from the given config.

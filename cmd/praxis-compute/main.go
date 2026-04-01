@@ -12,6 +12,8 @@ import (
 	"github.com/shirvan/praxis/internal/core/config"
 	"github.com/shirvan/praxis/internal/drivers/ami"
 	"github.com/shirvan/praxis/internal/drivers/ec2"
+	"github.com/shirvan/praxis/internal/drivers/ecrpolicy"
+	"github.com/shirvan/praxis/internal/drivers/ecrrepo"
 	"github.com/shirvan/praxis/internal/drivers/esm"
 	"github.com/shirvan/praxis/internal/drivers/keypair"
 	"github.com/shirvan/praxis/internal/drivers/lambda"
@@ -27,6 +29,8 @@ func main() {
 		Bind(restate.Reflect(ami.NewAMIDriver(auth))).
 		Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
 		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+		Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
+		Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth))).
 		Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
 		Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
 		Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).

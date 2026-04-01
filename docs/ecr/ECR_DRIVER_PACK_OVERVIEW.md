@@ -1,6 +1,5 @@
 # ECR Driver Pack — Overview
 
-> NYI
 > This document summarizes the ECR driver family for Praxis: two drivers covering
 > ECR Repositories and ECR Lifecycle Policies. It describes their relationships,
 > shared infrastructure, runtime deployment, implementation order, and integration
