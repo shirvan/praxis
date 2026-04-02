@@ -651,7 +651,12 @@ praxis concierge configure --provider openai --api-key sk-... --model gpt-4o
 praxis concierge configure --provider openai --base-url http://localhost:11434/v1 --model llama3
 praxis concierge configure --provider claude --api-key sk-ant-... --model claude-sonnet-4-20250514
 
-# Ask questions
+# Ask questions (shorthand)
+praxis "why did my deploy fail?"
+praxis "list my deployments"
+praxis "convert this terraform to praxis" --file main.tf
+
+# Ask questions (explicit)
 praxis concierge ask "why did my deploy fail?"
 praxis concierge ask "list my deployments"
 praxis concierge ask "convert this terraform to praxis" --file main.tf
