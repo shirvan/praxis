@@ -8,7 +8,7 @@ This document tracks current and planned AWS driver coverage. Driver priority is
 
 ## Currently Available
 
-41 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, observability, and container registry management.
+44 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, observability, container registry management, and messaging.
 
 | Pack | Driver | Resource Types | Key Scope |
 |---|---|---|---|
@@ -45,6 +45,9 @@ This document tracks current and planned AWS driver coverage. Driver priority is
 | | DB Subnet Group | DB subnet groups | Region (`region~groupName`) |
 | | DB Parameter Group | DB parameter groups | Region (`region~groupName`) |
 | | Aurora Cluster | Aurora DB clusters | Region (`region~clusterIdentifier`) |
+| | SNS | Topics, subscriptions | Region (`region~topicName`) |
+| | SQS Queue | SQS queues | Region (`region~queueName`) |
+| | SQS Queue Policy | SQS queue resource policies | Region (`region~queueName`) |
 | **Monitoring** | Log Group | CloudWatch log groups | Region (`region~logGroupName`) |
 | | Metric Alarm | CloudWatch metric alarms | Region (`region~alarmName`) |
 | | Dashboard | CloudWatch dashboards | Region (`region~dashboardName`) |
@@ -56,20 +59,9 @@ This document tracks current and planned AWS driver coverage. Driver priority is
 
 ---
 
-## Next Up
-
-Completes the next messaging primitives required for a standard web-application stack on AWS.
-
-| Driver | Description | Driver Pack |
-|---|---|---|
-| **SNS** | Topics, subscriptions | `praxis-storage` |
-| **SQS** | Queues, queue policies | `praxis-storage` |
-
----
-
 ## Future
 
-Planned drivers ordered by real-world usage frequency. Together with the currently available and near-term drivers, these reach approximately 90% of infrastructure patterns users deploy in production.
+Planned drivers ordered by real-world usage frequency. Together with the currently available drivers, these reach approximately 90% of infrastructure patterns users deploy in production.
 
 ### Tier 1 — Containers, Compute & Data
 

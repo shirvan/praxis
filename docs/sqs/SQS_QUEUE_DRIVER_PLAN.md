@@ -1429,7 +1429,7 @@ test-sqs:
     go test ./internal/drivers/sqs/... -v -count=1 -race
 
 test-sqs-integration:
-    go test ./tests/integration/... -run TestSQSQueue -v -timeout=3m
+    go test ./tests/integration/ -run TestSQSQueue -v -count=1 -tags=integration -timeout=5m
 
 ls-sqs:
     aws --endpoint-url=http://localhost:4566 sqs list-queues --region us-east-1
@@ -1530,7 +1530,7 @@ ls-sqs:
 - The 60-second deletion cooldown may not be enforced by LocalStack — the
   `TestSQSQueue_DeleteRecently` test should use a conditional skip if LocalStack
   does not enforce this constraint.
-- SQS must be added to the `SERVICES` list in LocalStack.
+- LocalStack already includes `sqs` in the shared `SERVICES` list used by the integration suite.
 
 ---
 
@@ -1656,25 +1656,25 @@ to take ownership.
 
 ### Implementation
 
-- [ ] `schemas/aws/sqs/queue.cue`
-- [ ] `internal/drivers/sqs/types.go`
-- [ ] `internal/drivers/sqs/aws.go`
-- [ ] `internal/drivers/sqs/drift.go`
-- [ ] `internal/drivers/sqs/driver.go`
-- [ ] `internal/core/provider/sqs_adapter.go`
+- [x] `schemas/aws/sqs/queue.cue`
+- [x] `internal/drivers/sqs/types.go`
+- [x] `internal/drivers/sqs/aws.go`
+- [x] `internal/drivers/sqs/drift.go`
+- [x] `internal/drivers/sqs/driver.go`
+- [x] `internal/core/provider/sqs_adapter.go`
 
 ### Tests
 
-- [ ] `internal/drivers/sqs/driver_test.go`
-- [ ] `internal/drivers/sqs/aws_test.go`
-- [ ] `internal/drivers/sqs/drift_test.go`
-- [ ] `internal/core/provider/sqs_adapter_test.go`
-- [ ] `tests/integration/sqs_queue_driver_test.go`
+- [x] `internal/drivers/sqs/driver_test.go`
+- [x] `internal/drivers/sqs/aws_test.go`
+- [x] `internal/drivers/sqs/drift_test.go`
+- [x] `internal/core/provider/sqs_adapter_test.go`
+- [x] `tests/integration/sqs_queue_driver_test.go`
 
 ### Integration
 
-- [ ] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
-- [ ] `cmd/praxis-storage/main.go` — Bind driver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `docker-compose.yaml` — Add `sqs` to LocalStack SERVICES
-- [ ] `justfile` — Add test targets
+- [x] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
+- [x] `cmd/praxis-storage/main.go` — Bind driver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `docker-compose.yaml` — LocalStack already includes `sqs` in `SERVICES`
+- [x] `justfile` — Add test targets

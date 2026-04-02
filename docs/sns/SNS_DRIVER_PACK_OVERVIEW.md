@@ -45,7 +45,7 @@ graph TD
     IAM["IAM Role / Policy<br/>(IAM driver pack)"] -->|"policy"| Topic
     KMS["KMS Key<br/>(future KMS driver)"] -->|"kmsMasterKeyId"| Topic
     Lambda["Lambda Function<br/>(compute driver pack)"] -->|"endpoint (lambda)"| Sub
-    SQS["SQS Queue<br/>(future SQS driver)"] -->|"endpoint (sqs)"| Sub
+    SQS["SQS Queue<br/>(storage driver pack)"] -->|"endpoint (sqs)"| Sub
     SQS -->|"redrivePolicy.deadLetterTargetArn"| Sub
     HTTP["External HTTP/S"] -->|"endpoint (https)"| Sub
     Email["Email"] -->|"endpoint (email)"| Sub

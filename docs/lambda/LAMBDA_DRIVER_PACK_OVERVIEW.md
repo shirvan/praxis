@@ -49,7 +49,7 @@ graph TD
     Subnet["Subnet<br/>(VPC driver)"] -->|"vpcConfig.subnetIds"| Fn
     S3["S3 Bucket<br/>(S3 driver)"] -->|"s3Bucket / s3Key"| Fn
     S3 -->|"s3Bucket / s3Key"| Layer
-    SQS["SQS Queue<br/>(future SQS driver)"] -->|"eventSourceArn"| ESM
+    SQS["SQS Queue<br/>(storage driver pack)"] -->|"eventSourceArn"| ESM
     DDB["DynamoDB Stream<br/>(future DDB driver)"] -->|"eventSourceArn"| ESM
     Kinesis["Kinesis Stream<br/>(future Kinesis driver)"] -->|"eventSourceArn"| ESM
     SNS["SNS Topic<br/>(future SNS driver)"] -->|invoke via permission| Perm

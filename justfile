@@ -348,6 +348,26 @@ test-snstopic:
 test-snssub:
     go test ./internal/drivers/snssub/... -v -count=1 -race
 
+# Run SQS queue driver unit tests only
+test-sqs:
+    go test ./internal/drivers/sqs/... -v -count=1 -race
+
+# Run SQS queue policy driver unit tests only
+test-sqspolicy:
+    go test ./internal/drivers/sqspolicy/... -v -count=1 -race
+
+# Run all SQS driver unit tests
+test-sqs-all:
+    go test ./internal/drivers/sqs/... ./internal/drivers/sqspolicy/... ./internal/core/provider/... -v -count=1 -race
+
+# Run SQS queue integration tests
+test-sqs-integration:
+	go test ./tests/integration/ -run TestSQSQueue -v -count=1 -tags=integration -timeout=5m
+
+# Run SQS queue policy integration tests
+test-sqspolicy-integration:
+	go test ./tests/integration/ -run TestSQSQueuePolicy -v -count=1 -tags=integration -timeout=5m
+
 # Run CloudWatch monitoring driver tests.
 test-monitoring:
     go test ./internal/drivers/loggroup/... ./internal/drivers/metricalarm/... ./internal/drivers/dashboard/... ./internal/core/provider/... -v -count=1 -race

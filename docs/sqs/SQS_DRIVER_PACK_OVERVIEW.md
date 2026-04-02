@@ -242,7 +242,7 @@ Add targets for the SQS drivers:
 test-sqs:
     go test ./internal/drivers/sqs/... -v -count=1 -race
 
-test-sqs-policy:
+test-sqspolicy:
     go test ./internal/drivers/sqspolicy/... -v -count=1 -race
 
 test-sqs-all:

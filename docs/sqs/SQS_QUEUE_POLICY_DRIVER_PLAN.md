@@ -906,11 +906,11 @@ by the SQS Queue driver. The queue policy driver shares the same SQS API endpoin
 ### Justfile Additions
 
 ```just
-test-sqs-policy:
+test-sqspolicy:
     go test ./internal/drivers/sqspolicy/... -v -count=1 -race
 
-test-sqs-policy-integration:
-    go test ./tests/integration/... -run TestSQSQueuePolicy -v -timeout=3m
+test-sqspolicy-integration:
+    go test ./tests/integration/ -run TestSQSQueuePolicy -v -count=1 -tags=integration -timeout=5m
 
 test-sqs-all:
     go test ./internal/drivers/sqs/... ./internal/drivers/sqspolicy/... \
@@ -992,7 +992,7 @@ test-sqs-all:
 - Policy validation may be less strict in LocalStack compared to real AWS — invalid
   principal ARNs or actions may be accepted. Integration tests should focus on
   round-trip verification (set → get → compare) rather than policy evaluation.
-- SQS must be added to the `SERVICES` list in LocalStack (done by the Queue driver).
+- LocalStack already includes `sqs` in the shared `SERVICES` list used by the integration suite.
 
 ---
 
@@ -1106,22 +1106,22 @@ to take ownership and correct drift.
 
 ### Implementation
 
-- [ ] `schemas/aws/sqs/queue_policy.cue`
-- [ ] `internal/drivers/sqspolicy/types.go`
-- [ ] `internal/drivers/sqspolicy/aws.go`
-- [ ] `internal/drivers/sqspolicy/drift.go`
-- [ ] `internal/drivers/sqspolicy/driver.go`
-- [ ] `internal/core/provider/sqspolicy_adapter.go`
+- [x] `schemas/aws/sqs/queue_policy.cue`
+- [x] `internal/drivers/sqspolicy/types.go`
+- [x] `internal/drivers/sqspolicy/aws.go`
+- [x] `internal/drivers/sqspolicy/drift.go`
+- [x] `internal/drivers/sqspolicy/driver.go`
+- [x] `internal/core/provider/sqspolicy_adapter.go`
 
 ### Tests
 
-- [ ] `internal/drivers/sqspolicy/driver_test.go`
-- [ ] `internal/drivers/sqspolicy/aws_test.go`
-- [ ] `internal/drivers/sqspolicy/drift_test.go`
-- [ ] `internal/core/provider/sqspolicy_adapter_test.go`
-- [ ] `tests/integration/sqs_queue_policy_driver_test.go`
+- [x] `internal/drivers/sqspolicy/driver_test.go`
+- [x] `internal/drivers/sqspolicy/aws_test.go`
+- [x] `internal/drivers/sqspolicy/drift_test.go`
+- [x] `internal/core/provider/sqspolicy_adapter_test.go`
+- [x] `tests/integration/sqs_queue_policy_driver_test.go`
 
 ### Integration
 
-- [ ] `cmd/praxis-storage/main.go` — Bind driver
-- [ ] `internal/core/provider/registry.go` — Register adapter
+- [x] `cmd/praxis-storage/main.go` — Bind driver
+- [x] `internal/core/provider/registry.go` — Register adapter

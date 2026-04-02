@@ -18,6 +18,8 @@ import (
 	"github.com/shirvan/praxis/internal/drivers/s3"
 	"github.com/shirvan/praxis/internal/drivers/snssub"
 	"github.com/shirvan/praxis/internal/drivers/snstopic"
+	"github.com/shirvan/praxis/internal/drivers/sqs"
+	"github.com/shirvan/praxis/internal/drivers/sqspolicy"
 )
 
 func main() {
@@ -32,7 +34,9 @@ func main() {
 		Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
 		Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth))).
 		Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth))).
-		Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth)))
+		Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth))).
+		Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth))).
+		Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth)))
 
 	slog.Info("starting storage driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
