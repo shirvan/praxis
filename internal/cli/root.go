@@ -7,15 +7,16 @@
 //
 // Commands:
 //
-//   - apply   — Provision resources from a CUE template
-//   - plan    — Preview what would change without provisioning
-//   - get     — Show deployment or resource details
-//   - delete  — Tear down a deployment
-//   - list    — List active deployments
-//   - import  — Adopt an existing cloud resource
-//   - observe — Watch deployment progress in real time
-//   - state   — Manage deployment state (mv)
-//   - fmt     — Format CUE template files
+//   - apply      — Provision resources from a CUE template
+//   - plan       — Preview what would change without provisioning
+//   - get        — Show deployment or resource details
+//   - delete     — Tear down a deployment
+//   - list       — List active deployments
+//   - import     — Adopt an existing cloud resource
+//   - observe    — Watch deployment progress in real time
+//   - state      — Manage deployment state (mv)
+//   - concierge  — AI-powered infrastructure assistant
+//   - fmt        — Format CUE template files
 //
 // The CLI supports two output formats:
 //
@@ -27,8 +28,13 @@
 package cli
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -84,9 +90,96 @@ func NewRootCmd() *cobra.Command {
 Restate for durable execution instead of Kubernetes.
 
 Define your cloud resources in CUE templates, and Praxis handles provisioning,
-drift detection, dependency ordering, and lifecycle management.`,
+drift detection, dependency ordering, and lifecycle management.
+
+When the concierge is running, you can also talk to Praxis directly:
+
+  praxis "why did my deploy fail?"
+  praxis "convert this terraform to praxis" --file main.tf
+  praxis "deploy the orders API to staging"`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+	}
+
+	// Concierge-specific flags — registered on root so they apply when the
+	// root RunE handles an unmatched prompt.
+	var (
+		conciergeSession     string
+		conciergeFile        string
+		conciergeWorkspace   string
+		conciergeAccount     string
+		conciergeAutoApprove bool
+		conciergeJSON        bool
+	)
+
+	root.Flags().StringVar(&conciergeSession, "session", "", "Session ID for conversation continuity (concierge mode)")
+	root.Flags().StringVarP(&conciergeFile, "file", "f", "", "Attach file(s), directory, or glob to the prompt (concierge mode)")
+	root.Flags().StringVar(&conciergeAccount, "account", "", "Override account (concierge mode)")
+	root.Flags().StringVar(&conciergeWorkspace, "workspace", "", "Override workspace (concierge mode)")
+	root.Flags().BoolVar(&conciergeAutoApprove, "auto-approve", false, "Skip approval prompts (concierge mode)")
+	root.Flags().BoolVar(&conciergeJSON, "json", false, "Output AskResponse as JSON (concierge mode)")
+
+	root.RunE = func(cmd *cobra.Command, args []string) error {
+		// No arguments → show help.
+		if len(args) == 0 {
+			return cmd.Help()
+		}
+
+		// Arguments present but no subcommand matched → treat as concierge prompt.
+		prompt := strings.Join(args, " ")
+
+		// Attach file content if --file provided.
+		if conciergeFile != "" {
+			files, err := resolveFilePaths(conciergeFile)
+			if err != nil {
+				return fmt.Errorf("resolve %q: %w", conciergeFile, err)
+			}
+			for _, f := range files {
+				content, err := os.ReadFile(f)
+				if err != nil {
+					return fmt.Errorf("read file %q: %w", f, err)
+				}
+				prompt += fmt.Sprintf("\n\n--- %s ---\n```\n%s\n```", f, string(content))
+			}
+		}
+
+		if conciergeSession == "" {
+			conciergeSession = generateSessionID()
+			fmt.Fprintf(os.Stderr, "Session: %s\n", conciergeSession)
+		}
+
+		acct := conciergeAccount
+		if acct == "" {
+			acct = flags.account
+		}
+
+		client := flags.newClient()
+		ctx := context.Background()
+
+		req := conciergeAskRequest{
+			Prompt:    prompt,
+			Account:   acct,
+			Workspace: conciergeWorkspace,
+			Source:    "cli",
+		}
+
+		resp, err := client.ConciergeAsk(ctx, conciergeSession, req)
+		if err != nil {
+			if isConciergeUnavailable(err) {
+				fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
+				return nil
+			}
+			return err
+		}
+
+		if conciergeJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(resp)
+		}
+		fmt.Println(resp.Response)
+		return nil
 	}
 
 	// Global flags available to every subcommand.
@@ -120,6 +213,7 @@ drift detection, dependency ordering, and lifecycle management.`,
 		newStateCmd(flags),
 		newTemplateCmd(flags),
 		newWorkspaceCmd(flags),
+		newConciergeCmd(flags),
 		newFmtCmd(),
 		newVersionCmd(),
 	)
@@ -164,6 +258,58 @@ func isTerminal(file *os.File) bool {
 		return false
 	}
 	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+// resolveFilePaths expands a path into a list of individual file paths.
+// It supports a single file, a directory (walked recursively), or a glob pattern.
+func resolveFilePaths(path string) ([]string, error) {
+	// Try glob first — if the pattern contains no glob metacharacters,
+	// filepath.Glob simply returns the literal match (same as Stat).
+	if strings.ContainsAny(path, "*?[") {
+		matches, err := filepath.Glob(path)
+		if err != nil {
+			return nil, err
+		}
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("no files matched %q", path)
+		}
+		return matches, nil
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return []string{path}, nil
+	}
+
+	// Walk directory, collecting regular files.
+	var files []string
+	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no files found in %q", path)
+	}
+	return files, nil
+}
+
+// generateSessionID returns a random 16-byte hex string for use as a
+// concierge session identifier.
+func generateSessionID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,39 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `state mv`           | Operators| Rename or move a resource between deployments    |
 | `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
+| `<prompt>` (root)    | Users    | Natural language shorthand — forwards to concierge |
+| `concierge ask`      | Users    | Send a prompt to the AI assistant (explicit)     |
+| `concierge configure`| Operators| Configure the LLM provider                       |
+| `concierge status`   | Both     | Show session status and pending approvals        |
+| `concierge history`  | Both     | Show conversation history                        |
+| `concierge reset`    | Both     | Clear a concierge session                        |
+| `concierge approve`  | Both     | Approve or reject a pending action               |
+
+## Natural Language Shorthand
+
+When the concierge is running, you can talk to Praxis directly on the root
+command — any unrecognised arguments are forwarded as a natural language prompt:
+
+```bash
+praxis "why did my deploy fail?"
+praxis "convert this terraform to praxis" --file main.tf
+praxis "deploy the orders API to staging"
+```
+
+This is equivalent to `praxis concierge ask <prompt>`. The following flags
+apply only when the root command forwards to the concierge:
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--session` | | auto-generated | Session ID for conversation continuity |
+| `--file` | `-f` | | Attach file, directory, or glob to the prompt |
+| `--account` | | env | Override AWS account |
+| `--workspace` | | | Override workspace |
+| `--auto-approve` | | `false` | Skip approval prompts |
+| `--json` | | `false` | Output raw AskResponse JSON |
+
+When the concierge container is not running, unrecognised arguments print a
+helpful setup message instead of an error.
 
 ## Global Flags
 
@@ -701,6 +734,139 @@ Delete a workspace and deregister it from the index.
 
 ```bash
 praxis workspace delete <name>
+```
+
+---
+
+## concierge
+
+AI-powered infrastructure assistant. The concierge is an optional service — these commands fail gracefully with setup instructions when the service is not running.
+
+### concierge ask
+
+Send a natural language prompt to the concierge.
+
+```bash
+praxis concierge ask <prompt> [flags]
+```
+
+**Flags:**
+
+| Flag          | Default     | Description                    |
+|---------------|-------------|--------------------------------|
+| `--session`   | `"default"` | Session ID                     |
+| `--account`   | env         | AWS account name               |
+| `-w, --workspace` | —       | Workspace name                 |
+
+**Examples:**
+
+```bash
+# Ask about infrastructure
+praxis concierge ask "What S3 buckets are deployed?"
+
+# Plan a change
+praxis concierge ask "Plan adding a security group for port 443"
+
+# Use a named session
+praxis concierge ask --session migration "Analyze my Terraform state"
+
+# JSON output
+praxis concierge ask "List deployments" -o json
+```
+
+### concierge configure
+
+Configure the LLM provider for the concierge.
+
+```bash
+praxis concierge configure [flags]
+```
+
+**Flags:**
+
+| Flag          | Default | Description                              |
+|---------------|---------|------------------------------------------|
+| `--provider`  | —       | LLM provider: `openai` or `claude` (required) |
+| `--model`     | —       | Model name (e.g. `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `--api-key`   | —       | API key for the provider                 |
+| `--base-url`  | —       | Custom API base URL                      |
+
+**Examples:**
+
+```bash
+# Configure OpenAI
+praxis concierge configure --provider openai --api-key sk-... --model gpt-4o
+
+# Configure Claude
+praxis concierge configure --provider claude --api-key sk-ant-... --model claude-sonnet-4-20250514
+```
+
+### concierge status
+
+Show the current status of a concierge session.
+
+```bash
+praxis concierge status [flags]
+```
+
+**Flags:**
+
+| Flag        | Default     | Description    |
+|-------------|-------------|----------------|
+| `--session` | `"default"` | Session ID     |
+
+### concierge history
+
+Display the conversation history for a session.
+
+```bash
+praxis concierge history [flags]
+```
+
+**Flags:**
+
+| Flag        | Default     | Description    |
+|-------------|-------------|----------------|
+| `--session` | `"default"` | Session ID     |
+
+### concierge reset
+
+Clear the conversation history and state for a session.
+
+```bash
+praxis concierge reset [flags]
+```
+
+**Flags:**
+
+| Flag        | Default     | Description    |
+|-------------|-------------|----------------|
+| `--session` | `"default"` | Session ID     |
+
+### concierge approve
+
+Approve or reject a pending destructive action.
+
+```bash
+praxis concierge approve [flags]
+```
+
+**Flags:**
+
+| Flag              | Default | Description                             |
+|-------------------|---------|-----------------------------------------|
+| `--awakeable-id`  | —       | Awakeable ID from the pending approval (required) |
+| `--reject`        | false   | Reject the action instead of approving  |
+| `--reason`        | —       | Reason for approval or rejection        |
+
+**Examples:**
+
+```bash
+# Approve a pending action
+praxis concierge approve --awakeable-id <id>
+
+# Reject with a reason
+praxis concierge approve --awakeable-id <id> --reject --reason "Not ready for production"
 ```
 
 ---

@@ -460,3 +460,152 @@ func (c *Client) StateMv(ctx context.Context, req types.StateMvRequest) (*types.
 		NewName:          newName,
 	}, nil
 }
+
+// --------------------------------------------------------------------------
+// Concierge calls
+// --------------------------------------------------------------------------
+
+const (
+	conciergeSessionServiceName = "ConciergeSession"
+	conciergeConfigServiceName  = "ConciergeConfig"
+	approvalRelayServiceName    = "ApprovalRelay"
+	conciergeConfigKey          = "global"
+)
+
+// ConciergeAsk sends a prompt to the concierge session.
+func (c *Client) ConciergeAsk(ctx context.Context, sessionID string, req conciergeAskRequest) (*conciergeAskResponse, error) {
+	resp, err := ingress.Object[conciergeAskRequest, conciergeAskResponse](
+		c.rc, conciergeSessionServiceName, sessionID, "Ask",
+	).Request(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ConciergeGetStatus returns the status of a concierge session.
+func (c *Client) ConciergeGetStatus(ctx context.Context, sessionID string) (*conciergeSessionStatus, error) {
+	resp, err := ingress.Object[restate.Void, conciergeSessionStatus](
+		c.rc, conciergeSessionServiceName, sessionID, "GetStatus",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ConciergeGetHistory returns the conversation history for a session.
+func (c *Client) ConciergeGetHistory(ctx context.Context, sessionID string) ([]conciergeMessage, error) {
+	resp, err := ingress.Object[restate.Void, []conciergeMessage](
+		c.rc, conciergeSessionServiceName, sessionID, "GetHistory",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ConciergeConfigure sets the concierge LLM provider configuration.
+func (c *Client) ConciergeConfigure(ctx context.Context, req conciergeConfigureRequest) error {
+	_, err := ingress.Object[conciergeConfigureRequest, restate.Void](
+		c.rc, conciergeConfigServiceName, conciergeConfigKey, "Configure",
+	).Request(ctx, req)
+	return err
+}
+
+// ConciergeGetConfig returns the current concierge configuration (redacted).
+func (c *Client) ConciergeGetConfig(ctx context.Context) (*conciergeConfiguration, error) {
+	resp, err := ingress.Object[restate.Void, conciergeConfiguration](
+		c.rc, conciergeConfigServiceName, conciergeConfigKey, "Get",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ConciergeApprove resolves a pending approval for a concierge action.
+func (c *Client) ConciergeApprove(ctx context.Context, req conciergeApprovalRequest) error {
+	_, err := ingress.Service[conciergeApprovalRequest, restate.Void](
+		c.rc, approvalRelayServiceName, "Resolve",
+	).Request(ctx, req)
+	return err
+}
+
+// ConciergeReset clears the conversation history and state for a session.
+func (c *Client) ConciergeReset(ctx context.Context, sessionID string) error {
+	_, err := ingress.Object[restate.Void, restate.Void](
+		c.rc, conciergeSessionServiceName, sessionID, "Reset",
+	).Request(ctx, restate.Void{})
+	return err
+}
+
+// Concierge request/response types — kept in the CLI package to avoid
+// importing internal/concierge into the CLI binary. Fields match the
+// JSON contract of the concierge Restate handlers.
+
+type conciergeAskRequest struct {
+	Prompt    string `json:"prompt"`
+	Account   string `json:"account,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	Source    string `json:"source,omitempty"`
+}
+
+type conciergeAskResponse struct {
+	Response  string `json:"response"`
+	SessionID string `json:"sessionId"`
+	TurnCount int    `json:"turnCount"`
+}
+
+type conciergeSessionStatus struct {
+	Provider        string             `json:"provider"`
+	Model           string             `json:"model"`
+	TurnCount       int                `json:"turnCount"`
+	LastActiveAt    string             `json:"lastActiveAt"`
+	ExpiresAt       string             `json:"expiresAt"`
+	PendingApproval *conciergeApproval `json:"pendingApproval,omitempty"`
+}
+
+type conciergeApproval struct {
+	AwakeableID string `json:"awakeableId"`
+	Action      string `json:"action"`
+	Description string `json:"description"`
+	RequestedAt string `json:"requestedAt"`
+}
+
+type conciergeMessage struct {
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+type conciergeConfigureRequest struct {
+	Provider    string  `json:"provider"`
+	Model       string  `json:"model"`
+	APIKey      string  `json:"apiKey,omitempty"`
+	APIKeyRef   string  `json:"apiKeyRef,omitempty"`
+	BaseURL     string  `json:"baseURL,omitempty"`
+	MaxTurns    int     `json:"maxTurns,omitempty"`
+	MaxMessages int     `json:"maxMessages,omitempty"`
+	Temperature float64 `json:"temperature,omitempty"`
+	SessionTTL  string  `json:"sessionTTL,omitempty"`
+	ApprovalTTL string  `json:"approvalTTL,omitempty"`
+}
+
+type conciergeConfiguration struct {
+	Provider    string  `json:"provider"`
+	Model       string  `json:"model"`
+	APIKey      string  `json:"apiKey,omitempty"`
+	MaxTurns    int     `json:"maxTurns"`
+	MaxMessages int     `json:"maxMessages"`
+	Temperature float64 `json:"temperature"`
+	SessionTTL  string  `json:"sessionTTL"`
+	ApprovalTTL string  `json:"approvalTTL"`
+}
+
+type conciergeApprovalRequest struct {
+	AwakeableID string `json:"awakeableId"`
+	Approved    bool   `json:"approved"`
+	Reason      string `json:"reason,omitempty"`
+	Actor       string `json:"actor,omitempty"`
+}

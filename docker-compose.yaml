@@ -236,6 +236,25 @@ services:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
       - PRAXIS_SCHEMA_DIR=/schemas
 
+  praxis-concierge:
+    build:
+      context: .
+      dockerfile: cmd/praxis-concierge/Dockerfile
+    container_name: praxis-concierge
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+    ports:
+      - "9088:9080"
+    environment:
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+      # LLM provider configuration — set in .env or override here.
+      # - CONCIERGE_LLM_PROVIDER=openai
+      # - CONCIERGE_LLM_MODEL=gpt-4o
+      # - CONCIERGE_API_KEY=sk-...
+
 volumes:
   # Keep infra data in named volumes so operators can opt into clean slates via
   # `just down` while normal restarts remain fast.

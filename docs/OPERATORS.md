@@ -11,9 +11,12 @@ graph TD
     CLI["CLI / API"] --> RS["Restate Server<br/>state, journals, timers"]
 
     RS --> Core["Praxis Core<br/>commands, templates,<br/>orchestrator"]
+    RS --> Concierge["Praxis Concierge<br/>AI assistant (optional)"]
     RS --> SP["Storage Pack<br/>(S3, EBS, ...)"]
     RS --> NP["Network Pack<br/>(SG, VPC, ...)"]
     RS --> CP["Compute Pack<br/>(AMI, EC2, ...)"]
+
+    Concierge --> RS
 
     SP --> AWS["AWS APIs"]
     NP --> AWS
@@ -21,6 +24,7 @@ graph TD
 
     style RS fill:#FF9800,color:#fff
     style Core fill:#2196F3,color:#fff
+    style Concierge fill:#9C27B0,color:#fff
     style SP fill:#4CAF50,color:#fff
     style NP fill:#4CAF50,color:#fff
     style CP fill:#4CAF50,color:#fff
@@ -31,6 +35,7 @@ graph TD
 | **Restate Server** | Durable execution engine — state, journals, timers   | Single instance (or HA cluster)            |
 | **Praxis Core**    | Command service, template engine, orchestrator       | Stateless; scale horizontally              |
 | **Driver Packs**   | Domain-grouped drivers (storage, network, compute)   | Stateless; scale horizontally per domain   |
+| **Concierge**      | AI assistant — LLM-powered natural language interface | Stateless; optional, scale horizontally    |
 
 Every component is shipped as a Docker image. The reference topology is captured in [docker-compose.yaml](../docker-compose.yaml).
 
@@ -70,6 +75,7 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 | Storage Pack      | 9080          | 9081      | Restate endpoint     |
 | Network Pack      | 9080          | 9082      | Restate endpoint     |
 | Compute Pack      | 9080          | 9084      | Restate endpoint     |
+| Concierge         | 9080          | 9088      | Restate endpoint     |
 | LocalStack        | 4566          | 4566      | Mock AWS (local dev) |
 
 ### Kubernetes Example
@@ -92,7 +98,7 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # Register each service with Restate
-for svc in praxis-core praxis-storage praxis-compute praxis-network praxis-identity; do
+for svc in praxis-core praxis-storage praxis-compute praxis-network praxis-identity praxis-concierge; do
   kubectl -n praxis-system exec deploy/restate -- \
     curl -s -X POST http://localhost:9070/deployments \
       -H 'content-type: application/json' \
@@ -202,6 +208,24 @@ Praxis currently supports exactly one configured account per deployed stack. Use
 - **role** — Assume `PRAXIS_ACCOUNT_ROLE_ARN` using the container's identity. Optionally set `PRAXIS_ACCOUNT_EXTERNAL_ID`.
 - **default** — Use the standard AWS credential chain (instance profile, environment, config file).
 
+### Concierge Settings (Optional)
+
+The Praxis Concierge is an optional AI assistant. When enabled, it requires LLM provider configuration:
+
+| Variable                  | Required | Description                                    |
+|---------------------------|----------|------------------------------------------------|
+| `CONCIERGE_LLM_PROVIDER`  | Yes      | LLM provider: `openai` or `claude`            |
+| `CONCIERGE_LLM_MODEL`     | Yes      | Model name (e.g. `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `CONCIERGE_API_KEY`        | Yes      | API key for the LLM provider                  |
+
+Alternatively, configure the provider at runtime:
+
+```bash
+praxis concierge configure --provider openai --api-key sk-... --model gpt-4o
+```
+
+The concierge container (`praxis-concierge`) does not require LocalStack, AWS credentials, or schema mounts. It communicates with Praxis Core through Restate RPC.
+
 ## Restate Administration
 
 ### Register Endpoints
@@ -234,6 +258,11 @@ curl -X POST http://localhost:9070/deployments \
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
   -d '{"uri": "http://praxis-core:9080"}'
+
+# Register Praxis Concierge (optional)
+curl -X POST http://localhost:9070/deployments \
+  -H 'content-type: application/json' \
+  -d '{"uri": "http://praxis-concierge:9080"}'
 ```
 
 ### Verify Registration

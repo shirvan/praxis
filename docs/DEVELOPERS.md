@@ -17,6 +17,7 @@ Praxis development benefits from scoping the imagination sandbox of the LLM Agen
 cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service
+  praxis-concierge/            # Concierge AI assistant service
   praxis-storage/              # Storage driver pack (S3, EBS, DBSubnetGroup, DBParameterGroup, RDSInstance, AuroraCluster)
   praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53Zone, Route53Record, Route53HealthCheck)
   praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping)
@@ -26,8 +27,25 @@ internal/
   cli/                         # CLI command implementations
     root.go                    # Root command, global flags
     apply.go, plan.go, ...     # Subcommand implementations
+    concierge.go               # Concierge AI assistant commands
     client.go                  # Restate ingress client wrapper
     output.go                  # Table/JSON output formatters
+  concierge/                   # Concierge AI assistant (optional service)
+    session.go                 # ConciergeSession Virtual Object (conversation loop)
+    config.go                  # ConciergeConfig Virtual Object (LLM settings)
+    relay.go                   # ApprovalRelay Basic Service (awakeable resolution)
+    types.go                   # Shared types and constants
+    llm.go                     # LLM provider abstraction
+    llm_openai.go              # OpenAI provider
+    llm_claude.go              # Anthropic Claude provider
+    tools.go                   # Tool registry and execution
+    tools_read.go              # Read-only tools (get, list, describe)
+    tools_write.go             # Write tools (apply, delete — require approval)
+    tools_explain.go           # Explain/plan tools
+    tools_migrate.go           # Migration analysis tool
+    prompt.go                  # System prompt construction
+    history.go                 # Conversation history management
+    migrate.go                 # Migration orchestration (Terraform/CloudFormation)
   core/
     command/                   # Restate Basic Service (PraxisCommandService)
       service.go               # Service registration
@@ -202,6 +220,7 @@ just test
 # Scoped unit tests
 just test-core       # Command service + DAG + orchestrator
 just test-cli        # CLI
+just test-concierge  # Concierge AI assistant
 just test-s3         # S3 driver
 just test-sg         # SG driver
 just test-vpc        # VPC driver

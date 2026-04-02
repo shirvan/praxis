@@ -1,6 +1,6 @@
 # Praxis Architecture
 
-> **See also:** [Drivers](DRIVERS.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Operators](OPERATORS.md) | [Developers](DEVELOPERS.md)
+> **See also:** [Drivers](DRIVERS.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Concierge](CONCIERGE.md) | [Operators](OPERATORS.md) | [Developers](DEVELOPERS.md)
 
 ---
 
@@ -27,6 +27,16 @@ graph TD
         TR["Template Registry + Policy Engine<br/>(Virtual Objects)"]
         DS["Deployment State, Index, Events<br/>(Virtual Objects)"]
     end
+
+    User -->|"HTTP/JSON via Restate ingress"| Concierge
+
+    subgraph Concierge["PRAXIS CONCIERGE (optional)"]
+        CS2["ConciergeSession<br/>(Virtual Object — per-session state)"]
+        CC["ConciergeConfig<br/>(Virtual Object — LLM settings)"]
+        AR["ApprovalRelay<br/>(Basic Service — awakeable resolution)"]
+    end
+
+    Concierge -->|"Restate RPC"| Core
 
     Core -->|"Restate RPC - durable, exactly-once"| Drivers
 
@@ -105,9 +115,21 @@ Each driver within a pack:
 
 Grouping by domain provides meaningful selectivity (don't need networking? don't run `praxis-network`) while keeping the system operationally manageable as the driver count grows. Restate doesn't care which container serves a Virtual Object — it routes by service name, not endpoint. Moving a driver between packs is a deployment-time decision, not a code change.
 
+### Concierge (Optional)
+
+The Praxis Concierge is an AI-powered infrastructure assistant that runs as a separate Restate service. It provides natural language interaction with the platform — users can ask questions, request plans, and execute operations with human-in-the-loop approval for destructive actions.
+
+The concierge hosts three Restate services:
+
+- **ConciergeSession** — a Virtual Object keyed by session ID. Each session maintains a durable conversation with an LLM, executes tool calls against Praxis Core, and gates destructive operations behind Restate awakeables for human approval.
+- **ConciergeConfig** — a Virtual Object (keyed `"global"`) that stores LLM provider settings (provider, model, API key). Configuration is set once and shared by all sessions.
+- **ApprovalRelay** — a stateless Basic Service that resolves pending approval awakeables from the CLI or Slack.
+
+The concierge is fully optional. The rest of Praxis operates without it. When enabled, it communicates with Core through the same Restate RPC mechanism that drivers use.
+
 ### CLI
 
-The `praxis` CLI is a standalone Go binary built with Cobra. It talks directly to Restate's ingress HTTP API — there is no dedicated Praxis API server. Write commands (`apply`, `plan`, `delete`, `import`) route to the Command Service. Read commands (`get`, `list`, `observe`) query Virtual Objects directly.
+The `praxis` CLI is a standalone Go binary built with Cobra. It talks directly to Restate's ingress HTTP API — there is no dedicated Praxis API server. Write commands (`apply`, `plan`, `delete`, `import`) route to the Command Service. Read commands (`get`, `list`, `observe`) query Virtual Objects directly. The `concierge` command group provides natural language interaction when the concierge service is available.
 
 ---
 

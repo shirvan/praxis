@@ -15,6 +15,8 @@ Powered by [Restate](https://restate.dev) for durable execution, Praxis models e
 ```mermaid
 graph TD
     CLI["Praxis CLI"] --> Core["Praxis Core<br/>commands, workflows, templates"]
+    CLI --> Concierge["Praxis Concierge<br/>AI assistant (optional)"]
+    Concierge --> Core
     Core --> Restate["Restate<br/>durable execution engine"]
     Restate --> Drivers
 
@@ -172,7 +174,7 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 - **Accounts:** One operator-defined account per deployed stack
 - **Deployment:** Docker Compose reference stack (LocalStack for local dev)
 - **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
-- **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`, `workspace`, `state`, `fmt`, `version`
+- **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`, `workspace`, `state`, `concierge`, `fmt`, `version`
 
 See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for ready-to-use templates.
 
@@ -191,6 +193,7 @@ See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for read
 | [Operator Guide](docs/OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
 | [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
+| [Concierge](docs/CONCIERGE.md) | Contributors | AI assistant — LLM integration, tool framework, migration, approval flow |
 
 ---
 

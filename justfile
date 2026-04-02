@@ -67,7 +67,7 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge
     just wait-stack
     just register
 
@@ -102,6 +102,10 @@ logs-monitoring:
 # Follow logs for the notifications event service.
 logs-notifications:
     docker compose logs -f praxis-notifications
+
+# Follow logs for the concierge AI assistant service.
+logs-concierge:
+    docker compose logs -f praxis-concierge
 
 # Follow logs for all driver packs together.
 logs-drivers:
@@ -152,6 +156,11 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-notifications:9080"}' | jq .
     @echo "✓ Praxis notifications services registered"
+    @echo "Registering Praxis Concierge (AI assistant)..."
+    @curl -s -X POST http://localhost:9070/deployments \
+        -H 'content-type: application/json' \
+        -d '{"uri": "http://praxis-concierge:9080"}' | jq .
+    @echo "✓ Praxis concierge services registered"
 
 # ─── Build ──────────────────────────────────────────────────
 
@@ -165,6 +174,7 @@ build:
     go build -o bin/praxis-compute ./cmd/praxis-compute
     go build -o bin/praxis-identity ./cmd/praxis-identity
     go build -o bin/praxis-monitoring ./cmd/praxis-monitoring
+    go build -o bin/praxis-concierge ./cmd/praxis-concierge
 
 # Build CLI binary only
 build-cli:
@@ -223,6 +233,10 @@ test-core:
 # Run CLI unit tests
 test-cli:
     go test ./internal/cli/... -v -count=1 -race
+
+# Run Concierge unit tests
+test-concierge:
+    go test ./internal/concierge/... -v -count=1 -race
 
 # Run S3 driver unit tests only
 test-s3:
