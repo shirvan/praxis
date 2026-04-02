@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 )
 
 // NewS3Client returns an S3 client from the given config.
@@ -80,4 +81,9 @@ func NewCloudWatchClient(cfg aws.Config) *cloudwatch.Client {
 // NewCloudWatchLogsClient returns a CloudWatch Logs client from the given config.
 func NewCloudWatchLogsClient(cfg aws.Config) *cloudwatchlogs.Client {
 	return cloudwatchlogs.NewFromConfig(cfg)
+}
+
+// NewSNSClient returns an SNS client from the given config.
+func NewSNSClient(cfg aws.Config) *sns.Client {
+	return sns.NewFromConfig(cfg)
 }

@@ -161,6 +161,8 @@ func NewRegistry(auth authservice.AuthClient) *Registry {
 		NewTargetGroupAdapterWithAuth(auth),
 		NewListenerAdapterWithAuth(auth),
 		NewListenerRuleAdapterWithAuth(auth),
+		NewSNSTopicAdapterWithAuth(auth),
+		NewSNSSubscriptionAdapterWithAuth(auth),
 	)
 }
 

@@ -32,7 +32,7 @@ services:
       - "4566:4566"
     environment:
       # Only enable the AWS APIs that Praxis requires.
-      - SERVICES=s3,ssm,sts,ec2,ecr,iam,route53,rds,lambda,sqs,elbv2,acm,cloudwatch,logs
+      - SERVICES=s3,ssm,sts,ec2,ecr,iam,route53,rds,lambda,sqs,elbv2,acm,cloudwatch,logs,sns
       - DEFAULT_REGION=us-east-1
       - DEBUG=0
     volumes:

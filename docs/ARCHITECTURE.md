@@ -31,7 +31,7 @@ graph TD
     Core -->|"Restate RPC - durable, exactly-once"| Drivers
 
     subgraph Drivers["DRIVER PACKS (grouped by AWS domain)"]
-        Storage["Storage<br/>(S3, EBS, RDS, Aurora)"]
+        Storage["Storage<br/>(S3, EBS, RDS, Aurora, SNS)"]
         Network["Network<br/>(SG, VPC, EIP, IGW, NACL, RT, Subnet, NAT GW, VPC Peering, Route 53)"]
         ELB["ELB<br/>(ALB, NLB, Target Group, Listener, Listener Rule)"]
         Compute["Compute<br/>(AMI, KeyPair, EC2, Lambda)"]
@@ -90,7 +90,7 @@ srv := server.NewRestate().
 
 | Pack | Container | Drivers | Rationale |
 | --- | --- | --- | --- |
-| **Storage** | `praxis-storage` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster | Data stores and databases |
+| **Storage** | `praxis-storage` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription | Data stores, databases, and messaging |
 | **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule | Networking and load balancing — VPC+SG+DNS+ELB almost always deploy together |
 | **Compute** | `praxis-compute` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping | Compute lifecycle |
 | **Identity** | `praxis-identity` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile | Security-sensitive, low churn |

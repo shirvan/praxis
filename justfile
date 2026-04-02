@@ -336,6 +336,18 @@ test-lambdaperm:
 test-elb:
     go test ./internal/drivers/alb/... ./internal/drivers/nlb/... ./internal/drivers/targetgroup/... ./internal/drivers/listener/... ./internal/drivers/listenerrule/... -v -count=1 -race
 
+# Run SNS driver pack unit tests (Topic, Subscription)
+test-sns:
+    go test ./internal/drivers/snstopic/... ./internal/drivers/snssub/... ./internal/core/provider/... -v -count=1 -race
+
+# Run SNS Topic driver unit tests only
+test-snstopic:
+    go test ./internal/drivers/snstopic/... -v -count=1 -race
+
+# Run SNS Subscription driver unit tests only
+test-snssub:
+    go test ./internal/drivers/snssub/... -v -count=1 -race
+
 # Run CloudWatch monitoring driver tests.
 test-monitoring:
     go test ./internal/drivers/loggroup/... ./internal/drivers/metricalarm/... ./internal/drivers/dashboard/... ./internal/core/provider/... -v -count=1 -race
