@@ -396,7 +396,7 @@ No AWS or Restate required. Tests the most complex logic in isolation:
 | `core/orchestrator` | 5 | **Partial** | Workflow state, hydrator, event builders/index, notification sinks |
 | `core/authservice` | 3 | **Partial** | Client, config, errors; service.go/sts.go lack direct unit tests |
 | `core/workspace` | 1 | **Minimal** | Name validation only; service/index handlers untested |
-| `cli` | 6 | **Partial** | Config, errors, fmt, output, root, state; command wiring untested |
+| `cli` | 11 | **Good** | Config, errors, fmt, output, root, state + command tests for plan, get, delete, list, apply, import, template, workspace, events, notifications, config, state mv, concierge (configure/status/history/reset/approve), slack (configure/get-config/allowed-users/watch) |
 | `concierge` | 10 | **Good** | Config, history, LLM providers, tools registry, types, session, migration mapping/inventory |
 | `slack` | 5 | **Partial** | Config, gateway, messages, thread_state, watch |
 
