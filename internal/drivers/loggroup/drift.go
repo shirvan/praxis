@@ -1,7 +1,17 @@
+// Package loggroup – drift.go
+//
+// This file implements drift detection for AWS CloudWatch Log Group.
+// HasDrift compares the desired spec against the observed state from AWS and
+// returns true when any mutable field has diverged. ComputeFieldDiffs produces
+// a structured list of individual field changes for plan output and logging.
+// Immutable fields (those that require resource replacement) are annotated.
 package loggroup
 
 import "strings"
 
+// HasDrift compares the desired LogGroup spec against the observed
+// state from AWS and returns true if any mutable field has diverged.
+// It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired LogGroupSpec, observed ObservedState) bool {
 	if !retentionMatch(desired.RetentionInDays, observed.RetentionInDays) {
 		return true
@@ -15,6 +25,9 @@ func HasDrift(desired LogGroupSpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs produces a structured list of individual field changes
+// between the desired spec and observed state. Used for plan output, CLI
+// display, and audit logging. Immutable field changes are clearly annotated.
 func ComputeFieldDiffs(desired LogGroupSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	if desired.LogGroupClass != "" && observed.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
@@ -42,6 +55,9 @@ func ComputeFieldDiffs(desired LogGroupSpec, observed ObservedState) []FieldDiff
 	return diffs
 }
 
+// FieldDiffEntry represents a single field-level difference between the desired
+// spec and the observed state. Path uses dot notation (e.g. "spec.name");
+// immutable fields are annotated with "(immutable, requires replacement)".
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any

@@ -9,15 +9,19 @@ import (
 	"net/http"
 )
 
-// OpenAIProvider calls any OpenAI-compatible chat completions API.
+// OpenAIProvider calls any OpenAI-compatible chat completions API. This includes
+// the official OpenAI API, Azure OpenAI, and self-hosted models that expose an
+// OpenAI-compatible endpoint (e.g., vLLM, Ollama). The baseURL can be overridden
+// in ConciergeConfiguration to point at any compatible endpoint.
 type OpenAIProvider struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	baseURL    string       // API base URL (default: https://api.openai.com/v1)
+	apiKey     string       // Bearer token for Authorization header
+	model      string       // Model name (e.g., "gpt-4o", "gpt-4o-mini")
+	httpClient *http.Client // Optional custom HTTP client (for testing)
 }
 
 // openAIRequest is the OpenAI chat completions request body.
+// See: https://platform.openai.com/docs/api-reference/chat/create
 type openAIRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openAIMessage `json:"messages"`
@@ -88,6 +92,9 @@ func (o *OpenAIProvider) client() *http.Client {
 }
 
 // ChatCompletion sends a chat request to an OpenAI-compatible API.
+// Translates the provider-agnostic ChatRequest to OpenAI's wire format,
+// makes the HTTP call, and translates the response back. Tool calls are
+// mapped from OpenAI's function_call format to our ToolCall struct.
 func (o *OpenAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (LLMResponse, error) {
 	oaiReq := openAIRequest{
 		Model:       o.model,
@@ -164,6 +171,8 @@ func (o *OpenAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (L
 	return result, nil
 }
 
+// toOpenAIMessages converts provider-agnostic Messages to OpenAI's message format.
+// Tool calls and tool results are mapped to OpenAI's tool_calls and tool role messages.
 func toOpenAIMessages(msgs []Message) []openAIMessage {
 	out := make([]openAIMessage, 0, len(msgs))
 	for _, m := range msgs {
@@ -188,6 +197,7 @@ func toOpenAIMessages(msgs []Message) []openAIMessage {
 	return out
 }
 
+// toOpenAITools converts provider-agnostic ToolSchemas to OpenAI's function tool format.
 func toOpenAITools(tools []ToolSchema) []openAITool {
 	out := make([]openAITool, 0, len(tools))
 	for _, t := range tools {

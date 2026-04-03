@@ -1,10 +1,5 @@
 # Lambda Driver Pack — Overview
 
-> This document summarizes the Lambda driver family for Praxis: four drivers covering
-> Lambda Functions, Lambda Layers, Lambda Permissions, and Event Source Mappings. It
-> describes their relationships, shared infrastructure, runtime deployment, and
-> implementation order.
-
 ---
 
 ## Table of Contents
@@ -105,15 +100,19 @@ compute drivers is the natural domain alignment.
 
 ```go
 // cmd/praxis-compute/main.go
+auth := authservice.NewAuthClient()
+
 srv := server.NewRestate().
-    Bind(restate.Reflect(ami.NewAMIDriver(cfg.Auth()))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth()))).
+    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
+    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth))).
     // Lambda drivers
-    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(cfg.Auth())))
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth)))
 ```
 
 ---
@@ -137,8 +136,8 @@ Each driver uses its own rate limiter namespace:
 |---|---|---|---|
 | Lambda Function | `lambda-function` | 15 | 10 |
 | Lambda Layer | `lambda-layer` | 15 | 10 |
-| Lambda Permission | `lambda-permission` | 15 | 10 |
-| Event Source Mapping | `event-source-mapping` | 15 | 10 |
+| Lambda Permission | `lambda-permission` | 20 | 10 |
+| Event Source Mapping | `lambda-esm` | 15 | 10 |
 
 Lambda API rate limits are more restrictive than EC2. The default sustained rate of
 15 req/s per namespace reflects the `GetFunction` and `UpdateFunctionCode` API limits
@@ -178,14 +177,12 @@ safety net for conflict detection across Praxis installations:
 
 ## 5. Implementation Order
 
-The drivers should be implemented in this order, respecting dependencies and allowing
-incremental testing:
+The drivers were implemented in this order, respecting dependencies:
 
 ### Phase 1: Foundation (no cross-driver dependencies within Lambda)
 
 1. **Lambda Layer** — Standalone versioned artifact. No dependencies on other Lambda
-   resources. Simple publish/delete lifecycle. Good for establishing Lambda SDK
-   patterns (error classification, API wrappers).
+   resources. Simple publish/delete lifecycle.
 
 ### Phase 2: Core Function
 

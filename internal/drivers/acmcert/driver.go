@@ -1,3 +1,15 @@
+// Package acmcert – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS ACM Certificate.
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package acmcert
 
 import (
@@ -16,17 +28,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ACMCertificateDriver is the Restate Virtual Object handler for AWS ACM Certificate.
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type ACMCertificateDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) CertificateAPI
 }
 
+// NewACMCertificateDriver creates a ACMCertificate driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewACMCertificateDriver(auth authservice.AuthClient) *ACMCertificateDriver {
 	return NewACMCertificateDriverWithFactory(auth, func(cfg aws.Config) CertificateAPI {
 		return NewCertificateAPI(awsclient.NewACMClient(cfg))
 	})
 }
 
+// NewACMCertificateDriverWithFactory creates a ACMCertificate driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewACMCertificateDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) CertificateAPI) *ACMCertificateDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) CertificateAPI { return NewCertificateAPI(awsclient.NewACMClient(cfg)) }
@@ -34,10 +53,15 @@ func NewACMCertificateDriverWithFactory(auth authservice.AuthClient, factory fun
 	return &ACMCertificateDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *ACMCertificateDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or updates a AWS ACM Certificate. It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *ACMCertificateDriver) Provision(ctx restate.ObjectContext, spec ACMCertificateSpec) (ACMCertificateOutputs, error) {
 	ctx.Log().Info("provisioning ACM certificate", "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -158,6 +182,10 @@ func (d *ACMCertificateDriver) Provision(ctx restate.ObjectContext, spec ACMCert
 	return outputs, nil
 }
 
+// Import adopts an existing AWS ACM Certificate into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *ACMCertificateDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ACMCertificateOutputs, error) {
 	ctx.Log().Info("importing ACM certificate", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -199,6 +227,9 @@ func (d *ACMCertificateDriver) Import(ctx restate.ObjectContext, ref types.Impor
 	return outputs, nil
 }
 
+// Delete removes the AWS ACM Certificate from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *ACMCertificateDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting ACM certificate", "key", restate.Key(ctx))
 	state, err := restate.Get[ACMCertificateState](ctx, drivers.StateKey)
@@ -249,6 +280,11 @@ func (d *ACMCertificateDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *ACMCertificateDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[ACMCertificateState](ctx, drivers.StateKey)
 	if err != nil {
@@ -330,6 +366,7 @@ func (d *ACMCertificateDriver) Reconcile(ctx restate.ObjectContext) (types.Recon
 	return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *ACMCertificateDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[ACMCertificateState](ctx, drivers.StateKey)
 	if err != nil {
@@ -338,6 +375,7 @@ func (d *ACMCertificateDriver) GetStatus(ctx restate.ObjectSharedContext) (types
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *ACMCertificateDriver) GetOutputs(ctx restate.ObjectSharedContext) (ACMCertificateOutputs, error) {
 	state, err := restate.Get[ACMCertificateState](ctx, drivers.StateKey)
 	if err != nil {

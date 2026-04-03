@@ -1,3 +1,9 @@
+// Package ecrrepo – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS ECR Repository.
+// It defines the ECRRepositoryAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon Elastic Container Registry (ECR) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package ecrrepo
 
 import (
@@ -15,6 +21,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// RepositoryAPI abstracts all Amazon Elastic Container Registry (ECR) SDK operations needed
+// to manage a AWS ECR Repository. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type RepositoryAPI interface {
 	CreateRepository(ctx context.Context, spec ECRRepositorySpec) (ObservedState, error)
 	DescribeRepository(ctx context.Context, name string) (ObservedState, error)
@@ -31,10 +40,13 @@ type realRepositoryAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewRepositoryAPI constructs a production ECRRepositoryAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewRepositoryAPI(client *ecrsdk.Client) RepositoryAPI {
 	return &realRepositoryAPI{client: client, limiter: ratelimit.New("ecr-repository", 15, 5)}
 }
 
+// CreateRepository calls Amazon Elastic Container Registry (ECR) to create a new AWS ECR Repository from the given spec.
 func (r *realRepositoryAPI) CreateRepository(ctx context.Context, spec ECRRepositorySpec) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -60,6 +72,7 @@ func (r *realRepositoryAPI) CreateRepository(ctx context.Context, spec ECRReposi
 	return r.DescribeRepository(ctx, spec.RepositoryName)
 }
 
+// DescribeRepository reads the current state of the AWS ECR Repository from Amazon Elastic Container Registry (ECR).
 func (r *realRepositoryAPI) DescribeRepository(ctx context.Context, name string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -90,6 +103,7 @@ func (r *realRepositoryAPI) DescribeRepository(ctx context.Context, name string)
 	return observed, nil
 }
 
+// DeleteRepository removes the AWS ECR Repository from AWS via Amazon Elastic Container Registry (ECR).
 func (r *realRepositoryAPI) DeleteRepository(ctx context.Context, name string, force bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -98,6 +112,7 @@ func (r *realRepositoryAPI) DeleteRepository(ctx context.Context, name string, f
 	return err
 }
 
+// UpdateImageTagMutability updates mutable properties of the AWS ECR Repository via Amazon Elastic Container Registry (ECR).
 func (r *realRepositoryAPI) UpdateImageTagMutability(ctx context.Context, name, value string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -106,6 +121,7 @@ func (r *realRepositoryAPI) UpdateImageTagMutability(ctx context.Context, name, 
 	return err
 }
 
+// UpdateScanningConfiguration updates mutable properties of the AWS ECR Repository via Amazon Elastic Container Registry (ECR).
 func (r *realRepositoryAPI) UpdateScanningConfiguration(ctx context.Context, name string, cfg *ImageScanningConfiguration) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -129,6 +145,7 @@ func (r *realRepositoryAPI) PutRepositoryPolicy(ctx context.Context, name, polic
 	return err
 }
 
+// DeleteRepositoryPolicy removes the AWS ECR Repository from AWS via Amazon Elastic Container Registry (ECR).
 func (r *realRepositoryAPI) DeleteRepositoryPolicy(ctx context.Context, name string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -137,6 +154,7 @@ func (r *realRepositoryAPI) DeleteRepositoryPolicy(ctx context.Context, name str
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS ECR Repository via Amazon Elastic Container Registry (ECR).
 func (r *realRepositoryAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -270,6 +288,7 @@ func regionFromRepositoryARN(arn string) string {
 	return ""
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS ECR Repository does not exist.
 func IsNotFound(err error) bool {
 	if awserr.HasCode(err, "RepositoryNotFoundException") {
 		return true

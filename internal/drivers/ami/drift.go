@@ -1,3 +1,11 @@
+// drift.go contains drift detection logic for Amazon Machine Images.
+//
+// Drift is only evaluated when the AMI is in "available" state.
+// Mutable fields checked: description, tags (excluding praxis: prefix),
+// launch permissions (account list + public flag), and deprecation schedule.
+// Immutable fields (name, architecture, virtualizationType, rootDeviceName)
+// are reported as informational diffs but never corrected.
+
 package ami
 
 import (
@@ -6,6 +14,7 @@ import (
 	"time"
 )
 
+// HasDrift returns true when any mutable AMI attribute differs between desired and observed.
 func HasDrift(desired AMISpec, observed ObservedState) bool {
 	if observed.State != "available" {
 		return false
@@ -26,6 +35,8 @@ func HasDrift(desired AMISpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs returns field-level differences for plan output and observability.
+// Includes both actionable mutable diffs and informational immutable diffs.
 func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -100,12 +111,14 @@ func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry
 	return diffs
 }
 
+// FieldDiffEntry represents a single field-level difference between desired and observed.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// tagsMatch compares user tags (excluding praxis:-prefixed internal tags).
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -120,6 +133,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags returns a copy of the tag map with all praxis:-prefixed keys removed.
 func filterPraxisTags(tags map[string]string) map[string]string {
 	if len(tags) == 0 {
 		return map[string]string{}
@@ -133,10 +147,12 @@ func filterPraxisTags(tags map[string]string) map[string]string {
 	return out
 }
 
+// hasLaunchPermDrift returns true if launch permissions differ between desired and observed.
 func hasLaunchPermDrift(desired *LaunchPermsSpec, observed ObservedState) bool {
 	return !launchPermsMatch(desired, observed)
 }
 
+// launchPermsMatch compares normalized launch permission specs.
 func launchPermsMatch(desired *LaunchPermsSpec, observed ObservedState) bool {
 	normalizedDesired := normalizeLaunchPermSpec(desired)
 	normalizedObserved := normalizeLaunchPermSpec(launchPermsFromObserved(observed))
@@ -154,6 +170,8 @@ func launchPermsMatch(desired *LaunchPermsSpec, observed ObservedState) bool {
 	return true
 }
 
+// normalizeLaunchPermSpec normalizes a LaunchPermsSpec for deterministic comparison:
+// sorts account IDs and deduplicates them. Treats nil as empty.
 func normalizeLaunchPermSpec(spec *LaunchPermsSpec) LaunchPermsSpec {
 	if spec == nil {
 		return LaunchPermsSpec{}
@@ -164,6 +182,7 @@ func normalizeLaunchPermSpec(spec *LaunchPermsSpec) LaunchPermsSpec {
 	return LaunchPermsSpec{AccountIds: accounts, Public: spec.Public}
 }
 
+// launchPermsFromObserved reconstructs a LaunchPermsSpec from observed state.
 func launchPermsFromObserved(observed ObservedState) *LaunchPermsSpec {
 	if !observed.LaunchPermPublic && len(observed.LaunchPermAccounts) == 0 {
 		return nil
@@ -174,10 +193,13 @@ func launchPermsFromObserved(observed ObservedState) *LaunchPermsSpec {
 	}
 }
 
+// hasDeprecationDrift returns true if the deprecation schedule differs.
+// Both values are normalized to UTC RFC3339 before comparison.
 func hasDeprecationDrift(desired *DeprecationSpec, observed string) bool {
 	return normalizeDeprecation(desired) != normalizeTimestamp(observed)
 }
 
+// normalizeDeprecation extracts and normalizes the deprecateAt value from the spec.
 func normalizeDeprecation(desired *DeprecationSpec) string {
 	if desired == nil {
 		return ""
@@ -185,6 +207,7 @@ func normalizeDeprecation(desired *DeprecationSpec) string {
 	return normalizeTimestamp(desired.DeprecateAt)
 }
 
+// normalizeTimestamp parses an RFC3339 timestamp and re-formats it in UTC for comparison.
 func normalizeTimestamp(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -197,6 +220,7 @@ func normalizeTimestamp(value string) string {
 	return parsed.UTC().Format(time.RFC3339)
 }
 
+// deprecationValue returns the deprecateAt string or nil if no deprecation is set.
 func deprecationValue(spec *DeprecationSpec) any {
 	if spec == nil {
 		return nil
@@ -204,6 +228,7 @@ func deprecationValue(spec *DeprecationSpec) any {
 	return spec.DeprecateAt
 }
 
+// dedupe removes consecutive duplicate strings from a sorted slice in-place.
 func dedupe(values []string) []string {
 	if len(values) == 0 {
 		return nil

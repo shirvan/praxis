@@ -1,7 +1,5 @@
 # Events & Notifications
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Auth](AUTH.md) | [CLI](CLI.md) | [Errors](ERRORS.md) | [Developers](DEVELOPERS.md)
-
 ---
 
 ## Overview
@@ -14,7 +12,7 @@ The system serves multiple consumers:
 - **Audit trail** — cross-deployment queries via `praxis events query`
 - **Rollback** — event-stream-based rollback plans via `DeploymentEventStore.RollbackPlan`
 - **External integrations** — webhook, structured log, and CloudEvents HTTP sinks for Slack, PagerDuty, Datadog, S3 archival, etc.
-- **Concierge** — diagnostic queries against the event index (future consumer)
+- **Concierge** — diagnostic queries against the event index
 
 CloudEvents is a graduated CNCF specification with broad industry adoption (AWS EventBridge, Azure Event Grid, Google Eventarc, Knative). Every event Praxis produces can be consumed by any CloudEvents-compatible system without Praxis-specific adapters. The Go SDK ([`cloudevents/sdk-go`](https://github.com/cloudevents/sdk-go)) provides serialization, validation, and HTTP protocol bindings.
 
@@ -185,7 +183,7 @@ These events track the deployment and resource state machines. Emitted by `Deplo
 
 ### Drift Events (category: `drift`)
 
-Emitted by the reconciliation loop in all 35 drivers when actual state diverges from desired state. The `ResourceEventBridge` resolves the resource's owning deployment and workspace before constructing the CloudEvent.
+Emitted by the reconciliation loop in all 45 drivers when actual state diverges from desired state. The `ResourceEventBridge` resolves the resource's owning deployment and workspace before constructing the CloudEvent.
 
 | Type | Severity | Subject | Description |
 |------|----------|---------|-------------|
@@ -714,7 +712,7 @@ CUE has built-in JSON Schema export. A build step generates JSON Schema files fr
 just generate-event-schemas
 ```
 
-The generated files are committed under `schemas/events/gen/` and published alongside the event type catalog. External consumers reference them to validate incoming CloudEvents payloads without needing CUE tooling. The generated schemas cover all 29 event types: lifecycle (12), drift (3), command (4), policy (2), system (8).
+The generated files are committed under `schemas/events/gen/` and published alongside the event type catalog. External consumers reference them to validate incoming CloudEvents payloads without needing CUE tooling. The generated schemas cover all 32 event types: lifecycle (16), drift (3), command (4), policy (2), system (7).
 
 ---
 

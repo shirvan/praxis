@@ -8,13 +8,25 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// TemplateIndex stores lightweight template summaries behind a fixed key.
+// TemplateIndex is a Restate Virtual Object that maintains a global
+// name → TemplateSummary index behind a single fixed key ("global").
+//
+// This design avoids a full scan of all TemplateRegistry objects when the
+// CLI needs to list available templates. The TemplateRegistry sends
+// one-way messages (ObjectSend) to this index on every register/delete,
+// so the index is eventually consistent with the individual records.
+//
+// Because there is only one key ("global"), all mutations are serialized
+// by Restate, preventing lost updates from concurrent template registrations.
 type TemplateIndex struct{}
 
+// ServiceName returns the Restate service name for this Virtual Object.
 func (TemplateIndex) ServiceName() string {
 	return TemplateIndexServiceName
 }
 
+// Upsert adds or updates a template summary in the index. Called via one-way
+// message from TemplateRegistry.Register.
 func (TemplateIndex) Upsert(ctx restate.ObjectContext, summary types.TemplateSummary) error {
 	entries, err := restate.Get[map[string]types.TemplateSummary](ctx, "entries")
 	if err != nil {
@@ -25,6 +37,8 @@ func (TemplateIndex) Upsert(ctx restate.ObjectContext, summary types.TemplateSum
 	return nil
 }
 
+// Remove deletes a template summary from the index. Called via one-way
+// message from TemplateRegistry.Delete.
 func (TemplateIndex) Remove(ctx restate.ObjectContext, name string) error {
 	entries, err := restate.Get[map[string]types.TemplateSummary](ctx, "entries")
 	if err != nil {
@@ -37,6 +51,8 @@ func (TemplateIndex) Remove(ctx restate.ObjectContext, name string) error {
 	return nil
 }
 
+// List returns all template summaries sorted alphabetically by name.
+// This is a shared (read-only) handler, so it does not block writes.
 func (TemplateIndex) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]types.TemplateSummary, error) {
 	entries, err := restate.Get[map[string]types.TemplateSummary](ctx, "entries")
 	if err != nil {
@@ -45,6 +61,8 @@ func (TemplateIndex) List(ctx restate.ObjectSharedContext, _ restate.Void) ([]ty
 	return listTemplateEntries(entries), nil
 }
 
+// upsertTemplateEntries inserts or replaces a summary in the map, lazily
+// initializing the map on first use.
 func upsertTemplateEntries(entries map[string]types.TemplateSummary, summary types.TemplateSummary) map[string]types.TemplateSummary {
 	if entries == nil {
 		entries = make(map[string]types.TemplateSummary)
@@ -53,6 +71,8 @@ func upsertTemplateEntries(entries map[string]types.TemplateSummary, summary typ
 	return entries
 }
 
+// removeTemplateEntry deletes a summary by name. Returns nil if the map was
+// already nil (no state to persist).
 func removeTemplateEntry(entries map[string]types.TemplateSummary, name string) map[string]types.TemplateSummary {
 	if entries == nil {
 		return nil
@@ -61,6 +81,8 @@ func removeTemplateEntry(entries map[string]types.TemplateSummary, name string) 
 	return entries
 }
 
+// listTemplateEntries converts the map into a sorted slice for deterministic
+// API responses.
 func listTemplateEntries(entries map[string]types.TemplateSummary) []types.TemplateSummary {
 	if len(entries) == 0 {
 		return nil

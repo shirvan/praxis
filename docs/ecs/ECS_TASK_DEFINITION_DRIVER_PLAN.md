@@ -1,14 +1,5 @@
 # ECS Task Definition Driver — Implementation Plan
 
-> NYI
-> Target: A Restate Virtual Object driver that manages AWS ECS Task Definitions,
-> following the exact patterns established by the S3, Security Group, EC2, VPC, EBS,
-> Elastic IP, Key Pair, AMI, and Lambda Layer drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~family`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned task definition
-> ARN (including revision number) lives only in state/outputs.
-
 ---
 
 ## Table of Contents
@@ -1217,7 +1208,7 @@ NewECSTaskDefinitionAdapterWithRegistry(accounts),
 **File**: `cmd/praxis-compute/main.go` — add Bind call:
 
 ```go
-Bind(restate.Reflect(ecstaskdef.NewECSTaskDefinitionDriver(cfg.Auth())))
+Bind(restate.Reflect(ecstaskdef.NewECSTaskDefinitionDriver(auth)))
 ```
 
 ---

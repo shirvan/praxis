@@ -1,22 +1,4 @@
-# Route 53 DNS Record Driver — Implementation Plan
-
-> **Status: IMPLEMENTED** — Driver is fully implemented with unit tests,
-> integration tests, CUE schema, provider adapter, and registry integration.
->
-> **Implementation note:** This plan references a `praxis-dns` driver pack.
-> The actual implementation places the DNS Record driver in **`praxis-network`**
-> (`cmd/praxis-network/main.go`).
->
-> Target: A Restate Virtual Object driver that manages Route 53 DNS Record Sets,
-> providing full lifecycle management including creation, import, deletion, drift
-> detection, and drift correction for standard records, alias records, and routing
-> policies (simple, weighted, latency, failover, geolocation, multivalue).
->
-> Key scope: `KeyScopeCustom` — key format is `hostedZoneId~fqdn~type` (with an
-> optional `~setIdentifier` suffix for routing policy records), permanent and
-> immutable for the lifetime of the Virtual Object. A DNS record set is uniquely
-> identified by the combination of hosted zone, fully-qualified domain name, record
-> type, and set identifier.
+# Route 53 DNS Record Driver — Implementation Spec
 
 ---
 
@@ -206,7 +188,7 @@ duplicate record sets with the same identity, providing natural conflict prevent
 ✦ internal/core/provider/route53record_adapter.go         — Route53RecordAdapter implementing provider.Adapter
 ✦ internal/core/provider/route53record_adapter_test.go    — Unit tests for adapter
 ✦ tests/integration/route53_record_driver_test.go         — Integration tests
-✎ cmd/praxis-dns/main.go                                 — Add DNSRecord driver .Bind()
+✔ cmd/praxis-network/main.go                            — DNSRecord driver .Bind()
 ✎ internal/core/provider/registry.go                      — Add adapter to NewRegistry()
 ```
 
@@ -358,51 +340,63 @@ type GeoLocation struct {
     SubdivisionCode string `json:"subdivisionCode,omitempty"`
 }
 
-// DNSRecordSpec is the desired state for a DNS record set.
-type DNSRecordSpec struct {
+// RecordIdentity identifies a record set within a hosted zone.
+type RecordIdentity struct {
+    HostedZoneId  string `json:"hostedZoneId"`
+    Name          string `json:"name"`
+    Type          string `json:"type"`
+    SetIdentifier string `json:"setIdentifier,omitempty"`
+}
+
+// RecordSpec is the desired state for a DNS record set.
+type RecordSpec struct {
     Account          string            `json:"account,omitempty"`
     HostedZoneId     string            `json:"hostedZoneId"`
     Name             string            `json:"name"`
     Type             string            `json:"type"`
-    TTL              *int64            `json:"ttl,omitempty"`
+    TTL              int64             `json:"ttl,omitempty"`
     ResourceRecords  []string          `json:"resourceRecords,omitempty"`
     AliasTarget      *AliasTarget      `json:"aliasTarget,omitempty"`
     SetIdentifier    string            `json:"setIdentifier,omitempty"`
-    Weight           *int64            `json:"weight,omitempty"`
+    Weight           int64             `json:"weight,omitempty"`
     Region           string            `json:"region,omitempty"`
     Failover         string            `json:"failover,omitempty"`
     GeoLocation      *GeoLocation      `json:"geoLocation,omitempty"`
-    MultiValueAnswer *bool             `json:"multiValueAnswer,omitempty"`
+    MultiValueAnswer bool              `json:"multiValueAnswer,omitempty"`
     HealthCheckId    string            `json:"healthCheckId,omitempty"`
+    ManagedKey       string            `json:"managedKey,omitempty"`
 }
 
-// DNSRecordOutputs is produced after provisioning.
-type DNSRecordOutputs struct {
-    FQDN string `json:"fqdn"`
-    Type string `json:"type"`
+// RecordOutputs is produced after provisioning.
+type RecordOutputs struct {
+    HostedZoneId  string `json:"hostedZoneId"`
+    FQDN          string `json:"fqdn"`
+    Type          string `json:"type"`
+    SetIdentifier string `json:"setIdentifier,omitempty"`
 }
 
 // ObservedState captures the actual DNS record set from AWS.
 type ObservedState struct {
+    HostedZoneId     string       `json:"hostedZoneId"`
     Name             string       `json:"name"`
     Type             string       `json:"type"`
-    TTL              *int64       `json:"ttl,omitempty"`
+    TTL              int64        `json:"ttl,omitempty"`
     ResourceRecords  []string     `json:"resourceRecords,omitempty"`
     AliasTarget      *AliasTarget `json:"aliasTarget,omitempty"`
     SetIdentifier    string       `json:"setIdentifier,omitempty"`
-    Weight           *int64       `json:"weight,omitempty"`
+    Weight           int64        `json:"weight,omitempty"`
     Region           string       `json:"region,omitempty"`
     Failover         string       `json:"failover,omitempty"`
     GeoLocation      *GeoLocation `json:"geoLocation,omitempty"`
-    MultiValueAnswer *bool        `json:"multiValueAnswer,omitempty"`
+    MultiValueAnswer bool         `json:"multiValueAnswer,omitempty"`
     HealthCheckId    string       `json:"healthCheckId,omitempty"`
 }
 
-// DNSRecordState is the single atomic state object stored under drivers.StateKey.
-type DNSRecordState struct {
-    Desired            DNSRecordSpec        `json:"desired"`
+// RecordState is the single atomic state object stored under drivers.StateKey.
+type RecordState struct {
+    Desired            RecordSpec           `json:"desired"`
     Observed           ObservedState        `json:"observed"`
-    Outputs            DNSRecordOutputs     `json:"outputs"`
+    Outputs            RecordOutputs        `json:"outputs"`
     Status             types.ResourceStatus `json:"status"`
     Mode               types.Mode           `json:"mode"`
     Error              string               `json:"error,omitempty"`
@@ -430,34 +424,31 @@ type DNSRecordState struct {
 
 **File**: `internal/drivers/route53record/aws.go`
 
-### DNSRecordAPI Interface
+### RecordAPI Interface
 
 ```go
-type DNSRecordAPI interface {
+type RecordAPI interface {
     // UpsertRecord creates or updates a DNS record set via a UPSERT change batch.
-    UpsertRecord(ctx context.Context, hostedZoneId string, spec DNSRecordSpec) error
+    UpsertRecord(ctx context.Context, spec RecordSpec) error
 
     // DescribeRecord returns the observed state of a specific record set.
-    DescribeRecord(ctx context.Context, hostedZoneId, name, recordType, setIdentifier string) (ObservedState, error)
+    DescribeRecord(ctx context.Context, identity RecordIdentity) (ObservedState, error)
 
     // DeleteRecord deletes a DNS record set via a DELETE change batch.
-    DeleteRecord(ctx context.Context, hostedZoneId string, observed ObservedState) error
-
-    // WaitForChange waits for a Route 53 change to propagate.
-    WaitForChange(ctx context.Context, changeId string) error
+    DeleteRecord(ctx context.Context, observed ObservedState) error
 }
 ```
 
-### realDNSRecordAPI Implementation
+### realRecordAPI Implementation
 
 ```go
-type realDNSRecordAPI struct {
+type realRecordAPI struct {
     client  *route53.Client
     limiter *ratelimit.Limiter
 }
 
-func NewDNSRecordAPI(client *route53.Client) DNSRecordAPI {
-    return &realDNSRecordAPI{
+func NewRecordAPI(client *route53.Client) RecordAPI {
+    return &realRecordAPI{
         client:  client,
         limiter: ratelimit.New("route53", 5, 3),
     }
@@ -803,10 +794,10 @@ func IsRecordNotFound(err error) bool {
 
 ### Core Functions
 
-**`HasDrift(desired DNSRecordSpec, observed ObservedState) bool`**
+**`HasDrift(desired RecordSpec, observed ObservedState) bool`**
 
 ```go
-func HasDrift(desired DNSRecordSpec, observed ObservedState) bool {
+func HasDrift(desired RecordSpec, observed ObservedState) bool {
     // Standard record fields
     if desired.AliasTarget == nil && observed.AliasTarget == nil {
         if !ptrInt64Equal(desired.TTL, observed.TTL) {
@@ -853,7 +844,7 @@ func HasDrift(desired DNSRecordSpec, observed ObservedState) bool {
 }
 ```
 
-**`ComputeFieldDiffs(desired DNSRecordSpec, observed ObservedState) []FieldDiffEntry`**
+**`ComputeFieldDiffs(desired RecordSpec, observed ObservedState) []FieldDiffEntry`**
 
 Produces human-readable diffs for:
 
@@ -939,8 +930,8 @@ func ptrBoolEqual(a, b *bool) bool {
 ### Constructor Pattern
 
 ```go
-func NewDNSRecordDriver(accounts *auth.Registry) *DNSRecordDriver
-func NewDNSRecordDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) DNSRecordAPI) *DNSRecordDriver
+func NewDNSRecordDriver(auth authservice.AuthClient) *RecordDriver
+func NewDNSRecordDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RecordAPI) *RecordDriver
 ```
 
 ### Provision Handler
@@ -1014,7 +1005,7 @@ Standard 5-minute timer pattern:
 
 ```go
 type Route53RecordAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
 func (a *Route53RecordAdapter) Kind() string            { return "Route53Record" }
@@ -1058,7 +1049,7 @@ NewRoute53RecordAdapterWithRegistry(accounts),
 
 ---
 
-## Step 9 — DNS Driver Pack Entry Point
+## Step 9 — Network Driver Pack Entry Point
 
 See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §3.
 
@@ -1066,7 +1057,7 @@ See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §3.
 
 ## Step 10 — Docker Compose & Justfile
 
-See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §7 and §8.
+Part of the `praxis-network` service (port 9082). No additional configuration needed.
 
 ---
 
@@ -1251,4 +1242,4 @@ constraint — it relies on AWS's `InvalidChangeBatch` error, which maps to a te
 
 ### Infrastructure
 
-- [x] `cmd/praxis-dns/main.go` — `.Bind()` call
+- [x] `cmd/praxis-network/main.go` — `.Bind()` call

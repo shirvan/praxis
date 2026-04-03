@@ -14,11 +14,24 @@ import (
 )
 
 // Gateway manages the Slack Socket Mode connection and message routing.
+//
+// Architecture: The gateway runs as a standalone process (praxis-slack) that
+// connects to Slack via Socket Mode (WebSocket) and bridges messages to
+// Praxis Core via Restate RPC. It is NOT a Restate service itself — it is an
+// external client that calls into Restate services.
+//
+// The gateway supports two interaction modes:
+//   - Direct messages (DMs): users chat with the bot in a 1:1 DM channel
+//   - Watch threads: automated event threads that users can reply to
+//
+// Config hot-reload: the gateway polls SlackGatewayConfig every 30s and
+// reconnects the Socket Mode client when the config version changes,
+// allowing token rotation without process restart.
 type Gateway struct {
-	client        *socketmode.Client
-	restateClient *ingress.Client
-	threads       *ThreadTracker
-	configVersion int
+	client        *socketmode.Client // Slack Socket Mode WebSocket client
+	restateClient *ingress.Client    // Restate ingress client for RPC calls
+	threads       *ThreadTracker     // in-memory cache of active watch threads
+	configVersion int                // tracks config version for hot-reload
 }
 
 // NewGateway creates a new Slack gateway.
@@ -97,6 +110,11 @@ func (g *Gateway) watchConfigVersion(ctx context.Context, connCancel context.Can
 	}
 }
 
+// handleEvents is the main event loop that processes incoming Socket Mode events.
+// It runs in a goroutine for the lifetime of a single connection and exits when
+// the connection context is cancelled (either by config change or shutdown).
+// Only EventsAPI (messages) and Interactive (button clicks) events are handled;
+// all other event types are silently dropped.
 func (g *Gateway) handleEvents(ctx context.Context) {
 	for evt := range g.client.Events {
 		switch evt.Type {
@@ -137,8 +155,13 @@ func (g *Gateway) handleMessage(ctx context.Context, evt socketmode.Event) {
 		return
 	}
 
+	// Use the Slack message timestamp as an idempotency key to prevent
+	// duplicate processing if the same event is delivered more than once.
 	idempotencyKey := fmt.Sprintf("%s:%s", msg.Channel, msg.TimeStamp)
 
+	// Fire-and-forget the Ask request to the ConciergeSession Virtual Object.
+	// The session key ensures all messages from the same user (DM) or thread
+	// (watch) are routed to the same durable session with conversation history.
 	sendResp, err := ingress.ObjectSend[AskRequest](
 		g.restateClient, "ConciergeSession", sessionKey, "Ask",
 	).Send(context.Background(), AskRequest{
@@ -154,6 +177,9 @@ func (g *Gateway) handleMessage(ctx context.Context, evt socketmode.Event) {
 
 	g.postTypingIndicator(msg.Channel)
 
+	// Poll the session for pending approval prompts while the concierge
+	// processes the request. Uses exponential backoff (200ms → 2s) to
+	// avoid hammering the Restate ingress endpoint.
 	pollCtx, pollCancel := context.WithCancel(ctx)
 	go func() {
 		backoff := 200 * time.Millisecond
@@ -182,6 +208,9 @@ func (g *Gateway) handleMessage(ctx context.Context, evt socketmode.Event) {
 		}
 	}()
 
+	// Attach to the invocation and wait for the final response.
+	// Once the response arrives, cancel the approval-polling goroutine
+	// and post the formatted response back to Slack.
 	go func() {
 		resp, err := ingress.AttachInvocation[AskResponse](
 			g.restateClient, invocationID,

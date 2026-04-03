@@ -2,6 +2,9 @@ package iampolicy
 
 import "strings"
 
+// HasDrift compares the desired IAM policy spec against the observed AWS state.
+// Only mutable fields are compared: the policy document (JSON-normalized) and tags.
+// Immutable fields like path and description are not compared for drift.
 func HasDrift(desired IAMPolicySpec, observed ObservedState) bool {
 	if !policyDocumentsEqual(desired.PolicyDocument, observed.PolicyDocument) {
 		return true
@@ -9,6 +12,8 @@ func HasDrift(desired IAMPolicySpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs produces a detailed list of per-field differences between desired and observed.
+// Immutable fields (path, description) are reported with "(immutable, ignored)" annotations.
 func ComputeFieldDiffs(desired IAMPolicySpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -40,6 +45,7 @@ func ComputeFieldDiffs(desired IAMPolicySpec, observed ObservedState) []FieldDif
 	return diffs
 }
 
+// FieldDiffEntry represents a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any

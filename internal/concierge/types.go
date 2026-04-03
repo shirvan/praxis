@@ -1,14 +1,56 @@
+// Package concierge implements the Praxis Concierge — an AI-powered infrastructure
+// assistant that runs as a set of Restate services. The Concierge lets users manage
+// cloud infrastructure through natural language conversation.
+//
+// Architecture overview:
+//
+//	ConciergeSession (Virtual Object, keyed by session ID)
+//	  The main conversation handler. Each session is a Restate Virtual Object whose
+//	  key is a unique session ID. The Virtual Object pattern gives us:
+//	    - Durable state: conversation history survives crashes and restarts
+//	    - Single-writer: only one Ask() runs per session at a time (no race conditions)
+//	    - Automatic expiry via delayed self-messages
+//
+//	ConciergeConfig (Virtual Object, keyed by "global")
+//	  Stores LLM provider settings (provider, model, API key, temperature, TTLs).
+//	  Singleton pattern — always keyed by "global".
+//
+//	ApprovalRelay (Basic/Stateless Service)
+//	  Resolves Restate awakeables for the human-in-the-loop approval flow.
+//	  External transports (CLI, Slack) call this to approve or reject write operations.
+//
+// Tool calling flow:
+//  1. User sends a prompt via Ask()
+//  2. LLM returns tool calls (or a final text response)
+//  3. Read-only tools execute immediately
+//  4. Write tools (apply, delete, import) create a Restate awakeable and suspend
+//  5. External transport shows the approval prompt to the user
+//  6. User approves/rejects → ApprovalRelay resolves the awakeable
+//  7. Session resumes: executes the tool (if approved) or returns rejection
+//  8. Loop continues until LLM produces a final text response or turn limit is hit
 package concierge
 
 import "time"
 
+// Restate service name constants. These are used when registering services with the
+// Restate runtime and when making cross-service calls via restate.Object() / restate.Service().
 const (
+	// ConciergeSessionServiceName is the Restate Virtual Object name for conversation sessions.
 	ConciergeSessionServiceName = "ConciergeSession"
-	ConciergeConfigServiceName  = "ConciergeConfig"
-	ApprovalRelayServiceName    = "ApprovalRelay"
+	// ConciergeConfigServiceName is the Restate Virtual Object name for LLM configuration.
+	ConciergeConfigServiceName = "ConciergeConfig"
+	// ApprovalRelayServiceName is the Restate Basic Service name for awakeable resolution.
+	ApprovalRelayServiceName = "ApprovalRelay"
 )
 
-// SessionState is the single atomic state object stored per session.
+// SessionState is the single atomic state object stored per session in Restate's
+// durable key-value store. It is persisted under the key "state" in the ConciergeSession
+// Virtual Object. Because Restate serializes all handler calls per key, we never have
+// concurrent access to this struct — no locking needed.
+//
+// The entire conversation history (Messages), LLM settings, and any pending approval
+// are stored atomically. On each Ask() call, the handler loads this state, mutates it
+// through the tool loop, and writes it back via restate.Set().
 type SessionState struct {
 	Messages        []Message     `json:"messages"`
 	Provider        string        `json:"provider"`
@@ -22,32 +64,49 @@ type SessionState struct {
 	PendingApproval *ApprovalInfo `json:"pendingApproval,omitempty"`
 }
 
-// Message represents a single message in the conversation.
+// Message represents a single message in the conversation history. The format is
+// provider-agnostic — the LLM providers (OpenAI, Claude) translate to/from their
+// native wire formats. Messages flow through several roles:
+//   - "system":    The system prompt (always first in the history)
+//   - "user":      A human prompt from the CLI, Slack, or API
+//   - "assistant":  LLM response text, or a message with ToolCalls attached
+//   - "tool":       Result of executing a tool call (identified by ToolCallID)
 type Message struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
-	ToolCallID string     `json:"toolCallId,omitempty"`
-	Name       string     `json:"name,omitempty"`
-	Timestamp  string     `json:"timestamp"`
+	Role       string     `json:"role"`                 // system | user | assistant | tool
+	Content    string     `json:"content"`              // Text content (empty for assistant messages with only tool calls)
+	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`  // Tool invocations requested by the LLM (assistant role only)
+	ToolCallID string     `json:"toolCallId,omitempty"` // Correlates a tool result back to its ToolCall.ID
+	Name       string     `json:"name,omitempty"`       // Tool name (for tool role messages)
+	Timestamp  string     `json:"timestamp"`            // RFC3339 timestamp, captured durably via restate.Run()
 }
 
-// ToolCall represents an LLM-requested tool invocation.
+// ToolCall represents an LLM-requested tool invocation. When the LLM decides it
+// needs to call a tool (e.g., list deployments, apply a template), it returns one
+// or more ToolCalls in its response. Each ToolCall has a unique ID generated by the
+// LLM provider, the tool name matching a registered ToolDef, and JSON-encoded arguments.
 type ToolCall struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Args string `json:"args"`
+	ID   string `json:"id"`   // Provider-generated unique ID for correlating results
+	Name string `json:"name"` // Must match a registered tool name in ToolRegistry
+	Args string `json:"args"` // JSON-encoded arguments matching the tool's parameter schema
 }
 
-// ApprovalInfo tracks a pending human approval.
+// ApprovalInfo tracks a pending human-in-the-loop approval. When a write tool
+// (apply, delete, import) is invoked, the session creates a Restate awakeable and
+// stores this info in SessionState. External transports (CLI, Slack) poll GetStatus()
+// to discover pending approvals, display them to the user, and resolve or reject
+// the awakeable via ApprovalRelay.Resolve().
+//
+// The awakeable ID is the key piece — it's a Restate-generated token that, when
+// resolved, unblocks the suspended Ask() handler so it can proceed with execution.
 type ApprovalInfo struct {
-	AwakeableID string `json:"awakeableId"`
-	Action      string `json:"action"`
-	Description string `json:"description"`
-	RequestedAt string `json:"requestedAt"`
+	AwakeableID string `json:"awakeableId"` // Restate awakeable ID — pass to ApprovalRelay.Resolve()
+	Action      string `json:"action"`      // Tool name (e.g., "applyTemplate", "deleteDeployment")
+	Description string `json:"description"` // Human-readable action description for approval prompts
+	RequestedAt string `json:"requestedAt"` // RFC3339 timestamp when approval was requested
 }
 
-// SessionStatus is returned by GetStatus.
+// SessionStatus is returned by GetStatus, a shared (concurrent-safe) handler.
+// Transports poll this to show session metadata and detect pending approvals.
 type SessionStatus struct {
 	Provider        string        `json:"provider"`
 	Model           string        `json:"model"`
@@ -57,28 +116,35 @@ type SessionStatus struct {
 	PendingApproval *ApprovalInfo `json:"pendingApproval,omitempty"`
 }
 
-// AskRequest is the input to the Ask handler.
+// AskRequest is the input to the Ask handler — the primary entry point for
+// user interaction with the Concierge. The prompt is the user's natural language
+// message. Account and Workspace provide context for tool execution (e.g., which
+// AWS account to target). Source indicates the transport ("cli", "slack", "api").
 type AskRequest struct {
-	Prompt    string `json:"prompt"`
-	Account   string `json:"account,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Source    string `json:"source,omitempty"`
+	Prompt    string `json:"prompt"`              // User's natural language message
+	Account   string `json:"account,omitempty"`   // AWS account alias for scoping operations
+	Workspace string `json:"workspace,omitempty"` // Praxis workspace for scoping deployments
+	Source    string `json:"source,omitempty"`    // Transport origin: "cli", "slack", "api"
 }
 
-// AskResponse is returned by the Ask handler.
+// AskResponse is returned by the Ask handler after the tool loop completes.
+// Response contains the LLM's final natural language answer to the user.
 type AskResponse struct {
-	Response  string `json:"response"`
-	SessionID string `json:"sessionId"`
-	TurnCount int    `json:"turnCount"`
+	Response  string `json:"response"`  // LLM's final text response to the user
+	SessionID string `json:"sessionId"` // Session key (matches the Virtual Object key)
+	TurnCount int    `json:"turnCount"` // Cumulative LLM invocation count across the session
 }
 
-// ApprovalDecision is the input to ApprovalRelay.Resolve.
+// ApprovalDecision is the payload delivered through a Restate awakeable when a
+// human approves or rejects a write operation. This struct is what the suspended
+// Ask() handler receives when the awakeable is resolved.
 type ApprovalDecision struct {
-	Approved bool   `json:"approved"`
-	Reason   string `json:"reason,omitempty"`
+	Approved bool   `json:"approved"`         // true = execute the tool, false = reject
+	Reason   string `json:"reason,omitempty"` // Optional explanation (shown to user on rejection)
 }
 
-// ApprovalRelayRequest is the input to ApprovalRelay.Resolve.
+// ApprovalRelayRequest is the input to ApprovalRelay.Resolve. External transports
+// (CLI, Slack gateway) construct this from the awakeable ID found in GetStatus().
 type ApprovalRelayRequest struct {
 	AwakeableID string `json:"awakeableId"`
 	Approved    bool   `json:"approved"`
@@ -86,7 +152,9 @@ type ApprovalRelayRequest struct {
 	Actor       string `json:"actor,omitempty"`
 }
 
-// ConciergeConfiguration holds the LLM provider settings.
+// ConciergeConfiguration holds the LLM provider settings. Stored durably in the
+// ConciergeConfig Virtual Object under key "config". Controls which LLM provider
+// is used (OpenAI or Claude), token limits, conversation TTLs, and approval timeouts.
 type ConciergeConfiguration struct {
 	Provider    string  `json:"provider"`
 	Model       string  `json:"model"`
@@ -100,7 +168,8 @@ type ConciergeConfiguration struct {
 	ApprovalTTL string  `json:"approvalTTL"`
 }
 
-// ConciergeConfigRequest is the input to ConciergeConfig.Configure.
+// ConciergeConfigRequest is the input to ConciergeConfig.Configure. Only provider
+// and model are required — all other fields fall back to existing config or defaults.
 type ConciergeConfigRequest struct {
 	Provider    string  `json:"provider"`
 	Model       string  `json:"model"`
@@ -114,7 +183,9 @@ type ConciergeConfigRequest struct {
 	ApprovalTTL string  `json:"approvalTTL,omitempty"`
 }
 
-// Defaults returns a copy with zero-value fields filled in.
+// Defaults returns a copy with zero-value fields filled in with sensible defaults.
+// Called after loading/merging config to ensure all numeric and string fields have
+// valid operational values.
 func (c ConciergeConfiguration) Defaults() ConciergeConfiguration {
 	if c.MaxTurns == 0 {
 		c.MaxTurns = 20
@@ -139,7 +210,8 @@ func (c ConciergeConfiguration) IsConfigured() bool {
 	return c.Provider != "" && c.Model != ""
 }
 
-// Redacted returns a copy with API keys masked.
+// Redacted returns a copy with API keys masked for safe display. Used by the
+// Get() handler to prevent leaking secrets through shared context queries.
 func (c ConciergeConfiguration) Redacted() ConciergeConfiguration {
 	out := c
 	if out.APIKey != "" {
@@ -148,7 +220,9 @@ func (c ConciergeConfiguration) Redacted() ConciergeConfiguration {
 	return out
 }
 
-// initSession creates a new SessionState for a first-time session.
+// initSession creates a new SessionState for a first-time session. The session
+// TTL determines when the session expires and state is automatically cleaned up.
+// Called on the first Ask() to a session key that has no existing state.
 func initSession(req AskRequest, sessionTTL, now string) SessionState {
 	ttl, _ := time.ParseDuration(sessionTTL)
 	if ttl == 0 {

@@ -9,21 +9,51 @@ import (
 )
 
 // AuthErrorCode is a machine-readable classification for auth failures.
+// These codes appear in AuthError.Code and are used to determine HTTP status
+// codes, retryability, and user-facing error messages. Each code maps to
+// exactly one HTTP status via AuthError.HTTPCode().
 type AuthErrorCode string
 
 const (
-	ErrCodeRegistryNil         AuthErrorCode = "AUTH_REGISTRY_NIL"
-	ErrCodeNoDefault           AuthErrorCode = "AUTH_NO_DEFAULT_ACCOUNT"
-	ErrCodeUnknownAccount      AuthErrorCode = "AUTH_UNKNOWN_ACCOUNT"
-	ErrCodeMissingCredentials  AuthErrorCode = "AUTH_MISSING_CREDENTIALS"
-	ErrCodeUnsupportedSource   AuthErrorCode = "AUTH_UNSUPPORTED_SOURCE"
-	ErrCodeConfigLoad          AuthErrorCode = "AUTH_CONFIG_LOAD_FAILED"
-	ErrCodeAssumeRole          AuthErrorCode = "AUTH_ASSUME_ROLE_FAILED"
+	// ErrCodeRegistryNil indicates the auth registry was never initialized.
+	// Typically a startup configuration error.
+	ErrCodeRegistryNil AuthErrorCode = "AUTH_REGISTRY_NIL"
+
+	// ErrCodeNoDefault indicates no default account is configured.
+	ErrCodeNoDefault AuthErrorCode = "AUTH_NO_DEFAULT_ACCOUNT"
+
+	// ErrCodeUnknownAccount indicates the requested account alias does not
+	// exist in either the Restate state or the bootstrap config. HTTP 404.
+	ErrCodeUnknownAccount AuthErrorCode = "AUTH_UNKNOWN_ACCOUNT"
+
+	// ErrCodeMissingCredentials indicates required credential fields are empty
+	// (e.g., static source without accessKeyId, role source without roleArn). HTTP 401.
+	ErrCodeMissingCredentials AuthErrorCode = "AUTH_MISSING_CREDENTIALS"
+
+	// ErrCodeUnsupportedSource indicates an unknown credential source type. HTTP 400.
+	ErrCodeUnsupportedSource AuthErrorCode = "AUTH_UNSUPPORTED_SOURCE"
+
+	// ErrCodeConfigLoad indicates the AWS SDK config could not be loaded.
+	// May be retryable if caused by a transient network issue. HTTP 502.
+	ErrCodeConfigLoad AuthErrorCode = "AUTH_CONFIG_LOAD_FAILED"
+
+	// ErrCodeAssumeRole indicates the STS AssumeRole call failed.
+	// Retryable for throttling; terminal for access denied. HTTP 401.
+	ErrCodeAssumeRole AuthErrorCode = "AUTH_ASSUME_ROLE_FAILED"
+
+	// ErrCodeCredentialRetrieval indicates an unexpected failure during
+	// credential resolution (e.g., GetCallerIdentity failed). HTTP 401.
 	ErrCodeCredentialRetrieval AuthErrorCode = "AUTH_CREDENTIAL_RETRIEVAL_FAILED"
-	ErrCodeAccessDenied        AuthErrorCode = "AUTH_ACCESS_DENIED"
+
+	// ErrCodeAccessDenied indicates AWS explicitly denied access.
+	// This is always a terminal (non-retryable) error. HTTP 403.
+	ErrCodeAccessDenied AuthErrorCode = "AUTH_ACCESS_DENIED"
 )
 
 // AuthError is a structured error for all auth and credential failures.
+// It carries machine-readable code, human-readable message, actionable hint,
+// and the original cause error for unwrapping. Drivers wrap these in
+// Restate TerminalError (for non-retryable) or return directly (for retryable).
 type AuthError struct {
 	Code    AuthErrorCode
 	Account string
@@ -50,6 +80,9 @@ func (e *AuthError) Error() string {
 func (e *AuthError) Unwrap() error { return e.Cause }
 
 // IsRetryable returns true if the error may resolve on retry.
+// Only ConfigLoad, CredentialRetrieval, and AssumeRole can be retryable,
+// and only when the underlying AWS error is a throttling error.
+// All other codes (AccessDenied, MissingCredentials, etc.) are terminal.
 func (e *AuthError) IsRetryable() bool {
 	switch e.Code {
 	case ErrCodeConfigLoad, ErrCodeCredentialRetrieval, ErrCodeAssumeRole:
@@ -63,6 +96,8 @@ func (e *AuthError) IsRetryable() bool {
 }
 
 // HTTPCode returns the appropriate HTTP status code for this error.
+// Used as the Restate TerminalError code, which propagates to the caller
+// and ultimately to the CLI's exit code mapping.
 func (e *AuthError) HTTPCode() uint16 {
 	switch e.Code {
 	case ErrCodeAccessDenied:
@@ -169,14 +204,18 @@ func errCredentialRetrieval(account string, cause error) *AuthError {
 	}
 }
 
+// isAccessDenied delegates to the awserr package for consistent AWS error
+// code classification across the codebase.
 func isAccessDenied(err error) bool {
 	return awserr.IsAccessDenied(err)
 }
 
+// isExpiredToken delegates to the awserr package for expired token detection.
 func isExpiredToken(err error) bool {
 	return awserr.IsExpiredToken(err)
 }
 
+// isAWSRetryable checks if an AWS error is a throttling error (always retryable).
 func isAWSRetryable(err error) bool {
 	return awserr.IsThrottled(err)
 }

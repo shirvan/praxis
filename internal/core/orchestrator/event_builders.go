@@ -1,3 +1,15 @@
+// event_builders.go provides typed constructor functions for every CloudEvent
+// type emitted by the orchestrator.
+//
+// Each builder creates a fully formed CloudEvent with the correct type string,
+// extensions (deployment, workspace, generation, category, severity), and a
+// typed JSON payload. Builders are the single source of truth for event schema
+// compliance—if the CUE schema validation in EventBus.Emit fails, the bug is
+// in the builder, not in the caller.
+//
+// Time-zero convention: builders that receive a zero time.Time leave the event
+// timestamp unset; the EventBus fills it in via currentTime (Restate-journaled)
+// before persisting the event.
 package orchestrator
 
 import (
@@ -10,12 +22,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// --- Event payload types ---
+// Each payload struct matches the corresponding CUE schema definition
+// in schemas/events/. Fields are JSON-serialised into the CloudEvent's data.
+
+// deploymentEventPayload is the data payload for deployment lifecycle events
+// (submitted, started, completed, failed, cancelled, delete variants).
 type deploymentEventPayload struct {
 	Message string `json:"message"`
 	Status  string `json:"status,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
 
+// commandEventPayload is the data payload for CLI/API command events
+// (apply, delete, import, cancel).
 type commandEventPayload struct {
 	Message    string `json:"message"`
 	Action     string `json:"action"`
@@ -25,6 +45,8 @@ type commandEventPayload struct {
 	Region     string `json:"region,omitempty"`
 }
 
+// policyEventPayload is the data payload for policy enforcement events
+// (e.g. lifecycle.preventDestroy blocking a destroy operation).
 type policyEventPayload struct {
 	Message      string `json:"message"`
 	Policy       string `json:"policy"`
@@ -34,6 +56,8 @@ type policyEventPayload struct {
 	Error        string `json:"error,omitempty"`
 }
 
+// sinkSystemEventPayload is the data payload for notification sink system
+// events (registered, removed, delivery_failed).
 type sinkSystemEventPayload struct {
 	Message       string `json:"message"`
 	SinkName      string `json:"sinkName"`
@@ -43,6 +67,8 @@ type sinkSystemEventPayload struct {
 	Error         string `json:"error,omitempty"`
 }
 
+// driftEventPayload is the data payload for drift detection events
+// (detected, corrected, external_delete).
 type driftEventPayload struct {
 	Message      string `json:"message"`
 	ResourceName string `json:"resourceName,omitempty"`
@@ -50,6 +76,8 @@ type driftEventPayload struct {
 	Error        string `json:"error,omitempty"`
 }
 
+// resourceEventPayload is the data payload for resource lifecycle events
+// (dispatched, ready, error, skipped, delete variants, replace).
 type resourceEventPayload struct {
 	Message      string         `json:"message"`
 	Status       string         `json:"status,omitempty"`
@@ -59,6 +87,10 @@ type resourceEventPayload struct {
 	Outputs      map[string]any `json:"outputs,omitempty"`
 }
 
+// --- Deployment lifecycle event builders ---
+
+// NewDeploymentSubmittedEvent creates the event emitted when an apply request
+// is accepted and the deployment enters Pending.
 func NewDeploymentSubmittedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeDeploymentSubmitted,
@@ -74,6 +106,8 @@ func NewDeploymentSubmittedEvent(deploymentKey, workspace string, generation int
 	)
 }
 
+// NewCommandApplyEvent creates the event emitted when the apply CLI command
+// is received.
 func NewCommandApplyEvent(deploymentKey, workspace, account string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeCommandApply,
@@ -89,6 +123,8 @@ func NewCommandApplyEvent(deploymentKey, workspace, account string, generation i
 	)
 }
 
+// NewDeploymentStartedEvent creates the event emitted when the apply workflow
+// begins executing (transitions to Running).
 func NewDeploymentStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeDeploymentStarted,
@@ -104,6 +140,9 @@ func NewDeploymentStartedEvent(deploymentKey, workspace string, generation int64
 	)
 }
 
+// NewDeploymentTerminalEvent creates the appropriate terminal event based on
+// the final deployment status (completed, failed, or cancelled). The event type
+// and severity are automatically determined from the status.
 func NewDeploymentTerminalEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, finalStatus types.DeploymentStatus, errorMessage string) (cloudevents.Event, error) {
 	eventType := EventTypeDeploymentFailed
 	severity := EventSeverityError
@@ -133,6 +172,8 @@ func NewDeploymentTerminalEvent(deploymentKey, workspace string, generation int6
 	)
 }
 
+// NewDeploymentDeleteStartedEvent creates the event emitted when the delete
+// workflow begins executing.
 func NewDeploymentDeleteStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeDeploymentDeleteStarted,
@@ -148,6 +189,8 @@ func NewDeploymentDeleteStartedEvent(deploymentKey, workspace string, generation
 	)
 }
 
+// NewDeploymentDeleteTerminalEvent creates the terminal event for the delete
+// workflow (delete.completed or delete.failed).
 func NewDeploymentDeleteTerminalEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, finalStatus types.DeploymentStatus, errorMessage string) (cloudevents.Event, error) {
 	eventType := EventTypeDeploymentDeleteFailed
 	severity := EventSeverityError
@@ -173,6 +216,10 @@ func NewDeploymentDeleteTerminalEvent(deploymentKey, workspace string, generatio
 	)
 }
 
+// --- Command event builders ---
+
+// NewCommandCancelEvent creates the event emitted when a cancellation is detected
+// by the apply workflow's dispatch loop.
 func NewCommandCancelEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeCommandCancel,
@@ -188,6 +235,8 @@ func NewCommandCancelEvent(deploymentKey, workspace string, generation int64, oc
 	)
 }
 
+// NewCommandDeleteEvent creates the event emitted when the delete CLI command
+// is received.
 func NewCommandDeleteEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeCommandDelete,
@@ -203,6 +252,8 @@ func NewCommandDeleteEvent(deploymentKey, workspace string, generation int64, oc
 	)
 }
 
+// NewCommandImportEvent creates the event emitted when a resource import
+// command is received.
 func NewCommandImportEvent(resourceStreamKey, workspace, account, region, resourceID, resourceKind string, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeCommandImport,
@@ -218,6 +269,10 @@ func NewCommandImportEvent(resourceStreamKey, workspace, account, region, resour
 	)
 }
 
+// --- Policy event builders ---
+
+// NewPolicyPreventedDestroyEvent creates the event emitted when a destroy
+// operation is blocked by lifecycle.preventDestroy.
 func NewPolicyPreventedDestroyEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind, operation string) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypePolicyPreventedDestroy,
@@ -240,6 +295,10 @@ func NewPolicyPreventedDestroyEvent(deploymentKey, workspace string, generation 
 	)
 }
 
+// --- Drift event builders ---
+
+// NewDriftDetectedEvent creates the event emitted when a driver detects that
+// a resource's actual state has drifted from the desired spec.
 func NewDriftDetectedEvent(deploymentKey, workspace string, generation int64, resourceName, resourceKind, errorMessage string) (cloudevents.Event, error) {
 	message := fmt.Sprintf("resource %s drift detected", resourceName)
 	if strings.TrimSpace(errorMessage) != "" {
@@ -259,6 +318,8 @@ func NewDriftDetectedEvent(deploymentKey, workspace string, generation int64, re
 	)
 }
 
+// NewDriftCorrectedEvent creates the event emitted when a driver successfully
+// corrects a detected drift.
 func NewDriftCorrectedEvent(deploymentKey, workspace string, generation int64, resourceName, resourceKind string) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeDriftCorrected,
@@ -274,6 +335,8 @@ func NewDriftCorrectedEvent(deploymentKey, workspace string, generation int64, r
 	)
 }
 
+// NewDriftExternalDeleteEvent creates the event emitted when a driver discovers
+// that a managed resource was deleted outside of Praxis.
 func NewDriftExternalDeleteEvent(deploymentKey, workspace string, generation int64, resourceName, resourceKind, errorMessage string) (cloudevents.Event, error) {
 	message := fmt.Sprintf("resource %s was deleted externally", resourceName)
 	if strings.TrimSpace(errorMessage) != "" {
@@ -293,6 +356,10 @@ func NewDriftExternalDeleteEvent(deploymentKey, workspace string, generation int
 	)
 }
 
+// --- System event builders ---
+
+// NewSystemSinkRegisteredEvent creates the event emitted when a notification
+// sink is added or updated.
 func NewSystemSinkRegisteredEvent(sinkName, sinkType string, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeSystemSinkRegistered,
@@ -308,6 +375,8 @@ func NewSystemSinkRegisteredEvent(sinkName, sinkType string, occurredAt time.Tim
 	)
 }
 
+// NewSystemSinkRemovedEvent creates the event emitted when a notification
+// sink is removed.
 func NewSystemSinkRemovedEvent(sinkName string, occurredAt time.Time) (cloudevents.Event, error) {
 	return newPraxisCloudEvent(
 		EventTypeSystemSinkRemoved,
@@ -323,6 +392,8 @@ func NewSystemSinkRemovedEvent(sinkName string, occurredAt time.Time) (cloudeven
 	)
 }
 
+// NewSystemSinkDeliveryFailedEvent creates the event emitted when a sink
+// delivery attempt fails after exhausting all retries.
 func NewSystemSinkDeliveryFailedEvent(sinkName, sinkType string, record SequencedCloudEvent, deliveryErr error, occurredAt time.Time) (cloudevents.Event, error) {
 	errMsg := ""
 	if deliveryErr != nil {
@@ -349,6 +420,10 @@ func NewSystemSinkDeliveryFailedEvent(sinkName, sinkType string, record Sequence
 	)
 }
 
+// --- Resource lifecycle event builders ---
+
+// NewResourceReplaceStartedEvent creates the event emitted when a force-replace
+// operation begins (the existing resource is being deleted before re-provision).
 func NewResourceReplaceStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceReplaceStarted,
@@ -363,6 +438,8 @@ func NewResourceReplaceStartedEvent(deploymentKey, workspace string, generation 
 	)
 }
 
+// NewResourceDispatchedEvent creates the event emitted when a resource's
+// driver provisioning call is dispatched.
 func NewResourceDispatchedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceDispatched,
@@ -377,6 +454,9 @@ func NewResourceDispatchedEvent(deploymentKey, workspace string, generation int6
 	)
 }
 
+// NewResourceReadyEvent creates the event emitted when a resource's driver
+// call completes successfully. The outputs map contains the resource's
+// provisioned attributes (e.g. ARN, ID) used for downstream expression hydration.
 func NewResourceReadyEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, outputs map[string]any) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceReady,
@@ -391,6 +471,8 @@ func NewResourceReadyEvent(deploymentKey, workspace string, generation int64, oc
 	)
 }
 
+// NewResourceErrorEvent creates the event emitted when a resource's driver
+// call fails. This triggers dependent resources to be marked Skipped.
 func NewResourceErrorEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, status types.DeploymentStatus, errorMessage string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceError,
@@ -405,6 +487,8 @@ func NewResourceErrorEvent(deploymentKey, workspace string, generation int64, oc
 	)
 }
 
+// NewResourceSkippedEvent creates the event emitted when a resource is skipped
+// because a dependency failed or the deployment was cancelled.
 func NewResourceSkippedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, status types.DeploymentStatus, message string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceSkipped,
@@ -419,6 +503,8 @@ func NewResourceSkippedEvent(deploymentKey, workspace string, generation int64, 
 	)
 }
 
+// NewResourceDeleteStartedEvent creates the event emitted when a resource's
+// driver delete call is dispatched.
 func NewResourceDeleteStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceDeleteStarted,
@@ -433,6 +519,8 @@ func NewResourceDeleteStartedEvent(deploymentKey, workspace string, generation i
 	)
 }
 
+// NewResourceDeletedEvent creates the event emitted when a resource is
+// successfully deleted.
 func NewResourceDeletedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceDeleted,
@@ -447,6 +535,8 @@ func NewResourceDeletedEvent(deploymentKey, workspace string, generation int64, 
 	)
 }
 
+// NewResourceDeleteErrorEvent creates the event emitted when a resource's
+// delete call fails.
 func NewResourceDeleteErrorEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind, errorMessage string) (cloudevents.Event, error) {
 	return newResourceLifecycleEvent(
 		EventTypeResourceDeleteError,
@@ -461,6 +551,12 @@ func NewResourceDeleteErrorEvent(deploymentKey, workspace string, generation int
 	)
 }
 
+// --- Core event construction ---
+
+// newPraxisCloudEvent is the internal factory that all builders delegate to.
+// It sets the CloudEvent source (/praxis/<workspace>/<deployment>), type,
+// timestamp, subject, and all Praxis-specific extensions. The data payload
+// is JSON-serialised from the given any value.
 func newPraxisCloudEvent(eventType, deploymentKey, workspace string, generation int64, occurredAt time.Time, subject, resourceKind, category, severity string, data any) (cloudevents.Event, error) {
 	deploymentKey = strings.TrimSpace(deploymentKey)
 	workspace = normalizeEventWorkspace(workspace)
@@ -490,6 +586,8 @@ func newPraxisCloudEvent(eventType, deploymentKey, workspace string, generation 
 	return event, nil
 }
 
+// normalizeEventWorkspace returns "default" for empty workspace strings,
+// ensuring every event has a non-empty workspace extension.
 func normalizeEventWorkspace(workspace string) string {
 	trimmed := strings.TrimSpace(workspace)
 	if trimmed == "" {

@@ -1,3 +1,15 @@
+// service.go implements the WorkspaceService Restate Virtual Object.
+//
+// The Virtual Object is keyed by workspace name. Each workspace stores its
+// configuration (account, region, default variables, event settings) in
+// Restate's durable state under the "config" key.
+//
+// Handler overview:
+//   - Configure (exclusive) — create or update a workspace
+//   - Get (shared)          — read workspace info
+//   - SetEventRetention     — validate & store a retention policy, schedule sweeps
+//   - GetEventRetention     — read policy or return defaults
+//   - Delete (exclusive)    — clear state and deregister from index
 package workspace
 
 import (
@@ -10,6 +22,8 @@ import (
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
 
+// WorkspaceServiceName is the Restate service name for workspace registration.
+// Must match the binding in cmd/praxis-core/main.go.
 const (
 	WorkspaceServiceName = "WorkspaceService"
 )
@@ -19,10 +33,13 @@ type WorkspaceService struct {
 	schemaDir string
 }
 
+// NewWorkspaceService creates a WorkspaceService. schemaDir is the path
+// to the CUE schema directory used for validating retention policy input.
 func NewWorkspaceService(schemaDir string) *WorkspaceService {
 	return &WorkspaceService{schemaDir: schemaDir}
 }
 
+// ServiceName returns the Restate service registration name.
 func (WorkspaceService) ServiceName() string { return WorkspaceServiceName }
 
 // Configure creates or updates a workspace.

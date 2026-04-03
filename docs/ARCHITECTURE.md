@@ -1,7 +1,5 @@
 # Praxis Architecture
 
-> **See also:** [Drivers](DRIVERS.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Concierge](CONCIERGE.md) | [Operators](OPERATORS.md) | [Developers](DEVELOPERS.md)
-
 ---
 
 ## Overview
@@ -41,12 +39,11 @@ graph TD
     Core -->|"Restate RPC - durable, exactly-once"| Drivers
 
     subgraph Drivers["DRIVER PACKS (grouped by AWS domain)"]
-        Storage["Storage<br/>(S3, EBS, RDS, Aurora, SNS)"]
-        Network["Network<br/>(SG, VPC, EIP, IGW, NACL, RT, Subnet, NAT GW, VPC Peering, Route 53)"]
-        ELB["ELB<br/>(ALB, NLB, Target Group, Listener, Listener Rule)"]
-        Compute["Compute<br/>(AMI, KeyPair, EC2, Lambda)"]
+        Storage["Storage<br/>(S3, EBS, RDS, Aurora, SNS, SQS)"]
+        Network["Network<br/>(SG, VPC, EIP, IGW, NACL, RT, Subnet, NAT GW,<br/>VPC Peering, Route 53, ACM, ALB, NLB, TG, Listener)"]
+        Compute["Compute<br/>(AMI, KeyPair, EC2, Lambda, ECR)"]
         IAM["Identity<br/>(Role, Policy, User, Group, Instance Profile)"]
-        Observability["Observability<br/>(future: CloudWatch, CloudTrail)"]
+        Monitoring["Monitoring<br/>(LogGroup, MetricAlarm, Dashboard)"]
     end
 
     Drivers --> AWS["AWS APIs"]
@@ -100,9 +97,9 @@ srv := server.NewRestate().
 
 | Pack | Container | Drivers | Rationale |
 | --- | --- | --- | --- |
-| **Storage** | `praxis-storage` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription | Data stores, databases, and messaging |
-| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule | Networking and load balancing — VPC+SG+DNS+ELB almost always deploy together |
-| **Compute** | `praxis-compute` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping | Compute lifecycle |
+| **Storage** | `praxis-storage` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription, SQSQueue, SQSQueuePolicy | Data stores, databases, and messaging |
+| **Network** | `praxis-network` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule, ACMCertificate | Networking and load balancing — VPC+SG+DNS+ELB+ACM almost always deploy together |
+| **Compute** | `praxis-compute` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy | Compute lifecycle and container registries |
 | **Identity** | `praxis-identity` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile | Security-sensitive, low churn |
 | **Monitoring** | `praxis-monitoring` | LogGroup, MetricAlarm, Dashboard | CloudWatch log groups, metric alarms, and dashboards — optional, many users skip it |
 
@@ -184,14 +181,14 @@ Tradeoff: state lives in Restate's storage layer, not a traditional database. Re
 
 ### Why Domain-Grouped Driver Packs
 
-Instead of one container per resource type (which would mean 18+ containers at full AWS coverage) or a single monolithic driver process, Praxis groups drivers by AWS domain into a handful of **driver packs**. Each pack is a container hosting related Virtual Objects.
+Instead of one container per resource type (which would mean 45+ containers at full AWS coverage) or a single monolithic driver process, Praxis groups drivers by AWS domain into a handful of **driver packs**. Each pack is a container hosting related Virtual Objects.
 
 Benefits:
 
 - **Scaling aligns with reality** — if someone is churning EC2 instances, they're probably also churning Auto Scaling groups and Lambda functions. Scale the compute pack, not five separate containers.
 - **Blast radius is contained** — a panic in the VPC driver doesn't take down S3. The grouping follows natural AWS API boundaries.
 - **Restate doesn't care** — Virtual Object keys are globally unique within Restate regardless of which endpoint serves them. The orchestrator dispatches by service name (e.g., `"EC2Instance"`), not by container.
-- **Operations stay manageable** — 5–6 services instead of 20+. Docker Compose stays readable, health checks stay simple.
+- **Operations stay manageable** — 6 driver packs instead of 45+ containers. Docker Compose stays readable, health checks stay simple.
 - **Users still pick and choose** — don't need networking? Don't run `praxis-network`. Nobody runs SG without VPC anyway.
 
 The driver code itself remains fully modular — each driver is its own Go package with its own types, AWS wrapper, and drift detection. Only the binary entry points group them together.
@@ -323,7 +320,7 @@ Lifecycle rules are declared in the template's `lifecycle` block, validated duri
 
 - **Not a Kubernetes replacement.** Praxis manages cloud infrastructure resources, not container workloads.
 - **Not a CI/CD pipeline.** Praxis is the target of a pipeline, not the pipeline itself.
-- **Not multi-cloud (yet).** Praxis currently targets AWS only. The driver model supports multi-cloud — the architecture is ready, the implementations are not.
+- **Not multi-cloud.** Praxis currently targets AWS only. The driver model supports multi-cloud — the architecture is provider-agnostic, but only AWS adapters exist today.
 - **Not multi-tenant.** The current trust model is operator-managed. There is no built-in auth or RBAC.
 
 ---

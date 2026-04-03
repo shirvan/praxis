@@ -15,17 +15,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// RouteTableDriver is a Restate Virtual Object that manages EC2 Route Table lifecycle.
 type RouteTableDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RouteTableAPI
 }
 
+// NewRouteTableDriver creates a production RouteTableDriver.
 func NewRouteTableDriver(auth authservice.AuthClient) *RouteTableDriver {
 	return NewRouteTableDriverWithFactory(auth, func(cfg aws.Config) RouteTableAPI {
 		return NewRouteTableAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewRouteTableDriverWithFactory allows tests to inject a custom RouteTableAPI factory.
 func NewRouteTableDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RouteTableAPI) *RouteTableDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) RouteTableAPI {
@@ -39,6 +42,15 @@ func (d *RouteTableDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements idempotent create-or-converge for a Route Table.
+//
+// Flow: normalize spec (validate routes, dedup) → load state → ownership check →
+// create if missing → apply desired state (routes + associations + tags) →
+// describe final state → commit state → schedule reconcile.
+//
+// Route convergence: add (with fallback to replace if already exists) →
+// replace changed routes (with fallback to create if not found) →
+// delete removed routes (ignoring not-found).
 func (d *RouteTableDriver) Provision(ctx restate.ObjectContext, spec RouteTableSpec) (RouteTableOutputs, error) {
 	ctx.Log().Info("provisioning route table", "key", restate.Key(ctx))
 	if spec.ManagedKey == "" {
@@ -170,6 +182,7 @@ func (d *RouteTableDriver) Provision(ctx restate.ObjectContext, spec RouteTableS
 	return outputs, nil
 }
 
+// Import captures an existing Route Table's live state as the baseline.
 func (d *RouteTableDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (RouteTableOutputs, error) {
 	ctx.Log().Info("importing route table", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -214,6 +227,8 @@ func (d *RouteTableDriver) Import(ctx restate.ObjectContext, ref types.ImportRef
 	return outputs, nil
 }
 
+// Delete removes the Route Table. Flow: check for main association (cannot
+// delete) → disassociate all subnets → delete managed routes → delete table.
 func (d *RouteTableDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting route table", "key", restate.Key(ctx))
 	state, err := restate.Get[RouteTableState](ctx, drivers.StateKey)
@@ -340,6 +355,8 @@ func (d *RouteTableDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual state against desired and corrects drift (Managed)
+// or reports it (Observed). Routes with Origin=CreateRouteTable are excluded.
 func (d *RouteTableDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[RouteTableState](ctx, drivers.StateKey)
 	if err != nil {
@@ -457,6 +474,7 @@ func (d *RouteTableDriver) GetOutputs(ctx restate.ObjectSharedContext) (RouteTab
 	return state.Outputs, nil
 }
 
+// scheduleReconcile sends a delayed self-invocation after ReconcileInterval.
 func (d *RouteTableDriver) scheduleReconcile(ctx restate.ObjectContext, state *RouteTableState) {
 	if state.ReconcileScheduled {
 		return
@@ -467,6 +485,10 @@ func (d *RouteTableDriver) scheduleReconcile(ctx restate.ObjectContext, state *R
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// applyDesiredState converges routes, associations, and tags to match the
+// desired spec. Route errors use fallback patterns: CreateRoute catches
+// RouteAlreadyExists and falls back to ReplaceRoute; ReplaceRoute catches
+// RouteNotFound and falls back to CreateRoute; DeleteRoute ignores not-found.
 func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api RouteTableAPI, routeTableID string, desired RouteTableSpec, observed ObservedState) error {
 	observedManagedRoutes := filterManagedRoutes(observed.Routes)
 	desiredRoutes := desiredRouteMap(desired.Routes)

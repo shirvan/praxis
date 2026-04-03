@@ -1,3 +1,15 @@
+// template.go implements the `praxis template` command group.
+//
+// Templates are CUE source files stored in the Praxis registry. Operators
+// register templates once, and developers deploy them by name with variables,
+// avoiding the need to distribute raw CUE files.
+//
+// The template lifecycle:
+//  1. `praxis template register <file.cue>` — store a CUE template
+//  2. `praxis template list`                — list registered templates
+//  3. `praxis template describe <name>`     — show details and variable schema
+//  4. `praxis deploy <name> --var ...`      — instantiate a registered template
+//  5. `praxis template delete <name>`       — remove a template
 package cli
 
 import (
@@ -13,7 +25,8 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// newTemplateCmd builds the `praxis template` command group.
+// newTemplateCmd builds the `praxis template` parent command. It groups
+// register, list, describe, and delete subcommands.
 func newTemplateCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "template",
@@ -31,6 +44,10 @@ func newTemplateCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newTemplateRegisterCmd builds `praxis template register <file.cue>`.
+// Reads a CUE file from disk and sends it to PraxisCommandService.RegisterTemplate
+// via the Restate ingress endpoint. The template name defaults to the filename
+// stem unless --name is provided.
 func newTemplateRegisterCmd(flags *rootFlags) *cobra.Command {
 	var (
 		name        string
@@ -90,6 +107,9 @@ The template name defaults to the filename without extension:
 	return cmd
 }
 
+// newTemplateListCmd builds `praxis template list`. Queries
+// PraxisCommandService.ListTemplates and displays name, description, and
+// last-updated timestamp.
 func newTemplateListCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -133,6 +153,9 @@ func newTemplateListCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newTemplateDescribeCmd builds `praxis template describe <name>`. Fetches
+// the full template record including metadata and the variable schema, then
+// renders a detail view with a table of accepted variables.
 func newTemplateDescribeCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "describe <name>",
@@ -194,6 +217,9 @@ func newTemplateDescribeCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newTemplateDeleteCmd builds `praxis template delete <name>`. Removes a
+// registered template from the Praxis registry. Does NOT affect existing
+// deployments that were created from the template.
 func newTemplateDeleteCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <name>",

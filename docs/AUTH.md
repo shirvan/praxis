@@ -1,7 +1,5 @@
 # Auth & Workspaces
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Events](EVENTS.md) | [Errors](ERRORS.md) | [CLI](CLI.md) | [Developers](DEVELOPERS.md)
-
 ---
 
 ## Overview

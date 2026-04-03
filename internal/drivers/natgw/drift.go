@@ -2,6 +2,13 @@ package natgw
 
 import "strings"
 
+// HasDrift returns true if the desired spec and observed state differ.
+//
+// NAT Gateway drift rules:
+//   - Only checked when the NAT GW is in "available" state.
+//   - ONLY tags are checked — everything else (SubnetId, ConnectivityType,
+//     AllocationId) is immutable after creation.
+//   - applyDefaults is called first to fill in the default ConnectivityType.
 func HasDrift(desired NATGatewaySpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
 	if observed.State != "available" {
@@ -10,6 +17,9 @@ func HasDrift(desired NATGatewaySpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns a human-readable list of differences for drift
+// event reporting. Reports immutable fields (SubnetId, ConnectivityType,
+// AllocationId) in addition to tags for operator visibility.
 func ComputeFieldDiffs(desired NATGatewaySpec, observed ObservedState) []FieldDiffEntry {
 	desired = applyDefaults(desired)
 	var diffs []FieldDiffEntry

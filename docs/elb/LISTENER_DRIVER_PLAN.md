@@ -1,13 +1,4 @@
-# Listener Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages ELBv2 Listeners, providing
-> full lifecycle management including creation, import, deletion, drift detection,
-> and drift correction for port, protocol, SSL configuration, default actions, and
-> tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~listenerName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned listener ARN
-> lives only in state/outputs.
+# Listener Driver — Implementation Spec
 
 ---
 
@@ -463,10 +454,10 @@ Default actions are compared structurally:
 
 ```go
 type ListenerDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewListenerDriver(accounts *auth.Registry) *ListenerDriver {
+func NewListenerDriver(auth       authservice.AuthClient) *ListenerDriver {
     return &ListenerDriver{accounts: accounts}
 }
 
@@ -513,10 +504,10 @@ AWS automatically deletes all listener rules when a listener is deleted.
 
 ```go
 type ListenerAdapter struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewListenerAdapterWithRegistry(accounts *auth.Registry) *ListenerAdapter {
+func NewListenerAdapterWithAuth(auth       authservice.AuthClient) *ListenerAdapter {
     return &ListenerAdapter{accounts: accounts}
 }
 
@@ -536,7 +527,7 @@ The Plan method checks:
 
 ## Step 7 — Registry Integration
 
-Add `NewListenerAdapterWithRegistry` to `internal/core/provider/registry.go`.
+Add `NewListenerAdapterWithAuth` to `internal/core/provider/registry.go`.
 
 ---
 

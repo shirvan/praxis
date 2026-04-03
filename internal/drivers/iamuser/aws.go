@@ -16,6 +16,8 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// IAMUserAPI defines the interface for all AWS IAM user operations used by the driver.
+// Includes user CRUD, policy management, group membership, and credential cleanup.
 type IAMUserAPI interface {
 	CreateUser(ctx context.Context, spec IAMUserSpec) (arn, userID string, err error)
 	DescribeUser(ctx context.Context, userName string) (ObservedState, error)
@@ -39,6 +41,7 @@ type realIAMUserAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewIAMUserAPI constructs a production IAMUserAPI with rate limiting for IAM's throttle limits.
 func NewIAMUserAPI(client *iamsdk.Client) IAMUserAPI {
 	return &realIAMUserAPI{
 		client:  client,
@@ -46,6 +49,7 @@ func NewIAMUserAPI(client *iamsdk.Client) IAMUserAPI {
 	}
 }
 
+// CreateUser calls the AWS IAM CreateUser API. Sets user name, path, optional permissions boundary, and tags.
 func (r *realIAMUserAPI) CreateUser(ctx context.Context, spec IAMUserSpec) (string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", err
@@ -67,6 +71,8 @@ func (r *realIAMUserAPI) CreateUser(ctx context.Context, spec IAMUserSpec) (stri
 	return aws.ToString(out.User.Arn), aws.ToString(out.User.UserId), nil
 }
 
+// DescribeUser calls GetUser followed by supplementary list calls to build a complete
+// snapshot: inline policies, managed policies, group memberships, and tags.
 func (r *realIAMUserAPI) DescribeUser(ctx context.Context, userName string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -257,6 +263,7 @@ func (r *realIAMUserAPI) UpdateTags(ctx context.Context, userName string, tags m
 	return nil
 }
 
+// DeleteLoginProfile removes the user's console password. Required before user deletion.
 func (r *realIAMUserAPI) DeleteLoginProfile(ctx context.Context, userName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -265,6 +272,8 @@ func (r *realIAMUserAPI) DeleteLoginProfile(ctx context.Context, userName string
 	return err
 }
 
+// DeleteAllAccessKeys iterates through and deletes all access keys for the user.
+// Required before user deletion since IAM prevents deleting users with active keys.
 func (r *realIAMUserAPI) DeleteAllAccessKeys(ctx context.Context, userName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err

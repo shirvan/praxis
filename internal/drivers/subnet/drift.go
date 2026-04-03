@@ -2,6 +2,15 @@ package subnet
 
 import "strings"
 
+// HasDrift returns true if the desired spec and observed state differ.
+//
+// Subnet-specific drift rules:
+//   - Only checked when the subnet is in "available" state.
+//   - CidrBlock, AvailabilityZone, and VpcId are NOT checked — they are
+//     immutable after creation and cannot be corrected.
+//   - MapPublicIpOnLaunch is checked — it can be modified in-place via
+//     EC2 ModifySubnetAttribute.
+//   - Tags are compared (excluding praxis:-prefixed tags).
 func HasDrift(desired SubnetSpec, observed ObservedState) bool {
 	if observed.State != "available" {
 		return false
@@ -18,6 +27,10 @@ func HasDrift(desired SubnetSpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs returns a human-readable list of differences for drift
+// event reporting. Reports both mutable fields (MapPublicIpOnLaunch, tags)
+// and immutable fields (CidrBlock, AvailabilityZone, VpcId) for visibility,
+// even though immutable fields cannot be corrected.
 func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 

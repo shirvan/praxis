@@ -1,3 +1,16 @@
+// deployment_state.go implements the DeploymentState Restate Virtual Object.
+//
+// Virtual Objects in Restate are durable, key-addressed entities with
+// exclusive-writer semantics. Each deployment gets its own DeploymentStateObj
+// instance keyed by the deployment key. The object stores the full lifecycle
+// record (status, resource states, outputs, cancel flag) and survives across
+// workflow generations.
+//
+// Handlers are partitioned by access pattern:
+//   - Mutating handlers (ObjectContext): InitDeployment, SetStatus, UpdateResource,
+//     Finalize, RequestCancel, MoveResource, RemoveResource, AddResource.
+//   - Read-only handlers (ObjectSharedContext): GetState, GetDetail, IsCancelled.
+//     These can run concurrently without blocking writers.
 package orchestrator
 
 import (
@@ -38,6 +51,9 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		return 0, err
 	}
 
+	// generation tracks how many times this deployment key has been applied.
+	// Generation 1 = first apply; each re-apply increments it. This enables
+	// events to be correlated with the specific apply run that produced them.
 	generation := int64(1)
 	if existing != nil {
 		generation = existing.Generation + 1
@@ -72,6 +88,10 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 	}
 	restate.Set(ctx, "state", state)
 
+	// Register resource-event-owner mappings so that drift events reported
+	// by drivers (keyed by resource key) can be routed back to the correct
+	// deployment stream. This is the bridge between the driver world (resource
+	// keys) and the orchestrator world (deployment keys + resource names).
 	activeKeys := make(map[string]bool, len(plan.Resources))
 	for i := range plan.Resources {
 		resource := plan.Resources[i]
@@ -86,6 +106,9 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 			return 0, err
 		}
 	}
+	// Clean up stale resource-event-owner mappings from the previous generation.
+	// If a resource was removed from the template between re-applies, its owner
+	// mapping must be deleted to prevent phantom drift events.
 	if existing != nil {
 		for _, resource := range existing.Resources {
 			if resource == nil || activeKeys[resource.Key] {

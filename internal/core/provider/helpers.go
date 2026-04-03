@@ -11,6 +11,10 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// provisionHandle is the generic implementation of ProvisionInvocation.
+// Type parameter O is the concrete driver output type (e.g. s3types.BucketOutput).
+// It wraps a Restate ResponseFuture and a normalize function that converts the
+// typed driver output into the generic map[string]any stored in deployment state.
 type provisionHandle[O any] struct {
 	id        string
 	raw       restate.ResponseFuture[O]
@@ -33,6 +37,9 @@ func (h *provisionHandle[O]) Outputs() (map[string]any, error) {
 	return h.normalize(output)
 }
 
+// deleteHandle is the implementation of DeleteInvocation.
+// It wraps a Restate ResponseFuture[restate.Void] because delete operations
+// return no payload — only success or error.
 type deleteHandle struct {
 	id  string
 	raw restate.ResponseFuture[restate.Void]
@@ -51,10 +58,16 @@ func (h *deleteHandle) Done() error {
 	return err
 }
 
+// castSpec safely casts a generic spec (any) to the concrete driver input type T.
+// This is called by each adapter's DecodeSpec to convert the any produced by
+// JSON unmarshalling into the specific Go struct the driver expects.
 func castSpec[T any](spec any) (T, error) {
 	return castOutput[T](spec)
 }
 
+// castOutput safely casts a generic value to type T, handling both value and
+// pointer forms. This flexibility is needed because Restate's JSON codec may
+// deserialize the same type as either T or *T depending on the call context.
 func castOutput[T any](value any) (T, error) {
 	var zero T
 	if typed, ok := value.(T); ok {
@@ -67,6 +80,10 @@ func castOutput[T any](value any) (T, error) {
 	return zero, fmt.Errorf("expected %T but got %T", zero, value)
 }
 
+// createFieldDiffsFromSpec generates a flat list of FieldDiff entries from a
+// spec struct. This is used for "create" operations where there is no existing
+// state to diff against — every field is reported as a new value. The spec is
+// round-tripped through JSON to get a generic map, then recursively flattened.
 func createFieldDiffsFromSpec(spec any) ([]types.FieldDiff, error) {
 	if spec == nil {
 		return nil, nil
@@ -87,6 +104,10 @@ func createFieldDiffsFromSpec(spec any) ([]types.FieldDiff, error) {
 	return diffs, nil
 }
 
+// flattenFieldDiffs recursively walks a generic JSON value (maps, slices,
+// scalars) and appends a FieldDiff for each leaf node. Map keys are sorted
+// for deterministic output. The resulting paths use dot notation to mirror
+// the resource spec structure (e.g. "spec.tags.Environment").
 func flattenFieldDiffs(path string, value any, diffs *[]types.FieldDiff) {
 	switch typed := value.(type) {
 	case map[string]any:

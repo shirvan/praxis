@@ -1,6 +1,15 @@
 // Package awsclient provides factory functions for creating AWS SDK clients.
 // When cfg.BaseEndpoint is set (dev/test), clients hit LocalStack.
 // When it's empty (production), clients use AWS's default endpoint resolution.
+//
+// Each factory follows the same pattern: accept an aws.Config pre-configured
+// with region, credentials, and (optionally) endpoint — then return a
+// service-specific client. The aws.Config is resolved upstream by the
+// AuthService, so these factories never deal with credentials directly.
+//
+// The factories are intentionally trivial wrappers. They exist to centralize
+// any per-service configuration quirks (e.g., S3 path-style addressing for
+// LocalStack) and to give driver code a single import for client construction.
 package awsclient
 
 import (

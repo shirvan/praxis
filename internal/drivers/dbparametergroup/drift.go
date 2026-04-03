@@ -2,12 +2,16 @@ package dbparametergroup
 
 import "strings"
 
+// FieldDiffEntry represents a single field difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift compares desired spec against observed for mutable fields:
+// parameters (key/value equality) and tags.
+// Immutable fields (groupName, type, family, description) are NOT checked.
 func HasDrift(desired DBParameterGroupSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
 	if !parametersEqual(desired.Parameters, observed.Parameters) {
@@ -16,6 +20,9 @@ func HasDrift(desired DBParameterGroupSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns a structured list of differences for display.
+// Immutable fields (groupName, type, family, description) are annotated "(immutable, ignored)".
+// Parameter diffs show added, changed, and removed entries.
 func ComputeFieldDiffs(desired DBParameterGroupSpec, observed ObservedState) []FieldDiffEntry {
 	desired = applyDefaults(desired)
 	var diffs []FieldDiffEntry
@@ -59,6 +66,7 @@ func ComputeFieldDiffs(desired DBParameterGroupSpec, observed ObservedState) []F
 	return diffs
 }
 
+// applyDefaults normalizes nil maps to empty and defaults Type to TypeDB.
 func applyDefaults(spec DBParameterGroupSpec) DBParameterGroupSpec {
 	if strings.TrimSpace(spec.Type) == "" {
 		spec.Type = TypeDB
@@ -72,6 +80,7 @@ func applyDefaults(spec DBParameterGroupSpec) DBParameterGroupSpec {
 	return spec
 }
 
+// parametersEqual returns true if both maps have identical key-value entries.
 func parametersEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -84,6 +93,7 @@ func parametersEqual(a, b map[string]string) bool {
 	return true
 }
 
+// tagsMatch compares two tag maps after filtering praxis: internal tags.
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -98,6 +108,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags removes praxis:-prefixed tags used for internal bookkeeping.
 func filterPraxisTags(tags map[string]string) map[string]string {
 	if len(tags) == 0 {
 		return map[string]string{}

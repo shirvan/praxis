@@ -1,3 +1,15 @@
+// Package alb – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS Application Load Balancer (ALB).
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package alb
 
 import (
@@ -15,17 +27,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ALBDriver is the Restate Virtual Object handler for AWS Application Load Balancer (ALB).
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type ALBDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) ALBAPI
 }
 
+// NewALBDriver creates a ALB driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewALBDriver(auth authservice.AuthClient) *ALBDriver {
 	return NewALBDriverWithFactory(auth, func(cfg aws.Config) ALBAPI {
 		return NewALBAPI(awsclient.NewELBv2Client(cfg))
 	})
 }
 
+// NewALBDriverWithFactory creates a ALB driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewALBDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) ALBAPI) *ALBDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) ALBAPI {
@@ -35,8 +54,13 @@ func NewALBDriverWithFactory(auth authservice.AuthClient, factory func(aws.Confi
 	return &ALBDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *ALBDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a AWS Application Load Balancer (ALB). It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *ALBDriver) Provision(ctx restate.ObjectContext, spec ALBSpec) (ALBOutputs, error) {
 	ctx.Log().Info("provisioning ALB", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -145,6 +169,10 @@ func (d *ALBDriver) Provision(ctx restate.ObjectContext, spec ALBSpec) (ALBOutpu
 	return state.Outputs, nil
 }
 
+// Import adopts an existing AWS Application Load Balancer (ALB) into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *ALBDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ALBOutputs, error) {
 	ctx.Log().Info("importing ALB", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -183,6 +211,9 @@ func (d *ALBDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ALBO
 	return state.Outputs, nil
 }
 
+// Delete removes the AWS Application Load Balancer (ALB) from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *ALBDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting ALB", "key", restate.Key(ctx))
 	state, err := restate.Get[ALBState](ctx, drivers.StateKey)
@@ -242,6 +273,11 @@ func (d *ALBDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *ALBDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[ALBState](ctx, drivers.StateKey)
 	if err != nil {
@@ -321,6 +357,7 @@ func (d *ALBDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *ALBDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[ALBState](ctx, drivers.StateKey)
 	if err != nil {
@@ -329,6 +366,7 @@ func (d *ALBDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResp
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *ALBDriver) GetOutputs(ctx restate.ObjectSharedContext) (ALBOutputs, error) {
 	state, err := restate.Get[ALBState](ctx, drivers.StateKey)
 	if err != nil {

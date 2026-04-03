@@ -1,10 +1,5 @@
 # EC2 Driver Pack — Overview
 
-> This document summarizes the EC2 driver family for Praxis: five drivers covering
-> EC2 Instances, AMIs, EBS Volumes, Elastic IPs, and Key Pairs. It describes their
-> relationships, shared infrastructure, runtime deployment, and the planned Launch
-> Template driver.
-
 ---
 
 ## Table of Contents
@@ -67,8 +62,8 @@ graph TD
 
 - **EC2 Instance driver**: Manages the instance lifecycle (create, stop/start for type
   change, terminate). Does NOT manage attached EBS volumes or EIP associations.
-- **AMI driver**: Manages AMI registration/deregistration. Three creation paths: from
-  snapshot, from instance, or cross-region copy.
+- **AMI driver**: Manages AMI registration/deregistration. Two creation paths: from
+  snapshot or cross-region copy.
 - **EBS Volume driver**: Manages volume lifecycle (create, modify, delete). Does NOT
   manage attachments to instances.
 - **Elastic IP driver**: Manages allocation/release. Does NOT manage association to
@@ -94,26 +89,35 @@ The EC2 driver family spans **three** runtime packs:
 
 ```go
 // cmd/praxis-compute/main.go
+auth := authservice.NewAuthClient()
 srv := server.NewRestate().
-    Bind(restate.Reflect(ami.NewAMIDriver(cfg.Auth()))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth())))
+    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+    // Also hosts ECR, Lambda, and ESM drivers
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
+    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth))).
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth)))
 ```
 
 ### praxis-storage Entry Point (EBS)
 
 ```go
 // cmd/praxis-storage/main.go
+auth := authservice.NewAuthClient()
 srv := server.NewRestate().
-    Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth())))
+    Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth)))
 ```
 
 ### praxis-network Entry Point (EIP)
 
 ```go
 // cmd/praxis-network/main.go — EIP among network drivers
-Bind(restate.Reflect(eip.NewElasticIPDriver(cfg.Auth())))
+Bind(restate.Reflect(eip.NewElasticIPDriver(auth)))
 ```
 
 ---
@@ -168,31 +172,32 @@ same underlying AWS resource.
 The drivers were implemented in this order, respecting dependencies and allowing
 incremental testing:
 
-### Phase 1: Foundation (no cross-driver dependencies)
+### Foundation (no cross-driver dependencies)
 
 1. **EBS Volume** — Standalone block storage. No dependencies on other EC2 resources.
    Tests only need an availability zone.
 
-2. **Key Pair** — Standalone credential. Tests only need a region. Good for
-   establishing EC2 driver patterns (managed key, tag management).
+2. **Key Pair** — Standalone credential. Tests only need a region. Established
+   EC2 driver patterns (managed key, tag management).
 
-3. **Elastic IP** — Standalone address allocation. Simple lifecycle, good for
-   validating managed key patterns.
+3. **Elastic IP** — Standalone address allocation. Simple lifecycle, validates
+   managed key patterns.
 
-### Phase 2: Images
+### Images
 
 4. **AMI** — References snapshots or instances. Multiple creation paths add
    complexity but no hard dependencies on other Praxis drivers.
 
-### Phase 3: Instances
+### Instances
 
 5. **EC2 Instance** — References AMIs, key pairs, subnets, security groups. Most
-   complex driver. Should be implemented last so all dependencies are testable.
+   complex driver. Implemented last so all dependencies are testable.
 
-### Phase 4: Templates (NYI)
+### Templates (Not Yet Implemented)
 
-6. **Launch Template** — Will reference AMIs, security groups, key pairs, instance
-   profiles. Provides reusable instance configurations.
+6. **Launch Template** — References AMIs, security groups, key pairs, instance
+   profiles. Provides reusable instance configurations. See
+   [LAUNCH_TEMPLATE_DRIVER_PLAN.md](LAUNCH_TEMPLATE_DRIVER_PLAN.md).
 
 ---
 
@@ -267,15 +272,14 @@ build-compute:  # included in `build` target
 All five adapters are registered in `internal/core/provider/registry.go`:
 
 ```go
-func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+func NewRegistry(auth authservice.AuthClient) *Registry {
     return NewRegistryWithAdapters(
         // ... other adapters ...
-        NewEBSAdapterWithRegistry(accounts),
-        NewAMIAdapterWithRegistry(accounts),
-        NewEC2AdapterWithRegistry(accounts),
-        NewKeyPairAdapterWithRegistry(accounts),
-        NewEIPAdapterWithRegistry(accounts),
+        NewEBSAdapterWithAuth(auth),
+        NewAMIAdapterWithAuth(auth),
+        NewEC2AdapterWithAuth(auth),
+        NewKeyPairAdapterWithAuth(auth),
+        NewEIPAdapterWithAuth(auth),
         // ...
     )
 }
@@ -415,7 +419,7 @@ references.
 | Key Pair | Low | Immutable after creation, simple CRUD, no sub-resources |
 | Elastic IP | Low | Simple allocate/release, managed key is the only tricky part |
 | EBS Volume | Medium | State transitions, type-dependent mutability, modification cooldowns |
-| AMI | Medium–High | Multiple creation paths, slow state transitions, cross-region copy |
+| AMI | Medium–High | Two creation paths (snapshot, copy), slow state transitions, cross-region copy |
 | EC2 Instance | Very High | Lifecycle states, type changes require stop/start, many cross-driver dependencies |
 
 ---

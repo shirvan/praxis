@@ -12,15 +12,19 @@ graph TD
 
     RS --> Core["Praxis Core<br/>commands, templates,<br/>orchestrator"]
     RS --> Concierge["Praxis Concierge<br/>AI assistant (optional)"]
-    RS --> SP["Storage Pack<br/>(S3, EBS, ...)"]
-    RS --> NP["Network Pack<br/>(SG, VPC, ...)"]
-    RS --> CP["Compute Pack<br/>(AMI, EC2, ...)"]
+    RS --> SP["Storage Pack<br/>(S3, EBS, RDS, SNS, SQS, ...)"]
+    RS --> NP["Network Pack<br/>(VPC, SG, ALB, Route53, ...)"]
+    RS --> CP["Compute Pack<br/>(EC2, AMI, Lambda, ECR, ...)"]
+    RS --> IP["Identity Pack<br/>(IAM Role, Policy, User, ...)"]
+    RS --> MP["Monitoring Pack<br/>(CloudWatch Logs, Alarms, ...)"]
 
     Concierge --> RS
 
     SP --> AWS["AWS APIs"]
     NP --> AWS
     CP --> AWS
+    IP --> AWS
+    MP --> AWS
 
     style RS fill:#FF9800,color:#fff
     style Core fill:#2196F3,color:#fff
@@ -28,13 +32,15 @@ graph TD
     style SP fill:#4CAF50,color:#fff
     style NP fill:#4CAF50,color:#fff
     style CP fill:#4CAF50,color:#fff
+    style IP fill:#4CAF50,color:#fff
+    style MP fill:#4CAF50,color:#fff
 ```
 
 | Component          | Description                                          | Scaling                                    |
 |--------------------|------------------------------------------------------|--------------------------------------------|
 | **Restate Server** | Durable execution engine — state, journals, timers   | Single instance (or HA cluster)            |
 | **Praxis Core**    | Command service, template engine, orchestrator       | Stateless; scale horizontally              |
-| **Driver Packs**   | Domain-grouped drivers (storage, network, compute)   | Stateless; scale horizontally per domain   |
+| **Driver Packs**   | Domain-grouped drivers (storage, network, compute, identity, monitoring) | Stateless; scale horizontally per domain   |
 | **Concierge**      | AI assistant — LLM-powered natural language interface | Stateless; optional, scale horizontally    |
 
 Every component is shipped as a Docker image. The reference topology is captured in [docker-compose.yaml](../docker-compose.yaml).
@@ -75,6 +81,9 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 | Storage Pack      | 9080          | 9081      | Restate endpoint     |
 | Network Pack      | 9080          | 9082      | Restate endpoint     |
 | Compute Pack      | 9080          | 9084      | Restate endpoint     |
+| Identity Pack     | 9080          | 9085      | Restate endpoint     |
+| Notifications     | 9080          | 9086      | Restate endpoint     |
+| Monitoring Pack   | 9080          | 9087      | Restate endpoint     |
 | Concierge         | 9080          | 9088      | Restate endpoint     |
 | LocalStack        | 4566          | 4566      | Mock AWS (local dev) |
 
@@ -98,7 +107,7 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # Register each service with Restate
-for svc in praxis-core praxis-storage praxis-compute praxis-network praxis-identity praxis-concierge; do
+for svc in praxis-core praxis-storage praxis-compute praxis-network praxis-identity praxis-monitoring praxis-concierge; do
   kubectl -n praxis-system exec deploy/restate -- \
     curl -s -X POST http://localhost:9070/deployments \
       -H 'content-type: application/json' \
@@ -253,6 +262,16 @@ curl -X POST http://localhost:9070/deployments \
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
   -d '{"uri": "http://praxis-compute:9080"}'
+
+# Register Identity driver pack
+curl -X POST http://localhost:9070/deployments \
+  -H 'content-type: application/json' \
+  -d '{"uri": "http://praxis-identity:9080"}'
+
+# Register Monitoring driver pack
+curl -X POST http://localhost:9070/deployments \
+  -H 'content-type: application/json' \
+  -d '{"uri": "http://praxis-monitoring:9080"}'
 
 # Register Praxis Core
 curl -X POST http://localhost:9070/deployments \

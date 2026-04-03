@@ -1,3 +1,9 @@
+// Package listenerrule – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS ELBv2 Listener Rule.
+// It defines the ListenerRuleAPI interface (used for testing with mocks)
+// and the real implementation that calls Elastic Load Balancing v2 through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package listenerrule
 
 import (
@@ -14,6 +20,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// ListenerRuleAPI abstracts all Elastic Load Balancing v2 SDK operations needed
+// to manage a AWS ELBv2 Listener Rule. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type ListenerRuleAPI interface {
 	CreateRule(ctx context.Context, listenerArn string, spec ListenerRuleSpec) (string, error)
 	DescribeRule(ctx context.Context, ruleArn string) (ObservedState, error)
@@ -30,10 +39,13 @@ type realListenerRuleAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewListenerRuleAPI constructs a production ListenerRuleAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewListenerRuleAPI(client *elbv2sdk.Client) ListenerRuleAPI {
 	return &realListenerRuleAPI{client: client, limiter: ratelimit.New("listener-rule", 15, 8)}
 }
 
+// CreateRule calls Elastic Load Balancing v2 to create a new AWS ELBv2 Listener Rule from the given spec.
 func (r *realListenerRuleAPI) CreateRule(ctx context.Context, listenerArn string, spec ListenerRuleSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -57,6 +69,7 @@ func (r *realListenerRuleAPI) CreateRule(ctx context.Context, listenerArn string
 	return aws.ToString(out.Rules[0].RuleArn), nil
 }
 
+// DescribeRule reads the current state of the AWS ELBv2 Listener Rule from Elastic Load Balancing v2.
 func (r *realListenerRuleAPI) DescribeRule(ctx context.Context, ruleArn string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -71,6 +84,7 @@ func (r *realListenerRuleAPI) DescribeRule(ctx context.Context, ruleArn string) 
 	return r.buildObservedState(ctx, out.Rules[0])
 }
 
+// FindRuleByPriority searches for the AWS ELBv2 Listener Rule using alternative identifiers.
 func (r *realListenerRuleAPI) FindRuleByPriority(ctx context.Context, listenerArn string, priority int) (ObservedState, error) {
 	rules, err := r.ListRules(ctx, listenerArn)
 	if err != nil {
@@ -84,6 +98,7 @@ func (r *realListenerRuleAPI) FindRuleByPriority(ctx context.Context, listenerAr
 	return ObservedState{}, fmt.Errorf("RuleNotFound: no rule with priority %d on listener %s", priority, listenerArn)
 }
 
+// ListRules enumerates AWS ELBv2 Listener Rule resources from Elastic Load Balancing v2.
 func (r *realListenerRuleAPI) ListRules(ctx context.Context, listenerArn string) ([]ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -103,6 +118,7 @@ func (r *realListenerRuleAPI) ListRules(ctx context.Context, listenerArn string)
 	return rules, nil
 }
 
+// DeleteRule removes the AWS ELBv2 Listener Rule from AWS via Elastic Load Balancing v2.
 func (r *realListenerRuleAPI) DeleteRule(ctx context.Context, ruleArn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -111,6 +127,7 @@ func (r *realListenerRuleAPI) DeleteRule(ctx context.Context, ruleArn string) er
 	return err
 }
 
+// ModifyRule updates mutable properties of the AWS ELBv2 Listener Rule via Elastic Load Balancing v2.
 func (r *realListenerRuleAPI) ModifyRule(ctx context.Context, ruleArn string, conditions []RuleCondition, actions []RuleAction) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -124,6 +141,7 @@ func (r *realListenerRuleAPI) ModifyRule(ctx context.Context, ruleArn string, co
 	return err
 }
 
+// SetRulePriorities updates mutable properties of the AWS ELBv2 Listener Rule via Elastic Load Balancing v2.
 func (r *realListenerRuleAPI) SetRulePriorities(ctx context.Context, ruleArn string, priority int) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -136,6 +154,7 @@ func (r *realListenerRuleAPI) SetRulePriorities(ctx context.Context, ruleArn str
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS ELBv2 Listener Rule via Elastic Load Balancing v2.
 func (r *realListenerRuleAPI) UpdateTags(ctx context.Context, ruleArn string, desired map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -449,26 +468,32 @@ func extractListenerArnFromRuleArn(ruleArn string) string {
 	)
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS ELBv2 Listener Rule does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "RuleNotFound")
 }
 
+// IsPriorityInUse returns true if a listener rule with the same priority already exists.
 func IsPriorityInUse(err error) bool {
 	return awserr.HasCode(err, "PriorityInUse")
 }
 
+// IsTooMany returns true if the AWS error indicates a service quota has been reached.
 func IsTooMany(err error) bool {
 	return awserr.HasCode(err, "TooManyRules")
 }
 
+// IsTooManyConditions returns true if the rule exceeds the condition value limit.
 func IsTooManyConditions(err error) bool {
 	return awserr.HasCode(err, "TooManyConditionValues")
 }
 
+// IsTargetGroupNotFound returns true if a referenced target group does not exist.
 func IsTargetGroupNotFound(err error) bool {
 	return awserr.HasCode(err, "TargetGroupNotFound")
 }
 
+// IsInvalidConfig returns true if the AWS error indicates an invalid configuration.
 func IsInvalidConfig(err error) bool {
 	return awserr.HasCode(err, "InvalidConfigurationRequest")
 }

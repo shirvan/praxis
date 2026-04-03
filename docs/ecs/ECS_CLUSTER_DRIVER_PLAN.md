@@ -1,14 +1,5 @@
 # ECS Cluster Driver — Implementation Plan
 
-> NYI
-> Target: A Restate Virtual Object driver that manages AWS ECS Clusters, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, EBS, Elastic IP,
-> Key Pair, AMI, and IAM drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~clusterName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned cluster ARN
-> lives only in state/outputs.
-
 ---
 
 ## Table of Contents
@@ -936,7 +927,7 @@ NewECSClusterAdapterWithRegistry(accounts),
 **File**: `cmd/praxis-compute/main.go` — add Bind call:
 
 ```go
-Bind(restate.Reflect(ecscluster.NewECSClusterDriver(cfg.Auth())))
+Bind(restate.Reflect(ecscluster.NewECSClusterDriver(auth)))
 ```
 
 ---

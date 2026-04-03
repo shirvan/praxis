@@ -1,12 +1,4 @@
-# CloudWatch Dashboard Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages CloudWatch Dashboards, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, EBS, Elastic IP,
-> Key Pair, AMI, Lambda, Log Group, and Metric Alarm drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~dashboardName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned dashboard ARN
-> lives only in state/outputs.
+# CloudWatch Dashboard Driver — Implementation Spec
 
 ---
 
@@ -547,19 +539,19 @@ ignoring formatting differences.
 
 ```go
 type DashboardDriver struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) DashboardAPI
 }
 
-func NewDashboardDriver(accounts *auth.Registry) *DashboardDriver {
-    return NewDashboardDriverWithFactory(accounts, func(cfg aws.Config) DashboardAPI {
+func NewDashboardDriver(auth authservice.AuthClient) *DashboardDriver {
+    return NewDashboardDriverWithFactory(auth, func(cfg aws.Config) DashboardAPI {
         return NewDashboardAPI(awsclient.NewCloudWatchClient(cfg))
     })
 }
 
-func NewDashboardDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) DashboardAPI) *DashboardDriver {
+func NewDashboardDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) DashboardAPI) *DashboardDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) DashboardAPI {
@@ -812,13 +804,13 @@ func (d *DashboardDriver) GetOutputs(ctx restate.ObjectSharedContext) (Dashboard
 
 ```go
 type DashboardAdapter struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) dashboard.DashboardAPI
 }
 
-func NewDashboardAdapterWithRegistry(accounts *auth.Registry) *DashboardAdapter {
+func NewDashboardAdapterWithAuth(auth authservice.AuthClient) *DashboardAdapter {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     return &DashboardAdapter{
         accounts: accounts,
@@ -860,7 +852,7 @@ func (a *DashboardAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) 
 
 ```go
 // Add to the NewRegistryWithAdapters(...) call:
-NewDashboardAdapterWithRegistry(accounts),
+NewDashboardAdapterWithAuth(auth),
 ```
 
 ---
@@ -871,9 +863,9 @@ NewDashboardAdapterWithRegistry(accounts),
 
 ```go
 srv := server.NewRestate().
-    Bind(restate.Reflect(loggroup.NewLogGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dashboard.NewDashboardDriver(cfg.Auth())))
+    Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth))).
+    Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth))).
+    Bind(restate.Reflect(dashboard.NewDashboardDriver(auth)))
 ```
 
 ---

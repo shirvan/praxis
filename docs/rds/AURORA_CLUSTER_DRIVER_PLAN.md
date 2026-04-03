@@ -1,17 +1,4 @@
-# Aurora Cluster Driver — Implementation Plan
-
-> **Implementation note:** This plan references a `praxis-database` driver pack.
-> The actual implementation places the Aurora Cluster driver in **`praxis-storage`**
-> (`cmd/praxis-storage/main.go`).
->
-> Target: A Restate Virtual Object driver that manages Amazon Aurora DB Clusters,
-> providing full lifecycle management including creation, configuration, import,
-> deletion, drift detection, and drift correction for cluster properties, engine
-> settings, networking, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~clusterIdentifier`, permanent
-> and immutable for the lifetime of the Virtual Object. The AWS-assigned
-> DbClusterResourceId lives only in state/outputs.
+# Aurora Cluster Driver — Implementation Spec
 
 ---
 
@@ -28,7 +15,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Database Driver Pack Entry Point](#step-9--database-driver-pack-entry-point)
+12. [Step 9 — Storage Driver Pack Entry Point](#step-9--storage-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -142,7 +129,7 @@ conflict signal eliminates the need for `praxis:managed-key` ownership tags.
 ✦ internal/core/provider/auroracluster_adapter_test.go     — Unit tests for adapter
 ✦ tests/integration/auroracluster_driver_test.go           — Integration tests
 ✎ internal/core/provider/registry.go                       — Add NewAuroraClusterAdapter to NewRegistry()
-✎ cmd/praxis-database/main.go                              — Bind AuroraClusterDriver
+✔ cmd/praxis-storage/main.go                              — Bind AuroraClusterDriver
 ```
 
 ---
@@ -668,8 +655,8 @@ const ServiceName = "AuroraCluster"
 ### Constructor Pattern
 
 ```go
-func NewAuroraClusterDriver(accounts *auth.Registry) *AuroraClusterDriver
-func NewAuroraClusterDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) AuroraClusterAPI) *AuroraClusterDriver
+func NewAuroraClusterDriver(auth authservice.AuthClient) *AuroraClusterDriver
+func NewAuroraClusterDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) AuroraClusterAPI) *AuroraClusterDriver
 ```
 
 ### Provision Handler
@@ -758,20 +745,20 @@ Calls `api.DescribeDBCluster`. Not found → `OpCreate`. Found → diff. No diff
 
 ## Step 8 — Registry Integration
 
-Add `NewAuroraClusterAdapterWithRegistry(accounts)` to `NewRegistry()`.
+Add `NewAuroraClusterAdapterWithRegistry(auth)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — Database Driver Pack Entry Point
+## Step 9 — Storage Driver Pack Entry Point
 
-Bind `AuroraClusterDriver` in `cmd/praxis-database/main.go` alongside other RDS
+Bind `AuroraClusterDriver` in `cmd/praxis-storage/main.go` alongside other storage
 drivers.
 
 ---
 
 ## Step 10 — Docker Compose & Justfile
 
-Uses the same `praxis-database` service on port 9086 as the RDS Instance driver.
+Part of the `praxis-storage` service (port 9081). No additional configuration needed.
 
 ### Justfile Targets
 
@@ -939,7 +926,7 @@ extends both the cluster and instance drivers.
 - [x] **Driver**: `internal/drivers/auroracluster/driver.go` created with all 6 handlers
 - [x] **Adapter**: `internal/core/provider/auroracluster_adapter.go` created
 - [x] **Registry**: `internal/core/provider/registry.go` updated
-- [x] **Entry point**: `cmd/praxis-database/main.go` updated with Aurora binding
+- [x] **Entry point**: `cmd/praxis-storage/main.go` — `.Bind()` call for Aurora driver
 - [x] **Unit tests (drift)**: `internal/drivers/auroracluster/drift_test.go`
 - [x] **Unit tests (aws helpers)**: `internal/drivers/auroracluster/aws_test.go`
 - [x] **Unit tests (driver)**: `internal/drivers/auroracluster/driver_test.go`

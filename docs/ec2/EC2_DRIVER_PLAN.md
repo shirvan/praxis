@@ -1,11 +1,4 @@
-# EC2 Instance Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages EC2 instances, following the
-> exact patterns established by the S3 Bucket and Security Group drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned instance ID
-> lives only in state/outputs.
+# EC2 Instance Driver — Implementation Specification
 
 ---
 
@@ -192,26 +185,22 @@ Plan-time resolution works as follows:
 
 ## 3. File Inventory
 
-Create or modify these files (✦ = new file, ✎ = modify existing):
+The driver consists of these files:
 
 ```text
-✦ internal/drivers/ec2/types.go           — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/ec2/aws.go             — EC2API interface + realEC2API implementation
-✦ internal/drivers/ec2/drift.go           — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/ec2/driver.go          — EC2InstanceDriver Virtual Object
-✦ internal/drivers/ec2/driver_test.go     — Unit tests for driver (mocked AWS)
-✦ internal/drivers/ec2/aws_test.go        — Unit tests for error classification helpers
-✦ internal/drivers/ec2/drift_test.go      — Unit tests for drift detection
-✦ internal/core/provider/ec2_adapter.go   — EC2Adapter implementing provider.Adapter
-✦ internal/core/provider/ec2_adapter_test.go — Unit tests for EC2 adapter
-✦ schemas/aws/ec2/ec2.cue                 — CUE schema for EC2Instance resource
-✦ cmd/praxis-compute/main.go              — Compute driver pack entry point (EC2 bound here)
-✦ cmd/praxis-compute/Dockerfile           — Multi-stage Docker build
-✦ tests/integration/ec2_driver_test.go    — Integration tests (Testcontainers + LocalStack)
-✎ internal/core/provider/registry.go      — Add NewEC2Adapter to NewRegistry()
-✎ internal/infra/awsclient/client.go      — Already has NewEC2Client() — NO changes needed
-✎ docker-compose.yaml                     — Add praxis-compute service
-✎ justfile                                — Add ec2 build/test/register targets
+internal/drivers/ec2/types.go           — Spec, Outputs, ObservedState, State structs
+internal/drivers/ec2/aws.go             — EC2API interface + realEC2API implementation
+internal/drivers/ec2/drift.go           — HasDrift(), ComputeFieldDiffs()
+internal/drivers/ec2/driver.go          — EC2InstanceDriver Virtual Object
+internal/drivers/ec2/driver_test.go     — Unit tests for driver (mocked AWS)
+internal/drivers/ec2/aws_test.go        — Unit tests for error classification helpers
+internal/drivers/ec2/drift_test.go      — Unit tests for drift detection
+internal/core/provider/ec2_adapter.go   — EC2Adapter implementing provider.Adapter
+internal/core/provider/ec2_adapter_test.go — Unit tests for EC2 adapter
+schemas/aws/ec2/ec2.cue                 — CUE schema for EC2Instance resource
+tests/integration/ec2_driver_test.go    — Integration tests (Testcontainers + LocalStack)
+cmd/praxis-compute/main.go              — Compute driver pack entry point (EC2 bound here)
+cmd/praxis-compute/Dockerfile           — Multi-stage Docker build
 ```
 
 ---
@@ -314,8 +303,8 @@ is used by the Security Group driver. The EC2 instance driver will reuse it.
 
 **File**: `internal/drivers/ec2/types.go`
 
-Define all the data structures the driver uses. Follow the S3/SG pattern exactly:
-one package-level constant for `ServiceName`, typed spec/outputs/observed/state structs.
+Define all the data structures the driver uses. One package-level constant for
+`ServiceName`, typed spec/outputs/observed/state structs.
 
 ```go
 package ec2
@@ -434,45 +423,14 @@ import (
 // All methods receive a plain context.Context, NOT a restate.RunContext.
 // The caller in driver.go wraps these calls inside restate.Run().
 type EC2API interface {
-    // RunInstance launches a new EC2 instance with the given spec.
-    // Returns the instance ID assigned by AWS.
     RunInstance(ctx context.Context, spec EC2InstanceSpec) (string, error)
-
-    // DescribeInstance returns the full observed state of an instance.
     DescribeInstance(ctx context.Context, instanceId string) (ObservedState, error)
-
-    // TerminateInstance terminates an instance.
     TerminateInstance(ctx context.Context, instanceId string) error
-
-    // WaitUntilRunning blocks until the instance reaches "running" state.
     WaitUntilRunning(ctx context.Context, instanceId string) error
-
-    // ModifyInstanceType stops the instance, changes the type, and restarts.
-    // This causes downtime.
     ModifyInstanceType(ctx context.Context, instanceId, newType string) error
-
-    // ModifySecurityGroups changes the security groups attached to an instance (live).
     ModifySecurityGroups(ctx context.Context, instanceId string, sgIds []string) error
-
-    // UpdateMonitoring enables or disables detailed monitoring.
     UpdateMonitoring(ctx context.Context, instanceId string, enabled bool) error
-
-    // UpdateTags replaces all tags on the instance.
-    // Does NOT tag root volumes — see Design Decisions §3.
     UpdateTags(ctx context.Context, instanceId string, tags map[string]string) error
-
-    // FindByManagedKey searches for live (non-terminated) instances tagged with
-    // praxis:managed-key=managedKey.
-    //
-    // Return semantics:
-    //   - ("", nil):       no match — safe to create.
-    //   - (instanceId, nil): exactly one match — conflict or recovery target.
-    //   - ("", error):      more than one match → terminal ownership-corruption
-    //                        error, or an AWS API failure.
-    //
-    // The "more than one match" case should never happen under normal operation.
-    // It indicates a bug or manual tag tampering. The caller (Provision) treats
-    // it as a terminal error (status 500) so the operator must investigate.
     FindByManagedKey(ctx context.Context, managedKey string) (string, error)
 }
 ```
@@ -1179,7 +1137,7 @@ func filterPraxisTags(m map[string]string) map[string]string {
 
 **File**: `internal/drivers/ec2/driver.go`
 
-This is the heart of the driver. Follow the S3 and SG patterns exactly.
+This is the heart of the driver.
 
 > **⚠️ Critical Restate footgun — `restate.Run()` panics on non-terminal errors.**
 > When the callback passed to `restate.Run()` returns a non-terminal (retryable)
@@ -1207,33 +1165,30 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/core/authservice"
     "github.com/shirvan/praxis/internal/drivers"
     "github.com/shirvan/praxis/internal/infra/awsclient"
     "github.com/shirvan/praxis/pkg/types"
 )
 
 type EC2InstanceDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) EC2API
 }
 
-func NewEC2InstanceDriver(accounts *auth.Registry) *EC2InstanceDriver {
-    return NewEC2InstanceDriverWithFactory(accounts, func(cfg aws.Config) EC2API {
+func NewEC2InstanceDriver(auth authservice.AuthClient) *EC2InstanceDriver {
+    return NewEC2InstanceDriverWithFactory(auth, func(cfg aws.Config) EC2API {
         return NewEC2API(awsclient.NewEC2Client(cfg))
     })
 }
 
-func NewEC2InstanceDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) EC2API) *EC2InstanceDriver {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewEC2InstanceDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EC2API) *EC2InstanceDriver {
     if factory == nil {
         factory = func(cfg aws.Config) EC2API {
             return NewEC2API(awsclient.NewEC2Client(cfg))
         }
     }
-    return &EC2InstanceDriver{auth: accounts, apiFactory: factory}
+    return &EC2InstanceDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *EC2InstanceDriver) ServiceName() string {
@@ -1246,7 +1201,7 @@ func (d *EC2InstanceDriver) ServiceName() string {
 ```go
 func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2InstanceSpec) (EC2InstanceOutputs, error) {
     ctx.Log().Info("provisioning EC2 instance", "name", spec.Tags["Name"], "key", restate.Key(ctx))
-    api, region, err := d.apiForAccount(spec.Account)
+    api, region, err := d.apiForAccount(ctx, spec.Account)
     if err != nil {
         return EC2InstanceOutputs{}, restate.TerminalError(err, 400)
     }
@@ -1458,7 +1413,7 @@ func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2Instanc
 ```go
 func (d *EC2InstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (EC2InstanceOutputs, error) {
     ctx.Log().Info("importing EC2 instance", "resourceId", ref.ResourceID, "mode", ref.Mode)
-    api, region, err := d.apiForAccount(ref.Account)
+    api, region, err := d.apiForAccount(ctx, ref.Account)
     if err != nil {
         return EC2InstanceOutputs{}, restate.TerminalError(err, 400)
     }
@@ -1593,7 +1548,7 @@ func (d *EC2InstanceDriver) Delete(ctx restate.ObjectContext) error {
         )
     }
 
-    api, _, err := d.apiForAccount(state.Desired.Account)
+    api, _, err := d.apiForAccount(ctx, state.Desired.Account)
     if err != nil {
         return restate.TerminalError(err, 400)
     }
@@ -1640,7 +1595,7 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
     if err != nil {
         return types.ReconcileResult{}, err
     }
-    api, _, err := d.apiForAccount(state.Desired.Account)
+    api, _, err := d.apiForAccount(ctx, state.Desired.Account)
     if err != nil {
         return types.ReconcileResult{}, restate.TerminalError(err, 400)
     }
@@ -1831,10 +1786,8 @@ func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
         Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
-// apiForAccount follows the SG driver's (EC2API, string, error) signature (not S3's
-// (S3API, error)) because EC2 needs the resolved region for the Import handler's
-// specFromObserved and for ARN construction when account-ID resolution is available.
-func (d *EC2InstanceDriver) apiForAccount(account string) (EC2API, string, error) {
+// apiForAccount resolves AWS credentials and returns an EC2API client for the given account.
+func (d *EC2InstanceDriver) apiForAccount(ctx restate.ObjectContext, account string) (EC2API, string, error) {
     if d == nil || d.auth == nil || d.apiFactory == nil {
         return nil, "", fmt.Errorf("EC2InstanceDriver is not configured with an auth registry")
     }
@@ -1893,7 +1846,7 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/core/authservice"
     "github.com/shirvan/praxis/internal/drivers/ec2"
     "github.com/shirvan/praxis/internal/infra/awsclient"
     "github.com/shirvan/praxis/pkg/types"
@@ -1901,21 +1854,14 @@ import (
 
 // EC2Adapter adapts generic resource documents to the strongly typed EC2 instance driver.
 type EC2Adapter struct {
-    auth              *auth.Registry
+    auth              authservice.AuthClient
     staticPlanningAPI ec2.EC2API
     apiFactory        func(aws.Config) ec2.EC2API
 }
 
-func NewEC2Adapter() *EC2Adapter {
-    return NewEC2AdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewEC2AdapterWithRegistry(accounts *auth.Registry) *EC2Adapter {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewEC2AdapterWithAuth(auth authservice.AuthClient) *EC2Adapter {
     return &EC2Adapter{
-        auth: accounts,
+        auth: auth,
         apiFactory: func(cfg aws.Config) ec2.EC2API {
             return ec2.NewEC2API(awsclient.NewEC2Client(cfg))
         },
@@ -2197,22 +2143,11 @@ Add `NewEC2Adapter` to the hardcoded adapter set in `NewRegistry()`.
 In the `NewRegistry()` function, add one line:
 
 ```go
-// Before:
-func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+func NewRegistry(auth authservice.AuthClient) *Registry {
     return NewRegistryWithAdapters(
-        NewS3AdapterWithRegistry(accounts),
-        NewSecurityGroupAdapterWithRegistry(accounts),
-    )
-}
-
-// After:
-func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
-    return NewRegistryWithAdapters(
-        NewS3AdapterWithRegistry(accounts),
-        NewSecurityGroupAdapterWithRegistry(accounts),
-        NewEC2AdapterWithRegistry(accounts),
+        NewS3AdapterWithAuth(auth),
+        NewSecurityGroupAdapterWithAuth(auth),
+        NewEC2AdapterWithAuth(auth),
     )
 }
 ```

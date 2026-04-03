@@ -1,12 +1,10 @@
 # Drivers
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Templates](TEMPLATES.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [Developers](DEVELOPERS.md)
-
 ---
 
 ## Overview
 
-A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. The IAM drivers manage Roles, Policies, Users, Groups, and Instance Profiles. The Route 53 drivers manage Hosted Zones, DNS Records, and Health Checks. The Lambda drivers manage Lambda Functions, Layers, Permissions, and Event Source Mappings. The RDS drivers manage RDS Instances, DB Subnet Groups, DB Parameter Groups, and Aurora Clusters. The ELB drivers manage ALBs, NLBs, Target Groups, Listeners, and Listener Rules. The ACM driver manages AWS Certificate Manager certificates. The CloudWatch drivers manage Log Groups, Metric Alarms, and Dashboards. The ECR drivers manage ECR Repositories and Lifecycle Policies. The SNS drivers manage Topics and Subscriptions. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
+A Praxis driver manages the lifecycle of a single cloud resource type. The S3 driver manages S3 buckets. The SecurityGroup driver manages EC2 security groups. The EC2 driver manages EC2 instances. The VPC driver manages AWS Virtual Private Clouds. The ElasticIP driver manages AWS Elastic IP addresses. The AMI driver manages Amazon Machine Images. The EBS driver manages EBS volumes. The KeyPair driver manages EC2 key pairs. The InternetGateway driver manages AWS Internet Gateways. The NetworkACL driver manages AWS Network ACLs. The IAM drivers manage Roles, Policies, Users, Groups, and Instance Profiles. The Route 53 drivers manage Hosted Zones, DNS Records, and Health Checks. The Lambda drivers manage Lambda Functions, Layers, Permissions, and Event Source Mappings. The RDS drivers manage RDS Instances, DB Subnet Groups, DB Parameter Groups, and Aurora Clusters. The ELB drivers manage ALBs, NLBs, Target Groups, Listeners, and Listener Rules. The ACM driver manages AWS Certificate Manager certificates. The CloudWatch drivers manage Log Groups, Metric Alarms, and Dashboards. The ECR drivers manage ECR Repositories and Lifecycle Policies. The SNS drivers manage Topics and Subscriptions. The SQS drivers manage Queues and Queue Policies. Each driver is a Restate Virtual Object that registers with Restate and communicates with Praxis Core via durable RPC.
 
 Drivers are grouped by AWS domain into **driver packs** — each pack is a single container hosting multiple related Virtual Objects. For example, the **network** pack hosts the SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, and ACMCertificate drivers. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so grouping drivers is purely a deployment-time decision — no code changes required.
 
@@ -95,6 +93,11 @@ Every cloud resource instance is modeled as a **Restate Virtual Object** keyed b
 - Listener Rule: `us-east-1~api-route` (region-scoped, using `~` as separator)
 - ECR Repository: `us-east-1~my-repo` (region-scoped, using `~` as separator)
 - ECR Lifecycle Policy: `us-east-1~my-repo` (region + repository name)
+- SQS Queue: `us-east-1~order-events` (region-scoped, using `~` as separator)
+- SQS Queue Policy: `us-east-1~order-events` (region + queue name)
+- Log Group: `us-east-1~app-logs` (region-scoped, using `~` as separator)
+- Metric Alarm: `us-east-1~cpu-alarm` (region-scoped, using `~` as separator)
+- Dashboard: `us-east-1~ops-dashboard` (region-scoped, using `~` as separator)
 
 Each Virtual Object holds:
 
@@ -326,6 +329,11 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | ECRLifecyclePolicy | Custom | `<region>~<repositoryName>` | `us-east-1~my-repo` |
 | SNSTopic | Region | `<region>~<topicName>` | `us-east-1~alerts` |
 | SNSSubscription | Custom | `<region>~<topicArn>~<protocol>~<endpoint>` | `us-east-1~arn:aws:sns:us-east-1:123456789012:alerts~sqs~arn:aws:sqs:us-east-1:123456789012:queue` |
+| SQSQueue | Region | `<region>~<queueName>` | `us-east-1~order-events` |
+| SQSQueuePolicy | Region | `<region>~<queueName>` | `us-east-1~order-events` |
+| LogGroup | Region | `<region>~<name>` | `us-east-1~app-logs` |
+| MetricAlarm | Region | `<region>~<name>` | `us-east-1~cpu-alarm` |
+| Dashboard | Region | `<region>~<name>` | `us-east-1~ops-dashboard` |
 
 The `~` separator is URL-safe and does not collide with characters valid in AWS resource names.
 
@@ -429,12 +437,13 @@ cmd/praxis-<pack>/
 
 | Pack | Binary | Drivers |
 | --- | --- | --- |
-| Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription |
+| Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription, SQSQueue, SQSQueuePolicy |
 | Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule, ACMCertificate |
 | Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy |
 | Identity | `cmd/praxis-identity/` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile |
+| Monitoring | `cmd/praxis-monitoring/` | LogGroup, MetricAlarm, Dashboard |
 
-See [Driver Roadmap](DRIVER_ROADMAP.md) for 1.0 and future planned drivers.
+See [Driver Roadmap](DRIVER_ROADMAP.md) for the full roadmap.
 
 ---
 
@@ -678,3 +687,43 @@ Manages AWS SNS subscriptions. Spec fields: `region`, `topicArn`, `protocol`, `e
 Outputs: `subscriptionArn`, `topicArn`, `protocol`, `endpoint`, `pendingConfirmation`, `confirmationStatus`.
 
 Key: `<region>~<topicArn>~<protocol>~<endpoint>`. Scope: Custom. Immutable: `topicArn`, `protocol`, `endpoint`.
+
+### SQSQueue
+
+Manages AWS SQS queues. Spec fields: `region`, `queueName`, `fifoQueue`, `visibilityTimeout`, `messageRetentionPeriod`, `maximumMessageSize`, `delaySeconds`, `receiveMessageWaitTimeSeconds`, `redrivePolicy`, `sqsManagedSseEnabled`, `kmsMasterKeyId`, `kmsDataKeyReusePeriodSeconds`, `contentBasedDeduplication`, `deduplicationScope`, `fifoThroughputLimit`, `tags`.
+
+Outputs: `queueUrl`, `queueArn`, `queueName`.
+
+Key: `<region>~<queueName>`. Scope: Region.
+
+### SQSQueuePolicy
+
+Manages AWS SQS queue resource-based policies (sub-resource of an SQS queue). Spec fields: `region`, `queueName`, `policy`.
+
+Outputs: `queueUrl`, `queueArn`, `queueName`.
+
+Key: `<region>~<queueName>`. Scope: Region.
+
+### LogGroup
+
+Manages AWS CloudWatch Log Groups. Spec fields: `region`, `logGroupName`, `logGroupClass`, `retentionInDays`, `kmsKeyId`, `tags`.
+
+Outputs: `arn`, `logGroupName`, `logGroupClass`, `retentionInDays`, `kmsKeyId`, `creationTime`, `storedBytes`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### MetricAlarm
+
+Manages AWS CloudWatch Metric Alarms. Spec fields: `region`, `alarmName`, `namespace`, `metricName`, `dimensions`, `statistic`, `extendedStatistic`, `period`, `evaluationPeriods`, `datapointsToAlarm`, `threshold`, `comparisonOperator`, `treatMissingData`, `alarmDescription`, `actionsEnabled`, `alarmActions`, `okActions`, `insufficientDataActions`, `unit`, `tags`.
+
+Outputs: `alarmArn`, `alarmName`, `stateValue`, `stateReason`.
+
+Key: `<region>~<name>`. Scope: Region.
+
+### Dashboard
+
+Manages AWS CloudWatch Dashboards. Spec fields: `region`, `dashboardName`, `dashboardBody`.
+
+Outputs: `dashboardArn`, `dashboardName`.
+
+Key: `<region>~<name>`. Scope: Region.

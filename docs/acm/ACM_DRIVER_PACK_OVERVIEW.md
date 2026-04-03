@@ -1,9 +1,5 @@
 # ACM Driver Pack — Overview
 
-> This document summarizes the ACM driver family for Praxis: one driver covering
-> ACM Certificates. It describes its relationships, shared infrastructure, runtime
-> deployment, implementation order, and cross-driver references.
-
 ---
 
 ## Table of Contents
@@ -24,7 +20,7 @@
 
 ## 1. Driver Summary
 
-| Driver | Kind | Key | Key Scope | Mutable | Tags | Plan Doc |
+| Driver | Kind | Key | Key Scope | Mutable | Tags | Spec Doc |
 |---|---|---|---|---|---|---|
 | ACM Certificate | `ACMCertificate` | `region~name` | `KeyScopeRegion` | options.certificateTransparencyLoggingPreference, tags | Yes | [ACM_CERTIFICATE_DRIVER_PLAN.md](ACM_CERTIFICATE_DRIVER_PLAN.md) |
 
@@ -108,7 +104,7 @@ primitives that are tightly coupled to DNS and load balancer configuration.
 // cmd/praxis-network/main.go
 srv := server.NewRestate().
     // ... existing network drivers ...
-    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(cfg.Auth())))
+    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth)))
 ```
 
 ---
@@ -231,10 +227,10 @@ The ACM certificate adapter is registered in `internal/core/provider/registry.go
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
-        NewACMCertificateAdapterWithRegistry(accounts),
+        NewACMCertificateAdapterWithAuth(auth),
         // ...
     )
 }

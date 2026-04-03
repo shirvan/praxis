@@ -10,6 +10,17 @@ import (
 
 // ValidateVariables checks user-provided variables against a stored schema.
 // Returns nil if valid, or a descriptive error listing all violations.
+//
+// Validation is performed before template evaluation to surface errors early
+// with clear messages, rather than letting CUE report cryptic unification
+// failures. The function checks:
+//   - Required variables are present.
+//   - Each variable matches the schema's declared type.
+//   - Enum variables contain only allowed values.
+//   - List element types match the schema's items constraint.
+//
+// Unknown variables (keys not in the schema) are silently accepted because
+// they may be consumed by CUE expressions outside the variables block.
 func ValidateVariables(schema types.VariableSchema, vars map[string]any) error {
 	if len(schema) == 0 {
 		return nil
@@ -51,6 +62,9 @@ func ValidateVariables(schema types.VariableSchema, vars map[string]any) error {
 	return fmt.Errorf("variable validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 }
 
+// validateType checks that a variable's Go type matches the schema's declared
+// type. For numeric types, float64 is accepted for "int" because Go's
+// encoding/json unmarshals all JSON numbers as float64 by default.
 func validateType(name string, field types.VariableField, val any) error {
 	switch field.Type {
 	case "string":
@@ -94,6 +108,8 @@ func validateType(name string, field types.VariableField, val any) error {
 	return nil
 }
 
+// validateListElement checks a single element within a list variable against
+// the schema's items type constraint.
 func validateListElement(varName, itemType string, index int, val any) error {
 	switch itemType {
 	case "string":
@@ -124,6 +140,8 @@ func validateListElement(varName, itemType string, index int, val any) error {
 	return nil
 }
 
+// validateEnum checks that a string variable's value is in the allowed set.
+// Non-string values are skipped because type validation catches the mismatch.
 func validateEnum(name string, allowed []string, val any) error {
 	s, ok := val.(string)
 	if !ok {

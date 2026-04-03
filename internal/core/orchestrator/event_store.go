@@ -1,3 +1,13 @@
+// event_store.go implements the DeploymentEventStore Restate Virtual Object.
+//
+// Each deployment gets its own event store instance, keyed by deployment key.
+// Events are stored in numbered chunks (chunk-1, chunk-2, ...) of up to
+// defaultEventChunkSize events each. This chunked layout keeps individual
+// state reads bounded while allowing streams to grow unbounded over time.
+//
+// The store assigns monotonically increasing sequence numbers to each event,
+// enabling range queries, cursor-based pagination, and coordinated pruning
+// with the global EventIndex.
 package orchestrator
 
 import (
@@ -9,12 +19,21 @@ import (
 	restate "github.com/restatedev/sdk-go"
 )
 
+// DeploymentEventStore is a per-deployment, append-only event stream backed by
+// Restate virtual object state. Events are chunked for bounded state reads.
 type DeploymentEventStore struct{}
 
+// ServiceName returns the Restate service name for the event store.
 func (DeploymentEventStore) ServiceName() string {
 	return DeploymentEventStoreServiceName
 }
 
+// Append adds a CloudEvent to this deployment's stream. It auto-fills
+// specVersion, timestamp, and content type, assigns a monotonic sequence number,
+// validates the event, and persists it in the current chunk. When the chunk
+// reaches capacity (defaultEventChunkSize), a new chunk is started.
+//
+// Returns the SequencedCloudEvent which includes the assigned sequence number.
 func (DeploymentEventStore) Append(ctx restate.ObjectContext, event cloudevents.Event) (SequencedCloudEvent, error) {
 	if event.SpecVersion() == "" {
 		event.SetSpecVersion(cloudevents.VersionV1)
@@ -79,6 +98,8 @@ func (DeploymentEventStore) Append(ctx restate.ObjectContext, event cloudevents.
 	return record, nil
 }
 
+// ListSince returns all events with sequence > seq. Used for cursor-based
+// streaming reads. Pass seq=0 to read all events.
 func (DeploymentEventStore) ListSince(ctx restate.ObjectSharedContext, seq int64) ([]SequencedCloudEvent, error) {
 	if seq < 0 {
 		return nil, restate.TerminalError(fmt.Errorf("sequence must be >= 0"), 400)
@@ -106,6 +127,8 @@ func (DeploymentEventStore) ListSince(ctx restate.ObjectSharedContext, seq int64
 	return out, nil
 }
 
+// ListByType returns events whose type has the given prefix. Pass an empty
+// prefix to return all events.
 func (DeploymentEventStore) ListByType(ctx restate.ObjectSharedContext, prefix string) ([]SequencedCloudEvent, error) {
 	events, err := DeploymentEventStore{}.ListSince(ctx, 0)
 	if err != nil {
@@ -120,6 +143,8 @@ func (DeploymentEventStore) ListByType(ctx restate.ObjectSharedContext, prefix s
 	return out, nil
 }
 
+// ListByResource returns events whose CloudEvent subject matches the given
+// resource name. Pass an empty string to return all events.
 func (DeploymentEventStore) ListByResource(ctx restate.ObjectSharedContext, subject string) ([]SequencedCloudEvent, error) {
 	events, err := DeploymentEventStore{}.ListSince(ctx, 0)
 	if err != nil {
@@ -134,6 +159,7 @@ func (DeploymentEventStore) ListByResource(ctx restate.ObjectSharedContext, subj
 	return out, nil
 }
 
+// GetRange returns events within an inclusive [StartSequence, EndSequence] range.
 func (DeploymentEventStore) GetRange(ctx restate.ObjectSharedContext, req EventRangeRequest) ([]SequencedCloudEvent, error) {
 	if req.StartSequence < 0 || req.EndSequence < 0 {
 		return nil, restate.TerminalError(fmt.Errorf("sequence range must be >= 0"), 400)
@@ -158,6 +184,8 @@ func (DeploymentEventStore) GetRange(ctx restate.ObjectSharedContext, req EventR
 	return out, nil
 }
 
+// Count returns the number of live events in this deployment's store.
+// Uses the cached ActiveCount when available to avoid scanning all chunks.
 func (DeploymentEventStore) Count(ctx restate.ObjectSharedContext) (int64, error) {
 	meta, err := restate.Get[*eventStoreMeta](ctx, "meta")
 	if err != nil {
@@ -172,6 +200,11 @@ func (DeploymentEventStore) Count(ctx restate.ObjectSharedContext) (int64, error
 	return activeEventCountShared(ctx, meta)
 }
 
+// RollbackPlan builds the set of resources eligible for rollback by scanning
+// resource.ready events. For each resource that emitted at least one ready
+// event, the plan includes the latest occurrence. Resources are sorted by
+// reverse sequence (most recently provisioned first) so rollback deletes the
+// newest resources before their dependencies.
 func (DeploymentEventStore) RollbackPlan(ctx restate.ObjectSharedContext, _ restate.Void) (RollbackPlan, error) {
 	records, err := DeploymentEventStore{}.ListByType(ctx, EventTypeResourceReady)
 	if err != nil {
@@ -210,6 +243,12 @@ func (DeploymentEventStore) RollbackPlan(ctx restate.ObjectSharedContext, _ rest
 	return RollbackPlan{DeploymentKey: restate.Key(ctx), Resources: resources}, nil
 }
 
+// Prune removes old events from this deployment's store. Events are eligible
+// for pruning if they are older than req.Before or exceed req.MaxEvents.
+// When req.ShipBeforeDelete is true, pruned events are first sent in batches
+// to the drain sink via SinkRouter.DrainBatch, ensuring no data is lost.
+// Returns the ranges of deleted sequences so the caller can prune the global
+// EventIndex accordingly.
 func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePruneRequest) (EventStorePruneResult, error) {
 	meta, err := restate.Get[*eventStoreMeta](ctx, "meta")
 	if err != nil {
@@ -316,6 +355,9 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 	}, nil
 }
 
+// activeEventCountObject counts live events by scanning all chunks.
+// Used when the cached ActiveCount is zero but NextSequence > 0 (e.g. after
+// an upgrade that introduced the ActiveCount field).
 func activeEventCountObject(ctx restate.ObjectContext, meta *eventStoreMeta) (int64, error) {
 	var count int64
 	for index := 1; index <= meta.ChunkCount; index++ {
@@ -328,6 +370,8 @@ func activeEventCountObject(ctx restate.ObjectContext, meta *eventStoreMeta) (in
 	return count, nil
 }
 
+// activeEventCountShared is the read-only variant of activeEventCountObject,
+// used by Count() which runs as a shared handler.
 func activeEventCountShared(ctx restate.ObjectSharedContext, meta *eventStoreMeta) (int64, error) {
 	var count int64
 	for index := 1; index <= meta.ChunkCount; index++ {

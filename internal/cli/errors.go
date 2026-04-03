@@ -1,3 +1,7 @@
+// errors.go provides error detection and formatting helpers for CLI output.
+//
+// Auth errors from Praxis Core arrive as plain strings after Restate RPC
+// serialisation (typed *AuthError is lost), so detection is string-based.
 package cli
 
 import (
@@ -33,6 +37,8 @@ func FormatAuthError(msg string) {
 	}
 }
 
+// PrintError prints a generic error message to stderr, prefixed with a
+// styled "✗" indicator.
 func PrintError(msg string) {
 	renderer := defaultRenderer()
 	prefix := "✗"

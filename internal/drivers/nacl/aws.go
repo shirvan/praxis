@@ -16,25 +16,31 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// NetworkACLAPI abstracts the AWS EC2 SDK operations for Network ACLs.
+// The real implementation wraps the SDK with rate limiting. Rule operations
+// (Create/Delete/ReplaceEntry) modify individual numbered entries rather than
+// replacing the entire rule set atomically.
 type NetworkACLAPI interface {
-	CreateNetworkACL(ctx context.Context, spec NetworkACLSpec) (string, error)
-	DescribeNetworkACL(ctx context.Context, networkAclId string) (ObservedState, error)
-	DeleteNetworkACL(ctx context.Context, networkAclId string) error
-	CreateEntry(ctx context.Context, networkAclId string, rule NetworkACLRule, egress bool) error
-	DeleteEntry(ctx context.Context, networkAclId string, ruleNumber int, egress bool) error
-	ReplaceEntry(ctx context.Context, networkAclId string, rule NetworkACLRule, egress bool) error
-	ReplaceNetworkACLAssociation(ctx context.Context, associationId string, networkAclId string) (string, error)
-	UpdateTags(ctx context.Context, networkAclId string, tags map[string]string) error
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
-	FindAssociationIdForSubnet(ctx context.Context, subnetId string) (string, error)
-	FindDefaultNetworkACL(ctx context.Context, vpcId string) (string, error)
+	CreateNetworkACL(ctx context.Context, spec NetworkACLSpec) (string, error)                                   // Creates a NACL with managed-key tag.
+	DescribeNetworkACL(ctx context.Context, networkAclId string) (ObservedState, error)                          // Fetches live state; filters rule 32767 and IPv6.
+	DeleteNetworkACL(ctx context.Context, networkAclId string) error                                             // Deletes the NACL; fails if subnets still associated.
+	CreateEntry(ctx context.Context, networkAclId string, rule NetworkACLRule, egress bool) error                // Adds a numbered rule entry.
+	DeleteEntry(ctx context.Context, networkAclId string, ruleNumber int, egress bool) error                     // Removes a numbered rule entry.
+	ReplaceEntry(ctx context.Context, networkAclId string, rule NetworkACLRule, egress bool) error               // Replaces an existing rule in-place by number.
+	ReplaceNetworkACLAssociation(ctx context.Context, associationId string, networkAclId string) (string, error) // Moves a subnet to a different NACL.
+	UpdateTags(ctx context.Context, networkAclId string, tags map[string]string) error                           // Replaces all user tags.
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)                                     // Finds NACL by praxis:managed-key tag.
+	FindAssociationIdForSubnet(ctx context.Context, subnetId string) (string, error)                             // Finds the current NACL association for a subnet.
+	FindDefaultNetworkACL(ctx context.Context, vpcId string) (string, error)                                     // Finds the VPC's default NACL (used during delete).
 }
 
+// realNetworkACLAPI implements NetworkACLAPI using the actual AWS SDK v2 EC2 client.
 type realNetworkACLAPI struct {
 	client  *ec2sdk.Client
-	limiter *ratelimit.Limiter
+	limiter *ratelimit.Limiter // Token-bucket: 20 burst, 10/s refill.
 }
 
+// NewNetworkACLAPI creates a new NetworkACLAPI backed by the given EC2 SDK client.
 func NewNetworkACLAPI(client *ec2sdk.Client) NetworkACLAPI {
 	return &realNetworkACLAPI{
 		client:  client,
@@ -461,30 +467,44 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 	}
 }
 
+// Error classifiers — used by the driver to decide between retryable
+// errors, terminal errors, and idempotent success paths.
+
+// IsNotFound returns true when the NACL does not exist in AWS.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidNetworkAclID.NotFound")
 }
 
+// IsInUse returns true when the NACL cannot be deleted because subnets
+// are still associated with it.
 func IsInUse(err error) bool {
 	return awserr.HasCode(err, "DependencyViolation")
 }
 
+// IsDefaultACL returns true when attempting to delete the VPC's default NACL,
+// which AWS does not permit.
 func IsDefaultACL(err error) bool {
 	return awserr.HasCode(err, "Client.CannotDelete", "OperationNotPermitted")
 }
 
+// IsDuplicateRule returns true when a rule with the same number already exists.
+// Used for idempotent rule creation.
 func IsDuplicateRule(err error) bool {
 	return awserr.HasCode(err, "NetworkAclEntryAlreadyExists")
 }
 
+// IsRuleNotFound returns true when trying to delete a rule that does not exist.
+// Treated as a no-op.
 func IsRuleNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidNetworkAclEntry.NotFound")
 }
 
+// IsInvalidParam returns true for invalid parameter errors (terminal).
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination", "InvalidSubnetID.NotFound", "InvalidVpcID.NotFound")
 }
 
+// IsLimitExceeded returns true when NACL or rule count limits are reached (terminal).
 func IsLimitExceeded(err error) bool {
 	return awserr.HasCodePrefix(err, "NetworkAclLimit", "RulesPerAclLimit")
 }

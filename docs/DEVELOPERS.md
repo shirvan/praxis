@@ -22,6 +22,9 @@ cmd/
   praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53Zone, Route53Record, Route53HealthCheck)
   praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping)
   praxis-identity/             # Identity driver pack (IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile)
+  praxis-monitoring/           # Monitoring driver pack (LogGroup, MetricAlarm, Dashboard)
+  praxis-notifications/        # Notification sink service
+  praxis-slack/                # Slack gateway service
 
 internal/
   cli/                         # CLI command implementations
@@ -104,6 +107,20 @@ internal/
       dbparametergroup_adapter.go # DB Parameter Group adapter
       auroracluster_adapter.go # Aurora Cluster adapter
       targetgroup_adapter.go   # Target Group adapter
+      alb_adapter.go           # ALB adapter
+      nlb_adapter.go           # NLB adapter
+      listener_adapter.go      # Listener adapter
+      listenerrule_adapter.go  # Listener Rule adapter
+      snstopic_adapter.go      # SNS Topic adapter
+      snssub_adapter.go        # SNS Subscription adapter
+      sqs_adapter.go           # SQS Queue adapter
+      sqspolicy_adapter.go     # SQS Queue Policy adapter
+      ecrrepository_adapter.go # ECR Repository adapter
+      ecrlifecyclepolicy_adapter.go # ECR Lifecycle Policy adapter
+      acmcert_adapter.go       # ACM Certificate adapter
+      loggroup_adapter.go      # CloudWatch Log Group adapter
+      metricalarm_adapter.go   # CloudWatch Metric Alarm adapter
+      dashboard_adapter.go     # CloudWatch Dashboard adapter
     registry/                  # Template + policy registries
       template_registry.go     # Restate VO for template storage
       policy_registry.go       # Restate VO for policy storage
@@ -148,6 +165,20 @@ internal/
     dbparametergroup/          # DB Parameter Group driver
     auroracluster/             # Aurora Cluster driver
     targetgroup/               # Target Group driver
+    alb/                       # Application Load Balancer driver
+    nlb/                       # Network Load Balancer driver
+    listener/                  # ELB Listener driver
+    listenerrule/              # ELB Listener Rule driver
+    snstopic/                  # SNS Topic driver
+    snssub/                    # SNS Subscription driver
+    sqs/                       # SQS Queue driver
+    sqspolicy/                 # SQS Queue Policy driver
+    ecrrepo/                   # ECR Repository driver
+    ecrpolicy/                 # ECR Lifecycle Policy driver
+    acmcert/                   # ACM Certificate driver
+    loggroup/                  # CloudWatch Log Group driver
+    metricalarm/               # CloudWatch Metric Alarm driver
+    dashboard/                 # CloudWatch Dashboard driver
   infra/
     awsclient/                 # Shared AWS client setup
     ratelimit/                 # Token bucket rate limiter
@@ -186,6 +217,20 @@ schemas/aws/                   # CUE schemas per provider/service
   rds/parameter_group.cue
   rds/subnet_group.cue
   elb/target_group.cue
+  elb/alb.cue
+  elb/nlb.cue
+  elb/listener.cue
+  elb/listener_rule.cue
+  sns/topic.cue
+  sns/subscription.cue
+  sqs/queue.cue
+  sqs/queue_policy.cue
+  ecr/repository.cue
+  ecr/lifecycle_policy.cue
+  acm/certificate.cue
+  cloudwatch/log_group.cue
+  cloudwatch/metric_alarm.cue
+  cloudwatch/dashboard.cue
 
 schemas/data/                  # Data source schemas (provider-agnostic)
   lookup.cue                   # #Lookup definition for data block entries
@@ -217,39 +262,72 @@ just docker-build
 # Unit tests (no Docker needed)
 just test
 
-# Scoped unit tests
-just test-core       # Command service + DAG + orchestrator
-just test-cli        # CLI
-just test-concierge  # Concierge AI assistant
-just test-s3         # S3 driver
-just test-sg         # SG driver
+# Scoped unit tests — Core
+just test-core       # Command service + DAG + orchestrator + provider + registry
+just test-cli        # CLI commands + output formatting
+just test-concierge  # Concierge AI assistant + LLM + tools + migration
+just test-template   # Template engine + resolver + CUE validation
+just test-slack      # Slack gateway + config + messages + watch
+
+# Scoped unit tests — Network drivers
+just test-sg         # Security Group driver
 just test-vpc        # VPC driver
-just test-ami        # AMI driver
-just test-ebs        # EBS driver
-just test-eip        # EIP driver
-just test-template   # Template engine + resolver
-just test-igw        # IGW driver
-just test-nacl       # NACL driver
+just test-eip        # Elastic IP driver
+just test-igw        # Internet Gateway driver
+just test-nacl       # Network ACL driver
 just test-routetable # Route Table driver
 just test-subnet     # Subnet driver
 just test-natgw      # NAT Gateway driver
 just test-vpcpeering # VPC Peering driver
+
+# Scoped unit tests — Compute drivers
+just test-ec2        # EC2 Instance driver
+just test-ami        # AMI driver
 just test-keypair    # Key Pair driver
 just test-lambda     # Lambda Function driver
 just test-lambdalayer # Lambda Layer driver
 just test-lambdaperm # Lambda Permission driver
 just test-esm        # Event Source Mapping driver
+
+# Scoped unit tests — Storage drivers
+just test-s3         # S3 Bucket driver
+just test-ebs        # EBS Volume driver
+just test-sqs        # SQS Queue driver
+just test-sqspolicy  # SQS Queue Policy driver
+
+# Scoped unit tests — Identity drivers
 just test-iamrole    # IAM Role driver
 just test-iampolicy  # IAM Policy driver
 just test-iamuser    # IAM User driver
 just test-iamgroup   # IAM Group driver
 just test-iaminstanceprofile # IAM Instance Profile driver
 just test-iam        # All IAM drivers
-just test-route53    # All Route 53 drivers
+
+# Scoped unit tests — Route 53 drivers
 just test-route53zone # Route 53 Hosted Zone driver
 just test-route53record # Route 53 DNS Record driver
 just test-route53healthcheck # Route 53 Health Check driver
-just test-rds        # All RDS drivers
+just test-route53    # All Route 53 drivers
+
+# Scoped unit tests — RDS drivers
+just test-rds        # All RDS drivers (RDSInstance, Aurora, DBSubnetGroup, DBParameterGroup)
+
+# Scoped unit tests — ELB drivers
+just test-alb        # Application Load Balancer driver
+just test-nlb        # Network Load Balancer driver
+just test-targetgroup # Target Group driver
+just test-listener   # Listener driver
+just test-listenerrule # Listener Rule driver
+
+# Scoped unit tests — Other drivers
+just test-ecrrepo    # ECR Repository driver
+just test-ecrpolicy  # ECR Lifecycle Policy driver
+just test-snstopic   # SNS Topic driver
+just test-snssub     # SNS Subscription driver
+just test-acmcert    # ACM Certificate driver
+just test-loggroup   # CloudWatch Log Group driver
+just test-metricalarm # CloudWatch Metric Alarm driver
+just test-dashboard  # CloudWatch Dashboard driver
 
 # Lint
 just lint
@@ -289,29 +367,198 @@ graph TD
 
 No AWS or Restate required. Tests the most complex logic in isolation:
 
-- DAG construction, cycle detection, topological ordering
-- Expression reference parsing, typed hydration
-- Drift detection per driver (pure function comparison)
-- Template evaluation, schema validation
-- Plan diff rendering
-- Provider adapter registry, key generation
+- **DAG engine** — Graph construction, cycle detection, topological ordering, expression reference parsing, eager dispatch scheduling
+- **Drift detection** — Pure-function comparison per driver (HasDrift, ComputeFieldDiffs)
+- **Template engine** — CUE evaluation pipeline, schema validation, variable validation, data source extraction
+- **Plan diff** — Field-level diff rendering with Terraform-inspired sigils
+- **Provider adapters** — Kind mapping, key generation, spec decoding, output normalization (all 45 adapters)
+- **Registry** — Template storage, policy storage, index synchronization
+- **CLI** — Config parsing, output formatting, error rendering
+- **Concierge** — LLM provider abstraction, tool registry, conversation history, migration mapping/inventory
+- **Auth** — Credential resolution, error classification, STS operations
+- **Infrastructure** — Rate limiter, AWS error classification
+
+##### Unit Test Coverage by Package
+
+| Package | Test Files | Status | Key Scenarios Covered |
+|---------|-----------|--------|----------------------|
+| `core/dag` | 3 | **Complete** | Graph construction, cycle detection, parser extraction, scheduler ordering |
+| `core/diff` | 1 | **Complete** | Add/change/remove rendering, summary counters |
+| `core/config` | 1 | **Complete** | Env-based configuration loading |
+| `core/auth` | 1 | **Complete** | Credential resolution, multi-account |
+| `core/jsonpath` | 1 | **Complete** | Dot-path set operations, array indexing |
+| `core/resolver` | 2 | **Complete** | SSM resolution, Restate-journaled wrapper |
+| `infra/ratelimit` | 1 | **Complete** | Token bucket behavior, burst, refill |
+| `core/template` | 2 | **Good** | CUE evaluation, schema extraction, variable validation |
+| `core/registry` | 3 | **Good** | Template CRUD, policy scoping, index sync |
+| `core/provider` | 45 | **Near-complete** | All 45 adapters: BuildKey, DecodeSpec, NormalizeOutputs, Scope |
+| `core/command` | 5 | **Partial** | Service init, pipeline, datasource, template/policy handlers |
+| `core/orchestrator` | 5 | **Partial** | Workflow state, hydrator, event builders/index, notification sinks |
+| `core/authservice` | 3 | **Partial** | Client, config, errors; service.go/sts.go lack direct unit tests |
+| `core/workspace` | 1 | **Minimal** | Name validation only; service/index handlers untested |
+| `cli` | 6 | **Partial** | Config, errors, fmt, output, root, state; command wiring untested |
+| `concierge` | 10 | **Good** | Config, history, LLM providers, tools registry, types, session, migration mapping/inventory |
+| `slack` | 5 | **Partial** | Config, gateway, messages, thread_state, watch |
+
+##### Driver Unit Test Coverage
+
+Every driver package has 3 test files covering the core patterns:
+
+| Test File | What It Tests |
+|-----------|--------------|
+| `driver_test.go` | Provision (happy path, idempotency, validation), Import, Delete, Reconcile, GetStatus, GetOutputs |
+| `drift_test.go` | HasDrift (no-drift baseline, per-field drift, tag drift), ComputeFieldDiffs (field annotations) |
+| `aws_test.go` | Error classifiers (IsNotFound, IsDuplicate, etc.), API wrapper edge cases |
+
+| Driver | driver_test | drift_test | aws_test | Depth |
+|--------|:-----------:|:----------:|:--------:|-------|
+| S3Bucket | 6 tests | 10 tests | 2 tests | Good |
+| SecurityGroup | 5 tests | 17 tests | 8 tests | Good |
+| VPC | 5 tests | 17 tests | 8 tests | Good |
+| EC2Instance | 3 tests | 15 tests | 11 tests | Good (driver sparse) |
+| EBSVolume | 7 tests | 9 tests | 7 tests | Good |
+| ElasticIP | 4 tests | 5 tests | 8 tests | Good |
+| AMI | 6 tests | 7 tests | 4 tests | Good |
+| KeyPair | 4 tests | 5 tests | 4 tests | Good |
+| IGW | 15 tests | 4 tests | 6 tests | Excellent |
+| NACL | 20 tests | 6 tests | 8 tests | Excellent |
+| RouteTable | 8 tests | 5 tests | 5 tests | Good |
+| Subnet | 16 tests | 10 tests | 4 tests | Excellent |
+| NATGateway | 20 tests | 8 tests | 7 tests | Excellent |
+| VPCPeering | 5 tests | 6 tests | 5 tests | Good |
+| Lambda | 5 tests | 2 tests | 1 test | Moderate |
+| LambdaLayer | 4 tests | 2 tests | 1 test | Moderate |
+| LambdaPerm | 3 tests | 35 tests | 35 tests | Good |
+| ESM | 3 tests | 39 tests | 39 tests | Good |
+| IAMRole | 5 tests | 7 tests | 5 tests | Good |
+| IAMPolicy | 5 tests | 7 tests | 5 tests | Good |
+| IAMUser | 4 tests | 8 tests | 3 tests | Good |
+| IAMGroup | 4 tests | 6 tests | 4 tests | Good |
+| IAMInstanceProfile | 9 tests | 6 tests | 4 tests | Good |
+| Route53Zone | 11 tests | 7 tests | 8 tests | Good |
+| Route53Record | 11 tests | 6 tests | 9 tests | Good |
+| Route53HealthCheck | 11 tests | 7 tests | 6 tests | Good |
+| RDSInstance | 22 tests | 19 tests | 14 tests | Excellent |
+| AuroraCluster | 17 tests | 19 tests | 14 tests | Excellent |
+| DBSubnetGroup | 10 tests | 13 tests | 8 tests | Excellent |
+| DBParameterGroup | 12 tests | 12 tests | 9 tests | Excellent |
+| TargetGroup | 8 tests | 30 tests | 23 tests | Excellent |
+| ALB | 9 tests | 5 tests | 20 tests | Good |
+| NLB | 9 tests | 5 tests | 18 tests | Good |
+| Listener | 12 tests | 11 tests | 17 tests | Excellent |
+| ListenerRule | 12 tests | 13 tests | 25 tests | Excellent |
+| SNSTopic | 5 tests | 27 tests | 15 tests | Excellent |
+| SNSSub | 13 tests | 18 tests | 12 tests | Excellent |
+| SQSQueue | 4 tests | 5 tests | 5 tests | Good |
+| SQSQueuePolicy | 3 tests | 3 tests | 2 tests | Moderate |
+| ECRRepository | 19 tests | 15 tests | 11 tests | Excellent |
+| ECRLifecyclePolicy | 13 tests | 8 tests | 8 tests | Good |
+| ACMCertificate | 4 tests | 3 tests | 2 tests | Moderate |
+| LogGroup | 8 tests | 3 tests | 3 tests | Good |
+| MetricAlarm | 8 tests | 3 tests | 3 tests | Good |
+| Dashboard | 6 tests | 3 tests | 2 tests | Good |
 
 #### Layer 2: Driver Integration Tests
 
-Driver CRUD operations tested against LocalStack via Testcontainers. No real AWS required.
+Driver CRUD operations tested against LocalStack via Testcontainers. No real AWS required. Each driver integration test covers the full lifecycle:
 
-Per driver:
+- **Provision** — Create resource, verify outputs (ARN, ID, etc.)
+- **Idempotent provision** — Re-provision same resource, verify convergence
+- **Update** — Modify mutable fields, verify changes applied
+- **Import** — Adopt pre-existing resource (managed and/or observed mode)
+- **Delete** — Remove resource, verify cleanup
+- **Delete safety** — Non-empty resources fail terminally
+- **Reconcile** — Drift detection with auto-correction (managed) or reporting (observed)
+- **External delete** — Detect resource removal outside Praxis
+- **GetStatus / GetOutputs** — Verify status reporting
 
-- Provision (create, idempotency, update)
-- Import (managed and observed modes)
-- Delete (resource removed, tombstone preserved)
-- Reconcile (no drift, managed drift correction, observed drift reporting)
-- GetStatus / GetOutputs
-- Error handling (terminal vs retryable)
+##### Integration Test Coverage by Driver
+
+| Driver | Tests | Create | Idempotent | Update | Import | Delete | Reconcile | Ext. Delete | GetStatus |
+|--------|:-----:|:------:|:----------:|:------:|:------:|:------:|:---------:|:-----------:|:---------:|
+| S3Bucket | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| SecurityGroup | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| VPC | 10 | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| EC2Instance | 8 | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| EBSVolume | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| ElasticIP | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| KeyPair | 6 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | — |
+| AMI | 3 | ✅ | — | — | ✅ | ✅ | — | — | — |
+| IGW | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| Subnet | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| RouteTable | 3 | ✅ | — | — | ✅ | — | ✅ | — | — |
+| NACL | 9 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| NATGateway | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| VPCPeering | 7 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| Lambda | 7 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| LambdaLayer | 5 | ✅ | ✅ | — | ✅ | ✅ | — | — | ✅ |
+| LambdaPerm | 4 | ✅ | ✅ | — | — | ✅ | — | — | ✅ |
+| ESM | 4 | ✅ | ✅ | — | — | ✅ | — | — | ✅ |
+| IAMRole | 5 | ✅ | — | ✅ | ✅ | ✅ | ✅ | — | — |
+| IAMPolicy | 6 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| IAMUser | 5 | ✅ | — | ✅ | ✅ | ✅ | ✅ | — | — |
+| IAMGroup | 6 | ✅ | — | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| IAMInstanceProfile | 5 | ✅ | — | ✅ | ✅ | ✅ | ✅ | — | — |
+| Route53Zone | 6 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| Route53Record | 4 | ✅ | — | ✅ | — | ✅ | — | — | ✅ |
+| Route53HealthCheck | 4 | ✅ | — | ✅ | — | ✅ | — | — | ✅ |
+| ALB | 4 | ✅ | ✅ | — | — | ✅ | — | — | ✅ |
+| NLB | 4 | ✅ | ✅ | — | — | ✅ | — | — | ✅ |
+| TargetGroup | 7 | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | ✅ |
+| Listener | 3 | ✅ | — | — | — | ✅ | — | — | ✅ |
+| ListenerRule | 3 | ✅ | — | — | — | ✅ | — | — | ✅ |
+| SQSQueue | 4 | ✅ | — | — | ✅ | ✅ | — | — | — |
+| SQSQueuePolicy | 3 | ✅ | — | — | ✅ | ✅ | — | — | — |
+| ECRRepository | 6 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| ECRLifecyclePolicy | 6 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| SNSTopic | 6 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | ✅ |
+| SNSSub | 4 | ✅ | — | — | ✅ | ✅ | — | — | ✅ |
+| LogGroup | 5 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | — |
+| MetricAlarm | 5 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | — |
+| Dashboard | 5 | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | — |
+| DBParameterGroup | 5 | ✅ | ✅ | — | ✅ | ✅ | — | — | ✅ |
+| DBSubnetGroup | 5 | ✅ | ✅ | — | ✅ | ✅ | — | — | ✅ |
+| RDSInstance | 5 | ✅ | ✅ | — | ✅ | ✅ | — | — | ✅ |
+| AuroraCluster | 5 | ✅ | ✅ | — | ✅ | ✅ | — | — | ✅ |
+| ACMCertificate | 2 | ✅ | — | — | — | — | — | — | ✅ |
 
 #### Layer 3: End-to-End Tests
 
-Full deployment lifecycle — template submission through the command service, orchestrator dispatching resources in dependency order, outputs propagating, delete in reverse order. Runs against Testcontainers (Restate + LocalStack).
+Full deployment lifecycle through the Restate command service and orchestrator. Testcontainers (Restate + LocalStack).
+
+##### Workflow Scenarios Covered
+
+| Scenario | Test | Status |
+|----------|------|:------:|
+| Single-resource apply (S3) | `TestCore_Apply_SingleS3` | ✅ |
+| Plan dry-run (no provisioning) | `TestCore_Plan_ShowsDiff` | ✅ |
+| Multi-resource with DAG dependencies | `TestCore_Apply_MultiResource_WithDependencies` | ✅ |
+| Delete single resource | `TestCore_Delete_ReverseOrder` | ✅ |
+| Delete multi-resource (reverse topo) | `TestCore_Delete_MultiResource` | ✅ |
+| Cycle detection | Apply + Plan | ✅ |
+| Rollback on partial failure | `TestCore_Rollback_DeletesOnlyReadyResources` | ✅ |
+| Import via command service | `TestCore_Import_S3` | ✅ |
+| Deploy from registered template | `TestDeploy_HappyPath` | ✅ |
+| Deploy with required variables | `TestDeploy_MissingVariable` / `TestDeploy_InvalidEnum` | ✅ |
+| PlanDeploy (dry-run) | `TestDeploy_PlanDeploy` | ✅ |
+| Deploy multi-resource with deps | `TestDeploy_MultiResource_WithDependencies` | ✅ |
+| Template not found | `TestDeploy_TemplateNotFound` | ✅ |
+| Template re-registration | `TestDeploy_ReRegister_DigestChange` | ✅ |
+| Variable schema extraction | `TestDeploy_VariableSchema` | ✅ |
+| Template registry CRUD | `TestTemplateRegistry_RegisterGetListApply` | ✅ |
+| SSM parameter resolution | `TestSSMParameterResolution` | ✅ |
+| SSM missing parameter | `TestSSMParameterResolution_MissingParam` | ✅ |
+| Data source: VPC lookup | `TestDataSource_VPCLookup` | ✅ |
+| Data source: S3 lookup | `TestDataSource_S3Lookup` | ✅ |
+| Data source: not found | `TestDataSource_NotFound` | ✅ |
+| Global policy enforcement | `TestPolicy_GlobalBlocksInvalid` | ✅ |
+| Template-scoped policy | `TestPolicy_TemplateScopedPolicy` | ✅ |
+| preventDestroy lifecycle | `TestCore_SystemAndPolicyEvents` | ✅ |
+| Deployment events + CloudEvents | Multiple tests | ✅ |
+| Notification sink delivery | `TestCore_NotificationSink_*` | ✅ |
+| Event retention + sweep | `TestCore_Retention_*` | ✅ |
+| Event index querying | `TestCore_EventIndex_*` | ✅ |
+| Workspace event retention | `TestCore_Workspace_EventRetention_*` | ✅ |
 
 ## Driver Development
 

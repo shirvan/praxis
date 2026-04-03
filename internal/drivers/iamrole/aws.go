@@ -17,6 +17,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// IAMRoleAPI defines the interface for all AWS IAM role operations used by the driver.
+// This abstraction allows the driver to be tested with mock implementations.
+// All methods accept a context for cancellation and rate limiting.
 type IAMRoleAPI interface {
 	CreateRole(ctx context.Context, spec IAMRoleSpec) (arn, roleID string, err error)
 	DescribeRole(ctx context.Context, roleName string) (ObservedState, error)
@@ -35,11 +38,15 @@ type IAMRoleAPI interface {
 	RemoveRoleFromInstanceProfile(ctx context.Context, roleName, profileName string) error
 }
 
+// realIAMRoleAPI is the production implementation of IAMRoleAPI backed by the AWS SDK IAM client.
+// All API calls are rate-limited through a shared token-bucket limiter scoped to the "iam" service.
 type realIAMRoleAPI struct {
 	client  *iamsdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewIAMRoleAPI constructs a production IAMRoleAPI with a rate limiter configured for
+// IAM's default throttling limits (15 requests/sec sustained, burst of 8).
 func NewIAMRoleAPI(client *iamsdk.Client) IAMRoleAPI {
 	return &realIAMRoleAPI{
 		client:  client,
@@ -47,6 +54,9 @@ func NewIAMRoleAPI(client *iamsdk.Client) IAMRoleAPI {
 	}
 }
 
+// CreateRole calls the AWS IAM CreateRole API to create a new role with the given spec.
+// It sets the role name, path, assume role policy, max session duration, optional description,
+// permissions boundary, and tags in a single API call. Returns the role ARN and unique role ID.
 func (r *realIAMRoleAPI) CreateRole(ctx context.Context, spec IAMRoleSpec) (string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", err
@@ -73,6 +83,10 @@ func (r *realIAMRoleAPI) CreateRole(ctx context.Context, spec IAMRoleSpec) (stri
 	return aws.ToString(out.Role.Arn), aws.ToString(out.Role.RoleId), nil
 }
 
+// DescribeRole calls the AWS IAM GetRole API followed by supplementary list calls to build
+// a complete snapshot of the role's state, including inline policies (ListRolePolicies +
+// GetRolePolicy for each), attached managed policies (ListAttachedRolePolicies), and tags
+// (ListRoleTags). The assume role policy document is URL-decoded and JSON-normalized.
 func (r *realIAMRoleAPI) DescribeRole(ctx context.Context, roleName string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -117,6 +131,10 @@ func (r *realIAMRoleAPI) DescribeRole(ctx context.Context, roleName string) (Obs
 	return observed, nil
 }
 
+// FindByTags paginates through all IAM roles in the account and returns the role name
+// that matches ALL provided tag key-value pairs. Returns an error if multiple roles match
+// (ambiguous lookup) or empty string if no roles match. This is an expensive O(N) scan
+// because IAM does not support server-side tag filtering.
 func (r *realIAMRoleAPI) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
 	paginator := iamsdk.NewListRolesPaginator(r.client, &iamsdk.ListRolesInput{})
 	var matches []string
@@ -156,6 +174,8 @@ func (r *realIAMRoleAPI) FindByTags(ctx context.Context, tags map[string]string)
 	}
 }
 
+// DeleteRole calls the AWS IAM DeleteRole API. The role must already have all inline policies,
+// managed policies, and instance profile associations removed before deletion.
 func (r *realIAMRoleAPI) DeleteRole(ctx context.Context, roleName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -164,6 +184,8 @@ func (r *realIAMRoleAPI) DeleteRole(ctx context.Context, roleName string) error 
 	return err
 }
 
+// UpdateAssumeRolePolicy replaces the role's trust policy document via the AWS IAM
+// UpdateAssumeRolePolicy API. The policy document must be valid JSON.
 func (r *realIAMRoleAPI) UpdateAssumeRolePolicy(ctx context.Context, roleName, policyDocument string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -175,6 +197,7 @@ func (r *realIAMRoleAPI) UpdateAssumeRolePolicy(ctx context.Context, roleName, p
 	return err
 }
 
+// UpdateRole updates the role's description and max session duration via the AWS IAM UpdateRole API.
 func (r *realIAMRoleAPI) UpdateRole(ctx context.Context, roleName, description string, maxSessionDuration int32) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -251,6 +274,9 @@ func (r *realIAMRoleAPI) DetachManagedPolicy(ctx context.Context, roleName, poli
 	return err
 }
 
+// UpdateTags performs a diff-based tag update: removes tags present on the role but not in
+// the desired set, and adds/updates tags that differ from the current state. Tags prefixed
+// with "praxis:" are excluded from both add and remove operations.
 func (r *realIAMRoleAPI) UpdateTags(ctx context.Context, roleName string, tags map[string]string) error {
 	existing, err := r.listRoleTags(ctx, roleName)
 	if err != nil {
@@ -293,6 +319,8 @@ func (r *realIAMRoleAPI) UpdateTags(ctx context.Context, roleName string, tags m
 	return nil
 }
 
+// ListInstanceProfilesForRole returns the names of all instance profiles that have this role
+// associated. This is needed during deletion to detach the role from profiles before deleting it.
 func (r *realIAMRoleAPI) ListInstanceProfilesForRole(ctx context.Context, roleName string) ([]string, error) {
 	paginator := iamsdk.NewListInstanceProfilesForRolePaginator(r.client, &iamsdk.ListInstanceProfilesForRoleInput{RoleName: aws.String(roleName)})
 	var names []string
@@ -312,6 +340,8 @@ func (r *realIAMRoleAPI) ListInstanceProfilesForRole(ctx context.Context, roleNa
 	return names, nil
 }
 
+// RemoveRoleFromInstanceProfile detaches a role from an instance profile. Required before
+// the role can be deleted, since IAM enforces that roles cannot be deleted while associated.
 func (r *realIAMRoleAPI) RemoveRoleFromInstanceProfile(ctx context.Context, roleName, profileName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -388,6 +418,8 @@ func (r *realIAMRoleAPI) listRoleTags(ctx context.Context, roleName string) (map
 	return tags, nil
 }
 
+// toIAMTags converts a Go string map to the AWS SDK Tag slice format, filtering out
+// praxis:-prefixed reserved tags and sorting by key for deterministic API calls.
 func toIAMTags(tags map[string]string) []iamtypes.Tag {
 	filtered := filterPraxisTags(tags)
 	awsTags := make([]iamtypes.Tag, 0, len(filtered))

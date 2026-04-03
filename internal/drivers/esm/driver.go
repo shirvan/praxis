@@ -17,17 +17,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// EventSourceMappingDriver implements the Praxis driver for Lambda Event Source Mappings.
 type EventSourceMappingDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) ESMAPI
 }
 
+// NewEventSourceMappingDriver creates a production driver with default Lambda client factory.
 func NewEventSourceMappingDriver(auth authservice.AuthClient) *EventSourceMappingDriver {
 	return NewEventSourceMappingDriverWithFactory(auth, func(cfg aws.Config) ESMAPI {
 		return NewESMAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
+// NewEventSourceMappingDriverWithFactory creates a driver with a custom ESMAPI factory (for testing).
 func NewEventSourceMappingDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) ESMAPI) *EventSourceMappingDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) ESMAPI { return NewESMAPI(awsclient.NewLambdaClient(cfg)) }
@@ -37,6 +40,15 @@ func NewEventSourceMappingDriverWithFactory(auth authservice.AuthClient, factory
 
 func (d *EventSourceMappingDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates an Event Source Mapping.
+//
+// Flow:
+//  1. Validate required fields, apply defaults.
+//  2. If no UUID exists: search for existing mapping (FindEventSourceMapping for
+//     idempotency), then create if not found, wait for stable state.
+//  3. If UUID exists: check immutable field violations (startingPosition, eventSourceArn),
+//     then update the mapping and wait for stable state.
+//  4. Final GetEventSourceMapping to capture outputs. Set status=Ready.
 func (d *EventSourceMappingDriver) Provision(ctx restate.ObjectContext, spec EventSourceMappingSpec) (EventSourceMappingOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -124,6 +136,7 @@ func (d *EventSourceMappingDriver) Provision(ctx restate.ObjectContext, spec Eve
 	return state.Outputs, nil
 }
 
+// Import adopts an existing Event Source Mapping by UUID into Praxis management.
 func (d *EventSourceMappingDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (EventSourceMappingOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -157,6 +170,8 @@ func (d *EventSourceMappingDriver) Import(ctx restate.ObjectContext, ref types.I
 	return state.Outputs, nil
 }
 
+// Delete removes the Event Source Mapping and waits for deletion to complete.
+// Observed-mode resources cannot be deleted (409).
 func (d *EventSourceMappingDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[EventSourceMappingState](ctx, drivers.StateKey)
 	if err != nil {
@@ -198,6 +213,9 @@ func (d *EventSourceMappingDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection loop for Event Source Mappings.
+// Detects external deletion and configuration drift. No auto-correction is
+// performed — drift is reported only.
 func (d *EventSourceMappingDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[EventSourceMappingState](ctx, drivers.StateKey)
 	if err != nil {
@@ -250,6 +268,7 @@ func (d *EventSourceMappingDriver) Reconcile(ctx restate.ObjectContext) (types.R
 	return types.ReconcileResult{Drift: drift}, nil
 }
 
+// GetStatus returns the current lifecycle status (shared/concurrent handler).
 func (d *EventSourceMappingDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[EventSourceMappingState](ctx, drivers.StateKey)
 	if err != nil {
@@ -258,6 +277,7 @@ func (d *EventSourceMappingDriver) GetStatus(ctx restate.ObjectSharedContext) (t
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs returns the provisioned outputs (shared/concurrent handler).
 func (d *EventSourceMappingDriver) GetOutputs(ctx restate.ObjectSharedContext) (EventSourceMappingOutputs, error) {
 	state, err := restate.Get[EventSourceMappingState](ctx, drivers.StateKey)
 	if err != nil {
@@ -266,6 +286,7 @@ func (d *EventSourceMappingDriver) GetOutputs(ctx restate.ObjectSharedContext) (
 	return state.Outputs, nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *EventSourceMappingDriver) scheduleReconcile(ctx restate.ObjectContext, state *EventSourceMappingState) {
 	if state.ReconcileScheduled {
 		return
@@ -275,6 +296,7 @@ func (d *EventSourceMappingDriver) scheduleReconcile(ctx restate.ObjectContext, 
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates an ESMAPI for the given Praxis account.
 func (d *EventSourceMappingDriver) apiForAccount(ctx restate.ObjectContext, account string) (ESMAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("EventSourceMappingDriver is not configured with an auth registry")
@@ -286,6 +308,7 @@ func (d *EventSourceMappingDriver) apiForAccount(ctx restate.ObjectContext, acco
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// applyDefaults normalizes FunctionResponseTypes (nil → empty, sorted).
 func applyDefaults(spec EventSourceMappingSpec) EventSourceMappingSpec {
 	if spec.FunctionResponseTypes == nil {
 		spec.FunctionResponseTypes = []string{}
@@ -296,6 +319,7 @@ func applyDefaults(spec EventSourceMappingSpec) EventSourceMappingSpec {
 	return spec
 }
 
+// validateProvisionSpec checks that region, functionName, and eventSourceArn are set.
 func validateProvisionSpec(spec EventSourceMappingSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -309,6 +333,9 @@ func validateProvisionSpec(spec EventSourceMappingSpec) error {
 	return nil
 }
 
+// createMapping handles first-time creation with idempotency check.
+// Uses FindEventSourceMapping to detect pre-existing mappings for the same
+// function+eventSource pair, avoiding duplicate creation.
 func (d *EventSourceMappingDriver) createMapping(ctx restate.ObjectContext, api ESMAPI, spec EventSourceMappingSpec) (EventSourceMappingOutputs, error) {
 	foundUUID, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 		return api.FindEventSourceMapping(rc, spec.FunctionName, spec.EventSourceArn)
@@ -336,6 +363,7 @@ func (d *EventSourceMappingDriver) createMapping(ctx restate.ObjectContext, api 
 	return outputs, nil
 }
 
+// startingPositionChanged returns true if startingPosition or its timestamp changed.
 func startingPositionChanged(oldSpec, newSpec EventSourceMappingSpec) bool {
 	if oldSpec.StartingPosition != newSpec.StartingPosition {
 		return true
@@ -349,11 +377,13 @@ func startingPositionChanged(oldSpec, newSpec EventSourceMappingSpec) bool {
 	return *oldSpec.StartingPositionTimestamp != *newSpec.StartingPositionTimestamp
 }
 
+// specFromObserved reconstructs an EventSourceMappingSpec from observed AWS state for Import.
 func specFromObserved(observed ObservedState) EventSourceMappingSpec {
 	enabled := observed.State != "Disabled"
 	return applyDefaults(EventSourceMappingSpec{FunctionName: observed.FunctionArn, EventSourceArn: observed.EventSourceArn, Enabled: enabled, BatchSize: int32Ptr(observed.BatchSize), MaximumBatchingWindowInSeconds: int32Ptr(observed.MaximumBatchingWindowInSeconds), StartingPosition: observed.StartingPosition, FilterCriteria: observed.FilterCriteria, BisectBatchOnFunctionError: boolPtr(observed.BisectBatchOnFunctionError), MaximumRetryAttempts: observed.MaximumRetryAttempts, MaximumRecordAgeInSeconds: observed.MaximumRecordAgeInSeconds, ParallelizationFactor: int32Ptr(observed.ParallelizationFactor), TumblingWindowInSeconds: int32Ptr(observed.TumblingWindowInSeconds), DestinationConfig: observed.DestinationConfig, ScalingConfig: observed.ScalingConfig, FunctionResponseTypes: append([]string(nil), observed.FunctionResponseTypes...)})
 }
 
+// defaultImportMode returns Observed if no mode was explicitly specified.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved
@@ -364,6 +394,7 @@ func defaultImportMode(mode types.Mode) types.Mode {
 func int32Ptr(value int32) *int32 { return &value }
 func boolPtr(value bool) *bool    { return &value }
 
+// EncodedEventSourceKey produces a URL-safe base64 encoding of the ARN for use as a Restate key.
 func EncodedEventSourceKey(eventSourceArn string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(eventSourceArn))
 }

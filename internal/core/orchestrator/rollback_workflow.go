@@ -1,3 +1,14 @@
+// rollback_workflow.go implements targeted rollback of a failed deployment.
+//
+// Unlike a full delete (which tears down every resource), rollback consults the
+// event store to determine which resources were actually provisioned successfully
+// (have a resource.ready event) and only deletes those. Resources that never
+// reached the ready state are left alone. This makes rollback safe for partial
+// failures where some resources were never created.
+//
+// The rollback plan is computed by DeploymentEventStore.RollbackPlan, which
+// scans resource.ready events and returns resources sorted by reverse
+// provisioning order (most-recently-provisioned first).
 package orchestrator
 
 import (
@@ -10,18 +21,36 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// DeploymentRollbackWorkflow runs a targeted rollback that deletes only
+// resources proven to have been successfully provisioned, based on the
+// event store's record of resource.ready events.
 type DeploymentRollbackWorkflow struct {
+	// providers resolves resource kinds to typed driver adapters.
 	providers *provider.Registry
 }
 
+// NewDeploymentRollbackWorkflow constructs the rollback workflow.
 func NewDeploymentRollbackWorkflow(providers *provider.Registry) *DeploymentRollbackWorkflow {
 	return &DeploymentRollbackWorkflow{providers: providers}
 }
 
+// ServiceName returns the Restate service name for the rollback workflow.
 func (*DeploymentRollbackWorkflow) ServiceName() string {
 	return DeploymentRollbackWorkflowServiceName
 }
 
+// Run executes a targeted rollback:
+//
+//  1. Fetches the current deployment state from DeploymentStateObj.
+//  2. Asks the event store for a RollbackPlan: the set of resources that
+//     have a resource.ready event (i.e. were successfully provisioned).
+//  3. Iterates the plan in reverse provisioning order, deleting each resource.
+//  4. Skips resources already in a Deleted state or guarded by preventDestroy.
+//  5. Marks the deployment as Deleted (full success) or Failed (partial).
+//
+// The rollback plan is intentionally conservative: resources that failed during
+// apply and never emitted resource.ready are excluded, avoiding spurious delete
+// calls against resources that may not exist.
 func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req DeleteRequest) (DeploymentResult, error) {
 	if req.DeploymentKey == "" {
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("deployment key is required"), 400)
@@ -35,6 +64,9 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("deployment %q not found", req.DeploymentKey), 404)
 	}
 
+	// Fetch the rollback plan from the event store. The plan's Resources list
+	// contains only resources with resource.ready events, sorted by reverse
+	// provisioning sequence (most recently provisioned first).
 	rollbackPlan, err := restate.Object[RollbackPlan](ctx, DeploymentEventStoreServiceName, req.DeploymentKey, "RollbackPlan").Request(restate.Void{})
 	if err != nil {
 		return DeploymentResult{}, err
@@ -63,6 +95,9 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		return DeploymentResult{}, err
 	}
 
+	// Seed execution state with the current resource statuses and errors from
+	// the deployment state so that skip logic and failure summaries reflect
+	// the full picture (including resources that failed during the apply run).
 	exec := newExecutionState(planResourcesFromState(state))
 	exec.loadOutputs(state.Outputs)
 	for name, resource := range state.Resources {
@@ -75,11 +110,15 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		}
 	}
 
+	// Iterate the rollback plan. Each item is a resource that reached Ready
+	// during the apply run and should be deleted to undo the deployment.
 	for _, item := range rollbackPlan.Resources {
 		resource, ok := exec.plan[item.Name]
 		if !ok {
 			continue
 		}
+		// Skip resources that are already deleted (e.g. from a prior partial
+		// rollback attempt or manual cleanup).
 		if current := state.Resources[item.Name]; current == nil || current.Status == types.DeploymentResourceDeleted {
 			continue
 		}
@@ -195,6 +234,10 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 	return exec.result(req.DeploymentKey, finalStatus, finalError), nil
 }
 
+// recordRollbackFailure marks a resource as failed during rollback and emits
+// a resource.delete.error event. Unlike the full delete workflow, rollback does
+// not skip dependencies on failure because the rollback plan is already a
+// flat list of independently-provable resources.
 func (w *DeploymentRollbackWorkflow) recordRollbackFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,

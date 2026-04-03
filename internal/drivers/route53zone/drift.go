@@ -6,12 +6,15 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry describes a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any mutable field (comment, VPC associations, tags)
+// differs between the desired spec and the observed AWS state.
 func HasDrift(desired HostedZoneSpec, observed ObservedState) bool {
 	desired, _ = normalizeHostedZoneSpec(desired)
 	observed = normalizeObservedState(observed)
@@ -27,6 +30,8 @@ func HasDrift(desired HostedZoneSpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs returns a per-field list of differences between desired and observed state.
+// Reports name and isPrivate as informational immutable diffs.
 func ComputeFieldDiffs(desired HostedZoneSpec, observed ObservedState) []FieldDiffEntry {
 	desired, _ = normalizeHostedZoneSpec(desired)
 	observed = normalizeObservedState(observed)

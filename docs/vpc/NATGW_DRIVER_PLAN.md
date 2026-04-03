@@ -1,11 +1,4 @@
-# NAT Gateway Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS NAT Gateways, following
-> the exact patterns established by the VPC, Subnet, IGW, and EC2 Instance drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned NAT Gateway ID
-> lives only in state/outputs.
+# NAT Gateway Driver — Implementation Specification
 
 ---
 
@@ -47,7 +40,7 @@ databases. Without a NAT Gateway driver, private subnets are isolated from the
 internet — instances can't download updates, connect to external APIs, or reach
 AWS service endpoints that require internet access.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope |
 |---|---|
@@ -106,20 +99,20 @@ Same pattern: `praxis:managed-key = <region~metadata.name>` written at creation.
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/natgw/types.go             — Spec, Outputs, ObservedState, State
-✦ internal/drivers/natgw/aws.go               — NATGatewayAPI interface + realNATGatewayAPI
-✦ internal/drivers/natgw/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/natgw/driver.go            — NATGatewayDriver Virtual Object
-✦ internal/drivers/natgw/driver_test.go       — Unit tests for driver
-✦ internal/drivers/natgw/aws_test.go          — Unit tests for error classification
-✦ internal/drivers/natgw/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/natgw_adapter.go     — NATGatewayAdapter
-✦ internal/core/provider/natgw_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/natgw/natgw.cue                 — CUE schema
-✦ tests/integration/natgw_driver_test.go       — Integration tests
-✎ cmd/praxis-network/main.go                  — Add NATGateway driver .Bind()
-✎ internal/core/provider/registry.go           — Add NewNATGatewayAdapter
-✎ justfile                                     — Add natgw test targets
+✓ internal/drivers/natgw/types.go             — Spec, Outputs, ObservedState, State
+✓ internal/drivers/natgw/aws.go               — NATGatewayAPI interface + realNATGatewayAPI
+✓ internal/drivers/natgw/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/natgw/driver.go            — NATGatewayDriver Virtual Object
+✓ internal/drivers/natgw/driver_test.go       — Unit tests for driver
+✓ internal/drivers/natgw/aws_test.go          — Unit tests for error classification
+✓ internal/drivers/natgw/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/natgw_adapter.go     — NATGatewayAdapter
+✓ internal/core/provider/natgw_adapter_test.go — Unit tests for adapter
+✓ schemas/aws/natgw/natgw.cue                 — CUE schema
+✓ tests/integration/natgw_driver_test.go       — Integration tests
+✓ cmd/praxis-network/main.go                  — Add NATGateway driver .Bind()
+✓ internal/core/provider/registry.go           — Add NewNATGatewayAdapter
+✓ justfile                                     — Add natgw test targets
 ```
 
 ---
@@ -242,6 +235,8 @@ type ObservedState struct {
     PrivateIp          string            `json:"privateIp"`
     AllocationId       string            `json:"allocationId,omitempty"`
     NetworkInterfaceId string            `json:"networkInterfaceId"`
+    FailureCode        string            `json:"failureCode,omitempty"`
+    FailureMessage     string            `json:"failureMessage,omitempty"`
     Tags               map[string]string `json:"tags"`
 }
 
@@ -418,14 +413,15 @@ This handles the common case where a transient issue blocked creation.
 
 ## Step 8 — Registry Integration
 
-Add `NewNATGatewayAdapterWithRegistry(accounts)` to `NewRegistry()`.
+`NewNATGatewayAdapterWithAuth` is registered in `NewRegistry()`.
 
 ---
 
 ## Step 9 — Binary Entry Point & Dockerfile
 
-Add `.Bind(restate.Reflect(natgw.NewNATGatewayDriver(cfg.Auth())))` to
-`cmd/praxis-network/main.go`.
+The NAT Gateway driver is bound in `cmd/praxis-network/main.go`:
+
+`.Bind(restate.Reflect(natgw.NewNATGatewayDriver(auth)))`
 
 ---
 

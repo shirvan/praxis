@@ -1,8 +1,8 @@
-# FUTURE.md — Planned Features & Roadmap
+# FUTURE.md — Architectural Direction
 
-> Features are listed roughly in priority order.
+> The following features are not yet implemented. Each section describes the technical approach for reference.
 >
-> This file tracks gaps and extensions beyond the current implementation. Already-shipped pieces such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, AWS SSM resolver, Auth Service (credential management), and Workspace Service (environment isolation) are intentionally omitted.
+> Implemented capabilities such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, AWS SSM resolver, Auth Service (credential management), Workspace Service (environment isolation), Concierge (AI assistant), and Slack Gateway are intentionally omitted.
 
 ---
 

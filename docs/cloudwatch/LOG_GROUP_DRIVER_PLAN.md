@@ -1,12 +1,4 @@
-# CloudWatch Log Group Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages CloudWatch Log Groups, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, EBS, Elastic IP,
-> Key Pair, AMI, and Lambda drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~logGroupName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned log group ARN
-> lives only in state/outputs.
+# CloudWatch Log Group Driver — Implementation Spec
 
 ---
 
@@ -601,19 +593,19 @@ func retentionMatch(desired *int32, observed *int32) bool {
 
 ```go
 type LogGroupDriver struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) LogGroupAPI
 }
 
-func NewLogGroupDriver(accounts *auth.Registry) *LogGroupDriver {
-    return NewLogGroupDriverWithFactory(accounts, func(cfg aws.Config) LogGroupAPI {
+func NewLogGroupDriver(auth authservice.AuthClient) *LogGroupDriver {
+    return NewLogGroupDriverWithFactory(auth, func(cfg aws.Config) LogGroupAPI {
         return NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg))
     })
 }
 
-func NewLogGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) LogGroupAPI) *LogGroupDriver {
+func NewLogGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LogGroupAPI) *LogGroupDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) LogGroupAPI {
@@ -965,13 +957,13 @@ func (d *LogGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (LogGroupOu
 
 ```go
 type LogGroupAdapter struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) loggroup.LogGroupAPI
 }
 
-func NewLogGroupAdapterWithRegistry(accounts *auth.Registry) *LogGroupAdapter {
+func NewLogGroupAdapterWithAuth(auth authservice.AuthClient) *LogGroupAdapter {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     return &LogGroupAdapter{
         accounts: accounts,
@@ -1013,7 +1005,7 @@ func (a *LogGroupAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 
 ```go
 // Add to the NewRegistryWithAdapters(...) call:
-NewLogGroupAdapterWithRegistry(accounts),
+NewLogGroupAdapterWithAuth(auth),
 ```
 
 ---
@@ -1024,9 +1016,9 @@ NewLogGroupAdapterWithRegistry(accounts),
 
 ```go
 srv := server.NewRestate().
-    Bind(restate.Reflect(loggroup.NewLogGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dashboard.NewDashboardDriver(cfg.Auth())))
+    Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth))).
+    Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth))).
+    Bind(restate.Reflect(dashboard.NewDashboardDriver(auth)))
 ```
 
 ---

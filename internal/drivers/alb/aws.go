@@ -1,3 +1,9 @@
+// Package alb – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS Application Load Balancer (ALB).
+// It defines the ALBAPI interface (used for testing with mocks)
+// and the real implementation that calls Elastic Load Balancing v2 through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package alb
 
 import (
@@ -16,6 +22,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// ALBAPI abstracts all Elastic Load Balancing v2 SDK operations needed
+// to manage a AWS Application Load Balancer (ALB). The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type ALBAPI interface {
 	CreateALB(ctx context.Context, spec ALBSpec) (arn, dnsName, hostedZoneId, vpcId string, err error)
 	DescribeALB(ctx context.Context, id string) (ObservedState, error)
@@ -32,10 +41,13 @@ type realALBAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewALBAPI constructs a production ALBAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewALBAPI(client *elbv2sdk.Client) ALBAPI {
 	return &realALBAPI{client: client, limiter: ratelimit.New("alb", 15, 8)}
 }
 
+// CreateALB calls Elastic Load Balancing v2 to create a new AWS Application Load Balancer (ALB) from the given spec.
 func (r *realALBAPI) CreateALB(ctx context.Context, spec ALBSpec) (string, string, string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", "", "", err
@@ -84,6 +96,7 @@ func (r *realALBAPI) CreateALB(ctx context.Context, spec ALBSpec) (string, strin
 		nil
 }
 
+// DescribeALB reads the current state of the AWS Application Load Balancer (ALB) from Elastic Load Balancing v2.
 func (r *realALBAPI) DescribeALB(ctx context.Context, id string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -142,6 +155,7 @@ func (r *realALBAPI) DescribeALB(ctx context.Context, id string) (ObservedState,
 	}, nil
 }
 
+// DeleteALB removes the AWS Application Load Balancer (ALB) from AWS via Elastic Load Balancing v2.
 func (r *realALBAPI) DeleteALB(ctx context.Context, arn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -150,6 +164,7 @@ func (r *realALBAPI) DeleteALB(ctx context.Context, arn string) error {
 	return err
 }
 
+// SetSubnets updates mutable properties of the AWS Application Load Balancer (ALB) via Elastic Load Balancing v2.
 func (r *realALBAPI) SetSubnets(ctx context.Context, arn string, subnets []SubnetMapping) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -166,6 +181,7 @@ func (r *realALBAPI) SetSubnets(ctx context.Context, arn string, subnets []Subne
 	return err
 }
 
+// SetSecurityGroups updates mutable properties of the AWS Application Load Balancer (ALB) via Elastic Load Balancing v2.
 func (r *realALBAPI) SetSecurityGroups(ctx context.Context, arn string, securityGroups []string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -177,6 +193,7 @@ func (r *realALBAPI) SetSecurityGroups(ctx context.Context, arn string, security
 	return err
 }
 
+// SetIpAddressType updates mutable properties of the AWS Application Load Balancer (ALB) via Elastic Load Balancing v2.
 func (r *realALBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddressType string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -188,6 +205,7 @@ func (r *realALBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddress
 	return err
 }
 
+// ModifyAttributes updates mutable properties of the AWS Application Load Balancer (ALB) via Elastic Load Balancing v2.
 func (r *realALBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -203,6 +221,7 @@ func (r *realALBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS Application Load Balancer (ALB) via Elastic Load Balancing v2.
 func (r *realALBAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
 	existing, err := r.describeTags(ctx, arn)
 	if err != nil {
@@ -359,18 +378,22 @@ func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "LoadBalancerNotFound")
 }
 
+// IsDuplicate returns true if the AWS error indicates a naming conflict.
 func IsDuplicate(err error) bool {
 	return awserr.HasCode(err, "DuplicateLoadBalancerName")
 }
 
+// IsResourceInUse returns true if the resource cannot be deleted because it is still referenced.
 func IsResourceInUse(err error) bool {
 	return awserr.HasCode(err, "ResourceInUse", "OperationNotPermitted")
 }
 
+// IsTooMany returns true if the AWS error indicates a service quota has been reached.
 func IsTooMany(err error) bool {
 	return awserr.HasCode(err, "TooManyLoadBalancers")
 }
 
+// IsInvalidConfig returns true if the AWS error indicates an invalid configuration.
 func IsInvalidConfig(err error) bool {
 	return awserr.HasCode(err, "InvalidConfigurationRequest")
 }

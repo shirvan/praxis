@@ -1,3 +1,13 @@
+// output.go contains all output formatting functions for the CLI.
+//
+// The CLI supports two output modes:
+//   - table (default): human-friendly tables and label/value lists via Renderer
+//   - json: machine-readable indented JSON for scripting and AI agent consumption
+//
+// Every command follows the same pattern:
+//  1. Call the Restate ingress client to fetch data.
+//  2. If --output json, call printJSON and return.
+//  3. Otherwise, call the appropriate print* function for styled table output.
 package cli
 
 import (
@@ -61,6 +71,8 @@ func printPlainTable(out io.Writer, headers []string, rows [][]string) {
 	_ = w.Flush()
 }
 
+// printTable is a convenience wrapper that delegates to Renderer.printTable.
+// It is called by command handlers that already hold a renderer reference.
 func printTable(r *Renderer, headers []string, rows [][]string) {
 	r.printTable(headers, rows)
 }
@@ -144,6 +156,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail) {
 	}
 }
 
+// renderResourceStatus applies status-aware coloring to a resource-level
+// status string. Delegates to the renderer's generic renderStatus.
 func renderResourceStatus(r *Renderer, status types.DeploymentResourceStatus) string {
 	return r.renderStatus(string(status))
 }

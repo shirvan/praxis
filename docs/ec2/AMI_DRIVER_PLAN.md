@@ -1,12 +1,4 @@
-# AMI Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages Amazon Machine Images (AMIs),
-> following the exact patterns established by the S3, Security Group, EC2, VPC, EBS,
-> Elastic IP, Key Pair, and Launch Template drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The CUE schema maps
-> `metadata.name` to a logical name used for the AMI Name tag and Praxis tracking.
+# AMI Driver — Implementation Specification
 
 ---
 
@@ -113,7 +105,7 @@ AMI name and uses `praxis:managed-key` ownership tags to enforce uniqueness:
 
 ### Ownership Tags (Required)
 
-Unlike S3/KeyPair/LaunchTemplate where AWS-enforced uniqueness eliminates the need
+Unlike S3/KeyPair where AWS-enforced uniqueness eliminates the need
 for ownership tags, AMIs require `praxis:managed-key` because:
 
 1. AWS allows multiple AMIs with the same Name tag in the same account+region.
@@ -131,19 +123,19 @@ The ownership tag pattern matches EC2/VPC/EBS:
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/ami/types.go            — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/ami/aws.go              — AMIAPI interface + realAMIAPI
-✦ internal/drivers/ami/drift.go            — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/ami/driver.go           — AMIDriver Virtual Object
-✦ internal/drivers/ami/driver_test.go      — Unit tests for driver
-✦ internal/drivers/ami/aws_test.go         — Unit tests for error classification
-✦ internal/drivers/ami/drift_test.go       — Unit tests for drift detection
-✦ internal/core/provider/ami_adapter.go    — AMIAdapter implementing provider.Adapter
-✦ internal/core/provider/ami_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/ec2/ami.cue                  — CUE schema for AMI resource
-✦ tests/integration/ami_driver_test.go     — Integration tests
-✎ cmd/praxis-compute/main.go              — Bind AMI driver
-✎ internal/core/provider/registry.go       — Add adapter to NewRegistry()
+internal/drivers/ami/types.go            — Spec, Outputs, ObservedState, State structs
+internal/drivers/ami/aws.go              — AMIAPI interface + realAMIAPI
+internal/drivers/ami/drift.go            — HasDrift(), ComputeFieldDiffs()
+internal/drivers/ami/driver.go           — AMIDriver Virtual Object
+internal/drivers/ami/driver_test.go      — Unit tests for driver
+internal/drivers/ami/aws_test.go         — Unit tests for error classification
+internal/drivers/ami/drift_test.go       — Unit tests for drift detection
+internal/core/provider/ami_adapter.go    — AMIAdapter implementing provider.Adapter
+internal/core/provider/ami_adapter_test.go — Unit tests for adapter
+schemas/aws/ec2/ami.cue                  — CUE schema for AMI resource
+tests/integration/ami_driver_test.go     — Integration tests
+cmd/praxis-compute/main.go              — Bind AMI driver
+internal/core/provider/registry.go       — Adapter registered in NewRegistry()
 ```
 
 ---
@@ -347,37 +339,17 @@ type AMIState struct {
 
 ```go
 type AMIAPI interface {
-    // RegisterImage registers a new AMI from an EBS snapshot.
-    RegisterImage(ctx context.Context, spec AMISpec) (imageId string, err error)
-
-    // CopyImage copies an AMI (same or cross-region).
-    CopyImage(ctx context.Context, spec AMISpec) (imageId string, err error)
-
-    // DescribeImage returns the observed state of an AMI.
+    RegisterImage(ctx context.Context, spec AMISpec) (string, error)
+    CopyImage(ctx context.Context, spec AMISpec) (string, error)
     DescribeImage(ctx context.Context, imageId string) (ObservedState, error)
-
-    // DeregisterImage deregisters (deletes) an AMI.
+    DescribeImageByName(ctx context.Context, name string) (ObservedState, error)
     DeregisterImage(ctx context.Context, imageId string) error
-
-    // UpdateTags replaces all user tags on the AMI (preserving managed-key tag).
     UpdateTags(ctx context.Context, imageId string, tags map[string]string) error
-
-    // ModifyDescription updates the AMI description.
     ModifyDescription(ctx context.Context, imageId, description string) error
-
-    // ModifyLaunchPermissions sets the launch permissions for the AMI.
     ModifyLaunchPermissions(ctx context.Context, imageId string, perms *LaunchPermsSpec) error
-
-    // EnableDeprecation sets the deprecation time for the AMI.
     EnableDeprecation(ctx context.Context, imageId, deprecateAt string) error
-
-    // DisableDeprecation removes the deprecation schedule.
     DisableDeprecation(ctx context.Context, imageId string) error
-
-    // WaitUntilAvailable polls until the AMI state is "available".
     WaitUntilAvailable(ctx context.Context, imageId string, timeout time.Duration) error
-
-    // FindByManagedKey searches for AMIs with the praxis:managed-key tag.
     FindByManagedKey(ctx context.Context, managedKey string) (string, error)
 }
 ```
@@ -776,7 +748,7 @@ Add `NewAMIAdapterWithRegistry(accounts)` to `NewRegistry()`.
 
 **File**: `cmd/praxis-compute/main.go`
 
-Add `.Bind(restate.Reflect(amiDriver))` alongside EC2, KeyPair, and LaunchTemplate
+Add `.Bind(restate.Reflect(amiDriver))` alongside EC2 and KeyPair
 driver bindings. AMIs are compute image resources.
 
 ---

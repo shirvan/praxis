@@ -1,20 +1,4 @@
-# Route 53 Health Check Driver — Implementation Plan
-
-> **Status: IMPLEMENTED** — Driver is fully implemented with unit tests,
-> integration tests, CUE schema, provider adapter, and registry integration.
->
-> **Implementation note:** This plan references a `praxis-dns` driver pack.
-> The actual implementation places the Health Check driver in **`praxis-network`**
-> (`cmd/praxis-network/main.go`).
->
-> Target: A Restate Virtual Object driver that manages Route 53 Health Checks,
-> providing full lifecycle management including creation, import, deletion, drift
-> detection, and drift correction for endpoint health checks, calculated health
-> checks, and CloudWatch alarm-based health checks.
->
-> Key scope: `KeyScopeGlobal` — key format is `healthCheckName`, permanent and
-> immutable for the lifetime of the Virtual Object. Route 53 is a global AWS service.
-> The AWS-assigned health check ID lives only in state/outputs.
+# Route 53 Health Check Driver — Implementation Spec
 
 ---
 
@@ -31,7 +15,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — DNS Driver Pack Entry Point](#step-9--dns-driver-pack-entry-point)
+12. [Step 9 — Network Driver Pack Entry Point](#step-9--network-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -171,7 +155,7 @@ crash/replay return the existing health check instead of creating duplicates.
 ✦ internal/core/provider/route53healthcheck_adapter.go         — HealthCheckAdapter implementing provider.Adapter
 ✦ internal/core/provider/route53healthcheck_adapter_test.go    — Unit tests for adapter
 ✦ tests/integration/route53_health_check_driver_test.go        — Integration tests
-✎ cmd/praxis-dns/main.go                                      — Add HealthCheck driver .Bind()
+✔ cmd/praxis-network/main.go                                   — HealthCheck driver .Bind()
 ✎ internal/core/provider/registry.go                           — Add adapter to NewRegistry()
 ```
 
@@ -327,20 +311,20 @@ type HealthCheckSpec struct {
     Account                      string            `json:"account,omitempty"`
     Type                         string            `json:"type"`
     IPAddress                    string            `json:"ipAddress,omitempty"`
-    Port                         *int32            `json:"port,omitempty"`
+    Port                         int32             `json:"port,omitempty"`
     ResourcePath                 string            `json:"resourcePath,omitempty"`
     FQDN                         string            `json:"fqdn,omitempty"`
     SearchString                 string            `json:"searchString,omitempty"`
-    RequestInterval              int32             `json:"requestInterval"`
-    FailureThreshold             int32             `json:"failureThreshold"`
+    RequestInterval              int32             `json:"requestInterval,omitempty"`
+    FailureThreshold             int32             `json:"failureThreshold,omitempty"`
     ChildHealthChecks            []string          `json:"childHealthChecks,omitempty"`
-    HealthThreshold              *int32            `json:"healthThreshold,omitempty"`
+    HealthThreshold              int32             `json:"healthThreshold,omitempty"`
     CloudWatchAlarmName          string            `json:"cloudWatchAlarmName,omitempty"`
     CloudWatchAlarmRegion        string            `json:"cloudWatchAlarmRegion,omitempty"`
     InsufficientDataHealthStatus string            `json:"insufficientDataHealthStatus,omitempty"`
-    Disabled                     bool              `json:"disabled"`
-    InvertHealthCheck            bool              `json:"invertHealthCheck"`
-    EnableSNI                    *bool             `json:"enableSNI,omitempty"`
+    Disabled                     bool              `json:"disabled,omitempty"`
+    InvertHealthCheck            bool              `json:"invertHealthCheck,omitempty"`
+    EnableSNI                    bool              `json:"enableSNI,omitempty"`
     Regions                      []string          `json:"regions,omitempty"`
     Tags                         map[string]string `json:"tags,omitempty"`
     ManagedKey                   string            `json:"managedKey,omitempty"`
@@ -354,26 +338,26 @@ type HealthCheckOutputs struct {
 // ObservedState captures the actual configuration from AWS.
 type ObservedState struct {
     HealthCheckId                string            `json:"healthCheckId"`
-    CallerReference              string            `json:"callerReference"`
+    CallerReference              string            `json:"callerReference,omitempty"`
+    Version                      int64             `json:"version"`
     Type                         string            `json:"type"`
     IPAddress                    string            `json:"ipAddress,omitempty"`
-    Port                         *int32            `json:"port,omitempty"`
+    Port                         int32             `json:"port,omitempty"`
     ResourcePath                 string            `json:"resourcePath,omitempty"`
     FQDN                         string            `json:"fqdn,omitempty"`
     SearchString                 string            `json:"searchString,omitempty"`
-    RequestInterval              int32             `json:"requestInterval"`
-    FailureThreshold             int32             `json:"failureThreshold"`
+    RequestInterval              int32             `json:"requestInterval,omitempty"`
+    FailureThreshold             int32             `json:"failureThreshold,omitempty"`
     ChildHealthChecks            []string          `json:"childHealthChecks,omitempty"`
-    HealthThreshold              *int32            `json:"healthThreshold,omitempty"`
+    HealthThreshold              int32             `json:"healthThreshold,omitempty"`
     CloudWatchAlarmName          string            `json:"cloudWatchAlarmName,omitempty"`
     CloudWatchAlarmRegion        string            `json:"cloudWatchAlarmRegion,omitempty"`
     InsufficientDataHealthStatus string            `json:"insufficientDataHealthStatus,omitempty"`
-    Disabled                     bool              `json:"disabled"`
-    InvertHealthCheck            bool              `json:"invertHealthCheck"`
-    EnableSNI                    *bool             `json:"enableSNI,omitempty"`
+    Disabled                     bool              `json:"disabled,omitempty"`
+    InvertHealthCheck            bool              `json:"invertHealthCheck,omitempty"`
+    EnableSNI                    bool              `json:"enableSNI,omitempty"`
     Regions                      []string          `json:"regions,omitempty"`
-    Tags                         map[string]string `json:"tags"`
-    HealthCheckStatus            string            `json:"healthCheckStatus,omitempty"`
+    Tags                         map[string]string `json:"tags,omitempty"`
 }
 
 // HealthCheckState is the single atomic state object stored under drivers.StateKey.
@@ -392,14 +376,13 @@ type HealthCheckState struct {
 
 ### Why These Fields
 
-- **`Port` as `*int32`**: Pointer because port may be omitted (Route 53 uses
-  defaults: 80 for HTTP, 443 for HTTPS). A zero port is invalid, so nil = default.
-- **`HealthThreshold` as `*int32`**: Only relevant for calculated checks. Nil means
+- **`Port` as `int32`**: Zero value means omitted; Route 53 uses defaults
+  (80 for HTTP, 443 for HTTPS).
+- **`HealthThreshold` as `int32`**: Only relevant for calculated checks. Zero means
   not applicable.
-- **`EnableSNI` as `*bool`**: Pointer to distinguish "not set" (use AWS default)
-  from explicit true/false.
-- **`HealthCheckStatus` in ObservedState**: The current health status
-  (Healthy/Unhealthy). Informational only — not used for drift detection.
+- **`EnableSNI` as `bool`**: False means not set or explicitly disabled.
+- **`Version` in ObservedState**: The health check config version from AWS,
+  required for update operations.
 
 ---
 
@@ -1003,8 +986,8 @@ func ptrBoolEqual(a, b *bool) bool {
 ### Constructor Pattern
 
 ```go
-func NewHealthCheckDriver(accounts *auth.Registry) *HealthCheckDriver
-func NewHealthCheckDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) HealthCheckAPI) *HealthCheckDriver
+func NewHealthCheckDriver(auth authservice.AuthClient) *HealthCheckDriver
+func NewHealthCheckDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) HealthCheckAPI) *HealthCheckDriver
 ```
 
 ### Provision Handler
@@ -1076,7 +1059,7 @@ Standard 5-minute timer pattern:
 
 ```go
 type Route53HealthCheckAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
 func (a *Route53HealthCheckAdapter) Kind() string            { return "Route53HealthCheck" }
@@ -1105,7 +1088,7 @@ NewRoute53HealthCheckAdapterWithRegistry(accounts),
 
 ---
 
-## Step 9 — DNS Driver Pack Entry Point
+## Step 9 — Network Driver Pack Entry Point
 
 See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §3.
 
@@ -1113,7 +1096,7 @@ See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §3.
 
 ## Step 10 — Docker Compose & Justfile
 
-See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §7 and §8.
+Part of the `praxis-network` service (port 9082). No additional configuration needed.
 
 ---
 
@@ -1288,4 +1271,4 @@ comparison to prevent false drift.
 
 ### Infrastructure
 
-- [x] `cmd/praxis-dns/main.go` — `.Bind()` call
+- [x] `cmd/praxis-network/main.go` — `.Bind()` call

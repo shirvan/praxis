@@ -1,12 +1,4 @@
-# ECR Repository Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS ECR repositories, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, Lambda Function,
-> and SNS Topic drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~repositoryName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned repository ARN
-> and URI live only in state/outputs.
+# ECR Repository Driver — Implementation Spec
 
 ---
 
@@ -690,19 +682,19 @@ func jsonEqual(a, b string) bool {
 
 ```go
 type ECRRepositoryDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) RepositoryAPI
 }
 
-func NewECRRepositoryDriver(accounts *auth.Registry) *ECRRepositoryDriver {
-    return NewECRRepositoryDriverWithFactory(accounts, func(cfg aws.Config) RepositoryAPI {
+func NewECRRepositoryDriver(auth authservice.AuthClient) *ECRRepositoryDriver {
+    return NewECRRepositoryDriverWithFactory(auth, func(cfg aws.Config) RepositoryAPI {
         return NewRepositoryAPI(awsclient.NewECRClient(cfg))
     })
 }
 
-func NewECRRepositoryDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) RepositoryAPI) *ECRRepositoryDriver {
+func NewECRRepositoryDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RepositoryAPI) *ECRRepositoryDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) RepositoryAPI {
@@ -968,13 +960,13 @@ import (
 const ecrRepositoryKind = "ECRRepository"
 
 type ECRRepositoryAdapter struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) ecrrepo.RepositoryAPI
 }
 
-func NewECRRepositoryAdapterWithRegistry(accounts *auth.Registry) *ECRRepositoryAdapter {
+func NewECRRepositoryAdapterWithAuth(auth authservice.AuthClient) *ECRRepositoryAdapter {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     return &ECRRepositoryAdapter{
         auth: accounts,
@@ -1019,10 +1011,10 @@ func (a *ECRRepositoryAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, err
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
-        NewECRRepositoryAdapterWithRegistry(accounts),
+        NewECRRepositoryAdapterWithAuth(auth),
     )
 }
 ```
@@ -1041,7 +1033,7 @@ import (
 
 srv := server.NewRestate().
     // ... existing bindings ...
-    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(cfg.Auth())))
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth)))
 ```
 
 ---
@@ -1205,17 +1197,17 @@ supporting cross-installation ownership lookups.
 
 ## Checklist
 
-- [ ] CUE schema (`schemas/aws/ecr/repository.cue`)
-- [ ] Driver types (`internal/drivers/ecrrepo/types.go`)
-- [ ] AWS API abstraction (`internal/drivers/ecrrepo/aws.go`)
-- [ ] Drift detection (`internal/drivers/ecrrepo/drift.go`)
-- [ ] Driver Virtual Object (`internal/drivers/ecrrepo/driver.go`)
-- [ ] Unit tests: driver, aws, drift
-- [ ] Provider adapter (`internal/core/provider/ecrrepository_adapter.go`)
-- [ ] Adapter unit tests
-- [ ] Registry integration (`internal/core/provider/registry.go`)
-- [ ] Entry point bind (`cmd/praxis-compute/main.go`)
-- [ ] AWS client factory (`internal/infra/awsclient/client.go`)
-- [ ] Integration tests (`tests/integration/ecr_repository_driver_test.go`)
-- [ ] LocalStack SERVICES includes `ecr` (`docker-compose.yaml`)
-- [ ] Justfile targets
+- [x] CUE schema (`schemas/aws/ecr/repository.cue`)
+- [x] Driver types (`internal/drivers/ecrrepo/types.go`)
+- [x] AWS API abstraction (`internal/drivers/ecrrepo/aws.go`)
+- [x] Drift detection (`internal/drivers/ecrrepo/drift.go`)
+- [x] Driver Virtual Object (`internal/drivers/ecrrepo/driver.go`)
+- [x] Unit tests: driver, aws, drift
+- [x] Provider adapter (`internal/core/provider/ecrrepository_adapter.go`)
+- [x] Adapter unit tests
+- [x] Registry integration (`internal/core/provider/registry.go`)
+- [x] Entry point bind (`cmd/praxis-compute/main.go`)
+- [x] AWS client factory (`internal/infra/awsclient/client.go`)
+- [x] Integration tests (`tests/integration/ecr_repository_driver_test.go`)
+- [x] LocalStack SERVICES includes `ecr` (`docker-compose.yaml`)
+- [x] Justfile targets

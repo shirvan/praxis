@@ -1,3 +1,10 @@
+// Package snstopic – drift.go
+//
+// This file implements drift detection for AWS SNS Topic.
+// HasDrift compares the desired spec against the observed state from AWS and
+// returns true when any mutable field has diverged. ComputeFieldDiffs produces
+// a structured list of individual field changes for plan output and logging.
+// Immutable fields (those that require resource replacement) are annotated.
 package snstopic
 
 import (

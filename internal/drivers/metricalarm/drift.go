@@ -1,3 +1,10 @@
+// Package metricalarm – drift.go
+//
+// This file implements drift detection for AWS CloudWatch Metric Alarm.
+// HasDrift compares the desired spec against the observed state from AWS and
+// returns true when any mutable field has diverged. ComputeFieldDiffs produces
+// a structured list of individual field changes for plan output and logging.
+// Immutable fields (those that require resource replacement) are annotated.
 package metricalarm
 
 import (
@@ -6,6 +13,9 @@ import (
 	"strings"
 )
 
+// HasDrift compares the desired MetricAlarm spec against the observed
+// state from AWS and returns true if any mutable field has diverged.
+// It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired MetricAlarmSpec, observed ObservedState) bool {
 	if desired.Namespace != observed.Namespace {
 		return true
@@ -64,6 +74,9 @@ func HasDrift(desired MetricAlarmSpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs produces a structured list of individual field changes
+// between the desired spec and observed state. Used for plan output, CLI
+// display, and audit logging. Immutable field changes are clearly annotated.
 func ComputeFieldDiffs(desired MetricAlarmSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	appendIfDiff := func(path string, oldValue, newValue any, changed bool) {
@@ -92,6 +105,9 @@ func ComputeFieldDiffs(desired MetricAlarmSpec, observed ObservedState) []FieldD
 	return diffs
 }
 
+// FieldDiffEntry represents a single field-level difference between the desired
+// spec and the observed state. Path uses dot notation (e.g. "spec.name");
+// immutable fields are annotated with "(immutable, requires replacement)".
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any

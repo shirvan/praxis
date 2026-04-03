@@ -14,6 +14,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// HostedZoneDriver is the Restate virtual object that manages the lifecycle of a single Route53 hosted zone.
 type HostedZoneDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) HostedZoneAPI
@@ -36,6 +37,9 @@ func (d *HostedZoneDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for Route53 hosted zones.
+// Uses Restate key as the zone name and CallerReference. Finds existing zones by name before
+// creating, then converges comment, VPC associations, and tags.
 func (d *HostedZoneDriver) Provision(ctx restate.ObjectContext, spec HostedZoneSpec) (HostedZoneOutputs, error) {
 	ctx.Log().Info("provisioning route53 hosted zone", "key", restate.Key(ctx))
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -200,6 +204,8 @@ func (d *HostedZoneDriver) Import(ctx restate.ObjectContext, ref types.ImportRef
 	return outputs, nil
 }
 
+// Delete removes a Route53 hosted zone. Refuses deletion in Observed mode.
+// Returns a terminal error if the zone still contains records.
 func (d *HostedZoneDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting route53 hosted zone", "key", restate.Key(ctx))
 	state, err := restate.Get[HostedZoneState](ctx, drivers.StateKey)
@@ -344,6 +350,7 @@ func (d *HostedZoneDriver) GetOutputs(ctx restate.ObjectSharedContext) (HostedZo
 	return state.Outputs, nil
 }
 
+// correctDrift converges comment, VPC associations, and tags from observed toward desired state.
 func (d *HostedZoneDriver) correctDrift(ctx restate.ObjectContext, api HostedZoneAPI, hostedZoneID string, desired HostedZoneSpec, observed ObservedState) error {
 	if observed.HostedZoneId == "" {
 		observed = ObservedState{HostedZoneId: hostedZoneID}

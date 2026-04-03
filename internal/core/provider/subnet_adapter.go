@@ -1,3 +1,13 @@
+// Subnet provider adapter.
+//
+// This file implements the provider.Adapter interface for Amazon VPC (Subnet)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the Subnet Restate Virtual Object driver.
+//
+// Key scope: custom (VPC-scoped).
+// Key parts: VPC ID + subnet name.
+// Subnets are scoped to a VPC, so the key combines the VPC ID and subnet name.
 package provider
 
 import (
@@ -14,12 +24,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// SubnetAdapter implements provider.Adapter for Subnet (Amazon VPC (Subnet)) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type SubnetAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI subnet.SubnetAPI
 	apiFactory        func(aws.Config) subnet.SubnetAPI
 }
 
+// NewSubnetAdapterWithAuth creates a production Subnet adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
 	return &SubnetAdapter{
 		auth: auth,
@@ -29,22 +47,34 @@ func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
 	}
 }
 
+// NewSubnetAdapterWithAPI creates a Subnet adapter with a pre-built API
+// client. This is primarily useful in tests that supply a mock implementation
+// and do not need per-account credential resolution.
 func NewSubnetAdapterWithAPI(api subnet.SubnetAPI) *SubnetAdapter {
 	return &SubnetAdapter{staticPlanningAPI: api}
 }
 
+// Kind returns the resource kind string "Subnet" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *SubnetAdapter) Kind() string {
 	return subnet.ServiceName
 }
 
+// ServiceName returns the Restate Virtual Object service name for the
+// Subnet driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *SubnetAdapter) ServiceName() string {
 	return subnet.ServiceName
 }
 
+// Scope returns the key-scope strategy for Subnet resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *SubnetAdapter) Scope() KeyScope {
 	return KeyScopeCustom
 }
 
+// BuildKey derives the canonical Restate object key for a Subnet resource
+// from the raw JSON resource document. The key is composed of VPC ID + subnet name,
+// ensuring uniqueness within the Restate Virtual Object namespace.
 func (a *SubnetAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -64,6 +94,8 @@ func (a *SubnetAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	return JoinKey(spec.VpcId, name), nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete Subnet spec struct expected by the driver.
 func (a *SubnetAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -72,6 +104,11 @@ func (a *SubnetAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the Subnet Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *SubnetAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[subnet.SubnetSpec](spec)
 	if err != nil {
@@ -91,6 +128,9 @@ func (a *SubnetAdapter) Provision(ctx restate.Context, key string, account strin
 	}, nil
 }
 
+// Delete sends a durable Delete request to the Subnet Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *SubnetAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](
 		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
@@ -99,6 +139,9 @@ func (a *SubnetAdapter) Delete(ctx restate.Context, key string) (DeleteInvocatio
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed Subnet driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *SubnetAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[subnet.SubnetOutputs](raw)
 	if err != nil {
@@ -121,6 +164,11 @@ func (a *SubnetAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	return result, nil
 }
 
+// Plan compares the desired Subnet spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *SubnetAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[subnet.SubnetSpec](desiredSpec)
 	if err != nil {
@@ -182,6 +230,8 @@ func (a *SubnetAdapter) Plan(ctx restate.Context, key string, account string, de
 	return types.OpUpdate, fields, nil
 }
 
+// BuildImportKey derives the canonical Restate object key for importing
+// an existing Subnet resource by its region and provider-native ID.
 func (a *SubnetAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("region", region); err != nil {
 		return "", err
@@ -192,6 +242,8 @@ func (a *SubnetAdapter) BuildImportKey(region, resourceID string) (string, error
 	return JoinKey(region, resourceID), nil
 }
 
+// Import adopts an existing Subnet resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *SubnetAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, subnet.SubnetOutputs](
@@ -207,6 +259,9 @@ func (a *SubnetAdapter) Import(ctx restate.Context, key string, account string, 
 	return types.StatusReady, outputs, nil
 }
 
+// Lookup performs a read-only data-source query for an existing Subnet
+// resource, matching by ID, name, or tags. This is used by template data
+// source blocks to resolve references to pre-existing infrastructure.
 func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
 	api, err := a.lookupAPI(ctx, account, filter.Region)
 	if err != nil {
@@ -239,6 +294,10 @@ func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter Looku
 	return outputs, nil
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed Subnet spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *SubnetAdapter) decodeSpec(doc resourceDocument) (subnet.SubnetSpec, error) {
 	var spec subnet.SubnetSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -270,6 +329,9 @@ func (a *SubnetAdapter) decodeSpec(doc resourceDocument) (subnet.SubnetSpec, err
 	return spec, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *SubnetAdapter) planningAPI(ctx restate.Context, account string) (subnet.SubnetAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil
@@ -284,6 +346,9 @@ func (a *SubnetAdapter) planningAPI(ctx restate.Context, account string) (subnet
 	return a.apiFactory(awsCfg), nil
 }
 
+// lookupAPI returns the AWS API client used for Lookup (data-source) queries.
+// Like planningAPI, it resolves credentials per-account, but also overrides
+// the region when the lookup filter specifies one.
 func (a *SubnetAdapter) lookupAPI(ctx restate.Context, account string, region string) (subnet.SubnetAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

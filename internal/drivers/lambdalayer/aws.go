@@ -17,23 +17,32 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// LayerAPI abstracts AWS Lambda Layer operations for testability.
 type LayerAPI interface {
+	// PublishLayerVersion publishes a new immutable layer version.
 	PublishLayerVersion(ctx context.Context, spec LambdaLayerSpec) (LambdaLayerOutputs, error)
+	// GetLatestLayerVersion returns the highest-numbered version with permissions.
 	GetLatestLayerVersion(ctx context.Context, layerName string) (ObservedState, error)
+	// DeleteLayerVersion removes a single layer version.
 	DeleteLayerVersion(ctx context.Context, layerName string, version int64) error
+	// ListLayerVersions returns all version numbers sorted descending.
 	ListLayerVersions(ctx context.Context, layerName string) ([]int64, error)
+	// SyncLayerVersionPermissions converges cross-account and public access permissions.
 	SyncLayerVersionPermissions(ctx context.Context, layerName string, version int64, desired PermissionsSpec) (PermissionsSpec, error)
 }
 
+// realLayerAPI is the production implementation backed by the Lambda SDK client.
 type realLayerAPI struct {
 	client  *lambdasdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewLayerAPI creates a production LayerAPI with rate limiting (15 tokens/s, burst 10).
 func NewLayerAPI(client *lambdasdk.Client) LayerAPI {
 	return &realLayerAPI{client: client, limiter: ratelimit.New("lambda-layer", 15, 10)}
 }
 
+// PublishLayerVersion creates a new immutable layer version from the spec.
 func (r *realLayerAPI) PublishLayerVersion(ctx context.Context, spec LambdaLayerSpec) (LambdaLayerOutputs, error) {
 	if err := validateCode(spec.Code); err != nil {
 		return LambdaLayerOutputs{}, err
@@ -70,6 +79,8 @@ func (r *realLayerAPI) PublishLayerVersion(ctx context.Context, spec LambdaLayer
 	}, nil
 }
 
+// GetLatestLayerVersion finds the highest version number and returns its full state,
+// including permissions from the layer's resource-based policy.
 func (r *realLayerAPI) GetLatestLayerVersion(ctx context.Context, layerName string) (ObservedState, error) {
 	versions, err := r.ListLayerVersions(ctx, layerName)
 	if err != nil {
@@ -105,6 +116,7 @@ func (r *realLayerAPI) GetLatestLayerVersion(ctx context.Context, layerName stri
 	}, nil
 }
 
+// DeleteLayerVersion removes a single version of the layer.
 func (r *realLayerAPI) DeleteLayerVersion(ctx context.Context, layerName string, version int64) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -113,6 +125,7 @@ func (r *realLayerAPI) DeleteLayerVersion(ctx context.Context, layerName string,
 	return err
 }
 
+// ListLayerVersions returns all version numbers sorted descending (newest first).
 func (r *realLayerAPI) ListLayerVersions(ctx context.Context, layerName string) ([]int64, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -138,6 +151,8 @@ func (r *realLayerAPI) ListLayerVersions(ctx context.Context, layerName string) 
 	return versions, nil
 }
 
+// SyncLayerVersionPermissions converges the layer's resource-based policy.
+// Adds missing account grants, removes stale ones, and toggles public access.
 func (r *realLayerAPI) SyncLayerVersionPermissions(ctx context.Context, layerName string, version int64, desired PermissionsSpec) (PermissionsSpec, error) {
 	current, err := r.getLayerVersionPermissions(ctx, layerName, version)
 	if err != nil && !IsNotFound(err) {
@@ -171,6 +186,7 @@ func (r *realLayerAPI) SyncLayerVersionPermissions(ctx context.Context, layerNam
 	return r.getLayerVersionPermissions(ctx, layerName, version)
 }
 
+// addLayerVersionPermission grants lambda:GetLayerVersion to a principal.
 func (r *realLayerAPI) addLayerVersionPermission(ctx context.Context, layerName string, version int64, principal string, statementID string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -185,6 +201,7 @@ func (r *realLayerAPI) addLayerVersionPermission(ctx context.Context, layerName 
 	return err
 }
 
+// removeLayerVersionPermission revokes a permission statement by ID.
 func (r *realLayerAPI) removeLayerVersionPermission(ctx context.Context, layerName string, version int64, statementID string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -193,6 +210,7 @@ func (r *realLayerAPI) removeLayerVersionPermission(ctx context.Context, layerNa
 	return err
 }
 
+// getLayerVersionPermissions reads the resource-based policy and extracts permissions.
 func (r *realLayerAPI) getLayerVersionPermissions(ctx context.Context, layerName string, version int64) (PermissionsSpec, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return PermissionsSpec{}, err
@@ -207,6 +225,7 @@ func (r *realLayerAPI) getLayerVersionPermissions(ctx context.Context, layerName
 	return permissionsFromPolicy(aws.ToString(out.Policy)), nil
 }
 
+// layerContent converts CodeSpec to the Lambda SDK layer content input.
 func layerContent(code CodeSpec) *lambdatypes.LayerVersionContentInput {
 	content := &lambdatypes.LayerVersionContentInput{}
 	if code.S3 != nil {
@@ -262,6 +281,7 @@ func optionalString(value string) *string {
 	return aws.String(value)
 }
 
+// permissionsFromPolicy parses the IAM policy JSON to extract account IDs and public flag.
 func permissionsFromPolicy(policy string) PermissionsSpec {
 	var doc struct {
 		Statement []struct {
@@ -302,6 +322,7 @@ func permissionsFromPolicy(policy string) PermissionsSpec {
 	return normalizePermissions(permissions)
 }
 
+// normalizePermissions sorts and deduplicates account IDs, defaulting to empty slice.
 func normalizePermissions(spec PermissionsSpec) PermissionsSpec {
 	if len(spec.AccountIds) == 0 {
 		spec.AccountIds = []string{}
@@ -313,6 +334,7 @@ func normalizePermissions(spec PermissionsSpec) PermissionsSpec {
 	return spec
 }
 
+// diffStrings returns lists of items to add and remove to go from observed to desired.
 func diffStrings(desired, observed []string) ([]string, []string) {
 	desiredSet := make(map[string]struct{}, len(desired))
 	observedSet := make(map[string]struct{}, len(observed))
@@ -343,6 +365,7 @@ func accountStatementID(accountID string) string {
 	return "praxis-account-" + strings.ReplaceAll(accountID, ":", "-")
 }
 
+// validateCode ensures exactly one code source is set (S3 or ZipFile).
 func validateCode(code CodeSpec) error {
 	count := 0
 	if code.S3 != nil {
@@ -357,18 +380,22 @@ func validateCode(code CodeSpec) error {
 	return nil
 }
 
+// IsNotFound returns true if the layer or version does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
+// IsInvalidParameter returns true if a parameter value is invalid.
 func IsInvalidParameter(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValueException")
 }
 
+// IsConflict returns true if a conflicting operation is in progress.
 func IsConflict(err error) bool {
 	return awserr.HasCode(err, "ResourceConflictException")
 }
 
+// IsPolicyNotFound returns true if the layer version has no resource-based policy.
 func IsPolicyNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException") && strings.Contains(strings.ToLower(err.Error()), "policy")
 }

@@ -1,3 +1,13 @@
+// notifications.go implements the `praxis notifications` command group.
+//
+// Notification sinks are delivery targets for deployment events. Praxis can
+// push CloudEvents to webhooks, structured logs, or CloudEvents HTTP endpoints.
+// Sinks are configured globally and filter events by type, category, severity,
+// workspace, or deployment pattern.
+//
+// The notification subsystem communicates with two Restate services:
+//   - NotificationSinkConfig (Virtual Object, key="global") — CRUD for sinks
+//   - SinkRouter (Service) — test delivery of synthetic events
 package cli
 
 import (
@@ -13,6 +23,8 @@ import (
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
 
+// newNotificationsCmd builds the `praxis notifications` parent command.
+// Subcommands: add-sink, list-sinks, get-sink, remove-sink, test-sink, health.
 func newNotificationsCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "notifications",
@@ -30,6 +42,10 @@ func newNotificationsCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newNotificationAddSinkCmd builds `praxis notifications add-sink`.
+// Creates or updates a notification sink. The sink can be configured via
+// flags or loaded from a JSON file (--from-file). Calls
+// NotificationSinkConfig.Upsert via the ingress client.
 func newNotificationAddSinkCmd(flags *rootFlags) *cobra.Command {
 	var (
 		name             string
@@ -82,6 +98,8 @@ func newNotificationAddSinkCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newNotificationListSinksCmd builds `praxis notifications list-sinks`.
+// Lists all configured notification sinks with their delivery state.
 func newNotificationListSinksCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-sinks",
@@ -104,6 +122,8 @@ func newNotificationListSinksCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newNotificationHealthCmd builds `praxis notifications health`.
+// Shows aggregate health across all sinks: total, healthy, degraded, open.
 func newNotificationHealthCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "health",
@@ -128,6 +148,8 @@ func newNotificationHealthCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newNotificationGetSinkCmd builds `praxis notifications get-sink <name>`.
+// Returns the full configuration of a single sink as JSON.
 func newNotificationGetSinkCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get-sink <name>",
@@ -146,6 +168,8 @@ func newNotificationGetSinkCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newNotificationRemoveSinkCmd builds `praxis notifications remove-sink <name>`.
+// Deletes a notification sink from the configuration.
 func newNotificationRemoveSinkCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove-sink <name>",
@@ -164,6 +188,9 @@ func newNotificationRemoveSinkCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newNotificationTestSinkCmd builds `praxis notifications test-sink <name>`.
+// Sends a synthetic CloudEvent to the named sink to verify delivery works.
+// Calls SinkRouter.Test via the ingress client.
 func newNotificationTestSinkCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test-sink <name>",
@@ -182,6 +209,9 @@ func newNotificationTestSinkCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// buildNotificationSink assembles a NotificationSink from either a JSON file
+// (--from-file) or individual flag values. File loading takes precedence
+// when --from-file is set.
 func buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryFilters, severityFilters, workspaceFilters, deploymentFilters string, headers []string, maxRetries, backoffMs int, contentMode string) (orchestrator.NotificationSink, error) {
 	if strings.TrimSpace(fromFile) != "" {
 		return loadNotificationSink(fromFile)
@@ -207,6 +237,8 @@ func buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryF
 	}, nil
 }
 
+// loadNotificationSink reads and deserialises a NotificationSink from a JSON
+// file. Pass "-" to read from stdin.
 func loadNotificationSink(path string) (orchestrator.NotificationSink, error) {
 	var data []byte
 	var err error
@@ -225,6 +257,7 @@ func loadNotificationSink(path string) (orchestrator.NotificationSink, error) {
 	return sink, nil
 }
 
+// parseHeaders converts "key=value" header strings into a map.
 func parseHeaders(values []string) (map[string]string, error) {
 	if len(values) == 0 {
 		return nil, nil
@@ -240,6 +273,8 @@ func parseHeaders(values []string) (map[string]string, error) {
 	return headers, nil
 }
 
+// splitCSV splits a comma-separated string into a trimmed slice. Returns nil
+// for empty input.
 func splitCSV(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -256,6 +291,8 @@ func splitCSV(raw string) []string {
 	return out
 }
 
+// sinkStateLabel derives a human-readable delivery-state label for a sink.
+// Falls back to the DeliveryState field, then heuristic based on failure count.
 func sinkStateLabel(sink orchestrator.NotificationSink) string {
 	if strings.TrimSpace(sink.DeliveryState) != "" {
 		return sink.DeliveryState

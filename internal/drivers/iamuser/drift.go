@@ -2,6 +2,9 @@ package iamuser
 
 import "strings"
 
+// HasDrift compares the desired IAM user spec against the observed AWS state.
+// Compared fields: path, permissions boundary, inline policies (JSON-normalized),
+// managed policy ARNs (as unordered sets), groups (as unordered sets), and user tags.
 func HasDrift(desired IAMUserSpec, observed ObservedState) bool {
 	if desired.Path != observed.Path {
 		return true
@@ -21,6 +24,7 @@ func HasDrift(desired IAMUserSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs produces a detailed list of per-field differences for drift reporting.
 func ComputeFieldDiffs(desired IAMUserSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -44,6 +48,7 @@ func ComputeFieldDiffs(desired IAMUserSpec, observed ObservedState) []FieldDiffE
 	return diffs
 }
 
+// FieldDiffEntry represents a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any

@@ -12,6 +12,13 @@ import (
 // ExtractVariableSchema parses CUE source and returns the variable schema.
 // It inspects the "variables" field to determine types, constraints, defaults,
 // and enumerations for each variable.
+//
+// This is called during template registration (TemplateRegistry.Register) to
+// pre-compute the schema and store it alongside the template record. The CLI
+// and command service later use the stored schema to validate user-provided
+// variables before evaluation, and to generate interactive prompts.
+//
+// Returns nil (no error) if the template has no "variables" block.
 func ExtractVariableSchema(source []byte) (types.VariableSchema, error) {
 	ctx := cuecontext.New()
 	val := ctx.CompileBytes(source)
@@ -41,6 +48,16 @@ func ExtractVariableSchema(source []byte) (types.VariableSchema, error) {
 
 // analyzeVariableField inspects a CUE value to determine its type, whether
 // it's required, its default value, any regex constraint, and enum values.
+//
+// Type detection uses IncompleteKind() (not Kind()) because variables in CUE
+// are usually not concrete until values are supplied. IncompleteKind returns
+// the structural type even for incomplete values (e.g. a constrained string).
+//
+// Required vs optional: a variable with a CUE default (e.g. `env: *"dev" | string`)
+// is marked as not required; variables without defaults are required.
+//
+// Enums: CUE disjunctions like `"dev" | "staging" | "prod"` are detected via
+// the Expr() method and extracted as string enum values.
 func analyzeVariableField(v cue.Value) types.VariableField {
 	f := types.VariableField{}
 
@@ -115,6 +132,9 @@ func analyzeVariableField(v cue.Value) types.VariableField {
 }
 
 // marshalDefault extracts the Go value from a concrete CUE default.
+// It recursively handles strings, bools, numbers, lists, and structs so that
+// the default value can be stored in the VariableField and used for display
+// in the CLI's interactive variable prompts.
 func marshalDefault(v cue.Value) (any, error) {
 	switch v.IncompleteKind() {
 	case cue.StringKind:

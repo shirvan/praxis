@@ -1,3 +1,10 @@
+// workflow.go implements the apply/re-apply deployment workflow.
+//
+// The workflow is a Restate durable workflow keyed by deployment. Restate
+// guarantees that Run() will execute exactly once for each workflow start,
+// automatically journaling completed steps so that restarts after transient
+// failures resume from the last successful step rather than re-executing
+// side-effecting driver calls.
 package orchestrator
 
 import (
@@ -17,7 +24,16 @@ import (
 // lifecycle record lives in DeploymentStateObj. This keeps the workflow focused
 // on scheduling, dispatching, waiting, and translating driver outcomes into
 // deployment-level state transitions.
+//
+// Architecture note: DeploymentWorkflow is a Restate Workflow (not a Virtual
+// Object). Each apply invocation gets its own durable execution. The workflow
+// communicates with DeploymentStateObj (a Virtual Object) to persist state that
+// must survive across workflow generations (e.g. re-apply increments generation
+// but keeps the same deployment key).
 type DeploymentWorkflow struct {
+	// providers is the registry of typed provider adapters that translate
+	// abstract resource kinds (e.g. "praxis:aws:s3:Bucket") into concrete
+	// driver service calls.
 	providers *provider.Registry
 }
 
@@ -26,6 +42,8 @@ func NewDeploymentWorkflow(providers *provider.Registry) *DeploymentWorkflow {
 	return &DeploymentWorkflow{providers: providers}
 }
 
+// ServiceName returns the Restate service name under which this workflow is
+// registered. Callers use DeploymentWorkflowServiceName to start new runs.
 func (*DeploymentWorkflow) ServiceName() string {
 	return DeploymentWorkflowServiceName
 }
@@ -41,6 +59,12 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("deployment key is required"), 400)
 	}
 
+	// ---------------------------------------------------------------
+	// Phase 1: Validate preconditions
+	// ---------------------------------------------------------------
+	// The deployment must already be initialised in DeploymentStateObj.
+	// Initialisation happens in the command layer before the workflow starts,
+	// ensuring the durable state record exists with generation > 0.
 	state, err := getDeploymentState(ctx, plan.Key)
 	if err != nil {
 		return DeploymentResult{}, err
@@ -52,6 +76,10 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		)
 	}
 
+	// Build the DAG from the plan's resource dependency declarations.
+	// graphFromPlanResources validates that the dependency graph is acyclic.
+	// An invalid graph (cycles, missing nodes) is a terminal error because
+	// no amount of retrying will fix structural template problems.
 	graph, err := graphFromPlanResources(plan.Resources)
 	if err != nil {
 		now, nowErr := currentTime(ctx)
@@ -70,10 +98,17 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("invalid deployment graph: %w", err), 400)
 	}
 
+	// ---------------------------------------------------------------
+	// Phase 2: Transition to Running
+	// ---------------------------------------------------------------
+	// currentTime is wrapped in restate.Run so Restate journals the timestamp,
+	// ensuring deterministic replay if the workflow restarts.
 	now, err := currentTime(ctx)
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	// Persist the Running status in both DeploymentStateObj and the global
+	// DeploymentIndex so the CLI can poll for progress.
 	if err := setDeploymentStatus(ctx, plan.Key, StatusUpdate{
 		Status:    types.DeploymentRunning,
 		UpdatedAt: now,
@@ -93,19 +128,52 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		return DeploymentResult{}, err
 	}
 
+	// ---------------------------------------------------------------
+	// Phase 3: Prepare the DAG scheduler and execution state
+	// ---------------------------------------------------------------
+	// The Schedule wraps the DAG graph and exposes a Ready() method that
+	// returns resources whose direct dependencies are all in the completed
+	// set. This is the core of the eager parallel dispatch strategy.
 	schedule := dag.NewSchedule(graph)
+
+	// executionState tracks per-resource statuses, outputs, and errors across
+	// the dispatch loop. loadOutputs seeds it with any outputs persisted from
+	// a previous generation (relevant for re-apply scenarios).
 	exec := newExecutionState(plan.Resources)
 	exec.loadOutputs(state.Outputs)
 
+	// ForceReplace resources will be deleted before re-provisioning.
 	replaceSet := make(map[string]bool, len(plan.ForceReplace))
 	for _, name := range plan.ForceReplace {
 		replaceSet[name] = true
 	}
 
+	// inFlight tracks resources currently being provisioned by their driver.
+	// Each entry maps resource name → ProvisionInvocation, which wraps a
+	// Restate future for the async driver call.
 	inFlight := make(map[string]provider.ProvisionInvocation)
 	cancellationRequested := false
 
+	// ---------------------------------------------------------------
+	// Phase 4: Main dispatch loop (eager parallel execution)
+	// ---------------------------------------------------------------
+	// Each iteration:
+	//   1. Check for cancellation (polls DeploymentStateObj.IsCancelled).
+	//   2. Collect "ready" resources (all deps satisfied, not yet dispatched).
+	//   3. For each ready resource:
+	//      a. Hydrate expressions: resolve "resources.X.outputs.Y" references
+	//         from completed resource outputs into the resource spec.
+	//      b. Look up the provider adapter for this resource kind.
+	//      c. If force-replace, delete the old resource first.
+	//      d. Dispatch the driver Provision call (async via Restate).
+	//   4. Wait for any one in-flight resource to complete (WaitFirst).
+	//   5. Record the outcome (Ready or Error), feed outputs back for hydration.
+	//   6. Repeat until no resources are left to dispatch and nothing is in-flight.
 	for {
+		// --- Step 4a: Check cancellation flag ---
+		// The cancel flag is a durable boolean in DeploymentStateObj. Polling
+		// it via a shared handler is safe because it's read-only. Once set,
+		// no new resources are dispatched, but in-flight ones run to completion.
 		if !cancellationRequested {
 			cancelled, err := deploymentCancelled(ctx, plan.Key)
 			if err != nil {
@@ -123,11 +191,18 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			}
 		}
 
+		// --- Step 4b: Dispatch ready resources ---
 		if !cancellationRequested {
 			ready := exec.ready(schedule)
 			for _, name := range ready {
 				resource := exec.plan[name]
 
+				// Expression hydration: resolve cross-resource output references.
+				// For example, a security group rule may reference
+				// "resources.vpc.outputs.vpcId" which gets replaced with the
+				// actual VPC ID from the completed VPC resource's outputs.
+				// HydrateExprs writes typed values (ints stay ints, arrays stay
+				// arrays) back into the JSON spec at the recorded paths.
 				hydratedSpec, err := HydrateExprs(resource.Spec, resource.Expressions, exec.outputs)
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to hydrate spec: %v", err)); err != nil {
@@ -136,6 +211,9 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					continue
 				}
 
+				// Look up the typed provider adapter for this resource's driver kind.
+				// The adapter translates between the generic orchestrator protocol
+				// (Provision/Delete with raw JSON) and the typed driver interface.
 				adapter, err := w.providers.Get(resource.Kind)
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, err.Error()); err != nil {
@@ -144,6 +222,8 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					continue
 				}
 
+				// Decode the hydrated JSON spec into the driver's typed Go struct.
+				// This catches schema mismatches early before hitting the wire.
 				decodedSpec, err := adapter.DecodeSpec(hydratedSpec)
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to decode driver spec: %v", err)); err != nil {
@@ -192,6 +272,10 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					}
 				}
 
+				// Dispatch the async provisioning call. This creates a Restate
+				// invocation to the driver service and returns a future. The driver
+				// call runs independently; the workflow awaits it in the WaitFirst
+				// block below.
 				invocation, err := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to dispatch driver call: %v", err)); err != nil {
@@ -231,17 +315,29 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			continue
 		}
 
+		// --- Step 4d: Await the first in-flight completion ---
+		// Restate's WaitFirst suspends the workflow until any one of the
+		// driver futures completes (success or failure). This is the
+		// mechanism that enables parallel resource provisioning while
+		// still processing completions one at a time for deterministic
+		// journal replay.
 		future, err := restate.WaitFirst(ctx, provisionFutures(inFlight)...)
 		if err != nil {
 			return DeploymentResult{}, err
 		}
 
+		// Match the completed future back to the resource name so we know
+		// which resource just finished.
 		resourceName, invocation, ok := matchProvisionFuture(inFlight, future)
 		if !ok {
 			return DeploymentResult{}, fmt.Errorf("completed future did not match any tracked resource")
 		}
 		delete(inFlight, resourceName)
 
+		// Retrieve the resource outputs from the completed driver call.
+		// If the driver returned an error, this is a resource-level failure
+		// (not a workflow infrastructure error). The resource is marked Error,
+		// and all transitive dependents are marked Skipped.
 		outputs, err := invocation.Outputs()
 		if err != nil {
 			resource := exec.plan[resourceName]
@@ -251,6 +347,8 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			continue
 		}
 
+		// Record the successful outputs in execution state. These outputs
+		// become available for hydrating downstream resource expressions.
 		exec.markReady(resourceName, outputs)
 		if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
 			Name:    resourceName,
@@ -269,6 +367,9 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		}
 	}
 
+	// ---------------------------------------------------------------
+	// Phase 5: Determine final deployment status
+	// ---------------------------------------------------------------
 	finalStatus := types.DeploymentComplete
 	finalError := ""
 	if cancellationRequested {
@@ -297,10 +398,15 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		finalError = exec.failureSummary()
 	}
 
+	// ---------------------------------------------------------------
+	// Phase 6: Finalize and emit terminal event
+	// ---------------------------------------------------------------
 	now, err = currentTime(ctx)
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	// Write the terminal status to DeploymentStateObj.Finalize, which also
+	// cleans up resource-event-owner mappings if the deployment was fully deleted.
 	if err := finalizeDeployment(ctx, plan.Key, FinalizeRequest{
 		Status:    finalStatus,
 		Error:     finalError,
@@ -326,6 +432,11 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	return exec.result(plan.Key, finalStatus, finalError), nil
 }
 
+// recordApplyFailure handles a resource-level failure during the apply workflow.
+// It marks the resource as Error in both execution state and DeploymentStateObj,
+// emits a resource.error CloudEvent, and then computes the transitive set of
+// dependent resources that must be skipped (because their dependency failed).
+// Each skipped resource also gets a resource.skipped event.
 func (w *DeploymentWorkflow) recordApplyFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,
@@ -374,6 +485,8 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 	return nil
 }
 
+// provisionFutures extracts the Restate futures from all in-flight invocations
+// so they can be passed to restate.WaitFirst for parallel await.
 func provisionFutures(inFlight map[string]provider.ProvisionInvocation) []restate.Future {
 	futures := make([]restate.Future, 0, len(inFlight))
 	for _, invocation := range inFlight {
@@ -382,6 +495,8 @@ func provisionFutures(inFlight map[string]provider.ProvisionInvocation) []restat
 	return futures
 }
 
+// matchProvisionFuture identifies which resource's driver call completed by
+// comparing the resolved future against all tracked invocations' futures.
 func matchProvisionFuture(inFlight map[string]provider.ProvisionInvocation, future restate.Future) (string, provider.ProvisionInvocation, bool) {
 	for name, invocation := range inFlight {
 		if invocation.Future() == future {

@@ -1,3 +1,9 @@
+// Package targetgroup – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS ELBv2 Target Group.
+// It defines the TargetGroupAPI interface (used for testing with mocks)
+// and the real implementation that calls Elastic Load Balancing v2 through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package targetgroup
 
 import (
@@ -16,6 +22,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// TargetGroupAPI abstracts all Elastic Load Balancing v2 SDK operations needed
+// to manage a AWS ELBv2 Target Group. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type TargetGroupAPI interface {
 	CreateTargetGroup(ctx context.Context, spec TargetGroupSpec) (TargetGroupOutputs, error)
 	DescribeTargetGroup(ctx context.Context, id string) (ObservedState, error)
@@ -31,10 +40,13 @@ type realTargetGroupAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewTargetGroupAPI constructs a production TargetGroupAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewTargetGroupAPI(client *elbv2sdk.Client) TargetGroupAPI {
 	return &realTargetGroupAPI{client: client, limiter: ratelimit.New("target-group", 15, 8)}
 }
 
+// CreateTargetGroup calls Elastic Load Balancing v2 to create a new AWS ELBv2 Target Group from the given spec.
 func (r *realTargetGroupAPI) CreateTargetGroup(ctx context.Context, spec TargetGroupSpec) (TargetGroupOutputs, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return TargetGroupOutputs{}, err
@@ -77,6 +89,7 @@ func (r *realTargetGroupAPI) CreateTargetGroup(ctx context.Context, spec TargetG
 	return TargetGroupOutputs{TargetGroupArn: arn, TargetGroupName: aws.ToString(group.TargetGroupName)}, nil
 }
 
+// DescribeTargetGroup reads the current state of the AWS ELBv2 Target Group from Elastic Load Balancing v2.
 func (r *realTargetGroupAPI) DescribeTargetGroup(ctx context.Context, id string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -123,6 +136,7 @@ func (r *realTargetGroupAPI) DescribeTargetGroup(ctx context.Context, id string)
 	}, nil
 }
 
+// DeleteTargetGroup removes the AWS ELBv2 Target Group from AWS via Elastic Load Balancing v2.
 func (r *realTargetGroupAPI) DeleteTargetGroup(ctx context.Context, arn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -131,6 +145,7 @@ func (r *realTargetGroupAPI) DeleteTargetGroup(ctx context.Context, arn string) 
 	return err
 }
 
+// ModifyTargetGroup updates mutable properties of the AWS ELBv2 Target Group via Elastic Load Balancing v2.
 func (r *realTargetGroupAPI) ModifyTargetGroup(ctx context.Context, arn string, spec TargetGroupSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -141,6 +156,7 @@ func (r *realTargetGroupAPI) ModifyTargetGroup(ctx context.Context, arn string, 
 	return err
 }
 
+// UpdateAttributes updates mutable properties of the AWS ELBv2 Target Group via Elastic Load Balancing v2.
 func (r *realTargetGroupAPI) UpdateAttributes(ctx context.Context, arn string, spec TargetGroupSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -159,6 +175,7 @@ func (r *realTargetGroupAPI) UpdateAttributes(ctx context.Context, arn string, s
 	return err
 }
 
+// UpdateTargets updates mutable properties of the AWS ELBv2 Target Group via Elastic Load Balancing v2.
 func (r *realTargetGroupAPI) UpdateTargets(ctx context.Context, arn string, desired []Target, observed []Target) error {
 	add, remove := diffTargets(desired, observed)
 	if len(add) > 0 {
@@ -182,6 +199,7 @@ func (r *realTargetGroupAPI) UpdateTargets(ctx context.Context, arn string, desi
 	return nil
 }
 
+// UpdateTags updates mutable properties of the AWS ELBv2 Target Group via Elastic Load Balancing v2.
 func (r *realTargetGroupAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
 	existing, err := r.describeTags(ctx, arn)
 	if err != nil {
@@ -400,22 +418,27 @@ func diffTargets(desired, observed []Target) (add []Target, remove []Target) {
 	return add, remove
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS ELBv2 Target Group does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "TargetGroupNotFound")
 }
 
+// IsDuplicate returns true if the AWS error indicates a naming conflict.
 func IsDuplicate(err error) bool {
 	return awserr.HasCode(err, "DuplicateTargetGroupName")
 }
 
+// IsResourceInUse returns true if the resource cannot be deleted because it is still referenced.
 func IsResourceInUse(err error) bool {
 	return awserr.HasCode(err, "ResourceInUse")
 }
 
+// IsTooMany returns true if the AWS error indicates a service quota has been reached.
 func IsTooMany(err error) bool {
 	return awserr.HasCode(err, "TooManyTargetGroups")
 }
 
+// IsInvalidConfiguration returns true if the AWS error indicates an invalid configuration.
 func IsInvalidConfiguration(err error) bool {
 	return awserr.HasCode(err, "InvalidTarget", "ValidationError", "InvalidConfigurationRequest")
 }

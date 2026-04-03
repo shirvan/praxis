@@ -1,3 +1,13 @@
+// SNSSubscription provider adapter.
+//
+// This file implements the provider.Adapter interface for Amazon SNS (Subscription)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the SNSSubscription Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + subscription name.
+// SNS subscriptions are region-scoped; the key combines the AWS region and subscription name.
 package provider
 
 import (
@@ -14,12 +24,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// SNSSubscriptionAdapter implements provider.Adapter for SNSSubscription (Amazon SNS (Subscription)) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type SNSSubscriptionAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI snssub.SubscriptionAPI
 	apiFactory        func(aws.Config) snssub.SubscriptionAPI
 }
 
+// NewSNSSubscriptionAdapterWithAuth creates a production SNSSubscription adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewSNSSubscriptionAdapterWithAuth(auth authservice.AuthClient) *SNSSubscriptionAdapter {
 	return &SNSSubscriptionAdapter{
 		auth: auth,
@@ -29,12 +47,21 @@ func NewSNSSubscriptionAdapterWithAuth(auth authservice.AuthClient) *SNSSubscrip
 	}
 }
 
+// NewSNSSubscriptionAdapterWithAPI creates a SNSSubscription adapter with a pre-built API
+// client. This is primarily useful in tests that supply a mock implementation
+// and do not need per-account credential resolution.
 func NewSNSSubscriptionAdapterWithAPI(api snssub.SubscriptionAPI) *SNSSubscriptionAdapter {
 	return &SNSSubscriptionAdapter{staticPlanningAPI: api}
 }
 
+// Kind returns the resource kind string "SNSSubscription" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *SNSSubscriptionAdapter) Kind() string        { return snssub.ServiceName }
+// ServiceName returns the Restate Virtual Object service name for the
+// SNSSubscription driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *SNSSubscriptionAdapter) ServiceName() string { return snssub.ServiceName }
+// Scope returns the key-scope strategy for SNSSubscription resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *SNSSubscriptionAdapter) Scope() KeyScope     { return KeyScopeCustom }
 
 // BuildKey returns a key of the form region~topicArn~protocol~endpoint.
@@ -62,6 +89,8 @@ func (a *SNSSubscriptionAdapter) BuildKey(resourceDoc json.RawMessage) (string, 
 	return JoinKey(spec.Region, spec.TopicArn, spec.Protocol, spec.Endpoint), nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete SNSSubscription spec struct expected by the driver.
 func (a *SNSSubscriptionAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -70,6 +99,11 @@ func (a *SNSSubscriptionAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, e
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the SNSSubscription Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *SNSSubscriptionAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[snssub.SNSSubscriptionSpec](spec)
 	if err != nil {
@@ -88,6 +122,9 @@ func (a *SNSSubscriptionAdapter) Provision(ctx restate.Context, key string, acco
 	}, nil
 }
 
+// Delete sends a durable Delete request to the SNSSubscription Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *SNSSubscriptionAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](
 		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
@@ -95,6 +132,9 @@ func (a *SNSSubscriptionAdapter) Delete(ctx restate.Context, key string) (Delete
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed SNSSubscription driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *SNSSubscriptionAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[snssub.SNSSubscriptionOutputs](raw)
 	if err != nil {
@@ -112,6 +152,11 @@ func (a *SNSSubscriptionAdapter) NormalizeOutputs(raw any) (map[string]any, erro
 	return result, nil
 }
 
+// Plan compares the desired SNSSubscription spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *SNSSubscriptionAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[snssub.SNSSubscriptionSpec](desiredSpec)
 	if err != nil {
@@ -184,6 +229,8 @@ func (a *SNSSubscriptionAdapter) BuildImportKey(region, resourceID string) (stri
 	return JoinKey(region, resourceID), nil
 }
 
+// Import adopts an existing SNSSubscription resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *SNSSubscriptionAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, snssub.SNSSubscriptionOutputs](
@@ -199,6 +246,10 @@ func (a *SNSSubscriptionAdapter) Import(ctx restate.Context, key string, account
 	return types.StatusReady, outputs, nil
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed SNSSubscription spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *SNSSubscriptionAdapter) decodeSpec(doc resourceDocument) (snssub.SNSSubscriptionSpec, error) {
 	var spec snssub.SNSSubscriptionSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -220,6 +271,9 @@ func (a *SNSSubscriptionAdapter) decodeSpec(doc resourceDocument) (snssub.SNSSub
 	return spec, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *SNSSubscriptionAdapter) planningAPI(ctx restate.Context, account string) (snssub.SubscriptionAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

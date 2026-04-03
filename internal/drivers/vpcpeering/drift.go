@@ -2,6 +2,14 @@ package vpcpeering
 
 import "strings"
 
+// HasDrift returns true if the desired spec and observed state differ.
+//
+// VPC Peering drift rules:
+//   - Only checked when the peering is in "active" status. Pending or
+//     transitional states are skipped to avoid false positives.
+//   - Tags are compared (excluding praxis:-prefixed tags).
+//   - Requester and accepter peering options (DNS resolution) are compared.
+//   - VPC IDs are NOT checked — they are immutable.
 func HasDrift(desired VPCPeeringSpec, observed ObservedState) bool {
 	if observed.Status != "active" {
 		return false
@@ -18,6 +26,8 @@ func HasDrift(desired VPCPeeringSpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs returns a human-readable list of differences for drift
+// event reporting, including tag and peering option differences.
 func ComputeFieldDiffs(desired VPCPeeringSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 

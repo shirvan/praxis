@@ -6,18 +6,23 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry describes a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any mutable field differs between desired and observed state.
+// Type and requestInterval are immutable and excluded from actionable drift.
 func HasDrift(desired HealthCheckSpec, observed ObservedState) bool {
 	desired, _ = normalizeHealthCheckSpec(desired)
 	observed = normalizeObservedState(observed)
 	return len(ComputeFieldDiffs(desired, observed)) > 0
 }
 
+// ComputeFieldDiffs returns a per-field list of differences. Reports type and requestInterval
+// as informational immutable diffs; checks all other mutable fields, including tags.
 func ComputeFieldDiffs(desired HealthCheckSpec, observed ObservedState) []FieldDiffEntry {
 	desired, _ = normalizeHealthCheckSpec(desired)
 	observed = normalizeObservedState(observed)

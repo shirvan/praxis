@@ -1,3 +1,15 @@
+// Package listenerrule – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS ELBv2 Listener Rule.
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package listenerrule
 
 import (
@@ -14,17 +26,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ListenerRuleDriver is the Restate Virtual Object handler for AWS ELBv2 Listener Rule.
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type ListenerRuleDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) ListenerRuleAPI
 }
 
+// NewListenerRuleDriver creates a ListenerRule driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewListenerRuleDriver(auth authservice.AuthClient) *ListenerRuleDriver {
 	return NewListenerRuleDriverWithFactory(auth, func(cfg aws.Config) ListenerRuleAPI {
 		return NewListenerRuleAPI(awsclient.NewELBv2Client(cfg))
 	})
 }
 
+// NewListenerRuleDriverWithFactory creates a ListenerRule driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewListenerRuleDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) ListenerRuleAPI) *ListenerRuleDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) ListenerRuleAPI {
@@ -34,8 +53,13 @@ func NewListenerRuleDriverWithFactory(auth authservice.AuthClient, factory func(
 	return &ListenerRuleDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *ListenerRuleDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a AWS ELBv2 Listener Rule. It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *ListenerRuleDriver) Provision(ctx restate.ObjectContext, spec ListenerRuleSpec) (ListenerRuleOutputs, error) {
 	ctx.Log().Info("provisioning listener rule", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -151,6 +175,10 @@ func (d *ListenerRuleDriver) Provision(ctx restate.ObjectContext, spec ListenerR
 	return state.Outputs, nil
 }
 
+// Import adopts an existing AWS ELBv2 Listener Rule into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *ListenerRuleDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ListenerRuleOutputs, error) {
 	ctx.Log().Info("importing listener rule", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, _, err := d.apiForAccount(ctx, ref.Account)
@@ -191,6 +219,9 @@ func (d *ListenerRuleDriver) Import(ctx restate.ObjectContext, ref types.ImportR
 	return state.Outputs, nil
 }
 
+// Delete removes the AWS ELBv2 Listener Rule from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *ListenerRuleDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting listener rule", "key", restate.Key(ctx))
 	state, err := restate.Get[ListenerRuleState](ctx, drivers.StateKey)
@@ -238,6 +269,11 @@ func (d *ListenerRuleDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *ListenerRuleDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[ListenerRuleState](ctx, drivers.StateKey)
 	if err != nil {
@@ -317,6 +353,7 @@ func (d *ListenerRuleDriver) Reconcile(ctx restate.ObjectContext) (types.Reconci
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *ListenerRuleDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[ListenerRuleState](ctx, drivers.StateKey)
 	if err != nil {
@@ -325,6 +362,7 @@ func (d *ListenerRuleDriver) GetStatus(ctx restate.ObjectSharedContext) (types.S
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *ListenerRuleDriver) GetOutputs(ctx restate.ObjectSharedContext) (ListenerRuleOutputs, error) {
 	state, err := restate.Get[ListenerRuleState](ctx, drivers.StateKey)
 	if err != nil {

@@ -21,11 +21,19 @@ func claudeEndpoint() string {
 	return claudeAPIURL
 }
 
-// ClaudeProvider calls the Anthropic Messages API.
+// ClaudeProvider calls the Anthropic Messages API. Claude has a different
+// message format than OpenAI:
+//   - System prompts are a top-level field, not a message role
+//   - Tool results use "user" role with tool_result content blocks
+//   - Tool calls are "tool_use" content blocks on assistant messages
+//   - Content is always an array of content blocks (text, tool_use, tool_result)
+//
+// This provider handles all the format translation between our provider-agnostic
+// Message format and Claude's native wire format.
 type ClaudeProvider struct {
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	apiKey     string       // Anthropic API key (x-api-key header)
+	model      string       // Model name (e.g., "claude-sonnet-4-20250514")
+	httpClient *http.Client // Optional custom HTTP client (for testing)
 }
 
 type claudeRequest struct {
@@ -81,6 +89,9 @@ func (c *ClaudeProvider) client() *http.Client {
 }
 
 // ChatCompletion sends a chat request to the Anthropic Claude API.
+// Translates the provider-agnostic ChatRequest to Claude's Messages API format,
+// makes the HTTP call, and translates the response back. System prompts are
+// extracted from the message list and sent as a top-level field.
 func (c *ClaudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (LLMResponse, error) {
 	clReq := claudeRequest{
 		Model:       c.model,
@@ -160,6 +171,12 @@ func (c *ClaudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (L
 	return result, nil
 }
 
+// toClaudeMessages converts provider-agnostic Messages to Claude's format.
+// Key differences from OpenAI:
+//   - System messages are extracted and returned separately (Claude uses a top-level system field)
+//   - Tool results use "user" role with tool_result content blocks (not a "tool" role)
+//   - Assistant messages with tool calls become content block arrays with tool_use entries
+//   - Regular text messages have their content JSON-encoded as a string
 func toClaudeMessages(msgs []Message) ([]claudeMessage, string) {
 	var system string
 	var out []claudeMessage
@@ -212,6 +229,8 @@ func toClaudeMessages(msgs []Message) ([]claudeMessage, string) {
 	return out, system
 }
 
+// toClaudeTools converts provider-agnostic ToolSchemas to Claude's tool format.
+// Claude uses "input_schema" instead of OpenAI's "parameters".
 func toClaudeTools(tools []ToolSchema) []claudeTool {
 	out := make([]claudeTool, 0, len(tools))
 	for _, t := range tools {

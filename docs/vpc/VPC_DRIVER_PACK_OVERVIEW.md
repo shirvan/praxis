@@ -1,10 +1,5 @@
 # VPC Driver Pack — Overview
 
-> This document summarizes the VPC driver family for Praxis: eight drivers covering
-> VPCs, Subnets, Security Groups, Internet Gateways, NAT Gateways, Route Tables,
-> Network ACLs, and VPC Peering Connections. It describes their relationships,
-> shared infrastructure, and runtime deployment.
-
 ---
 
 ## Table of Contents
@@ -100,23 +95,35 @@ graph TD
 
 ## 3. Runtime Pack: praxis-network
 
-All eight VPC drivers plus Elastic IP run in a single runtime pack.
+All eight VPC drivers plus Elastic IP, ELB (ALB/NLB), ACM Certificate, and Route 53
+drivers run in a single runtime pack.
 
 ### Entry Point
 
 **File**: `cmd/praxis-network/main.go`
 
 ```go
+auth := authservice.NewAuthClient()
+
 srv := server.NewRestate().
-    Bind(restate.Reflect(eip.NewElasticIPDriver(cfg.Auth()))).
-    Bind(restate.Reflect(igw.NewIGWDriver(cfg.Auth()))).
-    Bind(restate.Reflect(natgw.NewNATGatewayDriver(cfg.Auth()))).
-    Bind(restate.Reflect(nacl.NewNetworkACLDriver(cfg.Auth()))).
-    Bind(restate.Reflect(routetable.NewRouteTableDriver(cfg.Auth()))).
-    Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(subnet.NewSubnetDriver(cfg.Auth()))).
-    Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(cfg.Auth()))).
-    Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
+    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth))).
+    Bind(restate.Reflect(alb.NewALBDriver(auth))).
+    Bind(restate.Reflect(nlb.NewNLBDriver(auth))).
+    Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth))).
+    Bind(restate.Reflect(listener.NewListenerDriver(auth))).
+    Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth))).
+    Bind(restate.Reflect(eip.NewElasticIPDriver(auth))).
+    Bind(restate.Reflect(igw.NewIGWDriver(auth))).
+    Bind(restate.Reflect(natgw.NewNATGatewayDriver(auth))).
+    Bind(restate.Reflect(nacl.NewNetworkACLDriver(auth))).
+    Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth))).
+    Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth))).
+    Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth))).
+    Bind(restate.Reflect(routetable.NewRouteTableDriver(auth))).
+    Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
+    Bind(restate.Reflect(subnet.NewSubnetDriver(auth))).
+    Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(auth))).
+    Bind(restate.Reflect(vpc.NewVPCDriver(auth)))
 ```
 
 ### Port
@@ -135,7 +142,7 @@ srv := server.NewRestate().
 
 ### AWS Client
 
-All eight drivers (plus EIP) use the EC2 API client from `aws-sdk-go-v2/service/ec2`.
+All VPC-family drivers in this pack use the EC2 API client from `aws-sdk-go-v2/service/ec2`.
 VPC, Subnet, Security Group, IGW, NAT Gateway, Route Table, NACL, and VPC Peering
 are all EC2 subsystems — they share the same API surface.
 
@@ -254,7 +261,7 @@ curl -s -X POST http://localhost:9070/deployments \
   -d '{"uri": "http://praxis-network:9080"}'
 ```
 
-All nine services (8 VPC + EIP) are discovered automatically from the single
+All services in the pack are discovered automatically from the single
 registration endpoint via Restate's reflection-based service discovery.
 
 ---
@@ -295,22 +302,21 @@ logs-network:  docker compose logs -f praxis-network
 
 ## 8. Registry Integration
 
-All eight adapters (plus EIP) are registered in `internal/core/provider/registry.go`:
+All VPC-family adapters are registered in `internal/core/provider/registry.go`:
 
 ```go
-func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+func NewRegistry(auth authservice.AuthClient) *Registry {
     return NewRegistryWithAdapters(
         // ... other adapters ...
-        NewEIPAdapterWithRegistry(accounts),
-        NewNATGatewayAdapterWithRegistry(accounts),
-        NewNetworkACLAdapterWithRegistry(accounts),
-        NewRouteTableAdapterWithRegistry(accounts),
-        NewSecurityGroupAdapterWithRegistry(accounts),
-        NewSubnetAdapterWithRegistry(accounts),
-        NewIGWAdapterWithRegistry(accounts),
-        NewVPCPeeringAdapterWithRegistry(accounts),
-        NewVPCAdapterWithRegistry(accounts),
+        NewEIPAdapterWithAuth(auth),
+        NewNATGatewayAdapterWithAuth(auth),
+        NewNetworkACLAdapterWithAuth(auth),
+        NewRouteTableAdapterWithAuth(auth),
+        NewSecurityGroupAdapterWithAuth(auth),
+        NewSubnetAdapterWithAuth(auth),
+        NewIGWAdapterWithAuth(auth),
+        NewVPCPeeringAdapterWithAuth(auth),
+        NewVPCAdapterWithAuth(auth),
         // ...
     )
 }

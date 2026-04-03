@@ -1,3 +1,16 @@
+// Package authservice implements the centralized AWS credential lifecycle
+// manager for Praxis. It runs as a Restate Virtual Object keyed by account
+// alias (e.g., "default", "prod-us", "staging"), providing:
+//
+//   - Credential resolution: static keys, STS AssumeRole, or default chain
+//   - Credential caching: avoids redundant STS calls across drivers
+//   - Proactive refresh: schedules a durable timer to refresh role credentials
+//     before they expire, so drivers never see expired tokens
+//   - Runtime configuration: accounts can be registered/updated via the
+//     Configure handler without restarting the service
+//
+// Drivers and Core components access credentials through the AuthClient
+// interface (see client.go) which calls this service via Restate RPC.
 package authservice
 
 import (
@@ -16,9 +29,13 @@ const ServiceName = "AuthService"
 
 // AuthService is a Restate Virtual Object that manages AWS credential lifecycle.
 // Each instance is keyed by an account-alias (e.g., "prod-us", "staging", "default").
+//
+// The stsFactory is injected to enable testing with mock STS implementations.
+// In production, it creates a real STS client; in tests, it returns a mock
+// that avoids actual AWS API calls.
 type AuthService struct {
-	bootstrap  *AccountsConfig
-	stsFactory func(aws.Config) STSAPI
+	bootstrap  *AccountsConfig         // env-var seed for first-boot; nil in production
+	stsFactory func(aws.Config) STSAPI // creates STS API wrapper; mockable for tests
 }
 
 // NewAuthService creates an AuthService with the default STS factory.
@@ -44,6 +61,17 @@ func (a *AuthService) ServiceName() string {
 }
 
 // GetCredentials returns cached or fresh AWS credentials for the account-alias key.
+// This is the primary entry point called by drivers and Core components.
+//
+// Flow:
+//  1. Resolve account config (Restate state → bootstrap env fallback)
+//  2. Check credential cache validity (not expired, >5min remaining)
+//  3. If cache hit: return immediately (fast path)
+//  4. If cache miss: resolve fresh credentials via the configured source
+//  5. Cache the result and return
+//
+// The unused string parameter exists because Restate handler signatures require
+// an input type; the actual account alias comes from restate.Key(ctx).
 func (a *AuthService) GetCredentials(ctx restate.ObjectContext, _ string) (CredentialResponse, error) {
 	alias := restate.Key(ctx)
 
@@ -190,6 +218,10 @@ func (a *AuthService) resolveConfig(ctx restate.ObjectContext, alias string) (Ac
 }
 
 // resolveCredentials resolves fresh credentials based on the credential source.
+// Dispatches to source-specific resolvers:
+//   - "static": uses inline access key ID + secret from config
+//   - "role": calls STS AssumeRole and caches temporary credentials
+//   - "" or "default": uses the AWS default credential chain (env, IMDS, etc.)
 func (a *AuthService) resolveCredentials(ctx restate.ObjectContext, state *AuthState, cfg AccountConfig, alias string) error {
 	switch cfg.CredentialSource {
 	case "static":
@@ -203,6 +235,8 @@ func (a *AuthService) resolveCredentials(ctx restate.ObjectContext, state *AuthS
 	}
 }
 
+// resolveStatic validates and stores static (long-lived) AWS credentials.
+// Static credentials never expire, so no refresh timer is scheduled.
 func (a *AuthService) resolveStatic(state *AuthState, cfg AccountConfig, alias string) error {
 	if cfg.AccessKeyID == "" || cfg.SecretAccessKey == "" {
 		return restate.TerminalError(errMissingStaticCredentials(alias), 401)
@@ -214,6 +248,9 @@ func (a *AuthService) resolveStatic(state *AuthState, cfg AccountConfig, alias s
 	return nil
 }
 
+// resolveRole calls STS AssumeRole to obtain temporary credentials for a
+// cross-account or role-based configuration. On success, caches the credentials
+// and schedules a proactive refresh 10 minutes before expiry.
 func (a *AuthService) resolveRole(ctx restate.ObjectContext, state *AuthState, cfg AccountConfig, alias string) error {
 	if cfg.RoleARN == "" {
 		return restate.TerminalError(errMissingRoleARN(alias), 401)
@@ -295,6 +332,11 @@ func (a *AuthService) resolveDefault(ctx restate.ObjectContext, state *AuthState
 }
 
 // scheduleRefresh schedules a proactive credential refresh before expiry.
+// Uses a Restate delayed message (durable timer) so the refresh survives
+// process restarts. The delay is set to 10 minutes before expiry, with a
+// minimum of 1 minute to avoid scheduling in the past.
+// The RefreshScheduled flag prevents duplicate timers if scheduleRefresh
+// is called multiple times for the same credential.
 func (a *AuthService) scheduleRefresh(ctx restate.ObjectContext, state *AuthState, expiresAt time.Time) {
 	if state.RefreshScheduled {
 		return
@@ -308,6 +350,11 @@ func (a *AuthService) scheduleRefresh(ctx restate.ObjectContext, state *AuthStat
 	state.RefreshScheduled = true
 }
 
+// isCacheValid checks whether cached credentials are still usable.
+// Credentials without an expiry (static/default) are always valid.
+// Temporary credentials (from AssumeRole) are valid if they have at
+// least 5 minutes of remaining lifetime, providing a safety margin
+// for in-flight requests.
 func isCacheValid(cached *CachedCredential) bool {
 	if cached == nil {
 		return false
@@ -322,6 +369,8 @@ func isCacheValid(cached *CachedCredential) bool {
 	return time.Until(expiry) >= 5*time.Minute
 }
 
+// buildResponse maps cached credentials and account config into a
+// CredentialResponse suitable for JSON serialization over Restate RPC.
 func buildResponse(cached *CachedCredential, cfg AccountConfig) CredentialResponse {
 	resp := CredentialResponse{
 		Region:      cfg.Region,
@@ -336,6 +385,10 @@ func buildResponse(cached *CachedCredential, cfg AccountConfig) CredentialRespon
 	return resp
 }
 
+// resolveBaseConfig creates an aws.Config from account settings. For static
+// credentials, it injects a static credentials provider. For other sources,
+// it uses the default credential chain. If EndpointURL is set (LocalStack),
+// it configures the BaseEndpoint accordingly.
 func resolveBaseConfig(account AccountConfig) (aws.Config, error) {
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(account.Region),

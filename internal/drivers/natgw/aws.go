@@ -17,21 +17,27 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// NATGatewayAPI abstracts the AWS EC2 SDK operations for NAT Gateways.
+// Creation and deletion are asynchronous; WaitUntilAvailable and
+// WaitUntilDeleted poll with 10-minute timeouts. DescribeNATGateway
+// treats the "deleted" state as not-found to simplify driver logic.
 type NATGatewayAPI interface {
-	CreateNATGateway(ctx context.Context, spec NATGatewaySpec) (string, error)
-	DescribeNATGateway(ctx context.Context, natGatewayId string) (ObservedState, error)
-	DeleteNATGateway(ctx context.Context, natGatewayId string) error
-	WaitUntilAvailable(ctx context.Context, natGatewayId string) error
-	WaitUntilDeleted(ctx context.Context, natGatewayId string) error
-	UpdateTags(ctx context.Context, natGatewayId string, tags map[string]string) error
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	CreateNATGateway(ctx context.Context, spec NATGatewaySpec) (string, error)          // Creates a NAT GW; returns nat-xxxx.
+	DescribeNATGateway(ctx context.Context, natGatewayId string) (ObservedState, error) // Fetches live state; "deleted" → not-found.
+	DeleteNATGateway(ctx context.Context, natGatewayId string) error                    // Initiates async delete.
+	WaitUntilAvailable(ctx context.Context, natGatewayId string) error                  // Polls until state=available (10min timeout).
+	WaitUntilDeleted(ctx context.Context, natGatewayId string) error                    // Polls until state=deleted (10min timeout).
+	UpdateTags(ctx context.Context, natGatewayId string, tags map[string]string) error  // Replaces user tags.
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)            // Finds by managed-key; filters terminal states.
 }
 
+// realNATGatewayAPI implements NATGatewayAPI using the actual AWS SDK v2 EC2 client.
 type realNATGatewayAPI struct {
 	client  *ec2sdk.Client
-	limiter *ratelimit.Limiter
+	limiter *ratelimit.Limiter // Token-bucket: 20 burst, 10/s refill.
 }
 
+// NewNATGatewayAPI creates a new NATGatewayAPI backed by the given EC2 SDK client.
 func NewNATGatewayAPI(client *ec2sdk.Client) NATGatewayAPI {
 	return &realNATGatewayAPI{
 		client:  client,
@@ -245,6 +251,12 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 	}
 }
 
+// Error classifiers — used by the driver to decide between retryable
+// errors, terminal errors, and idempotent success paths.
+
+// IsNotFound returns true when the NAT Gateway does not exist. Checks the
+// custom notFoundError (used when Describe sees "deleted" state), the
+// standard API error codes, and message string matching as a last resort.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false
@@ -262,22 +274,29 @@ func IsNotFound(err error) bool {
 	return strings.Contains(msg, "NatGatewayNotFound") || strings.Contains(msg, "InvalidNatGatewayID.NotFound")
 }
 
+// IsInvalidParam returns true for invalid parameter errors (terminal).
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }
 
+// IsAllocationInUse returns true when the Elastic IP allocation is already
+// associated with another resource, or the allocation ID does not exist.
 func IsAllocationInUse(err error) bool {
 	return awserr.HasCode(err, "Resource.AlreadyAssociated", "InvalidAllocationID.NotFound")
 }
 
+// IsSubnetNotFound returns true when the target subnet does not exist (terminal).
 func IsSubnetNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidSubnetID.NotFound")
 }
 
+// IsFailed returns true when the NAT Gateway state string is "failed".
 func IsFailed(state string) bool {
 	return strings.TrimSpace(state) == "failed"
 }
 
+// notFoundError is a sentinel error returned by DescribeNATGateway when the
+// NAT Gateway exists but is in the "deleted" terminal state.
 type notFoundError struct {
 	id string
 }

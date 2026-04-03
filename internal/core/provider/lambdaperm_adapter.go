@@ -1,3 +1,13 @@
+// LambdaPermission provider adapter.
+//
+// This file implements the provider.Adapter interface for AWS Lambda (Permission)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the LambdaPermission Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + function name + statement ID.
+// Lambda permissions are region-scoped and attached to a function; the key combines region, function name, and statement ID.
 package provider
 
 import (
@@ -14,22 +24,39 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LambdaPermissionAdapter implements provider.Adapter for LambdaPermission (AWS Lambda (Permission)) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type LambdaPermissionAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI lambdaperm.PermissionAPI
 	apiFactory        func(aws.Config) lambdaperm.PermissionAPI
 }
 
+// NewLambdaPermissionAdapterWithAuth creates a production LambdaPermission adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewLambdaPermissionAdapterWithAuth(auth authservice.AuthClient) *LambdaPermissionAdapter {
 	return &LambdaPermissionAdapter{auth: auth, apiFactory: func(cfg aws.Config) lambdaperm.PermissionAPI {
 		return lambdaperm.NewPermissionAPI(awsclient.NewLambdaClient(cfg))
 	}}
 }
 
+// Kind returns the resource kind string "LambdaPermission" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *LambdaPermissionAdapter) Kind() string        { return lambdaperm.ServiceName }
+// ServiceName returns the Restate Virtual Object service name for the
+// LambdaPermission driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *LambdaPermissionAdapter) ServiceName() string { return lambdaperm.ServiceName }
+// Scope returns the key-scope strategy for LambdaPermission resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *LambdaPermissionAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
+// BuildKey derives the canonical Restate object key for a LambdaPermission resource
+// from the raw JSON resource document. The key is composed of region + function name + statement ID,
+// ensuring uniqueness within the Restate Virtual Object namespace.
 func (a *LambdaPermissionAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -51,6 +78,8 @@ func (a *LambdaPermissionAdapter) BuildKey(resourceDoc json.RawMessage) (string,
 	return JoinKey(spec.Region, spec.FunctionName, spec.StatementId), nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete LambdaPermission spec struct expected by the driver.
 func (a *LambdaPermissionAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -59,6 +88,11 @@ func (a *LambdaPermissionAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, 
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the LambdaPermission Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *LambdaPermissionAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[lambdaperm.LambdaPermissionSpec](spec)
 	if err != nil {
@@ -70,11 +104,17 @@ func (a *LambdaPermissionAdapter) Provision(ctx restate.Context, key string, acc
 	return &provisionHandle[lambdaperm.LambdaPermissionOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
 }
 
+// Delete sends a durable Delete request to the LambdaPermission Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *LambdaPermissionAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete")).RequestFuture(restate.Void{})
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed LambdaPermission driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *LambdaPermissionAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[lambdaperm.LambdaPermissionOutputs](raw)
 	if err != nil {
@@ -83,6 +123,11 @@ func (a *LambdaPermissionAdapter) NormalizeOutputs(raw any) (map[string]any, err
 	return map[string]any{"statementId": out.StatementId, "functionName": out.FunctionName, "statement": out.Statement}, nil
 }
 
+// Plan compares the desired LambdaPermission spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *LambdaPermissionAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[lambdaperm.LambdaPermissionSpec](desiredSpec)
 	if err != nil {
@@ -138,6 +183,8 @@ func (a *LambdaPermissionAdapter) Plan(ctx restate.Context, key string, account 
 	return types.OpUpdate, fields, nil
 }
 
+// BuildImportKey derives the canonical Restate object key for importing
+// an existing LambdaPermission resource by its region and provider-native ID.
 func (a *LambdaPermissionAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("region", region); err != nil {
 		return "", err
@@ -155,6 +202,8 @@ func (a *LambdaPermissionAdapter) BuildImportKey(region, resourceID string) (str
 	return JoinKey(region, functionName, statementID), nil
 }
 
+// Import adopts an existing LambdaPermission resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *LambdaPermissionAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, lambdaperm.LambdaPermissionOutputs](restate.Object[lambdaperm.LambdaPermissionOutputs](ctx, a.ServiceName(), key, "Import")).Request(ref)
@@ -168,6 +217,10 @@ func (a *LambdaPermissionAdapter) Import(ctx restate.Context, key string, accoun
 	return types.StatusReady, outputs, nil
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed LambdaPermission spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *LambdaPermissionAdapter) decodeSpec(doc resourceDocument) (lambdaperm.LambdaPermissionSpec, error) {
 	var spec lambdaperm.LambdaPermissionSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -185,6 +238,9 @@ func (a *LambdaPermissionAdapter) decodeSpec(doc resourceDocument) (lambdaperm.L
 	return lambdaperm.LambdaPermissionSpec{Region: spec.Region, FunctionName: spec.FunctionName, StatementId: spec.StatementId, Action: spec.Action, Principal: spec.Principal, SourceArn: spec.SourceArn, SourceAccount: spec.SourceAccount, EventSourceToken: spec.EventSourceToken, Qualifier: spec.Qualifier}, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *LambdaPermissionAdapter) planningAPI(ctx restate.Context, account string) (lambdaperm.PermissionAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

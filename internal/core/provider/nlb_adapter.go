@@ -1,3 +1,13 @@
+// NLB provider adapter.
+//
+// This file implements the provider.Adapter interface for Amazon ELBv2 (Network Load Balancer)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the NLB Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + NLB name.
+// Network load balancers are region-scoped; the key combines the AWS region and NLB name.
 package provider
 
 import (
@@ -14,12 +24,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// NLBAdapter implements provider.Adapter for NLB (Amazon ELBv2 (Network Load Balancer)) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type NLBAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI nlb.NLBAPI
 	apiFactory        func(aws.Config) nlb.NLBAPI
 }
 
+// NewNLBAdapterWithAuth creates a production NLB adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewNLBAdapterWithAuth(auth authservice.AuthClient) *NLBAdapter {
 	return &NLBAdapter{
 		auth: auth,
@@ -29,14 +47,26 @@ func NewNLBAdapterWithAuth(auth authservice.AuthClient) *NLBAdapter {
 	}
 }
 
+// NewNLBAdapterWithAPI creates a NLB adapter with a pre-built API
+// client. This is primarily useful in tests that supply a mock implementation
+// and do not need per-account credential resolution.
 func NewNLBAdapterWithAPI(api nlb.NLBAPI) *NLBAdapter {
 	return &NLBAdapter{staticPlanningAPI: api}
 }
 
+// Kind returns the resource kind string "NLB" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *NLBAdapter) Kind() string        { return nlb.ServiceName }
+// ServiceName returns the Restate Virtual Object service name for the
+// NLB driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *NLBAdapter) ServiceName() string { return nlb.ServiceName }
+// Scope returns the key-scope strategy for NLB resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *NLBAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
+// BuildKey derives the canonical Restate object key for a NLB resource
+// from the raw JSON resource document. The key is composed of region + NLB name,
+// ensuring uniqueness within the Restate Virtual Object namespace.
 func (a *NLBAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -55,6 +85,8 @@ func (a *NLBAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	return JoinKey(spec.Region, spec.Name), nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete NLB spec struct expected by the driver.
 func (a *NLBAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -63,6 +95,11 @@ func (a *NLBAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the NLB Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *NLBAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[nlb.NLBSpec](spec)
 	if err != nil {
@@ -73,11 +110,17 @@ func (a *NLBAdapter) Provision(ctx restate.Context, key string, account string, 
 	return &provisionHandle[nlb.NLBOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
 }
 
+// Delete sends a durable Delete request to the NLB Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *NLBAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete")).RequestFuture(restate.Void{})
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed NLB driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *NLBAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[nlb.NLBOutputs](raw)
 	if err != nil {
@@ -92,6 +135,11 @@ func (a *NLBAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	}, nil
 }
 
+// Plan compares the desired NLB spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *NLBAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[nlb.NLBSpec](desiredSpec)
 	if err != nil {
@@ -144,6 +192,8 @@ func (a *NLBAdapter) Plan(ctx restate.Context, key string, account string, desir
 	return types.OpUpdate, fields, nil
 }
 
+// BuildImportKey derives the canonical Restate object key for importing
+// an existing NLB resource by its region and provider-native ID.
 func (a *NLBAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("region", region); err != nil {
 		return "", err
@@ -154,6 +204,8 @@ func (a *NLBAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	return JoinKey(region, resourceID), nil
 }
 
+// Import adopts an existing NLB resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *NLBAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, nlb.NLBOutputs](restate.Object[nlb.NLBOutputs](ctx, a.ServiceName(), key, "Import")).Request(ref)
@@ -167,6 +219,10 @@ func (a *NLBAdapter) Import(ctx restate.Context, key string, account string, ref
 	return types.StatusReady, outputs, nil
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed NLB spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *NLBAdapter) decodeSpec(doc resourceDocument) (nlb.NLBSpec, error) {
 	var spec nlb.NLBSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -190,6 +246,9 @@ func (a *NLBAdapter) decodeSpec(doc resourceDocument) (nlb.NLBSpec, error) {
 	return spec, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *NLBAdapter) planningAPI(ctx restate.Context, account string) (nlb.NLBAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

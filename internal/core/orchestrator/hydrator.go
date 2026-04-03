@@ -1,9 +1,18 @@
-// Package orchestrator contains generic orchestration helpers shared by the
-// deployment workflow implementation.
+// hydrator.go implements dispatch-time expression hydration.
 //
-// The typed expression hydrator is implemented here because it is part of the
-// cross-package contract between DAG parsing, deployment state, and driver
-// dispatch.
+// When a template declares cross-resource references like:
+//
+//	vpcId: ${resources.vpc.outputs.vpcId}
+//
+// the template evaluator records these as Expressions (JSON path → dot-path
+// expression) and leaves placeholder values in the rendered Spec. At dispatch
+// time—after the referenced dependency has completed and emitted its outputs—
+// HydrateExprs resolves these expressions and writes typed values back into
+// the JSON document.
+//
+// Type preservation is critical: integers stay integers, booleans stay booleans,
+// and string arrays stay string arrays. This avoids driver-side type coercion
+// bugs that would arise from string-interpolation approaches.
 package orchestrator
 
 import (

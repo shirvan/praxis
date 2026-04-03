@@ -1,13 +1,4 @@
-# ALB Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages Application Load Balancers
-> (ALBs), providing full lifecycle management including creation, import, deletion,
-> drift detection, and drift correction for load balancer attributes, subnet
-> mappings, security groups, access logs, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~albName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned load balancer
-> ARN lives only in state/outputs.
+# ALB Driver — Implementation Spec
 
 ---
 
@@ -513,10 +504,10 @@ ignoring AZ metadata.
 
 ```go
 type ALBDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewALBDriver(accounts *auth.Registry) *ALBDriver {
+func NewALBDriver(auth       authservice.AuthClient) *ALBDriver {
     return &ALBDriver{accounts: accounts}
 }
 
@@ -605,10 +596,10 @@ Each update is wrapped in its own `restate.Run` call for incremental journaling.
 
 ```go
 type ALBAdapter struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewALBAdapterWithRegistry(accounts *auth.Registry) *ALBAdapter {
+func NewALBAdapterWithAuth(auth       authservice.AuthClient) *ALBAdapter {
     return &ALBAdapter{accounts: accounts}
 }
 
@@ -634,11 +625,11 @@ The Plan method:
 
 ## Step 8 — Registry Integration
 
-Add `NewALBAdapterWithRegistry` to `internal/core/provider/registry.go`:
+Add `NewALBAdapterWithAuth` to `internal/core/provider/registry.go`:
 
 ```go
 // Added to NewRegistryWithAdapters() call:
-NewALBAdapterWithRegistry(accounts),
+NewALBAdapterWithAuth(auth),
 ```
 
 ---

@@ -14,17 +14,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IAMRoleDriver is the Restate virtual object that manages the lifecycle of a single AWS IAM role.
+// It holds an auth client for cross-account credential resolution and a factory for constructing
+// the AWS API adapter, enabling dependency injection for testing.
 type IAMRoleDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMRoleAPI
 }
 
+// NewIAMRoleDriver constructs a driver with the default AWS API factory that creates
+// real IAM SDK clients from resolved AWS credentials.
 func NewIAMRoleDriver(auth authservice.AuthClient) *IAMRoleDriver {
 	return NewIAMRoleDriverWithFactory(auth, func(cfg aws.Config) IAMRoleAPI {
 		return NewIAMRoleAPI(awsclient.NewIAMClient(cfg))
 	})
 }
 
+// NewIAMRoleDriverWithFactory constructs a driver with a custom API factory.
+// This is the primary constructor for tests, which inject mock IAMRoleAPI implementations.
 func NewIAMRoleDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMRoleAPI) *IAMRoleDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IAMRoleAPI {
@@ -34,10 +41,21 @@ func NewIAMRoleDriverWithFactory(auth authservice.AuthClient, factory func(aws.C
 	return &IAMRoleDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate virtual object service name for registration.
 func (d *IAMRoleDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for IAM roles.
+// It validates the spec, resolves AWS credentials for the target account, then:
+//  1. Checks if the role already exists (by stored outputs or via Describe).
+//  2. If not found, creates the role via the CreateRole API.
+//  3. Runs correctDrift to converge all mutable fields (trust policy, description,
+//     session duration, permissions boundary, inline policies, managed policies, tags).
+//  4. Performs a final Describe to capture the authoritative observed state.
+//  5. Persists state with StatusReady and schedules periodic reconciliation.
+//
+// Errors are classified as terminal (400/409 for bad input or conflicts) vs retryable.
 func (d *IAMRoleDriver) Provision(ctx restate.ObjectContext, spec IAMRoleSpec) (IAMRoleOutputs, error) {
 	ctx.Log().Info("provisioning iam role", "key", restate.Key(ctx), "roleName", spec.RoleName)
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -162,6 +180,10 @@ func (d *IAMRoleDriver) Provision(ctx restate.ObjectContext, spec IAMRoleSpec) (
 	return outputs, nil
 }
 
+// Import adopts an existing AWS IAM role into Praxis management. It reads the role's current
+// state via Describe, constructs a spec from the observed state, and persists it as the desired
+// spec. The mode parameter controls whether Praxis will actively correct drift (ModeManaged)
+// or only observe and report (ModeObserved). Defaults to ModeObserved.
 func (d *IAMRoleDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IAMRoleOutputs, error) {
 	ctx.Log().Info("importing iam role", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, err := d.apiForAccount(ctx, ref.Account)
@@ -210,6 +232,14 @@ func (d *IAMRoleDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (
 	return outputs, nil
 }
 
+// Delete removes an IAM role and all its associated resources. It follows this sequence:
+// 1. Guards against deleting observed-mode resources (requires re-import as managed).
+// 2. Describes the role to discover current instance profiles, managed policies, and inline policies.
+// 3. Detaches the role from all instance profiles.
+// 4. Detaches all managed policies and deletes all inline policies.
+// 5. Removes the permissions boundary if present.
+// 6. Deletes the role itself.
+// 7. Persists StatusDeleted state. All steps are idempotent (NotFound errors are swallowed).
 func (d *IAMRoleDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting iam role", "key", restate.Key(ctx))
 	state, err := restate.Get[IAMRoleState](ctx, drivers.StateKey)
@@ -296,6 +326,14 @@ func (d *IAMRoleDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic health-check handler invoked on a timer. It:
+// 1. Skips reconciliation for resources not in Ready or Error state.
+// 2. Describes the current AWS state of the role.
+// 3. Detects if the resource was deleted externally (reports DriftEventExternalDelete).
+// 4. Compares desired vs observed state using HasDrift.
+// 5. In ModeManaged: auto-corrects drift via correctDrift and reports DriftEventCorrected.
+// 6. In ModeObserved: reports drift without correcting.
+// 7. Re-schedules the next reconcile using a delayed Restate self-send.
 func (d *IAMRoleDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[IAMRoleState](ctx, drivers.StateKey)
 	if err != nil {
@@ -400,6 +438,8 @@ func (d *IAMRoleDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus returns the current lifecycle status, mode, generation, and error for read-only queries.
+// Uses ObjectSharedContext for concurrent-safe access without exclusive locking.
 func (d *IAMRoleDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[IAMRoleState](ctx, drivers.StateKey)
 	if err != nil {
@@ -408,6 +448,7 @@ func (d *IAMRoleDriver) GetStatus(ctx restate.ObjectSharedContext) (types.Status
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs returns the computed outputs (ARN, RoleId, RoleName) for cross-resource references.
 func (d *IAMRoleDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMRoleOutputs, error) {
 	state, err := restate.Get[IAMRoleState](ctx, drivers.StateKey)
 	if err != nil {
@@ -416,6 +457,15 @@ func (d *IAMRoleDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMRoleOutp
 	return state.Outputs, nil
 }
 
+// correctDrift converges all mutable IAM role fields from observed toward desired state.
+// Each field update is wrapped in restate.Run for durable journaling. The sequence:
+// 1. Path change is rejected as terminal (immutable field).
+// 2. Assume role policy document is updated if JSON-normalized content differs.
+// 3. Description and max session duration are updated together.
+// 4. Permissions boundary is set or removed.
+// 5. Inline policies are put (create/update) or deleted to match desired set.
+// 6. Managed policies are attached or detached to match desired set.
+// 7. Tags are updated via diff-based add/remove.
 func (d *IAMRoleDriver) correctDrift(ctx restate.ObjectContext, api IAMRoleAPI, roleName string, desired IAMRoleSpec, observed ObservedState) error {
 	if desired.Path != "" && observed.Path != "" && desired.Path != observed.Path {
 		return restate.TerminalError(fmt.Errorf("path is immutable; delete and recreate the role to change the path"), 409)
@@ -526,6 +576,8 @@ func (d *IAMRoleDriver) correctDrift(ctx restate.ObjectContext, api IAMRoleAPI, 
 	return nil
 }
 
+// scheduleReconcile sends a delayed self-invocation to the Reconcile handler using Restate's
+// durable timer. The ReconcileScheduled flag prevents duplicate timers from being queued.
 func (d *IAMRoleDriver) scheduleReconcile(ctx restate.ObjectContext, state *IAMRoleState) {
 	if state.ReconcileScheduled {
 		return
@@ -536,6 +588,8 @@ func (d *IAMRoleDriver) scheduleReconcile(ctx restate.ObjectContext, state *IAMR
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials for the given account alias via the auth service
+// and constructs an IAMRoleAPI instance using the driver's factory.
 func (d *IAMRoleDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMRoleAPI, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, fmt.Errorf("iam role driver is not configured")
@@ -547,6 +601,8 @@ func (d *IAMRoleDriver) apiForAccount(ctx restate.ObjectContext, account string)
 	return d.apiFactory(awsCfg), nil
 }
 
+// applyDefaults fills in zero-value fields with IAM defaults: path="/", maxSessionDuration=3600,
+// and initializes nil maps/slices to empty collections to simplify comparison logic.
 func applyDefaults(spec IAMRoleSpec) IAMRoleSpec {
 	if spec.Path == "" {
 		spec.Path = "/"
@@ -566,6 +622,8 @@ func applyDefaults(spec IAMRoleSpec) IAMRoleSpec {
 	return spec
 }
 
+// specFromObserved constructs an IAMRoleSpec from the observed AWS state, used during import
+// to set the desired spec to match whatever currently exists in AWS.
 func specFromObserved(obs ObservedState) IAMRoleSpec {
 	inlinePolicies := make(map[string]string, len(obs.InlinePolicies))
 	for key, value := range obs.InlinePolicies {
@@ -584,10 +642,13 @@ func specFromObserved(obs ObservedState) IAMRoleSpec {
 	}
 }
 
+// outputsFromObserved extracts the output fields (ARN, RoleId, RoleName) from the observed state.
 func outputsFromObserved(obs ObservedState) IAMRoleOutputs {
 	return IAMRoleOutputs{Arn: obs.Arn, RoleId: obs.RoleId, RoleName: obs.RoleName}
 }
 
+// diffStringSets computes the set differences between desired and observed string slices,
+// returning elements to add (in desired but not observed) and to remove (in observed but not desired).
 func diffStringSets(desired, observed []string) ([]string, []string) {
 	desiredSet := make(map[string]struct{}, len(desired))
 	observedSet := make(map[string]struct{}, len(observed))

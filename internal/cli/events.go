@@ -1,3 +1,12 @@
+// events.go implements the `praxis events` command group.
+//
+// Events are CloudEvents emitted by the orchestrator during deployment
+// lifecycle transitions. They are stored in a per-deployment event store
+// (DeploymentEventStore Virtual Object) and indexed globally (EventIndex).
+//
+// Two subcommands provide access:
+//   - `praxis events list Deployment/<key>`  — list events for one deployment
+//   - `praxis events query`                 — cross-deployment event search
 package cli
 
 import (
@@ -11,6 +20,8 @@ import (
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
 
+// newEventsCmd builds the `praxis events` parent command.
+// Subcommands: list, query.
 func newEventsCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "events",
@@ -24,6 +35,10 @@ func newEventsCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newEventsListCmd builds `praxis events list Deployment/<key>`.
+// Fetches all events for one deployment from DeploymentEventStore.ListSince,
+// applies client-side filters (--type, --severity, --resource, --since), and
+// renders the filtered event timeline.
 func newEventsListCmd(flags *rootFlags) *cobra.Command {
 	var (
 		sinceRaw   string
@@ -66,6 +81,9 @@ func newEventsListCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newEventsQueryCmd builds `praxis events query`. Runs a cross-deployment
+// search against EventIndex.Query with workspace, type, severity, resource,
+// since, and limit filters.
 func newEventsQueryCmd(flags *rootFlags) *cobra.Command {
 	var (
 		workspace  string
@@ -113,6 +131,8 @@ func newEventsQueryCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// listDeploymentEvents fetches all events for a deployment (since sequence 0),
+// applies the query filter client-side, and renders the result.
 func listDeploymentEvents(ctx context.Context, client *Client, key string, query orchestrator.EventQuery, format OutputFormat, renderer *Renderer) error {
 	events, err := client.GetDeploymentCloudEvents(ctx, key, 0)
 	if err != nil {
@@ -126,6 +146,9 @@ func listDeploymentEvents(ctx context.Context, client *Client, key string, query
 	return nil
 }
 
+// parseLookback converts a human-friendly duration string (e.g. "1h", "7d")
+// into a UTC timestamp by subtracting it from now. Returns the zero time for
+// empty input.
 func parseLookback(raw string) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -138,6 +161,8 @@ func parseLookback(raw string) (time.Time, error) {
 	return time.Now().UTC().Add(-dur), nil
 }
 
+// parseFlexibleDuration extends Go's time.ParseDuration with support for
+// the "d" (day) suffix. "7d" becomes 7 * 24h.
 func parseFlexibleDuration(raw string) (time.Duration, error) {
 	raw = strings.TrimSpace(raw)
 	if count, ok := strings.CutSuffix(raw, "d"); ok {

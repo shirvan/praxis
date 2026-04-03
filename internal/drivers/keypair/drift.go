@@ -1,11 +1,18 @@
+// Drift detection for EC2 Key Pairs.
+// Key pairs have very limited mutability — only tags can be updated in-place.
+// KeyType is immutable and reported as informational only.
 package keypair
 
 import "strings"
 
+// HasDrift returns true if user tags differ between desired and observed state.
+// Tags are the only mutable attribute on key pairs.
 func HasDrift(desired KeyPairSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns a list of individual field differences.
+// KeyType is reported as an immutable informational diff; tag diffs are actionable.
 func ComputeFieldDiffs(desired KeyPairSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -21,12 +28,14 @@ func ComputeFieldDiffs(desired KeyPairSpec, observed ObservedState) []FieldDiffE
 	return diffs
 }
 
+// FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// computeTagDiffs produces per-key diffs for added, changed, and removed tags.
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	desiredFiltered := filterPraxisTags(desired)
@@ -46,6 +55,7 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	return diffs
 }
 
+// tagsMatch compares two tag maps excluding praxis: namespace tags.
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -60,6 +70,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags returns a copy of the map with all praxis: prefixed keys excluded.
 func filterPraxisTags(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return map[string]string{}

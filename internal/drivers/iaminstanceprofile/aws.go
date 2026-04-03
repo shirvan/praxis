@@ -14,6 +14,8 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// IAMInstanceProfileAPI defines the interface for all AWS IAM instance profile operations.
+// Supports profile CRUD, single-role association, and tag management.
 type IAMInstanceProfileAPI interface {
 	CreateInstanceProfile(ctx context.Context, spec IAMInstanceProfileSpec) (arn, profileID string, err error)
 	DescribeInstanceProfile(ctx context.Context, name string) (ObservedState, error)
@@ -29,6 +31,7 @@ type realIAMInstanceProfileAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewIAMInstanceProfileAPI constructs a production IAMInstanceProfileAPI with IAM rate limiting.
 func NewIAMInstanceProfileAPI(client *iamsdk.Client) IAMInstanceProfileAPI {
 	return &realIAMInstanceProfileAPI{
 		client:  client,
@@ -167,6 +170,7 @@ func (r *realIAMInstanceProfileAPI) UntagInstanceProfile(ctx context.Context, na
 	return err
 }
 
+// IsNotFound returns true when the IAM error indicates the entity does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "NoSuchEntity")
 }

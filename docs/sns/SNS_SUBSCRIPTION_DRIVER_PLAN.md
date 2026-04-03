@@ -1,13 +1,4 @@
-# SNS Subscription Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages SNS Subscriptions, providing
-> full lifecycle management including creation, import, deletion, drift detection,
-> and drift correction for filter policies, delivery configuration, raw message
-> delivery, redrive policies, and subscription attributes.
->
-> Key scope: `KeyScopeCustom` — key format is `region~topicArn~protocol~endpoint`,
-> permanent and immutable for the lifetime of the Virtual Object. The AWS-assigned
-> subscription ARN lives only in state/outputs.
+# SNS Subscription Driver — Implementation Spec
 
 ---
 
@@ -812,19 +803,19 @@ func ComputeFieldDiffs(desired SNSSubscriptionSpec, observed ObservedState) []ty
 
 ```go
 type SNSSubscriptionDriver struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) SubscriptionAPI
 }
 
-func NewSNSSubscriptionDriver(accounts *auth.Registry) *SNSSubscriptionDriver {
-    return NewSNSSubscriptionDriverWithFactory(accounts, func(cfg aws.Config) SubscriptionAPI {
+func NewSNSSubscriptionDriver(auth authservice.AuthClient) *SNSSubscriptionDriver {
+    return NewSNSSubscriptionDriverWithFactory(auth, func(cfg aws.Config) SubscriptionAPI {
         return NewSubscriptionAPI(awsclient.NewSNSClient(cfg))
     })
 }
 
-func NewSNSSubscriptionDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) SubscriptionAPI) *SNSSubscriptionDriver {
+func NewSNSSubscriptionDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) SubscriptionAPI) *SNSSubscriptionDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) SubscriptionAPI {
@@ -1277,10 +1268,10 @@ Follow the standard pattern (identical to SNS Topic and other drivers).
 
 ```go
 type SNSSubscriptionAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
-func NewSNSSubscriptionAdapterWithRegistry(accounts *auth.Registry) *SNSSubscriptionAdapter {
+func NewSNSSubscriptionAdapterWithAuth(auth authservice.AuthClient) *SNSSubscriptionAdapter {
     return &SNSSubscriptionAdapter{accounts: accounts}
 }
 
@@ -1330,7 +1321,7 @@ func (a *SNSSubscriptionAdapter) BuildImportKey(region, resourceID string) (stri
 
 **File**: `internal/core/provider/registry.go` — **MODIFY**
 
-Add `NewSNSSubscriptionAdapterWithRegistry(accounts)` to `NewRegistry()`.
+Add `NewSNSSubscriptionAdapterWithAuth(auth)` to `NewRegistry()`.
 
 ---
 
@@ -1341,7 +1332,7 @@ Add `NewSNSSubscriptionAdapterWithRegistry(accounts)` to `NewRegistry()`.
 ```go
 import "github.com/shirvan/praxis/internal/drivers/snssub"
 
-Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(cfg.Auth())))
+Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth)))
 ```
 
 ---
@@ -1577,23 +1568,23 @@ is simpler than separate protocol-specific handlers.
 
 ### Implementation
 
-- [ ] `schemas/aws/sns/subscription.cue`
-- [ ] `internal/drivers/snssub/types.go`
-- [ ] `internal/drivers/snssub/aws.go`
-- [ ] `internal/drivers/snssub/drift.go`
-- [ ] `internal/drivers/snssub/driver.go`
-- [ ] `internal/core/provider/snssub_adapter.go`
+- [x] `schemas/aws/sns/subscription.cue`
+- [x] `internal/drivers/snssub/types.go`
+- [x] `internal/drivers/snssub/aws.go`
+- [x] `internal/drivers/snssub/drift.go`
+- [x] `internal/drivers/snssub/driver.go`
+- [x] `internal/core/provider/snssub_adapter.go`
 
 ### Tests
 
-- [ ] `internal/drivers/snssub/driver_test.go`
-- [ ] `internal/drivers/snssub/aws_test.go`
-- [ ] `internal/drivers/snssub/drift_test.go`
-- [ ] `internal/core/provider/snssub_adapter_test.go`
-- [ ] `tests/integration/sns_subscription_driver_test.go`
+- [x] `internal/drivers/snssub/driver_test.go`
+- [x] `internal/drivers/snssub/aws_test.go`
+- [x] `internal/drivers/snssub/drift_test.go`
+- [x] `internal/core/provider/snssub_adapter_test.go`
+- [x] `tests/integration/sns_subscription_driver_test.go`
 
 ### Integration
 
-- [ ] `cmd/praxis-storage/main.go` — Bind driver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `justfile` — Add test targets
+- [x] `cmd/praxis-storage/main.go` — Bind driver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `justfile` — Add test targets

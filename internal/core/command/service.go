@@ -1,8 +1,42 @@
-// Package command implements the Praxis command surface.
+// Package command implements the Praxis command surface as a Restate Basic
+// Service (stateless, non-keyed). It is the primary entry point for every CLI
+// and API operation: apply, plan, deploy, delete, import, and the template /
+// policy registry mutations.
 //
-// The command service accepts user intent, performs synchronous preparation
-// work such as template evaluation and validation, and then hands long-running
-// lifecycle work to the orchestrator workflows and virtual objects.
+// # Architecture role
+//
+// The command service sits between the external API layer (CLI → HTTP gateway)
+// and the durable orchestration layer (deployment workflows, virtual objects).
+// It performs all synchronous preparation work:
+//
+//   - Resolve workspace defaults and merge variables
+//   - Evaluate CUE templates with policy enforcement
+//   - Resolve data sources via provider Lookup calls
+//   - Substitute SSM parameter references
+//   - Build the resource dependency DAG
+//   - Compute a dry-run plan diff
+//
+// Once preparation succeeds, the service hands off to durable Restate
+// components:
+//
+//   - DeploymentStateObj (Virtual Object) — owns the deployment lifecycle state
+//   - DeploymentWorkflow / DeleteWorkflow — execute the actual create/update/delete
+//   - TemplateRegistryObj / PolicyRegistryObj — own template and policy storage
+//
+// # Error model
+//
+// All validation failures and user-input errors are returned as
+// [restate.TerminalError] with an appropriate HTTP status code (400, 404, 409).
+// Terminal errors stop Restate retries immediately. Infrastructure errors
+// (network timeouts, SDK failures) bubble up as plain errors, letting Restate
+// retry the handler invocation automatically.
+//
+// # Restate execution model
+//
+// Because PraxisCommandService is a Restate Basic Service (not a Virtual
+// Object), every handler invocation is independent — there is no per-key lock
+// and no durable state on this service itself.  All durable state lives in the
+// downstream Virtual Objects the handlers call into via restate.Object[T].
 package command
 
 import (
@@ -30,10 +64,22 @@ import (
 //   - durable deployment lifecycle state lives in DeploymentStateObj
 //   - asynchronous apply/delete execution lives in workflows
 //   - provider-specific type branching stays behind the adapter registry
+//
+// Every public method on this struct is a Restate handler registered via
+// restate.Reflect. The method signature (ctx, request) → (response, error)
+// is enforced by the SDK's reflection registration.
 type PraxisCommandService struct {
-	cfg       config.Config
-	auth      authservice.AuthClient
-	engine    *template.Engine
+	// cfg holds static configuration (schema directory paths, feature flags).
+	cfg config.Config
+	// auth provides cross-account AWS credential resolution, used to obtain
+	// per-account SDK configs for provider adapters and SSM lookups.
+	auth authservice.AuthClient
+	// engine is the CUE template evaluation engine that compiles templates,
+	// validates schemas, and enforces policies.
+	engine *template.Engine
+	// providers maps resource kind strings (e.g., "AWS::S3::Bucket") to the
+	// typed adapter that can plan, create, update, delete, and import
+	// resources of that kind.
 	providers *provider.Registry
 }
 
@@ -57,10 +103,15 @@ func (*PraxisCommandService) ServiceName() string {
 	return "PraxisCommandService"
 }
 
+// trimTemplate normalises whitespace around user-supplied template bodies.
+// Templates arriving from CLI or API may have leading/trailing newlines from
+// heredoc encoding or editor artifacts.
 func trimTemplate(templateBody string) string {
 	return strings.TrimSpace(templateBody)
 }
 
+// marshalPrettyJSON serializes a value as human-readable JSON for inclusion
+// in plan output and rendered template displays shown back to the user.
 func marshalPrettyJSON(value any) (string, error) {
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
@@ -69,8 +120,16 @@ func marshalPrettyJSON(value any) (string, error) {
 	return string(encoded), nil
 }
 
+// resolveRequestAccount determines the AWS account alias for this request.
+// The account can be specified at two levels:
+//  1. Directly in the request's "account" field (requestAccount parameter).
+//  2. Inside the variables map as variables["account"].
+//
+// The variables-level value takes precedence because it can be set inside the
+// CUE template itself, allowing templates to be self-contained.
 func (s *PraxisCommandService) resolveRequestAccount(requestAccount string, variables map[string]any) (string, error) {
 	accountName := strings.TrimSpace(requestAccount)
+	// The variables["account"] override lets templates embed their target account.
 	if raw, ok := variables["account"]; ok {
 		accountValue, ok := raw.(string)
 		if !ok {
@@ -98,7 +157,10 @@ func (s *PraxisCommandService) resolveWorkspaceDefaults(
 	}
 	mergedVars = variables
 
-	// If a workspace is specified, load its defaults.
+	// If a workspace is specified, load its defaults from the durable
+	// WorkspaceObj virtual object. This is a Restate request-response call
+	// that will be journaled – on replay the result is restored from the
+	// journal rather than re-fetching.
 	if requestWorkspace != "" {
 		wsInfo, wsErr := restate.Object[workspace.WorkspaceInfo](
 			ctx, workspace.WorkspaceServiceName, requestWorkspace, "Get",
@@ -112,7 +174,9 @@ func (s *PraxisCommandService) resolveWorkspaceDefaults(
 			account = wsInfo.Account
 		}
 
-		// Merge workspace variables (lower priority) with request variables (higher).
+		// Merge workspace variables (lower priority) with request variables
+		// (higher priority). This means CLI flags and template inline values
+		// always beat workspace defaults.
 		if len(wsInfo.Variables) > 0 {
 			merged := make(map[string]any, len(wsInfo.Variables)+len(variables))
 			for k, v := range wsInfo.Variables {
@@ -123,7 +187,8 @@ func (s *PraxisCommandService) resolveWorkspaceDefaults(
 		}
 	}
 
-	// Existing fallback chain: env var → "default".
+	// Fallback chain: PRAXIS_ACCOUNT env var → "default".
+	// This ensures every command always resolves to a concrete account name.
 	if account == "" {
 		account = os.Getenv("PRAXIS_ACCOUNT")
 	}
@@ -134,6 +199,11 @@ func (s *PraxisCommandService) resolveWorkspaceDefaults(
 	return account, mergedVars, nil
 }
 
+// newSSMResolver creates an SSM parameter resolver for the given account.
+// The resolver is wrapped in a Restate-aware layer (RestateSSMResolver) that
+// performs SSM GetParameter calls inside restate.Run blocks, ensuring that
+// resolved secret values are journaled exactly once and replayed without
+// re-fetching on retries.
 func (s *PraxisCommandService) newSSMResolver(ctx restate.Context, accountName string) (*resolver.RestateSSMResolver, error) {
 	awsCfg, err := s.auth.GetCredentials(ctx, accountName)
 	if err != nil {

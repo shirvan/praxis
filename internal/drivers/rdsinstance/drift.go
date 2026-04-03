@@ -5,12 +5,33 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field-level change between desired and observed.
+// Used by the diff/plan engine to produce human-readable plan output.
 type FieldDiffEntry struct {
-	Path     string
+	// Path is the dot-separated path to the field.
+	// Immutable fields are annotated (e.g., "spec.engine (immutable, ignored)").
+	Path string
+
+	// OldValue is the current value in AWS.
 	OldValue any
+
+	// NewValue is the desired value.
 	NewValue any
 }
 
+// HasDrift compares desired spec against observed AWS state and returns true if
+// they differ on any mutable field. Applies defaults before comparison to handle
+// zero-value vs. AWS-default mismatches.
+//
+// Compared mutable fields: instanceClass, engineVersion, allocatedStorage,
+// storageType, iops, storageThroughput, dbSubnetGroupName, parameterGroupName,
+// vpcSecurityGroupIds, multiAZ, publiclyAccessible, backup settings,
+// deletionProtection, autoMinorVersionUpgrade, monitoring, performanceInsights, tags.
+//
+// Immutable fields (engine, masterUsername, storageEncrypted, kmsKeyId,
+// dbClusterIdentifier) are compared in HasDrift but reported as immutable in
+// ComputeFieldDiffs — the drift engine needs to know they changed even if
+// it cannot correct them.
 func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
 	if desired.InstanceClass != observed.InstanceClass || desired.EngineVersion != observed.EngineVersion {
@@ -46,6 +67,9 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns field-level differences for plan output.
+// Immutable fields are annotated with "(immutable, ignored)" in the path.
+// Storage shrink is annotated with "(shrink unsupported)".
 func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldDiffEntry {
 	desired = applyDefaults(desired)
 	var diffs []FieldDiffEntry
@@ -105,6 +129,8 @@ func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldD
 	return diffs
 }
 
+// applyDefaults fills in omitted spec fields with sensible defaults:
+// StorageType -> "gp3", BackupRetentionPeriod -> 7 (standalone), nil slices -> empty.
 func applyDefaults(spec RDSInstanceSpec) RDSInstanceSpec {
 	if spec.StorageType == "" {
 		spec.StorageType = "gp3"
@@ -125,6 +151,8 @@ func applyDefaults(spec RDSInstanceSpec) RDSInstanceSpec {
 	return spec
 }
 
+// normalizeStrings trims whitespace, removes empty strings, and sorts for
+// deterministic comparison of VPC security group IDs and similar lists.
 func normalizeStrings(values []string) []string {
 	if len(values) == 0 {
 		return []string{}
@@ -140,6 +168,7 @@ func normalizeStrings(values []string) []string {
 	return normalized
 }
 
+// stringSliceEqual compares two string slices after normalization.
 func stringSliceEqual(a, b []string) bool {
 	aa := normalizeStrings(a)
 	bb := normalizeStrings(b)
@@ -154,6 +183,8 @@ func stringSliceEqual(a, b []string) bool {
 	return true
 }
 
+// tagsMatch returns true when two tag maps are semantically equal,
+// ignoring praxis:-prefixed internal tags.
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -168,6 +199,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags returns a copy with praxis:-prefixed keys removed.
 func filterPraxisTags(tags map[string]string) map[string]string {
 	if len(tags) == 0 {
 		return map[string]string{}

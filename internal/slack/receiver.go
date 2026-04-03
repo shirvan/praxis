@@ -12,12 +12,24 @@ import (
 var eventAnalysisPromptTemplate string
 
 // SlackEventReceiver is a stateless Restate service that receives CloudEvents
-// from the SinkRouter and triggers thread creation.
+// from the SinkRouter and triggers thread creation. Being stateless (restate.Context
+// rather than ObjectContext), multiple events can be processed concurrently.
+//
+// Event flow:
+//
+//	SinkRouter → Receive() → match watch rules → create Slack thread
+//	  → record thread state (for dedup) → fire AnalyzeAndReply (async)
+//	    → ask ConciergeSession → post analysis as thread reply
 type SlackEventReceiver struct{}
 
 func (SlackEventReceiver) ServiceName() string { return SlackEventReceiverServiceName }
 
 // Receive is called by the SinkRouter when a matching event fires.
+// For each matching watch rule, it:
+//  1. Checks for an existing thread (dedup via SlackThreadState)
+//  2. Creates a new Slack thread with the event summary
+//  3. Records the thread state for future dedup and reverse lookup
+//  4. Fires an async AnalyzeAndReply to get concierge analysis
 func (s SlackEventReceiver) Receive(ctx restate.Context, event CloudEventEnvelope) error {
 	config, err := restate.Object[SlackGatewayConfiguration](
 		ctx, SlackGatewayConfigServiceName, "global", "Get",
@@ -51,6 +63,10 @@ func (s SlackEventReceiver) Receive(ctx restate.Context, event CloudEventEnvelop
 			channel = config.EventChannel
 		}
 
+		// Deduplicate: check if a thread already exists for this event+rule
+		// combination. The dedupeKey combines the event ID and rule ID so the
+		// same event can create threads for different rules, but not duplicate
+		// threads for the same rule.
 		dedupeKey := fmt.Sprintf("thread:%s:%s", event.ID, rule.ID)
 
 		existing, err := restate.Object[*string](
@@ -96,6 +112,9 @@ func (s SlackEventReceiver) Receive(ctx restate.Context, event CloudEventEnvelop
 }
 
 // AnalyzeAndReply sends the analysis to the concierge and posts the reply as a thread.
+// This runs as a separate Restate invocation (sent via ServiceSend from Receive)
+// so the thread creation is not blocked by the potentially slow LLM analysis.
+// If analysis fails, a fallback message is posted inviting the user to ask manually.
 func (s SlackEventReceiver) AnalyzeAndReply(ctx restate.Context, req AnalyzeAndReplyRequest) error {
 	config, err := restate.Object[SlackGatewayConfiguration](
 		ctx, SlackGatewayConfigServiceName, "global", "Get",
@@ -110,6 +129,9 @@ func (s SlackEventReceiver) AnalyzeAndReply(ctx restate.Context, req AnalyzeAndR
 		return err
 	}
 
+	// Send the ask as a one-way message and immediately attach to its result.
+	// This pattern (Send + GetInvocationId + AttachInvocation) lets us get a
+	// durable handle to the concierge invocation that survives receiver restarts.
 	invocationID := restate.ObjectSend(ctx, "ConciergeSession", req.SessionKey, "Ask").
 		Send(AskRequest{
 			Prompt:    req.Prompt,
@@ -148,6 +170,10 @@ func buildEventAnalysisPrompt(event CloudEventEnvelope) string {
 
 // resolveToken returns the literal token if set, otherwise returns the ref for
 // resolution. In production, refs point to SSM parameters.
+//
+// Token priority: literal > ref. If a literal token is "***" (the redacted
+// sentinel from Get), it is treated as unset. This prevents accidentally
+// using a redacted value as an actual token.
 func resolveToken(literal, ref string) (string, error) {
 	if literal != "" && literal != "***" {
 		return literal, nil

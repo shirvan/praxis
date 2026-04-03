@@ -12,12 +12,14 @@ func ComputeFieldDiffs(desired ElasticIPSpec, observed ObservedState) []FieldDif
 	return computeTagDiffs(desired.Tags, observed.Tags)
 }
 
+// FieldDiffEntry represents a single field difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// computeTagDiffs returns per-tag diffs after filtering praxis: tags.
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	desiredFiltered := filterPraxisTags(desired)
@@ -37,6 +39,7 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	return diffs
 }
 
+// tagsMatch compares two tag maps after filtering praxis: internal tags.
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -51,6 +54,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags removes praxis:-prefixed tags used for internal bookkeeping.
 func filterPraxisTags(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return map[string]string{}

@@ -7,7 +7,10 @@ import (
 	restate "github.com/restatedev/sdk-go"
 )
 
-// MigrationContext is the structured context given to the LLM alongside the source files.
+// MigrationContext is the structured context given to the LLM alongside the source
+// files during template migration. It provides the LLM with everything it needs to
+// produce a correct Praxis CUE template: an inventory of source resources, type
+// mappings, schema snippets, reference syntax rules, and known conversion pitfalls.
 type MigrationContext struct {
 	Inventory       MigrationInventory `json:"inventory"`
 	SchemaSnippets  map[string]string  `json:"schemaSnippets"`
@@ -16,10 +19,19 @@ type MigrationContext struct {
 	KnownGotchas    []string           `json:"knownGotchas"`
 }
 
-// TemplateMigrator orchestrates the migration pipeline.
+// TemplateMigrator orchestrates the full migration pipeline for converting
+// Terraform, CloudFormation, or Crossplane configurations to Praxis CUE templates.
+// The pipeline is LLM-guided with automatic verification and retry:
+//
+//	Step 1: Inventory — regex-extract resource types from source content
+//	Step 2: Context  — build migration hints (mappings, gotchas, examples)
+//	Step 3: Prompt   — construct the migration prompt with source + context
+//	Step 4: LLM Call — send to LLM (via restate.Run for durability)
+//	Step 5: Verify   — run dry-run plan to validate generated CUE
+//	Step 6: Retry    — if verification fails, feed errors back to LLM (up to 3 times)
 type TemplateMigrator struct {
-	llm   *ProviderRouter
-	tools *ToolRegistry
+	llm   *ProviderRouter // For calling the LLM during migration
+	tools *ToolRegistry   // For accessing tool definitions (future use)
 }
 
 // NewTemplateMigrator creates a new migrator.
@@ -28,6 +40,11 @@ func NewTemplateMigrator(llm *ProviderRouter, tools *ToolRegistry) *TemplateMigr
 }
 
 // Migrate runs the full migration pipeline: inventory → context → LLM → verify → retry.
+// The format parameter identifies the source IaC format ("terraform", "cloudformation",
+// "crossplane"). The source parameter is the raw content to convert.
+//
+// Each LLM call is wrapped in restate.Run() for durability — on replay, cached
+// responses are returned instead of making duplicate API calls.
 func (m *TemplateMigrator) Migrate(
 	ctx restate.Context,
 	config ConciergeConfiguration,
@@ -116,7 +133,9 @@ func (m *TemplateMigrator) Migrate(
 	return fmt.Sprintf("Migration completed with errors after %d attempts. Best attempt:\n\n```cue\n%s\n```\n\nPlease review and fix manually.", maxRetries, lastCUE), nil
 }
 
-// extractCUEBlock extracts a CUE code block from LLM output.
+// extractCUEBlock extracts a CUE code block from LLM output. LLMs typically
+// wrap generated code in markdown fenced code blocks (```cue ... ```). This
+// function strips the markers to extract just the CUE content.
 func extractCUEBlock(content string) string {
 	// Look for ```cue ... ``` blocks.
 	start := -1
@@ -149,6 +168,8 @@ func indexOf(s, substr string) int {
 	return -1
 }
 
+// knownGotchas returns format-specific migration pitfalls that are included in
+// the migration prompt to help the LLM avoid common conversion mistakes.
 func knownGotchas(format string) []string {
 	switch format {
 	case "terraform":

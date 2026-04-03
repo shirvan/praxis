@@ -1,13 +1,4 @@
-# Key Pair Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages EC2 key pairs, following the
-> exact patterns established by the S3, Security Group, EC2, VPC, EBS, and Elastic
-> IP drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~keyName`, permanent and
-> immutable for the lifetime of the Virtual Object. Unlike other region-scoped
-> drivers, the key uses the AWS key pair name directly (not `metadata.name`) because
-> key pair names are already unique within a region.
+# Key Pair Driver — Implementation Specification
 
 ---
 
@@ -143,19 +134,19 @@ needed) rather than the EC2/VPC pattern.
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/keypair/types.go            — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/keypair/aws.go              — KeyPairAPI interface + realKeyPairAPI
-✦ internal/drivers/keypair/drift.go            — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/keypair/driver.go           — KeyPairDriver Virtual Object
-✦ internal/drivers/keypair/driver_test.go      — Unit tests for driver (mocked AWS)
-✦ internal/drivers/keypair/aws_test.go         — Unit tests for error classification
-✦ internal/drivers/keypair/drift_test.go       — Unit tests for drift detection
-✦ internal/core/provider/keypair_adapter.go    — KeyPairAdapter implementing provider.Adapter
-✦ internal/core/provider/keypair_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/ec2/keypair.cue                  — CUE schema for KeyPair resource
-✦ tests/integration/keypair_driver_test.go     — Integration tests
-✎ cmd/praxis-compute/main.go                  — Add KeyPair driver `.Bind()`
-✎ internal/core/provider/registry.go           — Add NewKeyPairAdapter to NewRegistry()
+internal/drivers/keypair/types.go            — Spec, Outputs, ObservedState, State structs
+internal/drivers/keypair/aws.go              — KeyPairAPI interface + realKeyPairAPI
+internal/drivers/keypair/drift.go            — HasDrift(), ComputeFieldDiffs()
+internal/drivers/keypair/driver.go           — KeyPairDriver Virtual Object
+internal/drivers/keypair/driver_test.go      — Unit tests for driver (mocked AWS)
+internal/drivers/keypair/aws_test.go         — Unit tests for error classification
+internal/drivers/keypair/drift_test.go       — Unit tests for drift detection
+internal/core/provider/keypair_adapter.go    — KeyPairAdapter implementing provider.Adapter
+internal/core/provider/keypair_adapter_test.go — Unit tests for adapter
+schemas/aws/ec2/keypair.cue                  — CUE schema for KeyPair resource
+tests/integration/keypair_driver_test.go     — Integration tests
+cmd/praxis-compute/main.go                  — Bind KeyPair driver
+internal/core/provider/registry.go           — KeyPairAdapter registered in NewRegistry()
 ```
 
 ---
@@ -527,26 +518,23 @@ type FieldDiffEntry struct {
 
 ```go
 type KeyPairDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) KeyPairAPI
 }
 
-func NewKeyPairDriver(accounts *auth.Registry) *KeyPairDriver {
-    return NewKeyPairDriverWithFactory(accounts, func(cfg aws.Config) KeyPairAPI {
+func NewKeyPairDriver(auth authservice.AuthClient) *KeyPairDriver {
+    return NewKeyPairDriverWithFactory(auth, func(cfg aws.Config) KeyPairAPI {
         return NewKeyPairAPI(awsclient.NewEC2Client(cfg))
     })
 }
 
-func NewKeyPairDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) KeyPairAPI) *KeyPairDriver {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewKeyPairDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) KeyPairAPI) *KeyPairDriver {
     if factory == nil {
         factory = func(cfg aws.Config) KeyPairAPI {
             return NewKeyPairAPI(awsclient.NewEC2Client(cfg))
         }
     }
-    return &KeyPairDriver{auth: accounts, apiFactory: factory}
+    return &KeyPairDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *KeyPairDriver) ServiceName() string {
@@ -558,7 +546,7 @@ func (d *KeyPairDriver) ServiceName() string {
 
 ```go
 func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (KeyPairOutputs, error) {
-    api, _, err := d.apiForAccount(spec.Account)
+    api, _, err := d.apiForAccount(ctx, spec.Account)
     if err != nil {
         return KeyPairOutputs{}, restate.TerminalError(err, 400)
     }
@@ -726,7 +714,7 @@ func (d *KeyPairDriver) Delete(ctx restate.ObjectContext) error {
     state.Status = types.StatusDeleting
     restate.Set(ctx, drivers.StateKey, state)
 
-    api, _, err := d.apiForAccount(state.Desired.Account)
+    api, _, err := d.apiForAccount(ctx, state.Desired.Account)
     if err != nil {
         return restate.TerminalError(err, 400)
     }

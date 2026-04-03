@@ -15,6 +15,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IAMInstanceProfileDriver is the Restate virtual object that manages a single IAM instance profile.
 type IAMInstanceProfileDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMInstanceProfileAPI
@@ -39,6 +40,9 @@ func (d *IAMInstanceProfileDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for IAM instance profiles.
+// Creates the profile and attaches the role if not found; converges role and tags if it exists.
+// Path is immutable—returns a terminal error if an existing profile has a different path.
 func (d *IAMInstanceProfileDriver) Provision(ctx restate.ObjectContext, spec IAMInstanceProfileSpec) (IAMInstanceProfileOutputs, error) {
 	ctx.Log().Info("provisioning iam instance profile", "key", restate.Key(ctx), "instanceProfileName", spec.InstanceProfileName)
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -197,6 +201,8 @@ func (d *IAMInstanceProfileDriver) Import(ctx restate.ObjectContext, ref types.I
 	return outputs, nil
 }
 
+// Delete removes the instance profile from AWS after detaching its role.
+// Handles the case where the role is still attached by re-describing and retrying.
 func (d *IAMInstanceProfileDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting iam instance profile", "key", restate.Key(ctx))
 	state, err := restate.Get[IAMInstanceProfileState](ctx, drivers.StateKey)
@@ -390,6 +396,8 @@ func (d *IAMInstanceProfileDriver) GetOutputs(ctx restate.ObjectSharedContext) (
 	return state.Outputs, nil
 }
 
+// correctDrift converges role association and tags from observed toward desired state.
+// Returns a terminal error if path differs (immutable field).
 func (d *IAMInstanceProfileDriver) correctDrift(ctx restate.ObjectContext, api IAMInstanceProfileAPI, name string, desired IAMInstanceProfileSpec, observed ObservedState) error {
 	if desired.Path != "" && observed.Path != "" && desired.Path != observed.Path {
 		return restate.TerminalError(fmt.Errorf("path is immutable; delete and recreate the instance profile to change the path"), 409)
@@ -484,6 +492,8 @@ func outputsFromObserved(obs ObservedState) IAMInstanceProfileOutputs {
 	}
 }
 
+// diffTags computes the set of tags to add/update and keys to remove by comparing
+// desired vs observed tags, after filtering out "praxis:"-prefixed internal tags.
 func diffTags(desired, observed map[string]string) (map[string]string, []string) {
 	filteredDesired := filterPraxisTags(desired)
 	filteredObserved := filterPraxisTags(observed)

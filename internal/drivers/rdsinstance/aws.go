@@ -16,26 +16,52 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// RDSInstanceAPI abstracts the AWS RDS SDK operations for instance management.
+// In production, this is realRDSInstanceAPI (backed by the real SDK client).
+// In unit tests, this is mockRDSInstanceAPI (backed by testify/mock).
 type RDSInstanceAPI interface {
+	// CreateDBInstance creates a new RDS instance and returns its ARN.
+	// For Aurora cluster members, storage/backup/master fields are omitted.
 	CreateDBInstance(ctx context.Context, spec RDSInstanceSpec) (string, error)
+
+	// DescribeDBInstance returns the observed state including endpoint, tags, and status.
 	DescribeDBInstance(ctx context.Context, dbIdentifier string) (ObservedState, error)
+
+	// ModifyDBInstance modifies mutable instance attributes. applyImmediately=true
+	// applies changes without waiting for the next maintenance window.
 	ModifyDBInstance(ctx context.Context, spec RDSInstanceSpec, applyImmediately bool) error
+
+	// DeleteDBInstance deletes the instance. skipFinalSnapshot=true skips the final snapshot.
 	DeleteDBInstance(ctx context.Context, dbIdentifier string, skipFinalSnapshot bool) error
+
+	// WaitUntilAvailable polls until the instance reaches "available" status (up to 30 min).
 	WaitUntilAvailable(ctx context.Context, dbIdentifier string) error
+
+	// WaitUntilDeleted polls until the instance is fully deleted (up to 30 min).
 	WaitUntilDeleted(ctx context.Context, dbIdentifier string) error
+
+	// UpdateTags performs diff-based tag updates (add/remove/change).
 	UpdateTags(ctx context.Context, arn string, tags map[string]string) error
+
+	// ListTags returns all non-praxis tags on the resource.
 	ListTags(ctx context.Context, arn string) (map[string]string, error)
 }
 
+// realRDSInstanceAPI implements RDSInstanceAPI using the actual AWS SDK v2 RDS client.
 type realRDSInstanceAPI struct {
 	client  *rdssdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewRDSInstanceAPI creates a new RDSInstanceAPI backed by the given RDS SDK client.
+// Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewRDSInstanceAPI(client *rdssdk.Client) RDSInstanceAPI {
 	return &realRDSInstanceAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
 }
 
+// CreateDBInstance calls rds:CreateDBInstance. For Aurora cluster members
+// (DBClusterIdentifier set), storage and master credentials are omitted
+// since the cluster manages them.
 func (r *realRDSInstanceAPI) CreateDBInstance(ctx context.Context, spec RDSInstanceSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -102,6 +128,9 @@ func (r *realRDSInstanceAPI) CreateDBInstance(ctx context.Context, spec RDSInsta
 	return aws.ToString(out.DBInstance.DBInstanceArn), nil
 }
 
+// DescribeDBInstance calls rds:DescribeDBInstances and maps to ObservedState.
+// Also fetches tags via ListTagsForResource and sorts VPC security group IDs
+// for deterministic comparison.
 func (r *realRDSInstanceAPI) DescribeDBInstance(ctx context.Context, dbIdentifier string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -169,6 +198,8 @@ func (r *realRDSInstanceAPI) DescribeDBInstance(ctx context.Context, dbIdentifie
 	return observed, nil
 }
 
+// ModifyDBInstance calls rds:ModifyDBInstance with the given spec.
+// applyImmediately=true applies changes without waiting for the maintenance window.
 func (r *realRDSInstanceAPI) ModifyDBInstance(ctx context.Context, spec RDSInstanceSpec, applyImmediately bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -212,6 +243,9 @@ func (r *realRDSInstanceAPI) ModifyDBInstance(ctx context.Context, spec RDSInsta
 	return err
 }
 
+// DeleteDBInstance calls rds:DeleteDBInstance. The driver always uses
+// skipFinalSnapshot=true for simplicity — operators should configure
+// automated backups via BackupRetentionPeriod instead.
 func (r *realRDSInstanceAPI) DeleteDBInstance(ctx context.Context, dbIdentifier string, skipFinalSnapshot bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -220,16 +254,22 @@ func (r *realRDSInstanceAPI) DeleteDBInstance(ctx context.Context, dbIdentifier 
 	return err
 }
 
+// WaitUntilAvailable uses the SDK's built-in waiter to poll until the instance
+// reaches "available" status. Times out after 30 minutes.
 func (r *realRDSInstanceAPI) WaitUntilAvailable(ctx context.Context, dbIdentifier string) error {
 	waiter := rdssdk.NewDBInstanceAvailableWaiter(r.client)
 	return waiter.Wait(ctx, &rdssdk.DescribeDBInstancesInput{DBInstanceIdentifier: aws.String(dbIdentifier)}, 30*time.Minute)
 }
 
+// WaitUntilDeleted uses the SDK's built-in waiter to poll until the instance
+// is fully deleted. Times out after 30 minutes.
 func (r *realRDSInstanceAPI) WaitUntilDeleted(ctx context.Context, dbIdentifier string) error {
 	waiter := rdssdk.NewDBInstanceDeletedWaiter(r.client)
 	return waiter.Wait(ctx, &rdssdk.DescribeDBInstancesInput{DBInstanceIdentifier: aws.String(dbIdentifier)}, 30*time.Minute)
 }
 
+// UpdateTags performs diff-based tag updates: removes tags no longer desired,
+// adds/changes tags that differ. Filters out praxis:-prefixed internal tags.
 func (r *realRDSInstanceAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
 	current, err := r.ListTags(ctx, arn)
 	if err != nil {
@@ -272,6 +312,7 @@ func (r *realRDSInstanceAPI) UpdateTags(ctx context.Context, arn string, tags ma
 	return err
 }
 
+// ListTags calls rds:ListTagsForResource and returns non-praxis tags.
 func (r *realRDSInstanceAPI) ListTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -291,6 +332,7 @@ func (r *realRDSInstanceAPI) ListTags(ctx context.Context, arn string) (map[stri
 	return tags, nil
 }
 
+// toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
 func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	filtered := filterPraxisTags(tags)
 	out := make([]rdstypes.Tag, 0, len(filtered))
@@ -303,18 +345,24 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	return out
 }
 
+// IsNotFound returns true if the AWS error indicates the instance does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "DBInstanceNotFound")
 }
 
+// IsAlreadyExists returns true if a CreateDBInstance call failed because
+// an instance with the same identifier already exists.
 func IsAlreadyExists(err error) bool {
 	return awserr.HasCode(err, "DBInstanceAlreadyExists")
 }
 
+// IsInvalidState returns true if the instance is in a state that prevents
+// the requested operation (e.g., modifying while backing up).
 func IsInvalidState(err error) bool {
 	return awserr.HasCode(err, "InvalidDBInstanceState", "InvalidDBClusterStateFault")
 }
 
+// IsInvalidParam returns true if the error indicates invalid API parameters.
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

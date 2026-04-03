@@ -1,6 +1,4 @@
-# Slack Gateway — Implementation Plan
-
-> **See also:** [Concierge](CONCIERGE.md) | [Events](EVENTS.md) | [Architecture](ARCHITECTURE.md) | [CLI](CLI.md)
+# Slack Gateway
 
 ---
 

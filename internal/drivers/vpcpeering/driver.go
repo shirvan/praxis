@@ -15,17 +15,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// VPCPeeringDriver is a Restate Virtual Object that manages VPC Peering Connection lifecycle.
 type VPCPeeringDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) VPCPeeringAPI
 }
 
+// NewVPCPeeringDriver creates a production VPCPeeringDriver.
 func NewVPCPeeringDriver(auth authservice.AuthClient) *VPCPeeringDriver {
 	return NewVPCPeeringDriverWithFactory(auth, func(cfg aws.Config) VPCPeeringAPI {
 		return NewVPCPeeringAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewVPCPeeringDriverWithFactory allows tests to inject a custom VPCPeeringAPI factory.
 func NewVPCPeeringDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) VPCPeeringAPI) *VPCPeeringDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) VPCPeeringAPI {
@@ -39,6 +42,11 @@ func (d *VPCPeeringDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements idempotent create-or-converge for a VPC Peering Connection.
+//
+// Flow: validate → load state → ownership check → create if missing →
+// auto-accept if configured (same-account only) → apply mutable settings
+// (peering options + tags) → describe final state → commit state → schedule reconcile.
 func (d *VPCPeeringDriver) Provision(ctx restate.ObjectContext, spec VPCPeeringSpec) (VPCPeeringOutputs, error) {
 	ctx.Log().Info("provisioning VPC peering connection", "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -192,6 +200,7 @@ func (d *VPCPeeringDriver) Provision(ctx restate.ObjectContext, spec VPCPeeringS
 	return outputs, nil
 }
 
+// Import captures an existing VPC Peering Connection's live state as the baseline.
 func (d *VPCPeeringDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (VPCPeeringOutputs, error) {
 	ctx.Log().Info("importing VPC peering connection", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -237,6 +246,7 @@ func (d *VPCPeeringDriver) Import(ctx restate.ObjectContext, ref types.ImportRef
 	return outputs, nil
 }
 
+// Delete removes the VPC Peering Connection.
 func (d *VPCPeeringDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting VPC peering connection", "key", restate.Key(ctx))
 	state, err := restate.Get[VPCPeeringState](ctx, drivers.StateKey)
@@ -289,6 +299,9 @@ func (d *VPCPeeringDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual state against desired and corrects drift (Managed)
+// or reports it (Observed). If the peering is still pending-acceptance,
+// Reconcile re-attempts auto-accept.
 func (d *VPCPeeringDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[VPCPeeringState](ctx, drivers.StateKey)
 	if err != nil {
@@ -437,10 +450,13 @@ func (d *VPCPeeringDriver) GetOutputs(ctx restate.ObjectSharedContext) (VPCPeeri
 	return state.Outputs, nil
 }
 
+// correctDrift delegates to applyMutableSettings for tag and option fixes.
 func (d *VPCPeeringDriver) correctDrift(ctx restate.ObjectContext, api VPCPeeringAPI, peeringID string, desired VPCPeeringSpec, observed ObservedState) error {
 	return d.applyMutableSettings(ctx, api, peeringID, desired, observed)
 }
 
+// applyMutableSettings updates peering options (DNS resolution) and tags
+// to match the desired spec.
 func (d *VPCPeeringDriver) applyMutableSettings(ctx restate.ObjectContext, api VPCPeeringAPI, peeringID string, desired VPCPeeringSpec, observed ObservedState) error {
 	if observed.Status == "active" && (optionsDrift(desired.RequesterOptions, observed.RequesterOptions) || optionsDrift(desired.AccepterOptions, observed.AccepterOptions)) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -463,6 +479,8 @@ func (d *VPCPeeringDriver) applyMutableSettings(ctx restate.ObjectContext, api V
 	return nil
 }
 
+// acceptIfPending attempts to accept the peering if it is in
+// pending-acceptance state. Returns true if acceptance was attempted.
 func (d *VPCPeeringDriver) acceptIfPending(ctx restate.ObjectContext, api VPCPeeringAPI, peeringID string) (bool, error) {
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 		return api.DescribeVPCPeeringConnection(rc, peeringID)
@@ -510,6 +528,9 @@ func (d *VPCPeeringDriver) apiForAccount(ctx restate.ObjectContext, account stri
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// validateSpec checks that the peering spec is valid. Currently blocks
+// cross-account (PeerOwnerId) and cross-region (PeerRegion) peering
+// connections, which require additional coordination.
 func validateSpec(spec VPCPeeringSpec, resolvedRegion string) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")

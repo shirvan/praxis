@@ -15,23 +15,38 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// DBParameterGroupAPI abstracts AWS RDS SDK operations for both DB and Cluster
+// Parameter Group management.
 type DBParameterGroupAPI interface {
+	// CreateParameterGroup creates a DB or Cluster parameter group based on spec.Type.
 	CreateParameterGroup(ctx context.Context, spec DBParameterGroupSpec) (string, error)
+
+	// DescribeParameterGroup returns observed state including only user-modified parameters.
 	DescribeParameterGroup(ctx context.Context, groupName string, groupType string) (ObservedState, error)
+
+	// UpdateParameters sets changed parameters and resets removed ones in batches of 20.
 	UpdateParameters(ctx context.Context, spec DBParameterGroupSpec, observed ObservedState) error
+
+	// DeleteParameterGroup deletes the parameter group.
 	DeleteParameterGroup(ctx context.Context, groupName string, groupType string) error
+
+	// UpdateTags performs diff-based tag updates on the parameter group.
 	UpdateTags(ctx context.Context, arn string, tags map[string]string) error
 }
 
+// realDBParameterGroupAPI implements DBParameterGroupAPI using the AWS SDK v2 RDS client.
 type realDBParameterGroupAPI struct {
 	client  *rdssdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewDBParameterGroupAPI creates a new API backed by the given RDS client.
+// Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewDBParameterGroupAPI(client *rdssdk.Client) DBParameterGroupAPI {
 	return &realDBParameterGroupAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
 }
 
+// CreateParameterGroup calls rds:CreateDBParameterGroup or rds:CreateDBClusterParameterGroup.
 func (r *realDBParameterGroupAPI) CreateParameterGroup(ctx context.Context, spec DBParameterGroupSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -66,6 +81,9 @@ func (r *realDBParameterGroupAPI) CreateParameterGroup(ctx context.Context, spec
 	return aws.ToString(out.DBParameterGroup.DBParameterGroupArn), nil
 }
 
+// DescribeParameterGroup fetches the group metadata and only user-modified parameters.
+// Uses paginated APIs (rds:DescribeDBParameters / rds:DescribeDBClusterParameters)
+// with Source="user" to skip thousands of engine-default parameters.
 func (r *realDBParameterGroupAPI) DescribeParameterGroup(ctx context.Context, groupName string, groupType string) (ObservedState, error) {
 	observed := ObservedState{GroupName: groupName, Type: groupType, Parameters: map[string]string{}, Tags: map[string]string{}}
 	if err := r.limiter.Wait(ctx); err != nil {
@@ -116,6 +134,8 @@ func (r *realDBParameterGroupAPI) DescribeParameterGroup(ctx context.Context, gr
 	return observed, nil
 }
 
+// UpdateParameters applies parameter changes in batches of 20 (AWS limit).
+// New/changed parameters are set via Modify; removed parameters are reset to engine defaults.
 func (r *realDBParameterGroupAPI) UpdateParameters(ctx context.Context, spec DBParameterGroupSpec, observed ObservedState) error {
 	toSet := make([]rdstypes.Parameter, 0)
 	for key, value := range spec.Parameters {
@@ -167,6 +187,7 @@ func (r *realDBParameterGroupAPI) UpdateParameters(ctx context.Context, spec DBP
 	return nil
 }
 
+// DeleteParameterGroup calls rds:DeleteDBParameterGroup or rds:DeleteDBClusterParameterGroup.
 func (r *realDBParameterGroupAPI) DeleteParameterGroup(ctx context.Context, groupName string, groupType string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -179,6 +200,7 @@ func (r *realDBParameterGroupAPI) DeleteParameterGroup(ctx context.Context, grou
 	return err
 }
 
+// UpdateTags performs diff-based tag updates: removes stale, adds new/changed.
 func (r *realDBParameterGroupAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
 	current, err := r.listTags(ctx, arn)
 	if err != nil {
@@ -221,6 +243,7 @@ func (r *realDBParameterGroupAPI) UpdateTags(ctx context.Context, arn string, ta
 	return err
 }
 
+// describeParameters paginates rds:DescribeDBParameters with Source="user".
 func (r *realDBParameterGroupAPI) describeParameters(ctx context.Context, groupName string) (map[string]string, error) {
 	paginator := rdssdk.NewDescribeDBParametersPaginator(r.client, &rdssdk.DescribeDBParametersInput{DBParameterGroupName: aws.String(groupName), Source: aws.String("user")})
 	params := map[string]string{}
@@ -243,6 +266,7 @@ func (r *realDBParameterGroupAPI) describeParameters(ctx context.Context, groupN
 	return params, nil
 }
 
+// describeClusterParameters paginates rds:DescribeDBClusterParameters with Source="user".
 func (r *realDBParameterGroupAPI) describeClusterParameters(ctx context.Context, groupName string) (map[string]string, error) {
 	paginator := rdssdk.NewDescribeDBClusterParametersPaginator(r.client, &rdssdk.DescribeDBClusterParametersInput{DBClusterParameterGroupName: aws.String(groupName), Source: aws.String("user")})
 	params := map[string]string{}
@@ -265,6 +289,7 @@ func (r *realDBParameterGroupAPI) describeClusterParameters(ctx context.Context,
 	return params, nil
 }
 
+// listTags returns all non-praxis tags on the resource.
 func (r *realDBParameterGroupAPI) listTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -284,6 +309,7 @@ func (r *realDBParameterGroupAPI) listTags(ctx context.Context, arn string) (map
 	return tags, nil
 }
 
+// toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
 func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	filtered := filterPraxisTags(tags)
 	out := make([]rdstypes.Tag, 0, len(filtered))
@@ -296,18 +322,22 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	return out
 }
 
+// IsNotFound returns true if the parameter group does not exist (DB or Cluster).
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "DBParameterGroupNotFoundFault", "DBClusterParameterGroupNotFoundFault")
 }
 
+// IsAlreadyExists returns true if a parameter group with the same name exists.
 func IsAlreadyExists(err error) bool {
 	return awserr.HasCode(err, "DBParameterGroupAlreadyExistsFault", "DBParameterGroupQuotaExceededFault", "DBParameterGroupAlreadyExists", "DBClusterParameterGroupAlreadyExistsFault")
 }
 
+// IsInvalidState returns true if the parameter group is in a state preventing the operation.
 func IsInvalidState(err error) bool {
 	return awserr.HasCode(err, "InvalidDBParameterGroupStateFault", "InvalidDBClusterParameterGroupStateFault")
 }
 
+// IsInvalidParam returns true if the error indicates invalid API parameters.
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

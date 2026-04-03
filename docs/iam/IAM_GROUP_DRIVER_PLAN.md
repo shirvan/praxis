@@ -1,14 +1,4 @@
-# IAM Group Driver — Implementation Plan
-
-> ✅ Implemented
-> Target: A Restate Virtual Object driver that manages IAM Groups, providing full
-> lifecycle management including creation, import, deletion, drift detection, and
-> drift correction for group properties, inline policies, managed policy attachments,
-> and tags (where supported).
->
-> Key scope: `KeyScopeGlobal` — key format is `groupName`, permanent and immutable
-> for the lifetime of the Virtual Object. IAM group names are unique within an AWS
-> account.
+# IAM Group Driver — Implementation Spec
 
 ---
 
@@ -241,7 +231,7 @@ type IAMGroupState struct {
 ```go
 type IAMGroupAPI interface {
     // CreateGroup creates a new IAM group.
-    CreateGroup(ctx context.Context, spec IAMGroupSpec) (arn, groupId string, err error)
+    CreateGroup(ctx context.Context, spec IAMGroupSpec) (arn, groupID string, err error)
 
     // DescribeGroup returns the observed state of a group by name.
     DescribeGroup(ctx context.Context, groupName string) (ObservedState, error)
@@ -249,8 +239,8 @@ type IAMGroupAPI interface {
     // DeleteGroup deletes a group (must have no members or policies).
     DeleteGroup(ctx context.Context, groupName string) error
 
-    // UpdateGroup updates the group's path.
-    UpdateGroup(ctx context.Context, groupName, newPath string) error
+    // UpdateGroupPath updates the group's path.
+    UpdateGroupPath(ctx context.Context, groupName, newPath string) error
 
     // PutInlinePolicy creates or updates an inline policy on the group.
     PutInlinePolicy(ctx context.Context, groupName, policyName, policyDocument string) error
@@ -258,20 +248,11 @@ type IAMGroupAPI interface {
     // DeleteInlinePolicy removes an inline policy from the group.
     DeleteInlinePolicy(ctx context.Context, groupName, policyName string) error
 
-    // ListInlinePolicies returns the names of all inline policies on the group.
-    ListInlinePolicies(ctx context.Context, groupName string) ([]string, error)
-
-    // GetInlinePolicy returns the policy document for an inline policy.
-    GetInlinePolicy(ctx context.Context, groupName, policyName string) (string, error)
-
     // AttachManagedPolicy attaches a managed policy to the group.
     AttachManagedPolicy(ctx context.Context, groupName, policyArn string) error
 
     // DetachManagedPolicy detaches a managed policy from the group.
     DetachManagedPolicy(ctx context.Context, groupName, policyArn string) error
-
-    // ListAttachedPolicies returns the ARNs of all managed policies attached.
-    ListAttachedPolicies(ctx context.Context, groupName string) ([]string, error)
 
     // RemoveAllMembers removes all users from the group.
     RemoveAllMembers(ctx context.Context, groupName string) error
@@ -474,8 +455,8 @@ const ServiceName = "IAMGroup"
 Standard dual constructor:
 
 ```go
-func NewIAMGroupDriver(accounts *auth.Registry) *IAMGroupDriver
-func NewIAMGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMGroupAPI) *IAMGroupDriver
+func NewIAMGroupDriver(auth authservice.AuthClient) *IAMGroupDriver
+func NewIAMGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMGroupAPI) *IAMGroupDriver
 ```
 
 ### Provision Handler
@@ -713,24 +694,24 @@ path during re-provision and reconciliation.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/iam/group.cue` created
-- [ ] **Types**: `internal/drivers/iamgroup/types.go` created
-- [ ] **AWS API**: `internal/drivers/iamgroup/aws.go` created
-- [ ] **Drift**: `internal/drivers/iamgroup/drift.go` created
-- [ ] **Driver**: `internal/drivers/iamgroup/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/iamgroup_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMGroup driver bound in `cmd/praxis-identity/main.go`
-- [ ] **Unit tests (drift)**: `internal/drivers/iamgroup/drift_test.go`
-- [ ] **Unit tests (aws)**: `internal/drivers/iamgroup/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/iamgroup/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/iamgroup_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/iamgroup_driver_test.go`
-- [ ] **No tags**: Confirmed groups don't support tagging
-- [ ] **Pre-deletion cleanup**: Remove members, detach policies, delete inline policies
-- [ ] **No member management**: Verified as user driver concern
-- [ ] **Import default mode**: `ModeObserved`
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/iamgroup/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMGroup -tags=integration`
+- [x] **Schema**: `schemas/aws/iam/group.cue` created
+- [x] **Types**: `internal/drivers/iamgroup/types.go` created
+- [x] **AWS API**: `internal/drivers/iamgroup/aws.go` created
+- [x] **Drift**: `internal/drivers/iamgroup/drift.go` created
+- [x] **Driver**: `internal/drivers/iamgroup/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/iamgroup_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: IAMGroup driver bound in `cmd/praxis-identity/main.go`
+- [x] **Unit tests (drift)**: `internal/drivers/iamgroup/drift_test.go`
+- [x] **Unit tests (aws)**: `internal/drivers/iamgroup/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/iamgroup/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/iamgroup_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/iamgroup_driver_test.go`
+- [x] **No tags**: Confirmed groups don't support tagging
+- [x] **Pre-deletion cleanup**: Remove members, detach policies, delete inline policies
+- [x] **No member management**: Verified as user driver concern
+- [x] **Import default mode**: `ModeObserved`
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/iamgroup/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMGroup -tags=integration`

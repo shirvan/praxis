@@ -1,3 +1,9 @@
+// Package sqs – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS SQS Queue.
+// It defines the SQSQueueAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon Simple Queue Service (SQS) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package sqs
 
 import (
@@ -15,6 +21,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// QueueAPI abstracts all Amazon Simple Queue Service (SQS) SDK operations needed
+// to manage a AWS SQS Queue. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type QueueAPI interface {
 	CreateQueue(ctx context.Context, spec SQSQueueSpec) (string, error)
 	GetQueueUrl(ctx context.Context, queueName string) (string, error)
@@ -31,10 +40,13 @@ type realQueueAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewQueueAPI constructs a production SQSQueueAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewQueueAPI(client *sqssdk.Client) QueueAPI {
 	return &realQueueAPI{client: client, limiter: ratelimit.New("sqs", 50, 20)}
 }
 
+// CreateQueue calls Amazon Simple Queue Service (SQS) to create a new AWS SQS Queue from the given spec.
 func (r *realQueueAPI) CreateQueue(ctx context.Context, spec SQSQueueSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -87,6 +99,7 @@ func (r *realQueueAPI) CreateQueue(ctx context.Context, spec SQSQueueSpec) (stri
 	return aws.ToString(out.QueueUrl), nil
 }
 
+// GetQueueUrl reads the current state of the AWS SQS Queue from Amazon Simple Queue Service (SQS).
 func (r *realQueueAPI) GetQueueUrl(ctx context.Context, queueName string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -98,6 +111,7 @@ func (r *realQueueAPI) GetQueueUrl(ctx context.Context, queueName string) (strin
 	return aws.ToString(out.QueueUrl), nil
 }
 
+// GetQueueAttributes reads the current state of the AWS SQS Queue from Amazon Simple Queue Service (SQS).
 func (r *realQueueAPI) GetQueueAttributes(ctx context.Context, queueURL string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -149,6 +163,7 @@ func (r *realQueueAPI) GetQueueAttributes(ctx context.Context, queueURL string) 
 	return obs, nil
 }
 
+// SetQueueAttributes updates mutable properties of the AWS SQS Queue via Amazon Simple Queue Service (SQS).
 func (r *realQueueAPI) SetQueueAttributes(ctx context.Context, queueURL string, attrs map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -157,6 +172,7 @@ func (r *realQueueAPI) SetQueueAttributes(ctx context.Context, queueURL string, 
 	return err
 }
 
+// DeleteQueue removes the AWS SQS Queue from AWS via Amazon Simple Queue Service (SQS).
 func (r *realQueueAPI) DeleteQueue(ctx context.Context, queueURL string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -165,6 +181,7 @@ func (r *realQueueAPI) DeleteQueue(ctx context.Context, queueURL string) error {
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS SQS Queue via Amazon Simple Queue Service (SQS).
 func (r *realQueueAPI) UpdateTags(ctx context.Context, queueURL string, tags map[string]string) error {
 	current, err := r.GetTags(ctx, queueURL)
 	if err != nil {
@@ -202,6 +219,7 @@ func (r *realQueueAPI) UpdateTags(ctx context.Context, queueURL string, tags map
 	return nil
 }
 
+// GetTags reads the current state of the AWS SQS Queue from Amazon Simple Queue Service (SQS).
 func (r *realQueueAPI) GetTags(ctx context.Context, queueURL string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -216,6 +234,7 @@ func (r *realQueueAPI) GetTags(ctx context.Context, queueURL string) (map[string
 	return out.Tags, nil
 }
 
+// FindByManagedKey searches for the AWS SQS Queue using alternative identifiers.
 func (r *realQueueAPI) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
 	var nextToken *string
 	for {
@@ -251,6 +270,7 @@ func extractQueueName(queueURL string) string {
 	return parts[len(parts)-1]
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS SQS Queue does not exist.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false

@@ -15,17 +15,23 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// RDSInstanceDriver is a Restate Virtual Object that manages RDS instance lifecycle.
+// Each instance is keyed by a stable resource identifier.
+//
+// Restate guarantees: single-writer per key, durable execution, built-in K/V state.
 type RDSInstanceDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RDSInstanceAPI
 }
 
+// NewRDSInstanceDriver creates a new RDSInstanceDriver that resolves AWS clients per request.
 func NewRDSInstanceDriver(auth authservice.AuthClient) *RDSInstanceDriver {
 	return NewRDSInstanceDriverWithFactory(auth, func(cfg aws.Config) RDSInstanceAPI {
 		return NewRDSInstanceAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
+// NewRDSInstanceDriverWithFactory creates a driver with a custom API factory (used in tests).
 func NewRDSInstanceDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RDSInstanceAPI) *RDSInstanceDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) RDSInstanceAPI { return NewRDSInstanceAPI(awsclient.NewRDSClient(cfg)) }
@@ -33,10 +39,16 @@ func NewRDSInstanceDriverWithFactory(auth authservice.AuthClient, factory func(a
 	return &RDSInstanceDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name.
 func (d *RDSInstanceDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements "ensure desired state" for RDS instances:
+//  1. If the instance does not exist, create it and wait for "available".
+//  2. If it exists, validate immutable fields, then modify mutable fields.
+//  3. Handles both standalone instances and Aurora cluster members.
+//  4. Password rotation is detected by comparing against previousDesired.
 func (d *RDSInstanceDriver) Provision(ctx restate.ObjectContext, spec RDSInstanceSpec) (RDSInstanceOutputs, error) {
 	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -132,6 +144,9 @@ func (d *RDSInstanceDriver) Provision(ctx restate.ObjectContext, spec RDSInstanc
 	return state.Outputs, nil
 }
 
+// Import captures the current AWS state of an existing RDS instance.
+// Synthesizes a spec from observed state so the first reconcile sees no drift.
+// Defaults to Observed mode.
 func (d *RDSInstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (RDSInstanceOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -170,6 +185,9 @@ func (d *RDSInstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	return state.Outputs, nil
 }
 
+// Delete removes the RDS instance. Auto-disables deletion protection before
+// deleting. Skips the final snapshot. Waits for full deletion before returning.
+// Observed-mode resources cannot be deleted.
 func (d *RDSInstanceDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[RDSInstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -245,6 +263,9 @@ func (d *RDSInstanceDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual AWS state against desired and corrects drift (Managed)
+// or reports it (Observed). Validates immutable fields before attempting correction.
+// Detects external deletion and transitions to Error status.
 func (d *RDSInstanceDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[RDSInstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -325,6 +346,7 @@ func (d *RDSInstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 }
 
+// GetStatus is a SHARED handler — returns the current lifecycle status.
 func (d *RDSInstanceDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[RDSInstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -333,6 +355,7 @@ func (d *RDSInstanceDriver) GetStatus(ctx restate.ObjectSharedContext) (types.St
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a SHARED handler — returns the resource outputs.
 func (d *RDSInstanceDriver) GetOutputs(ctx restate.ObjectSharedContext) (RDSInstanceOutputs, error) {
 	state, err := restate.Get[RDSInstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -341,6 +364,8 @@ func (d *RDSInstanceDriver) GetOutputs(ctx restate.ObjectSharedContext) (RDSInst
 	return state.Outputs, nil
 }
 
+// correctDrift applies Modify and tag updates to bring the instance into alignment.
+// Rejects storage shrink (unsupported by AWS). Detects password rotation.
 func (d *RDSInstanceDriver) correctDrift(ctx restate.ObjectContext, api RDSInstanceAPI, desired RDSInstanceSpec, observed ObservedState, previousDesired RDSInstanceSpec) error {
 	if desired.AllocatedStorage > 0 && observed.AllocatedStorage > 0 && desired.AllocatedStorage < observed.AllocatedStorage {
 		return restate.TerminalError(fmt.Errorf("allocatedStorage cannot be reduced from %d to %d", observed.AllocatedStorage, desired.AllocatedStorage), 400)
@@ -375,6 +400,7 @@ func (d *RDSInstanceDriver) correctDrift(ctx restate.ObjectContext, api RDSInsta
 	return nil
 }
 
+// scheduleReconcile sends a delayed self-invocation to trigger Reconcile.
 func (d *RDSInstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *RDSInstanceState) {
 	if state == nil || state.ReconcileScheduled {
 		return
@@ -384,6 +410,7 @@ func (d *RDSInstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and returns an RDSInstanceAPI client.
 func (d *RDSInstanceDriver) apiForAccount(ctx restate.ObjectContext, account string) (RDSInstanceAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("RDS instance driver is not configured")
@@ -395,6 +422,8 @@ func (d *RDSInstanceDriver) apiForAccount(ctx restate.ObjectContext, account str
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// validateSpec checks required fields. For standalone instances (no cluster),
+// allocatedStorage, masterUsername, and masterUserPassword are required.
 func validateSpec(spec RDSInstanceSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -428,6 +457,8 @@ func validateSpec(spec RDSInstanceSpec) error {
 	return nil
 }
 
+// validateExisting checks that immutable fields (engine, masterUsername,
+// dbClusterIdentifier) have not changed between desired and observed.
 func validateExisting(spec RDSInstanceSpec, observed ObservedState) error {
 	if observed.DBIdentifier != "" && spec.DBIdentifier != observed.DBIdentifier {
 		return fmt.Errorf("dbIdentifier is immutable: desired %q, observed %q", spec.DBIdentifier, observed.DBIdentifier)
@@ -444,6 +475,7 @@ func validateExisting(spec RDSInstanceSpec, observed ObservedState) error {
 	return nil
 }
 
+// specFromObserved creates an RDSInstanceSpec from observed state (for Import).
 func specFromObserved(observed ObservedState) RDSInstanceSpec {
 	return applyDefaults(RDSInstanceSpec{
 		DBIdentifier:               observed.DBIdentifier,
@@ -475,10 +507,12 @@ func specFromObserved(observed ObservedState) RDSInstanceSpec {
 	})
 }
 
+// outputsFromObserved builds RDSInstanceOutputs from the observed state.
 func outputsFromObserved(observed ObservedState) RDSInstanceOutputs {
 	return RDSInstanceOutputs{DBIdentifier: observed.DBIdentifier, DbiResourceId: observed.DbiResourceId, ARN: observed.ARN, Endpoint: observed.Endpoint, Port: observed.Port, Engine: observed.Engine, EngineVersion: observed.EngineVersion, Status: observed.Status}
 }
 
+// defaultImportMode returns Observed as the default import mode.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved

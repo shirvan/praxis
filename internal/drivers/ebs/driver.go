@@ -16,17 +16,27 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// EBSVolumeDriver is a Restate Virtual Object that manages EBS volume lifecycle.
+// Each instance is keyed by a stable resource identifier.
+//
+// Restate guarantees via the Virtual Object model:
+//   - Single-writer: only one exclusive handler runs per key at a time
+//   - Built-in K/V state: all driver state stored atomically per-key
+//   - Durable execution: if the service crashes mid-Provision, Restate replays
+//     from the journal — completed restate.Run() calls are not re-executed
 type EBSVolumeDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) EBSAPI
 }
 
+// NewEBSVolumeDriver creates a new EBSVolumeDriver that resolves AWS clients per request.
 func NewEBSVolumeDriver(auth authservice.AuthClient) *EBSVolumeDriver {
 	return NewEBSVolumeDriverWithFactory(auth, func(cfg aws.Config) EBSAPI {
 		return NewEBSAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewEBSVolumeDriverWithFactory creates a driver with a custom API factory (used in tests).
 func NewEBSVolumeDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EBSAPI) *EBSVolumeDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) EBSAPI {
@@ -36,10 +46,19 @@ func NewEBSVolumeDriverWithFactory(auth authservice.AuthClient, factory func(aws
 	return &EBSVolumeDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name.
 func (d *EBSVolumeDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements "ensure desired state" semantics for EBS volumes:
+//  1. If the volume already exists and matches spec, succeed (idempotent).
+//  2. If the volume exists but differs, modify it in-place (convergent).
+//  3. If no volume exists, check for managed-key conflicts, then create.
+//  4. Waits for the volume to reach "available" state before returning.
+//
+// EBS volumes can be modified in-place (type, size increase, IOPS, throughput),
+// but size shrink is not supported by AWS. The driver enforces this constraint.
 func (d *EBSVolumeDriver) Provision(ctx restate.ObjectContext, spec EBSVolumeSpec) (EBSVolumeOutputs, error) {
 	ctx.Log().Info("provisioning EBS volume", "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -217,6 +236,9 @@ func (d *EBSVolumeDriver) Provision(ctx restate.ObjectContext, spec EBSVolumeSpe
 	return outputs, nil
 }
 
+// Import captures the current AWS state of an existing EBS volume as both the
+// desired spec and observed state. The first reconciliation after import sees
+// no drift. Defaults to Observed mode (drift reported, not corrected).
 func (d *EBSVolumeDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (EBSVolumeOutputs, error) {
 	ctx.Log().Info("importing EBS volume", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -266,6 +288,9 @@ func (d *EBSVolumeDriver) Import(ctx restate.ObjectContext, ref types.ImportRef)
 	return outputs, nil
 }
 
+// Delete removes the EBS volume. Fails terminally if the volume is attached
+// to an instance (VolumeInUse). Observed-mode resources cannot be deleted —
+// they must be re-imported as Managed first.
 func (d *EBSVolumeDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting EBS volume", "key", restate.Key(ctx))
 	state, err := restate.Get[EBSVolumeState](ctx, drivers.StateKey)
@@ -323,6 +348,10 @@ func (d *EBSVolumeDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual AWS state against desired state and corrects drift
+// (Managed mode) or reports it (Observed mode).
+// Handles Ready and Error statuses; other statuses are no-ops.
+// Detects external deletion and transitions to Error status.
 func (d *EBSVolumeDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[EBSVolumeState](ctx, drivers.StateKey)
 	if err != nil {
@@ -416,6 +445,8 @@ func (d *EBSVolumeDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileR
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a SHARED handler — it can run concurrently with exclusive handlers.
+// Returns the current lifecycle status without blocking Provision or Reconcile.
 func (d *EBSVolumeDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[EBSVolumeState](ctx, drivers.StateKey)
 	if err != nil {
@@ -429,6 +460,7 @@ func (d *EBSVolumeDriver) GetStatus(ctx restate.ObjectSharedContext) (types.Stat
 	}, nil
 }
 
+// GetOutputs is a SHARED handler — returns the resource outputs (volume ID, ARN, etc.).
 func (d *EBSVolumeDriver) GetOutputs(ctx restate.ObjectSharedContext) (EBSVolumeOutputs, error) {
 	state, err := restate.Get[EBSVolumeState](ctx, drivers.StateKey)
 	if err != nil {
@@ -437,6 +469,8 @@ func (d *EBSVolumeDriver) GetOutputs(ctx restate.ObjectSharedContext) (EBSVolume
 	return state.Outputs, nil
 }
 
+// correctDrift applies modifications and tag updates to bring the volume
+// back into alignment with the desired spec.
 func (d *EBSVolumeDriver) correctDrift(ctx restate.ObjectContext, api EBSAPI, volumeID string, desired EBSVolumeSpec, observed ObservedState) error {
 	if volumeNeedsModification(desired, observed) {
 		modifySpec := modificationSpec(desired, observed)
@@ -467,6 +501,8 @@ func (d *EBSVolumeDriver) correctDrift(ctx restate.ObjectContext, api EBSAPI, vo
 	return nil
 }
 
+// scheduleReconcile sends a delayed self-invocation to trigger Reconcile.
+// Uses ReconcileScheduled flag to prevent timer fan-out.
 func (d *EBSVolumeDriver) scheduleReconcile(ctx restate.ObjectContext, state *EBSVolumeState) {
 	if state.ReconcileScheduled {
 		return
@@ -477,6 +513,8 @@ func (d *EBSVolumeDriver) scheduleReconcile(ctx restate.ObjectContext, state *EB
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials for the given account and returns
+// an EBSAPI client and the configured region.
 func (d *EBSVolumeDriver) apiForAccount(ctx restate.ObjectContext, account string) (EBSAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("EBSVolumeDriver is not configured with an auth registry")
@@ -488,6 +526,8 @@ func (d *EBSVolumeDriver) apiForAccount(ctx restate.ObjectContext, account strin
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// specFromObserved creates an EBSVolumeSpec from observed AWS state.
+// Used during Import so the first reconcile sees no drift.
 func specFromObserved(obs ObservedState) EBSVolumeSpec {
 	return EBSVolumeSpec{
 		AvailabilityZone: obs.AvailabilityZone,
@@ -502,6 +542,8 @@ func specFromObserved(obs ObservedState) EBSVolumeSpec {
 	}
 }
 
+// outputsFromObserved builds EBSVolumeOutputs from the observed state,
+// constructing the ARN from region + account ID + volume ID.
 func outputsFromObserved(obs ObservedState, region, accountID string) EBSVolumeOutputs {
 	arn := ""
 	if region != "" && accountID != "" && obs.VolumeId != "" {
@@ -518,6 +560,7 @@ func outputsFromObserved(obs ObservedState, region, accountID string) EBSVolumeO
 	}
 }
 
+// defaultEBSImportMode returns Observed as the default import mode for EBS volumes.
 func defaultEBSImportMode(m types.Mode) types.Mode {
 	if m == "" {
 		return types.ModeObserved
@@ -525,6 +568,8 @@ func defaultEBSImportMode(m types.Mode) types.Mode {
 	return m
 }
 
+// accountIDForAccount resolves the AWS account ID via sts:GetCallerIdentity.
+// Needed to construct the volume ARN.
 func (d *EBSVolumeDriver) accountIDForAccount(ctx restate.Context, account string) (string, error) {
 	if d == nil || d.auth == nil {
 		return "", restate.TerminalError(fmt.Errorf("EBSVolumeDriver is not configured with an auth registry"), 500)
@@ -546,6 +591,8 @@ func (d *EBSVolumeDriver) accountIDForAccount(ctx restate.Context, account strin
 	return accountID, nil
 }
 
+// applyDefaults fills in omitted spec fields with sensible defaults.
+// VolumeType defaults to "gp3", SizeGiB defaults to 20.
 func applyDefaults(spec EBSVolumeSpec) EBSVolumeSpec {
 	if spec.VolumeType == "" {
 		spec.VolumeType = "gp3"
@@ -559,6 +606,8 @@ func applyDefaults(spec EBSVolumeSpec) EBSVolumeSpec {
 	return spec
 }
 
+// volumeNeedsModification returns true if any of the mutable volume attributes
+// (type, size increase, IOPS, throughput) differ between desired and observed.
 func volumeNeedsModification(desired EBSVolumeSpec, observed ObservedState) bool {
 	if desired.VolumeType != observed.VolumeType {
 		return true
@@ -575,6 +624,8 @@ func volumeNeedsModification(desired EBSVolumeSpec, observed ObservedState) bool
 	return false
 }
 
+// modificationSpec creates a spec for ec2:ModifyVolume, clamping size to prevent
+// shrink (which AWS doesn't support).
 func modificationSpec(desired EBSVolumeSpec, observed ObservedState) EBSVolumeSpec {
 	copy := desired
 	if copy.SizeGiB < observed.SizeGiB {

@@ -15,17 +15,22 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// AuroraClusterDriver is a Restate Virtual Object that manages the lifecycle of
+// AWS Aurora clusters. Restate guarantees single-writer access per cluster key,
+// eliminating concurrent-mutation races.
 type AuroraClusterDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) AuroraClusterAPI
 }
 
+// NewAuroraClusterDriver creates a driver backed by real AWS RDS clients.
 func NewAuroraClusterDriver(auth authservice.AuthClient) *AuroraClusterDriver {
 	return NewAuroraClusterDriverWithFactory(auth, func(cfg aws.Config) AuroraClusterAPI {
 		return NewAuroraClusterAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
+// NewAuroraClusterDriverWithFactory creates a driver with a custom API factory (for tests).
 func NewAuroraClusterDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) AuroraClusterAPI) *AuroraClusterDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) AuroraClusterAPI { return NewAuroraClusterAPI(awsclient.NewRDSClient(cfg)) }
@@ -33,10 +38,15 @@ func NewAuroraClusterDriverWithFactory(auth authservice.AuthClient, factory func
 	return &AuroraClusterDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate service name for registration.
 func (d *AuroraClusterDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or converges an Aurora cluster to match the desired spec.
+// Idempotent: if the cluster exists, validates immutable fields and applies drift corrections.
+// Detects password rotation when MasterUserPassword changes between specs.
+// Waits for the cluster to reach "available" before returning.
 func (d *AuroraClusterDriver) Provision(ctx restate.ObjectContext, spec AuroraClusterSpec) (AuroraClusterOutputs, error) {
 	api, _, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -132,6 +142,8 @@ func (d *AuroraClusterDriver) Provision(ctx restate.ObjectContext, spec AuroraCl
 	return state.Outputs, nil
 }
 
+// Import discovers an existing Aurora cluster and adopts it into Praxis state.
+// Synthesizes a spec from the observed state. Defaults to Observed mode.
 func (d *AuroraClusterDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (AuroraClusterOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -170,6 +182,9 @@ func (d *AuroraClusterDriver) Import(ctx restate.ObjectContext, ref types.Import
 	return state.Outputs, nil
 }
 
+// Delete removes the Aurora cluster. Blocks deletion in Observed mode.
+// Auto-disables deletion protection if enabled, then deletes with skipFinalSnapshot=true.
+// Waits for the cluster to be fully deleted before clearing state.
 func (d *AuroraClusterDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[AuroraClusterState](ctx, drivers.StateKey)
 	if err != nil {
@@ -245,6 +260,9 @@ func (d *AuroraClusterDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is invoked on a timer to detect and correct drift.
+// Validates immutable fields before attempting correction in Managed mode.
+// Reports drift events for both Managed and Observed modes.
 func (d *AuroraClusterDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[AuroraClusterState](ctx, drivers.StateKey)
 	if err != nil {
@@ -325,6 +343,7 @@ func (d *AuroraClusterDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 }
 
+// GetStatus is a SHARED handler returning the cluster's status without exclusive access.
 func (d *AuroraClusterDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[AuroraClusterState](ctx, drivers.StateKey)
 	if err != nil {
@@ -333,6 +352,7 @@ func (d *AuroraClusterDriver) GetStatus(ctx restate.ObjectSharedContext) (types.
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a SHARED handler returning the cluster's outputs without exclusive access.
 func (d *AuroraClusterDriver) GetOutputs(ctx restate.ObjectSharedContext) (AuroraClusterOutputs, error) {
 	state, err := restate.Get[AuroraClusterState](ctx, drivers.StateKey)
 	if err != nil {
@@ -341,6 +361,8 @@ func (d *AuroraClusterDriver) GetOutputs(ctx restate.ObjectSharedContext) (Auror
 	return state.Outputs, nil
 }
 
+// correctDrift applies ModifyDBCluster and/or UpdateTags to converge the cluster.
+// Detects password rotation when MasterUserPassword differs from previousDesired.
 func (d *AuroraClusterDriver) correctDrift(ctx restate.ObjectContext, api AuroraClusterAPI, desired AuroraClusterSpec, observed ObservedState, previousDesired AuroraClusterSpec) error {
 	needsModify := HasDrift(desired, observed) || (desired.MasterUserPassword != "" && desired.MasterUserPassword != previousDesired.MasterUserPassword)
 	if needsModify {
@@ -372,6 +394,8 @@ func (d *AuroraClusterDriver) correctDrift(ctx restate.ObjectContext, api Aurora
 	return nil
 }
 
+// scheduleReconcile enqueues the next reconciliation via a Restate delayed send.
+// Uses the ReconcileScheduled flag to prevent timer fan-out.
 func (d *AuroraClusterDriver) scheduleReconcile(ctx restate.ObjectContext, state *AuroraClusterState) {
 	if state == nil || state.ReconcileScheduled {
 		return
@@ -381,6 +405,7 @@ func (d *AuroraClusterDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates an API client for the given account.
 func (d *AuroraClusterDriver) apiForAccount(ctx restate.ObjectContext, account string) (AuroraClusterAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("aurora cluster driver is not configured")
@@ -392,6 +417,7 @@ func (d *AuroraClusterDriver) apiForAccount(ctx restate.ObjectContext, account s
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// validateSpec checks that all required fields are present before creating a cluster.
 func validateSpec(spec AuroraClusterSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -414,6 +440,8 @@ func validateSpec(spec AuroraClusterSpec) error {
 	return nil
 }
 
+// validateExisting checks immutable field constraints against a live cluster.
+// Returns an error if clusterIdentifier, engine, masterUsername, or databaseName changed.
 func validateExisting(spec AuroraClusterSpec, observed ObservedState) error {
 	if observed.ClusterIdentifier != "" && spec.ClusterIdentifier != observed.ClusterIdentifier {
 		return fmt.Errorf("clusterIdentifier is immutable: desired %q, observed %q", spec.ClusterIdentifier, observed.ClusterIdentifier)
@@ -430,14 +458,17 @@ func validateExisting(spec AuroraClusterSpec, observed ObservedState) error {
 	return nil
 }
 
+// specFromObserved synthesises a spec from observed state for import.
 func specFromObserved(observed ObservedState) AuroraClusterSpec {
 	return applyDefaults(AuroraClusterSpec{ClusterIdentifier: observed.ClusterIdentifier, Engine: observed.Engine, EngineVersion: observed.EngineVersion, MasterUsername: observed.MasterUsername, DatabaseName: observed.DatabaseName, Port: observed.Port, DBSubnetGroupName: observed.DBSubnetGroupName, DBClusterParameterGroupName: observed.DBClusterParameterGroupName, VpcSecurityGroupIds: observed.VpcSecurityGroupIds, StorageEncrypted: observed.StorageEncrypted, KMSKeyId: observed.KMSKeyId, BackupRetentionPeriod: observed.BackupRetentionPeriod, PreferredBackupWindow: observed.PreferredBackupWindow, PreferredMaintenanceWindow: observed.PreferredMaintenanceWindow, DeletionProtection: observed.DeletionProtection, EnabledCloudwatchLogsExports: observed.EnabledCloudwatchLogsExports, Tags: filterPraxisTags(observed.Tags)})
 }
 
+// outputsFromObserved maps observed state to the output struct.
 func outputsFromObserved(observed ObservedState) AuroraClusterOutputs {
 	return AuroraClusterOutputs{ClusterIdentifier: observed.ClusterIdentifier, ClusterResourceId: observed.ClusterResourceId, ARN: observed.ARN, Endpoint: observed.Endpoint, ReaderEndpoint: observed.ReaderEndpoint, Port: observed.Port, Engine: observed.Engine, EngineVersion: observed.EngineVersion, Status: observed.Status}
 }
 
+// defaultImportMode returns ModeObserved if no explicit mode is given.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved

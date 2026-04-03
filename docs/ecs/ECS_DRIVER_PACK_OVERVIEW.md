@@ -1,11 +1,5 @@
 # ECS Driver Pack — Overview
 
-> NYI
-> This document summarizes the ECS driver family for Praxis: three drivers covering
-> ECS Clusters, ECS Task Definitions, and ECS Services. It describes their
-> relationships, shared infrastructure, runtime deployment, implementation order,
-> and integration with the existing `praxis-compute` driver pack.
-
 ---
 
 ## Table of Contents
@@ -118,18 +112,18 @@ other compute drivers is the natural domain alignment.
 ```go
 // cmd/praxis-compute/main.go
 srv := server.NewRestate().
-    Bind(restate.Reflect(ami.NewAMIDriver(cfg.Auth()))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth()))).
+    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
     // Lambda drivers (future)
-    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(cfg.Auth()))).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth))).
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
     // ECS drivers
-    Bind(restate.Reflect(ecscluster.NewECSClusterDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ecstaskdef.NewECSTaskDefinitionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ecsservice.NewECSServiceDriver(cfg.Auth())))
+    Bind(restate.Reflect(ecscluster.NewECSClusterDriver(auth))).
+    Bind(restate.Reflect(ecstaskdef.NewECSTaskDefinitionDriver(auth))).
+    Bind(restate.Reflect(ecsservice.NewECSServiceDriver(auth)))
 ```
 
 ---

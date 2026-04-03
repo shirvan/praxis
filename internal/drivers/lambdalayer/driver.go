@@ -16,17 +16,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LambdaLayerDriver implements the Praxis driver for AWS Lambda Layers.
 type LambdaLayerDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) LayerAPI
 }
 
+// NewLambdaLayerDriver creates a production driver with default Lambda client factory.
 func NewLambdaLayerDriver(auth authservice.AuthClient) *LambdaLayerDriver {
 	return NewLambdaLayerDriverWithFactory(auth, func(cfg aws.Config) LayerAPI {
 		return NewLayerAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
+// NewLambdaLayerDriverWithFactory creates a driver with a custom LayerAPI factory (for testing).
 func NewLambdaLayerDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LayerAPI) *LambdaLayerDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) LayerAPI { return NewLayerAPI(awsclient.NewLambdaClient(cfg)) }
@@ -36,6 +39,15 @@ func NewLambdaLayerDriverWithFactory(auth authservice.AuthClient, factory func(a
 
 func (d *LambdaLayerDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a Lambda Layer.
+//
+// Flow:
+//  1. Validate required fields, apply defaults.
+//  2. If a version already exists and no content/metadata changed,
+//     only sync permissions — skip re-publishing.
+//  3. If content or metadata changed: PublishLayerVersion (creates new immutable version),
+//     then sync permissions on the new version.
+//  4. Final GetLatestLayerVersion to capture outputs. Set status=Ready.
 func (d *LambdaLayerDriver) Provision(ctx restate.ObjectContext, spec LambdaLayerSpec) (LambdaLayerOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -120,6 +132,7 @@ func (d *LambdaLayerDriver) Provision(ctx restate.ObjectContext, spec LambdaLaye
 	return state.Outputs, nil
 }
 
+// Import adopts an existing Lambda Layer (latest version) into Praxis management.
 func (d *LambdaLayerDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LambdaLayerOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -153,6 +166,8 @@ func (d *LambdaLayerDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	return state.Outputs, nil
 }
 
+// Delete removes ALL versions of the Lambda Layer.
+// Observed-mode resources cannot be deleted (409).
 func (d *LambdaLayerDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[LambdaLayerState](ctx, drivers.StateKey)
 	if err != nil {
@@ -204,6 +219,10 @@ func (d *LambdaLayerDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection loop for Lambda Layers.
+// Since layer versions are immutable, Reconcile detects-only:
+// external deletion, external version publishes, and permission drift.
+// No automatic correction is performed.
 func (d *LambdaLayerDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[LambdaLayerState](ctx, drivers.StateKey)
 	if err != nil {
@@ -257,6 +276,7 @@ func (d *LambdaLayerDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	return types.ReconcileResult{Drift: drift}, nil
 }
 
+// GetStatus returns the current lifecycle status (shared/concurrent handler).
 func (d *LambdaLayerDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[LambdaLayerState](ctx, drivers.StateKey)
 	if err != nil {
@@ -265,6 +285,7 @@ func (d *LambdaLayerDriver) GetStatus(ctx restate.ObjectSharedContext) (types.St
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs returns the provisioned outputs (shared/concurrent handler).
 func (d *LambdaLayerDriver) GetOutputs(ctx restate.ObjectSharedContext) (LambdaLayerOutputs, error) {
 	state, err := restate.Get[LambdaLayerState](ctx, drivers.StateKey)
 	if err != nil {
@@ -273,6 +294,7 @@ func (d *LambdaLayerDriver) GetOutputs(ctx restate.ObjectSharedContext) (LambdaL
 	return state.Outputs, nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *LambdaLayerDriver) scheduleReconcile(ctx restate.ObjectContext, state *LambdaLayerState) {
 	if state.ReconcileScheduled {
 		return
@@ -282,6 +304,7 @@ func (d *LambdaLayerDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates a LayerAPI for the given Praxis account.
 func (d *LambdaLayerDriver) apiForAccount(ctx restate.ObjectContext, account string) (LayerAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("LambdaLayerDriver is not configured with an auth registry")
@@ -293,6 +316,7 @@ func (d *LambdaLayerDriver) apiForAccount(ctx restate.ObjectContext, account str
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// applyDefaults normalizes permissions, runtimes, and architectures.
 func applyDefaults(spec LambdaLayerSpec) LambdaLayerSpec {
 	if spec.Permissions == nil {
 		spec.Permissions = &PermissionsSpec{}
@@ -315,6 +339,7 @@ func applyDefaults(spec LambdaLayerSpec) LambdaLayerSpec {
 	return spec
 }
 
+// validateProvisionSpec checks that region, layerName, and code source are set.
 func validateProvisionSpec(spec LambdaLayerSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -325,6 +350,7 @@ func validateProvisionSpec(spec LambdaLayerSpec) error {
 	return validateCode(spec.Code)
 }
 
+// layerContentChanged returns true if the code deployment artifact differs.
 func layerContentChanged(a, b CodeSpec) bool {
 	if (a.S3 == nil) != (b.S3 == nil) {
 		return true
@@ -335,6 +361,7 @@ func layerContentChanged(a, b CodeSpec) bool {
 	return a.ZipFile != b.ZipFile
 }
 
+// layerMetadataChanged returns true if description, license, runtimes, or architectures differ.
 func layerMetadataChanged(a, b LambdaLayerSpec) bool {
 	return a.Description != b.Description ||
 		a.LicenseInfo != b.LicenseInfo ||
@@ -342,15 +369,18 @@ func layerMetadataChanged(a, b LambdaLayerSpec) bool {
 		!slices.Equal(a.CompatibleArchitectures, b.CompatibleArchitectures)
 }
 
+// specFromObserved reconstructs a LambdaLayerSpec from observed AWS state for Import.
 func specFromObserved(observed ObservedState) LambdaLayerSpec {
 	permissions := observed.Permissions
 	return applyDefaults(LambdaLayerSpec{LayerName: observed.LayerName, Description: observed.Description, CompatibleRuntimes: append([]string(nil), observed.CompatibleRuntimes...), CompatibleArchitectures: append([]string(nil), observed.CompatibleArchitectures...), LicenseInfo: observed.LicenseInfo, Permissions: &permissions})
 }
 
+// outputsFromObserved maps ObservedState to user-facing LambdaLayerOutputs.
 func outputsFromObserved(observed ObservedState) LambdaLayerOutputs {
 	return LambdaLayerOutputs{LayerArn: observed.LayerArn, LayerVersionArn: observed.LayerVersionArn, LayerName: observed.LayerName, Version: observed.Version, CodeSize: observed.CodeSize, CodeSha256: observed.CodeSha256, CreatedDate: observed.CreatedDate}
 }
 
+// defaultImportMode returns Observed if no mode was explicitly specified.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved
@@ -358,6 +388,7 @@ func defaultImportMode(mode types.Mode) types.Mode {
 	return mode
 }
 
+// desiredPermissions extracts and normalizes permissions from the spec.
 func desiredPermissions(spec LambdaLayerSpec) PermissionsSpec {
 	if spec.Permissions == nil {
 		return PermissionsSpec{}

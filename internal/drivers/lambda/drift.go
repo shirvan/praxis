@@ -1,17 +1,27 @@
+// Drift detection for Lambda Functions.
+// Compares desired spec against observed AWS state for all mutable configuration
+// fields and tags. Immutable fields (packageType, functionName, architectures)
+// are reported as informational diffs only.
 package lambda
 
 import "slices"
 
+// FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any mutable or immutable field differs.
 func HasDrift(desired LambdaFunctionSpec, observed ObservedState) bool {
 	return len(ComputeFieldDiffs(desired, observed)) > 0
 }
 
+// ComputeFieldDiffs returns per-field diffs between desired and observed state.
+// Covers: role, description, runtime, handler, memorySize, timeout, environment,
+// layers, vpcConfig, deadLetterConfig, tracingConfig, ephemeralStorage, tags,
+// code.imageUri, and immutable info diffs for architectures, packageType, functionName.
 func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -70,6 +80,7 @@ func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []Fie
 	return diffs
 }
 
+// codeSpecChanged returns true if any code deployment field differs.
 func codeSpecChanged(a, b CodeSpec) bool {
 	if (a.S3 == nil) != (b.S3 == nil) {
 		return true
@@ -80,6 +91,7 @@ func codeSpecChanged(a, b CodeSpec) bool {
 	return a.ZipFile != b.ZipFile || a.ImageURI != b.ImageURI
 }
 
+// mapsEqual compares two string maps for exact equality.
 func mapsEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -92,10 +104,12 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
+// tagsEqual compares tags after filtering out praxis: namespace tags.
 func tagsEqual(a, b map[string]string) bool {
 	return mapsEqual(filterPraxisTags(a), filterPraxisTags(b))
 }
 
+// filterPraxisTags returns a copy with praxis: prefixed keys removed.
 func filterPraxisTags(tags map[string]string) map[string]string {
 	if len(tags) == 0 {
 		return map[string]string{}
@@ -110,6 +124,7 @@ func filterPraxisTags(tags map[string]string) map[string]string {
 	return out
 }
 
+// vpcConfigEqual compares desired VPC config (may be nil) against observed.
 func vpcConfigEqual(desired *VPCConfigSpec, observed VPCConfigSpec) bool {
 	if desired == nil {
 		return len(observed.SubnetIds) == 0 && len(observed.SecurityGroupIds) == 0
@@ -117,6 +132,7 @@ func vpcConfigEqual(desired *VPCConfigSpec, observed VPCConfigSpec) bool {
 	return slices.Equal(desired.SubnetIds, observed.SubnetIds) && slices.Equal(desired.SecurityGroupIds, observed.SecurityGroupIds)
 }
 
+// deadLetterTarget extracts the target ARN from a possibly-nil config.
 func deadLetterTarget(spec *DeadLetterConfigSpec) string {
 	if spec == nil {
 		return ""
@@ -124,6 +140,7 @@ func deadLetterTarget(spec *DeadLetterConfigSpec) string {
 	return spec.TargetArn
 }
 
+// tracingMode extracts the mode from a possibly-nil config.
 func tracingMode(spec *TracingConfigSpec) string {
 	if spec == nil {
 		return ""
@@ -131,6 +148,7 @@ func tracingMode(spec *TracingConfigSpec) string {
 	return spec.Mode
 }
 
+// ephemeralSize extracts the size from a possibly-nil config.
 func ephemeralSize(spec *EphemeralStorageSpec) int32 {
 	if spec == nil {
 		return 0
@@ -138,6 +156,7 @@ func ephemeralSize(spec *EphemeralStorageSpec) int32 {
 	return spec.Size
 }
 
+// normalizeArchitectures defaults to ["x86_64"] if empty (matches AWS default).
 func normalizeArchitectures(values []string) []string {
 	if len(values) == 0 {
 		return []string{"x86_64"}

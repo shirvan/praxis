@@ -1,12 +1,4 @@
-# SNS Topic Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages SNS Topics, providing full
-> lifecycle management including creation, import, deletion, drift detection, and
-> drift correction for topic attributes, access policies, encryption, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~topicName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned topic ARN lives
-> only in state/outputs.
+# SNS Topic Driver — Implementation Spec
 
 ---
 
@@ -835,19 +827,19 @@ func ComputeFieldDiffs(desired SNSTopicSpec, observed ObservedState) []types.Fie
 
 ```go
 type SNSTopicDriver struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) TopicAPI
 }
 
-func NewSNSTopicDriver(accounts *auth.Registry) *SNSTopicDriver {
-    return NewSNSTopicDriverWithFactory(accounts, func(cfg aws.Config) TopicAPI {
+func NewSNSTopicDriver(auth authservice.AuthClient) *SNSTopicDriver {
+    return NewSNSTopicDriverWithFactory(auth, func(cfg aws.Config) TopicAPI {
         return NewTopicAPI(awsclient.NewSNSClient(cfg))
     })
 }
 
-func NewSNSTopicDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) TopicAPI) *SNSTopicDriver {
+func NewSNSTopicDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) TopicAPI) *SNSTopicDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) TopicAPI {
@@ -1180,10 +1172,10 @@ Follow the standard pattern (identical to S3 and EC2 drivers).
 
 ```go
 type SNSTopicAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
-func NewSNSTopicAdapterWithRegistry(accounts *auth.Registry) *SNSTopicAdapter {
+func NewSNSTopicAdapterWithAuth(auth authservice.AuthClient) *SNSTopicAdapter {
     return &SNSTopicAdapter{accounts: accounts}
 }
 
@@ -1234,7 +1226,7 @@ func (a *SNSTopicAdapter) BuildImportKey(region, resourceID string) (string, err
 
 **File**: `internal/core/provider/registry.go` — **MODIFY**
 
-Add `NewSNSTopicAdapterWithRegistry(accounts)` to `NewRegistry()`.
+Add `NewSNSTopicAdapterWithAuth(auth)` to `NewRegistry()`.
 
 ---
 
@@ -1245,7 +1237,7 @@ Add `NewSNSTopicAdapterWithRegistry(accounts)` to `NewRegistry()`.
 ```go
 import "github.com/shirvan/praxis/internal/drivers/snstopic"
 
-Bind(restate.Reflect(snstopic.NewSNSTopicDriver(cfg.Auth())))
+Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth)))
 ```
 
 ---
@@ -1445,25 +1437,25 @@ ownership.
 
 ### Implementation
 
-- [ ] `schemas/aws/sns/topic.cue`
-- [ ] `internal/drivers/snstopic/types.go`
-- [ ] `internal/drivers/snstopic/aws.go`
-- [ ] `internal/drivers/snstopic/drift.go`
-- [ ] `internal/drivers/snstopic/driver.go`
-- [ ] `internal/core/provider/snstopic_adapter.go`
+- [x] `schemas/aws/sns/topic.cue`
+- [x] `internal/drivers/snstopic/types.go`
+- [x] `internal/drivers/snstopic/aws.go`
+- [x] `internal/drivers/snstopic/drift.go`
+- [x] `internal/drivers/snstopic/driver.go`
+- [x] `internal/core/provider/snstopic_adapter.go`
 
 ### Tests
 
-- [ ] `internal/drivers/snstopic/driver_test.go`
-- [ ] `internal/drivers/snstopic/aws_test.go`
-- [ ] `internal/drivers/snstopic/drift_test.go`
-- [ ] `internal/core/provider/snstopic_adapter_test.go`
-- [ ] `tests/integration/sns_topic_driver_test.go`
+- [x] `internal/drivers/snstopic/driver_test.go`
+- [x] `internal/drivers/snstopic/aws_test.go`
+- [x] `internal/drivers/snstopic/drift_test.go`
+- [x] `internal/core/provider/snstopic_adapter_test.go`
+- [x] `tests/integration/sns_topic_driver_test.go`
 
 ### Integration
 
-- [ ] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
-- [ ] `cmd/praxis-storage/main.go` — Bind driver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
-- [ ] `justfile` — Add test targets
+- [x] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
+- [x] `cmd/praxis-storage/main.go` — Bind driver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
+- [x] `justfile` — Add test targets

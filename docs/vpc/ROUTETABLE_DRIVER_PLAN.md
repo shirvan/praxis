@@ -1,12 +1,4 @@
-# Route Table Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS VPC Route Tables, following
-> the exact patterns established by the VPC, Subnet, Security Group, and EC2 Instance
-> drivers.
->
-> Key scope: `KeyScopeCustom` — key format is `vpcId~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned Route Table ID
-> lives only in state/outputs.
+# Route Table Driver — Implementation Specification
 
 ---
 
@@ -49,7 +41,7 @@ a route to a NAT Gateway. Custom routing topologies (VPN, peering, Transit Gatew
 all flow through route table configuration. Route tables are the third pillar of
 VPC networking after VPCs and subnets.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope (Separate Drivers) |
 |---|---|
@@ -108,20 +100,20 @@ at creation, checked by `FindByManagedKey` pre-flight.
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/routetable/types.go             — Spec, Outputs, ObservedState, State
-✦ internal/drivers/routetable/aws.go               — RouteTableAPI interface + realRouteTableAPI
-✦ internal/drivers/routetable/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/routetable/driver.go            — RouteTableDriver Virtual Object
-✦ internal/drivers/routetable/driver_test.go       — Unit tests for driver (mocked AWS)
-✦ internal/drivers/routetable/aws_test.go          — Unit tests for error classification
-✦ internal/drivers/routetable/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/routetable_adapter.go     — RouteTableAdapter
-✦ internal/core/provider/routetable_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/routetable/routetable.cue            — CUE schema
-✦ tests/integration/routetable_driver_test.go      — Integration tests
-✎ cmd/praxis-network/main.go                      — Add RouteTable driver .Bind()
-✎ internal/core/provider/registry.go               — Add NewRouteTableAdapter
-✎ justfile                                         — Add routetable test targets
+✓ internal/drivers/routetable/types.go             — Spec, Outputs, ObservedState, State
+✓ internal/drivers/routetable/aws.go               — RouteTableAPI interface + realRouteTableAPI
+✓ internal/drivers/routetable/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/routetable/driver.go            — RouteTableDriver Virtual Object
+✓ internal/drivers/routetable/driver_test.go       — Unit tests for driver (mocked AWS)
+✓ internal/drivers/routetable/aws_test.go          — Unit tests for error classification
+✓ internal/drivers/routetable/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/routetable_adapter.go     — RouteTableAdapter
+✓ internal/core/provider/routetable_adapter_test.go — Unit tests for adapter
+✓ schemas/aws/routetable/routetable.cue            — CUE schema
+✓ tests/integration/routetable_driver_test.go      — Integration tests
+✓ cmd/praxis-network/main.go                      — Add RouteTable driver .Bind()
+✓ internal/core/provider/registry.go               — Add NewRouteTableAdapter
+✓ justfile                                         — Add routetable test targets
 ```
 
 ---
@@ -464,14 +456,15 @@ This ensures that traffic always has a valid route during convergence.
 
 ## Step 8 — Registry Integration
 
-Add `NewRouteTableAdapterWithRegistry(accounts)` to `NewRegistry()`.
+`NewRouteTableAdapterWithAuth` is registered in `NewRegistry()`.
 
 ---
 
 ## Step 9 — Binary Entry Point & Dockerfile
 
-Add `.Bind(restate.Reflect(routetable.NewRouteTableDriver(cfg.Auth())))` to
-`cmd/praxis-network/main.go`.
+The Route Table driver is bound in `cmd/praxis-network/main.go`:
+
+`.Bind(restate.Reflect(routetable.NewRouteTableDriver(auth)))`
 
 ---
 

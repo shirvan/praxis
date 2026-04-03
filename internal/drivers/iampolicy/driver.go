@@ -14,11 +14,13 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IAMPolicyDriver is the Restate virtual object that manages the lifecycle of a single IAM policy.
 type IAMPolicyDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMPolicyAPI
 }
 
+// NewIAMPolicyDriver constructs a driver with the default AWS API factory.
 func NewIAMPolicyDriver(auth authservice.AuthClient) *IAMPolicyDriver {
 	return NewIAMPolicyDriverWithFactory(auth, func(cfg aws.Config) IAMPolicyAPI {
 		return NewIAMPolicyAPI(awsclient.NewIAMClient(cfg))
@@ -38,6 +40,9 @@ func (d *IAMPolicyDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for IAM policies.
+// If the policy doesn't exist, creates it. If it exists, converges the policy document
+// (via CreatePolicyVersion) and tags to match the desired spec.
 func (d *IAMPolicyDriver) Provision(ctx restate.ObjectContext, spec IAMPolicySpec) (IAMPolicyOutputs, error) {
 	ctx.Log().Info("provisioning iam policy", "key", restate.Key(ctx), "policyName", spec.PolicyName)
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -142,6 +147,7 @@ func (d *IAMPolicyDriver) Provision(ctx restate.ObjectContext, spec IAMPolicySpe
 	return outputs, nil
 }
 
+// Import adopts an existing AWS IAM policy into Praxis management by looking it up by name.
 func (d *IAMPolicyDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IAMPolicyOutputs, error) {
 	ctx.Log().Info("importing iam policy", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, err := d.apiForAccount(ctx, ref.Account)
@@ -190,6 +196,8 @@ func (d *IAMPolicyDriver) Import(ctx restate.ObjectContext, ref types.ImportRef)
 	return outputs, nil
 }
 
+// Delete removes an IAM policy. It detaches the policy from all principals, deletes all
+// non-default versions, and then deletes the policy itself. Idempotent against NotFound.
 func (d *IAMPolicyDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting iam policy", "key", restate.Key(ctx))
 	state, err := restate.Get[IAMPolicyState](ctx, drivers.StateKey)
@@ -259,6 +267,7 @@ func (d *IAMPolicyDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection handler for IAM policies.
 func (d *IAMPolicyDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[IAMPolicyState](ctx, drivers.StateKey)
 	if err != nil {

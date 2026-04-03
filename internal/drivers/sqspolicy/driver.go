@@ -1,3 +1,15 @@
+// Package sqspolicy – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS SQS Queue Policy.
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package sqspolicy
 
 import (
@@ -15,17 +27,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// SQSQueuePolicyDriver is the Restate Virtual Object handler for AWS SQS Queue Policy.
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type SQSQueuePolicyDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) PolicyAPI
 }
 
+// NewSQSQueuePolicyDriver creates a SQSQueuePolicy driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewSQSQueuePolicyDriver(auth authservice.AuthClient) *SQSQueuePolicyDriver {
 	return NewSQSQueuePolicyDriverWithFactory(auth, func(cfg aws.Config) PolicyAPI {
 		return NewPolicyAPI(awsclient.NewSQSClient(cfg))
 	})
 }
 
+// NewSQSQueuePolicyDriverWithFactory creates a SQSQueuePolicy driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewSQSQueuePolicyDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) PolicyAPI) *SQSQueuePolicyDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) PolicyAPI {
@@ -37,6 +56,10 @@ func NewSQSQueuePolicyDriverWithFactory(auth authservice.AuthClient, factory fun
 
 func (SQSQueuePolicyDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a AWS SQS Queue Policy. It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *SQSQueuePolicyDriver) Provision(ctx restate.ObjectContext, spec SQSQueuePolicySpec) (SQSQueuePolicyOutputs, error) {
 	ctx.Log().Info("provisioning SQS queue policy", "key", restate.Key(ctx))
 	if spec.Region == "" || spec.QueueName == "" || strings.TrimSpace(spec.Policy) == "" {
@@ -113,6 +136,10 @@ func (d *SQSQueuePolicyDriver) Provision(ctx restate.ObjectContext, spec SQSQueu
 	return outputs, nil
 }
 
+// Import adopts an existing AWS SQS Queue Policy into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *SQSQueuePolicyDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (SQSQueuePolicyOutputs, error) {
 	ctx.Log().Info("importing SQS queue policy", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, err := d.apiForAccount(ctx, ref.Account)
@@ -178,6 +205,9 @@ func (d *SQSQueuePolicyDriver) Import(ctx restate.ObjectContext, ref types.Impor
 	return outputs, nil
 }
 
+// Delete removes the AWS SQS Queue Policy from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *SQSQueuePolicyDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting SQS queue policy", "key", restate.Key(ctx))
 	state, err := restate.Get[SQSQueuePolicyState](ctx, shared.StateKey)
@@ -227,6 +257,11 @@ func (d *SQSQueuePolicyDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *SQSQueuePolicyDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[SQSQueuePolicyState](ctx, shared.StateKey)
 	if err != nil {
@@ -326,6 +361,7 @@ func (d *SQSQueuePolicyDriver) Reconcile(ctx restate.ObjectContext) (types.Recon
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *SQSQueuePolicyDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[SQSQueuePolicyState](ctx, shared.StateKey)
 	if err != nil {
@@ -334,6 +370,7 @@ func (d *SQSQueuePolicyDriver) GetStatus(ctx restate.ObjectSharedContext) (types
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *SQSQueuePolicyDriver) GetOutputs(ctx restate.ObjectSharedContext) (SQSQueuePolicyOutputs, error) {
 	state, err := restate.Get[SQSQueuePolicyState](ctx, shared.StateKey)
 	if err != nil {

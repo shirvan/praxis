@@ -1,3 +1,13 @@
+// AMI provider adapter.
+//
+// This file implements the provider.Adapter interface for Amazon EC2 (AMI)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the AMI Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + AMI name.
+// AMIs are region-scoped; the key combines the AWS region with the image name.
 package provider
 
 import (
@@ -15,12 +25,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// AMIAdapter implements provider.Adapter for AMI (Amazon EC2 (AMI)) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type AMIAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI ami.AMIAPI
 	apiFactory        func(aws.Config) ami.AMIAPI
 }
 
+// NewAMIAdapterWithAuth creates a production AMI adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewAMIAdapterWithAuth(auth authservice.AuthClient) *AMIAdapter {
 	return &AMIAdapter{
 		auth: auth,
@@ -30,22 +48,34 @@ func NewAMIAdapterWithAuth(auth authservice.AuthClient) *AMIAdapter {
 	}
 }
 
+// NewAMIAdapterWithAPI creates a AMI adapter with a pre-built API
+// client. This is primarily useful in tests that supply a mock implementation
+// and do not need per-account credential resolution.
 func NewAMIAdapterWithAPI(api ami.AMIAPI) *AMIAdapter {
 	return &AMIAdapter{staticPlanningAPI: api}
 }
 
+// Kind returns the resource kind string "AMI" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *AMIAdapter) Kind() string {
 	return ami.ServiceName
 }
 
+// ServiceName returns the Restate Virtual Object service name for the
+// AMI driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *AMIAdapter) ServiceName() string {
 	return ami.ServiceName
 }
 
+// Scope returns the key-scope strategy for AMI resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *AMIAdapter) Scope() KeyScope {
 	return KeyScopeRegion
 }
 
+// BuildKey derives the canonical Restate object key for a AMI resource
+// from the raw JSON resource document. The key is composed of region + AMI name,
+// ensuring uniqueness within the Restate Virtual Object namespace.
 func (a *AMIAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -65,6 +95,8 @@ func (a *AMIAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	return JoinKey(spec.Region, name), nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete AMI spec struct expected by the driver.
 func (a *AMIAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -73,6 +105,11 @@ func (a *AMIAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the AMI Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *AMIAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[ami.AMISpec](spec)
 	if err != nil {
@@ -92,6 +129,9 @@ func (a *AMIAdapter) Provision(ctx restate.Context, key string, account string, 
 	}, nil
 }
 
+// Delete sends a durable Delete request to the AMI Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *AMIAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](
 		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
@@ -99,6 +139,9 @@ func (a *AMIAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, 
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed AMI driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *AMIAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[ami.AMIOutputs](raw)
 	if err != nil {
@@ -116,6 +159,11 @@ func (a *AMIAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	}, nil
 }
 
+// Plan compares the desired AMI spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *AMIAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[ami.AMISpec](desiredSpec)
 	if err != nil {
@@ -177,6 +225,8 @@ func (a *AMIAdapter) Plan(ctx restate.Context, key string, account string, desir
 	return types.OpUpdate, fields, nil
 }
 
+// BuildImportKey derives the canonical Restate object key for importing
+// an existing AMI resource by its region and provider-native ID.
 func (a *AMIAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("region", region); err != nil {
 		return "", err
@@ -199,6 +249,8 @@ func (a *AMIAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	return JoinKey(region, resourceID), nil
 }
 
+// Import adopts an existing AMI resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *AMIAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, ami.AMIOutputs](
@@ -214,6 +266,10 @@ func (a *AMIAdapter) Import(ctx restate.Context, key string, account string, ref
 	return types.StatusReady, outputs, nil
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed AMI spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *AMIAdapter) decodeSpec(doc resourceDocument) (ami.AMISpec, error) {
 	var spec ami.AMISpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -240,6 +296,9 @@ func (a *AMIAdapter) decodeSpec(doc resourceDocument) (ami.AMISpec, error) {
 	return spec, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *AMIAdapter) planningAPI(ctx restate.Context, account string) (ami.AMIAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

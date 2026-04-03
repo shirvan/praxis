@@ -15,6 +15,8 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// HostedZoneAPI defines the interface for all AWS Route53 hosted zone operations.
+// Includes zone CRUD, VPC association, tag management, and lookup by name/tags.
 type HostedZoneAPI interface {
 	CreateHostedZone(ctx context.Context, spec HostedZoneSpec) (string, error)
 	DescribeHostedZone(ctx context.Context, hostedZoneID string) (ObservedState, error)
@@ -32,10 +34,13 @@ type realHostedZoneAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewHostedZoneAPI constructs a production HostedZoneAPI with Route53 rate limiting.
 func NewHostedZoneAPI(client *route53sdk.Client) HostedZoneAPI {
 	return &realHostedZoneAPI{client: client, limiter: ratelimit.New("route53", 5, 3)}
 }
 
+// CreateHostedZone calls the Route53 CreateHostedZone API using CallerReference for
+// idempotent creation. Tags all VPCs and applies initial tags immediately after creation.
 func (r *realHostedZoneAPI) CreateHostedZone(ctx context.Context, spec HostedZoneSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -269,6 +274,7 @@ func (r *realHostedZoneAPI) listTags(ctx context.Context, resourceType route53ty
 	return tags, nil
 }
 
+// waitForChange blocks until a Route53 change propagation completes (up to 2 minutes).
 func (r *realHostedZoneAPI) waitForChange(ctx context.Context, changeID string) error {
 	if strings.TrimSpace(changeID) == "" {
 		return nil

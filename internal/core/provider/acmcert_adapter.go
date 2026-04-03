@@ -1,3 +1,13 @@
+// ACMCertificate provider adapter.
+//
+// This file implements the provider.Adapter interface for AWS Certificate Manager
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the ACMCertificate Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + certificate name.
+// ACM certificates are region-scoped; the key combines the AWS region and certificate name.
 package provider
 
 import (

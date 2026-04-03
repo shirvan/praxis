@@ -1,12 +1,4 @@
-# Elastic IP Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages Elastic IP addresses,
-> following the exact patterns established by the S3, Security Group, EC2, VPC,
-> and EBS drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned allocation ID
-> lives only in state/outputs.
+# Elastic IP Driver — Implementation Specification
 
 ---
 
@@ -134,22 +126,20 @@ running instance causes immediate loss of the public IP — a disruptive action.
 
 ## 3. File Inventory
 
-Create or modify these files (✦ = new file, ✎ = modify existing):
-
 ```text
-✦ internal/drivers/eip/types.go             — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/eip/aws.go               — EIPAPI interface + realEIPAPI implementation
-✦ internal/drivers/eip/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/eip/driver.go            — ElasticIPDriver Virtual Object
-✦ internal/drivers/eip/driver_test.go       — Unit tests for driver (mocked AWS)
-✦ internal/drivers/eip/aws_test.go          — Unit tests for error classification helpers
-✦ internal/drivers/eip/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/eip_adapter.go     — EIPAdapter implementing provider.Adapter
-✦ internal/core/provider/eip_adapter_test.go — Unit tests for EIP adapter
-✦ schemas/aws/ec2/eip.cue                   — CUE schema for ElasticIP resource
-✦ tests/integration/eip_driver_test.go      — Integration tests (Testcontainers + LocalStack)
-✎ cmd/praxis-network/main.go               — Add EIP driver `.Bind()` to network pack
-✎ internal/core/provider/registry.go        — Add NewEIPAdapter to NewRegistry()
+internal/drivers/eip/types.go             — Spec, Outputs, ObservedState, State structs
+internal/drivers/eip/aws.go               — EIPAPI interface + realEIPAPI implementation
+internal/drivers/eip/drift.go             — HasDrift(), ComputeFieldDiffs()
+internal/drivers/eip/driver.go            — ElasticIPDriver Virtual Object
+internal/drivers/eip/driver_test.go       — Unit tests for driver (mocked AWS)
+internal/drivers/eip/aws_test.go          — Unit tests for error classification helpers
+internal/drivers/eip/drift_test.go        — Unit tests for drift detection
+internal/core/provider/eip_adapter.go     — EIPAdapter implementing provider.Adapter
+internal/core/provider/eip_adapter_test.go — Unit tests for EIP adapter
+schemas/aws/ec2/eip.cue                   — CUE schema for ElasticIP resource
+tests/integration/eip_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+cmd/praxis-network/main.go               — Bind EIP driver in network pack
+internal/core/provider/registry.go        — EIPAdapter registered in NewRegistry()
 ```
 
 ---
@@ -243,7 +233,7 @@ type ElasticIPSpec struct {
 type ElasticIPOutputs struct {
     AllocationId       string `json:"allocationId"`
     PublicIp           string `json:"publicIp"`
-    ARN                string `json:"arn"`
+    ARN                string `json:"arn,omitempty"`
     Domain             string `json:"domain"`
     NetworkBorderGroup string `json:"networkBorderGroup"`
 }
@@ -520,26 +510,23 @@ type FieldDiffEntry struct {
 
 ```go
 type ElasticIPDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) EIPAPI
 }
 
-func NewElasticIPDriver(accounts *auth.Registry) *ElasticIPDriver {
-    return NewElasticIPDriverWithFactory(accounts, func(cfg aws.Config) EIPAPI {
+func NewElasticIPDriver(auth authservice.AuthClient) *ElasticIPDriver {
+    return NewElasticIPDriverWithFactory(auth, func(cfg aws.Config) EIPAPI {
         return NewEIPAPI(awsclient.NewEC2Client(cfg))
     })
 }
 
-func NewElasticIPDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) EIPAPI) *ElasticIPDriver {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewElasticIPDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EIPAPI) *ElasticIPDriver {
     if factory == nil {
         factory = func(cfg aws.Config) EIPAPI {
             return NewEIPAPI(awsclient.NewEC2Client(cfg))
         }
     }
-    return &ElasticIPDriver{auth: accounts, apiFactory: factory}
+    return &ElasticIPDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *ElasticIPDriver) ServiceName() string {
@@ -551,7 +538,7 @@ func (d *ElasticIPDriver) ServiceName() string {
 
 ```go
 func (d *ElasticIPDriver) Provision(ctx restate.ObjectContext, spec ElasticIPSpec) (ElasticIPOutputs, error) {
-    api, _, err := d.apiForAccount(spec.Account)
+    api, _, err := d.apiForAccount(ctx, spec.Account)
     if err != nil {
         return ElasticIPOutputs{}, restate.TerminalError(err, 400)
     }
@@ -690,7 +677,7 @@ func (d *ElasticIPDriver) Delete(ctx restate.ObjectContext) error {
     state.Status = types.StatusDeleting
     restate.Set(ctx, drivers.StateKey, state)
 
-    api, _, err := d.apiForAccount(state.Desired.Account)
+    api, _, err := d.apiForAccount(ctx, state.Desired.Account)
     if err != nil {
         return restate.TerminalError(err, 400)
     }

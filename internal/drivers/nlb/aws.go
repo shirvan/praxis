@@ -1,3 +1,9 @@
+// Package nlb – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS Network Load Balancer (NLB).
+// It defines the NLBAPI interface (used for testing with mocks)
+// and the real implementation that calls Elastic Load Balancing v2 through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package nlb
 
 import (
@@ -16,6 +22,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// NLBAPI abstracts all Elastic Load Balancing v2 SDK operations needed
+// to manage a AWS Network Load Balancer (NLB). The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type NLBAPI interface {
 	CreateNLB(ctx context.Context, spec NLBSpec) (arn, dnsName, hostedZoneId, vpcId string, err error)
 	DescribeNLB(ctx context.Context, id string) (ObservedState, error)
@@ -31,10 +40,13 @@ type realNLBAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewNLBAPI constructs a production NLBAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewNLBAPI(client *elbv2sdk.Client) NLBAPI {
 	return &realNLBAPI{client: client, limiter: ratelimit.New("nlb", 15, 8)}
 }
 
+// CreateNLB calls Elastic Load Balancing v2 to create a new AWS Network Load Balancer (NLB) from the given spec.
 func (r *realNLBAPI) CreateNLB(ctx context.Context, spec NLBSpec) (string, string, string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", "", "", err
@@ -77,6 +89,7 @@ func (r *realNLBAPI) CreateNLB(ctx context.Context, spec NLBSpec) (string, strin
 	return arn, aws.ToString(lb.DNSName), aws.ToString(lb.CanonicalHostedZoneId), aws.ToString(lb.VpcId), nil
 }
 
+// DescribeNLB reads the current state of the AWS Network Load Balancer (NLB) from Elastic Load Balancing v2.
 func (r *realNLBAPI) DescribeNLB(ctx context.Context, id string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -170,6 +183,7 @@ func (r *realNLBAPI) describeTags(ctx context.Context, arn string) (map[string]s
 	return tags, nil
 }
 
+// DeleteNLB removes the AWS Network Load Balancer (NLB) from AWS via Elastic Load Balancing v2.
 func (r *realNLBAPI) DeleteNLB(ctx context.Context, arn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -178,6 +192,7 @@ func (r *realNLBAPI) DeleteNLB(ctx context.Context, arn string) error {
 	return err
 }
 
+// SetSubnets updates mutable properties of the AWS Network Load Balancer (NLB) via Elastic Load Balancing v2.
 func (r *realNLBAPI) SetSubnets(ctx context.Context, arn string, subnets []SubnetMapping) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -194,6 +209,7 @@ func (r *realNLBAPI) SetSubnets(ctx context.Context, arn string, subnets []Subne
 	return err
 }
 
+// SetIpAddressType updates mutable properties of the AWS Network Load Balancer (NLB) via Elastic Load Balancing v2.
 func (r *realNLBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddressType string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -205,6 +221,7 @@ func (r *realNLBAPI) SetIpAddressType(ctx context.Context, arn string, ipAddress
 	return err
 }
 
+// ModifyAttributes updates mutable properties of the AWS Network Load Balancer (NLB) via Elastic Load Balancing v2.
 func (r *realNLBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -220,6 +237,7 @@ func (r *realNLBAPI) ModifyAttributes(ctx context.Context, arn string, attrs map
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS Network Load Balancer (NLB) via Elastic Load Balancing v2.
 func (r *realNLBAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -324,18 +342,22 @@ func resolveSubnets(spec NLBSpec) []string {
 	return out
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS Network Load Balancer (NLB) does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "LoadBalancerNotFound")
 }
 
+// IsDuplicate returns true if the AWS error indicates a naming conflict.
 func IsDuplicate(err error) bool {
 	return awserr.HasCode(err, "DuplicateLoadBalancerName")
 }
 
+// IsResourceInUse returns true if the resource cannot be deleted because it is still referenced.
 func IsResourceInUse(err error) bool {
 	return awserr.HasCode(err, "ResourceInUse", "OperationNotPermitted")
 }
 
+// IsTooMany returns true if the AWS error indicates a service quota has been reached.
 func IsTooMany(err error) bool {
 	return awserr.HasCode(err, "TooManyLoadBalancers")
 }

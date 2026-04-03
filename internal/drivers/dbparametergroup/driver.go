@@ -15,17 +15,21 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// DBParameterGroupDriver is a Restate Virtual Object that manages the lifecycle of
+// AWS RDS DB Parameter Groups and Cluster Parameter Groups.
 type DBParameterGroupDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) DBParameterGroupAPI
 }
 
+// NewDBParameterGroupDriver creates a driver backed by real AWS RDS clients.
 func NewDBParameterGroupDriver(auth authservice.AuthClient) *DBParameterGroupDriver {
 	return NewDBParameterGroupDriverWithFactory(auth, func(cfg aws.Config) DBParameterGroupAPI {
 		return NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
+// NewDBParameterGroupDriverWithFactory creates a driver with a custom API factory (for tests).
 func NewDBParameterGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) DBParameterGroupAPI) *DBParameterGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) DBParameterGroupAPI { return NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg)) }
@@ -33,10 +37,13 @@ func NewDBParameterGroupDriverWithFactory(auth authservice.AuthClient, factory f
 	return &DBParameterGroupDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate service name for registration.
 func (d *DBParameterGroupDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or converges a parameter group to the desired spec.
+// Idempotent: if the group exists, applies parameter and tag corrections.
 func (d *DBParameterGroupDriver) Provision(ctx restate.ObjectContext, spec DBParameterGroupSpec) (DBParameterGroupOutputs, error) {
 	ctx.Log().Info("provisioning db parameter group", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -130,6 +137,8 @@ func (d *DBParameterGroupDriver) Provision(ctx restate.ObjectContext, spec DBPar
 	return state.Outputs, nil
 }
 
+// Import discovers an existing parameter group and adopts it into Praxis state.
+// Infers group type (db/cluster) from the Restate key name. Defaults to Observed mode.
 func (d *DBParameterGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (DBParameterGroupOutputs, error) {
 	ctx.Log().Info("importing db parameter group", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -170,6 +179,7 @@ func (d *DBParameterGroupDriver) Import(ctx restate.ObjectContext, ref types.Imp
 	return state.Outputs, nil
 }
 
+// Delete removes the parameter group. Blocks deletion in Observed mode.
 func (d *DBParameterGroupDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting db parameter group", "key", restate.Key(ctx))
 	state, err := restate.Get[DBParameterGroupState](ctx, drivers.StateKey)
@@ -221,6 +231,7 @@ func (d *DBParameterGroupDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is invoked on a timer to detect and correct parameter/tag drift.
 func (d *DBParameterGroupDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[DBParameterGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -306,6 +317,7 @@ func (d *DBParameterGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Rec
 	return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 }
 
+// GetStatus is a SHARED handler returning the group's status without exclusive access.
 func (d *DBParameterGroupDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[DBParameterGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -314,6 +326,7 @@ func (d *DBParameterGroupDriver) GetStatus(ctx restate.ObjectSharedContext) (typ
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a SHARED handler returning the group's outputs without exclusive access.
 func (d *DBParameterGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (DBParameterGroupOutputs, error) {
 	state, err := restate.Get[DBParameterGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -322,6 +335,7 @@ func (d *DBParameterGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (DB
 	return state.Outputs, nil
 }
 
+// correctDrift applies UpdateParameters and/or UpdateTags to converge.
 func (d *DBParameterGroupDriver) correctDrift(ctx restate.ObjectContext, api DBParameterGroupAPI, desired DBParameterGroupSpec, observed ObservedState) error {
 	if HasDrift(desired, observed) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -349,6 +363,7 @@ func (d *DBParameterGroupDriver) correctDrift(ctx restate.ObjectContext, api DBP
 	return nil
 }
 
+// scheduleReconcile enqueues the next reconciliation via a Restate delayed send.
 func (d *DBParameterGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state *DBParameterGroupState) {
 	if state == nil || state.ReconcileScheduled {
 		return
@@ -358,6 +373,7 @@ func (d *DBParameterGroupDriver) scheduleReconcile(ctx restate.ObjectContext, st
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates an API client for the given account.
 func (d *DBParameterGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (DBParameterGroupAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("db parameter group driver is not configured")
@@ -369,6 +385,7 @@ func (d *DBParameterGroupDriver) apiForAccount(ctx restate.ObjectContext, accoun
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// validateSpec checks required fields. Type must be "db" or "cluster".
 func validateSpec(spec DBParameterGroupSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -388,14 +405,17 @@ func validateSpec(spec DBParameterGroupSpec) error {
 	return nil
 }
 
+// specFromObserved synthesises a spec from observed state for import.
 func specFromObserved(observed ObservedState) DBParameterGroupSpec {
 	return DBParameterGroupSpec{GroupName: observed.GroupName, Type: observed.Type, Family: observed.Family, Description: observed.Description, Parameters: observed.Parameters, Tags: filterPraxisTags(observed.Tags)}
 }
 
+// outputsFromObserved maps observed state to the output struct.
 func outputsFromObserved(observed ObservedState) DBParameterGroupOutputs {
 	return DBParameterGroupOutputs{GroupName: observed.GroupName, ARN: observed.ARN, Family: observed.Family, Type: observed.Type}
 }
 
+// defaultImportMode returns ModeObserved if no explicit mode is given.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved
@@ -403,6 +423,8 @@ func defaultImportMode(mode types.Mode) types.Mode {
 	return mode
 }
 
+// parameterGroupTypeFromKey infers the group type from the Restate key name.
+// If the key contains "cluster" (case-insensitive), returns TypeCluster; otherwise TypeDB.
 func parameterGroupTypeFromKey(key string) string {
 	if strings.Contains(strings.ToLower(key), "cluster") {
 		return TypeCluster

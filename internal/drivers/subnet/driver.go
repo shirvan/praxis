@@ -14,17 +14,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// SubnetDriver is a Restate Virtual Object that manages EC2 Subnet lifecycle.
 type SubnetDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) SubnetAPI
 }
 
+// NewSubnetDriver creates a production SubnetDriver.
 func NewSubnetDriver(auth authservice.AuthClient) *SubnetDriver {
 	return NewSubnetDriverWithFactory(auth, func(cfg aws.Config) SubnetAPI {
 		return NewSubnetAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewSubnetDriverWithFactory allows tests to inject a custom SubnetAPI factory.
 func NewSubnetDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) SubnetAPI) *SubnetDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) SubnetAPI {
@@ -38,6 +41,11 @@ func (d *SubnetDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements idempotent create-or-converge for a Subnet.
+//
+// Flow: validate → load state → ownership check → create if missing →
+// wait until available → enable MapPublicIpOnLaunch if requested →
+// apply tags → describe final state → commit state → schedule reconcile.
 func (d *SubnetDriver) Provision(ctx restate.ObjectContext, spec SubnetSpec) (SubnetOutputs, error) {
 	ctx.Log().Info("provisioning subnet", "name", spec.Tags["Name"], "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -220,6 +228,7 @@ func (d *SubnetDriver) Provision(ctx restate.ObjectContext, spec SubnetSpec) (Su
 	return outputs, nil
 }
 
+// Import captures an existing Subnet's live state as the baseline.
 func (d *SubnetDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (SubnetOutputs, error) {
 	ctx.Log().Info("importing subnet", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -294,6 +303,8 @@ func defaultSubnetImportMode(mode types.Mode) types.Mode {
 	return mode
 }
 
+// Delete removes the Subnet. DependencyViolation (instances still running)
+// is treated as a terminal error.
 func (d *SubnetDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting subnet", "key", restate.Key(ctx))
 
@@ -352,6 +363,8 @@ func (d *SubnetDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual state against desired and corrects drift (Managed)
+// or reports it (Observed). Only MapPublicIpOnLaunch and tags are correctable.
 func (d *SubnetDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[SubnetState](ctx, drivers.StateKey)
 	if err != nil {
@@ -450,6 +463,7 @@ func (d *SubnetDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 	return types.ReconcileResult{}, nil
 }
 
+// correctDrift fixes mutable subnet attributes: MapPublicIpOnLaunch and tags.
 func (d *SubnetDriver) correctDrift(ctx restate.ObjectContext, api SubnetAPI, subnetId string, desired SubnetSpec, observed ObservedState) error {
 	if desired.MapPublicIpOnLaunch != observed.MapPublicIpOnLaunch {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -493,6 +507,7 @@ func (d *SubnetDriver) GetOutputs(ctx restate.ObjectSharedContext) (SubnetOutput
 	return state.Outputs, nil
 }
 
+// scheduleReconcile sends a delayed self-invocation after ReconcileInterval.
 func (d *SubnetDriver) scheduleReconcile(ctx restate.ObjectContext, state *SubnetState) {
 	if state.ReconcileScheduled {
 		return

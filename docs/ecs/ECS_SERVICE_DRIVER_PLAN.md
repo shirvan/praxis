@@ -1,14 +1,5 @@
 # ECS Service Driver — Implementation Plan
 
-> NYI
-> Target: A Restate Virtual Object driver that manages AWS ECS Services, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, EBS, Elastic IP,
-> Key Pair, AMI, IAM, ECS Cluster, and ECS Task Definition drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~clusterName~serviceName`,
-> permanent and immutable for the lifetime of the Virtual Object. The AWS-assigned
-> service ARN lives only in state/outputs.
-
 ---
 
 ## Table of Contents
@@ -1730,7 +1721,7 @@ NewECSServiceAdapterWithRegistry(accounts),
 **File**: `cmd/praxis-compute/main.go` — add Bind call:
 
 ```go
-Bind(restate.Reflect(ecsservice.NewECSServiceDriver(cfg.Auth())))
+Bind(restate.Reflect(ecsservice.NewECSServiceDriver(auth)))
 ```
 
 ---

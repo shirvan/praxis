@@ -1,3 +1,11 @@
+// config.go manages the CLI's local configuration file (~/.praxis/config.json).
+//
+// This file stores per-user state that persists across CLI invocations:
+//   - ActiveWorkspace: the currently selected workspace injected into commands
+//   - Endpoint: cached Restate ingress URL (overridden by --endpoint flag)
+//
+// The config file is separate from workspace configuration (which lives in
+// Restate state) and from environment variables (which override config values).
 package cli
 
 import (

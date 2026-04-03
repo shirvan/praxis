@@ -1,12 +1,4 @@
-# Lambda Layer Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS Lambda layers, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, and Lambda
-> Function drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~layerName`, permanent and
-> immutable for the lifetime of the Virtual Object. Layer version numbers and ARNs
-> live only in state/outputs.
+# Lambda Layer Driver — Implementation Spec
 
 ---
 
@@ -258,7 +250,7 @@ type LambdaLayerSpec struct {
 
 type CodeSpec struct {
     S3      *S3CodeSpec `json:"s3,omitempty"`
-    ZipFile []byte      `json:"zipFile,omitempty"`
+    ZipFile string      `json:"zipFile,omitempty"`
 }
 
 type S3CodeSpec struct {
@@ -283,17 +275,18 @@ type LambdaLayerOutputs struct {
 }
 
 type ObservedState struct {
-    LayerArn                 string   `json:"layerArn"`
-    LayerVersionArn          string   `json:"layerVersionArn"`
-    LayerName                string   `json:"layerName"`
-    Version                  int64    `json:"version"`
-    Description              string   `json:"description"`
-    CompatibleRuntimes       []string `json:"compatibleRuntimes"`
-    CompatibleArchitectures  []string `json:"compatibleArchitectures"`
-    LicenseInfo              string   `json:"licenseInfo"`
-    CodeSize                 int64    `json:"codeSize"`
-    CodeSha256               string   `json:"codeSha256"`
-    CreatedDate              string   `json:"createdDate"`
+    LayerArn                string          `json:"layerArn"`
+    LayerVersionArn         string          `json:"layerVersionArn"`
+    LayerName               string          `json:"layerName"`
+    Version                 int64           `json:"version"`
+    Description             string          `json:"description,omitempty"`
+    CompatibleRuntimes      []string        `json:"compatibleRuntimes,omitempty"`
+    CompatibleArchitectures []string        `json:"compatibleArchitectures,omitempty"`
+    LicenseInfo             string          `json:"licenseInfo,omitempty"`
+    CodeSize                int64           `json:"codeSize"`
+    CodeSha256              string          `json:"codeSha256,omitempty"`
+    CreatedDate             string          `json:"createdDate,omitempty"`
+    Permissions             PermissionsSpec `json:"permissions"`
 }
 
 type LambdaLayerState struct {
@@ -330,9 +323,6 @@ type LayerAPI interface {
     // PublishLayerVersion publishes a new layer version.
     PublishLayerVersion(ctx context.Context, spec LambdaLayerSpec) (LambdaLayerOutputs, error)
 
-    // GetLayerVersion returns metadata for a specific layer version.
-    GetLayerVersion(ctx context.Context, layerName string, version int64) (ObservedState, error)
-
     // GetLatestLayerVersion returns metadata for the highest version number.
     GetLatestLayerVersion(ctx context.Context, layerName string) (ObservedState, error)
 
@@ -342,11 +332,9 @@ type LayerAPI interface {
     // ListLayerVersions returns all version numbers for a layer.
     ListLayerVersions(ctx context.Context, layerName string) ([]int64, error)
 
-    // AddLayerVersionPermission grants permission to use a layer version.
-    AddLayerVersionPermission(ctx context.Context, layerName string, version int64, principal string, statementId string) error
-
-    // RemoveLayerVersionPermission revokes a permission.
-    RemoveLayerVersionPermission(ctx context.Context, layerName string, version int64, statementId string) error
+    // SyncLayerVersionPermissions syncs desired permissions for a layer version.
+    // Returns the resulting permissions state.
+    SyncLayerVersionPermissions(ctx context.Context, layerName string, version int64, desired PermissionsSpec) (PermissionsSpec, error)
 }
 ```
 
@@ -358,8 +346,8 @@ type realLayerAPI struct {
     limiter ratelimit.Limiter
 }
 
-func newRealLayerAPI(client *lambda.Client, limiter ratelimit.Limiter) LayerAPI {
-    return &realLayerAPI{client: client, limiter: limiter}
+func NewLayerAPI(client *lambdasdk.Client) LayerAPI {
+    return &realLayerAPI{client: client, limiter: ratelimit.New("lambda-layer", 15, 10)}
 }
 ```
 
@@ -472,14 +460,17 @@ version that becomes the tracked version.
 
 ```go
 type LambdaLayerDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
+    apiFactory func(aws.Config) LayerAPI
 }
 
-func NewLambdaLayerDriver(accounts *auth.Registry) *LambdaLayerDriver {
-    return &LambdaLayerDriver{accounts: accounts}
+func NewLambdaLayerDriver(auth authservice.AuthClient) *LambdaLayerDriver {
+    return NewLambdaLayerDriverWithFactory(auth, func(cfg aws.Config) LayerAPI {
+        return NewLayerAPI(awsclient.NewLambdaClient(cfg))
+    })
 }
 
-func (LambdaLayerDriver) ServiceName() string { return ServiceName }
+func (d *LambdaLayerDriver) ServiceName() string { return ServiceName }
 ```
 
 ### Provision

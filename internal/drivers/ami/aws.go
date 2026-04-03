@@ -16,6 +16,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// AMIAPI abstracts all AWS EC2 API operations used by the AMI driver.
+// Methods cover the full lifecycle: register/copy, describe, deregister, tag management,
+// launch permissions, deprecation, and idempotent lookup. Rate-limited via a shared token bucket.
 type AMIAPI interface {
 	RegisterImage(ctx context.Context, spec AMISpec) (string, error)
 	CopyImage(ctx context.Context, spec AMISpec) (string, error)
@@ -36,6 +39,8 @@ type realAMIAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewAMIAPI creates a production AMIAPI backed by the given EC2 SDK client.
+// Rate limiter: 20 tokens/sec, burst 10.
 func NewAMIAPI(client *ec2sdk.Client) AMIAPI {
 	return &realAMIAPI{
 		client:  client,
@@ -43,6 +48,9 @@ func NewAMIAPI(client *ec2sdk.Client) AMIAPI {
 	}
 }
 
+// RegisterImage creates a new AMI from an EBS snapshot via the EC2 RegisterImage API.
+// Requires FromSnapshot source. Maps snapshot, architecture, virtualization type, root device,
+// and optional ENA support to the API input.
 func (r *realAMIAPI) RegisterImage(ctx context.Context, spec AMISpec) (string, error) {
 	snapshot := spec.Source.FromSnapshot
 	if snapshot == nil {
@@ -83,6 +91,8 @@ func (r *realAMIAPI) RegisterImage(ctx context.Context, spec AMISpec) (string, e
 	return aws.ToString(out.ImageId), nil
 }
 
+// CopyImage creates a new AMI by copying an existing one via the EC2 CopyImage API.
+// Supports cross-region copy and optional re-encryption with a KMS key.
 func (r *realAMIAPI) CopyImage(ctx context.Context, spec AMISpec) (string, error) {
 	fromAMI := spec.Source.FromAMI
 	if fromAMI == nil {
@@ -115,6 +125,8 @@ func (r *realAMIAPI) CopyImage(ctx context.Context, spec AMISpec) (string, error
 	return aws.ToString(out.ImageId), nil
 }
 
+// DescribeImage fetches the observed state of an AMI by image ID.
+// Also fetches launch permissions via DescribeImageAttribute.
 func (r *realAMIAPI) DescribeImage(ctx context.Context, imageId string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -122,6 +134,8 @@ func (r *realAMIAPI) DescribeImage(ctx context.Context, imageId string) (Observe
 	return r.describeSingleImage(ctx, &ec2sdk.DescribeImagesInput{ImageIds: []string{imageId}})
 }
 
+// DescribeImageByName finds a self-owned AMI by its name.
+// Used during import when the user provides a name instead of an AMI ID.
 func (r *realAMIAPI) DescribeImageByName(ctx context.Context, name string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -135,6 +149,8 @@ func (r *realAMIAPI) DescribeImageByName(ctx context.Context, name string) (Obse
 	})
 }
 
+// describeSingleImage is the shared implementation for DescribeImage and DescribeImageByName.
+// Returns exactly one image or an error. Also fetches launch permissions.
 func (r *realAMIAPI) describeSingleImage(ctx context.Context, input *ec2sdk.DescribeImagesInput) (ObservedState, error) {
 	out, err := r.client.DescribeImages(ctx, input)
 	if err != nil {
@@ -193,6 +209,8 @@ func (r *realAMIAPI) describeSingleImage(ctx context.Context, input *ec2sdk.Desc
 	return observed, nil
 }
 
+// DeregisterImage removes the AMI registration via the EC2 DeregisterImage API.
+// The underlying EBS snapshot is not deleted.
 func (r *realAMIAPI) DeregisterImage(ctx context.Context, imageId string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -201,6 +219,8 @@ func (r *realAMIAPI) DeregisterImage(ctx context.Context, imageId string) error 
 	return err
 }
 
+// UpdateTags performs a full tag sync: deletes stale user tags then applies desired tags.
+// praxis:-prefixed tags are preserved and not touched.
 func (r *realAMIAPI) UpdateTags(ctx context.Context, imageId string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -240,6 +260,7 @@ func (r *realAMIAPI) UpdateTags(ctx context.Context, imageId string, tags map[st
 	return err
 }
 
+// ModifyDescription updates the AMI's description attribute via ModifyImageAttribute.
 func (r *realAMIAPI) ModifyDescription(ctx context.Context, imageId, description string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -252,6 +273,9 @@ func (r *realAMIAPI) ModifyDescription(ctx context.Context, imageId, description
 	return err
 }
 
+// ModifyLaunchPermissions performs a minimal diff between desired and current launch
+// permissions, then applies only the necessary add/remove operations via ModifyImageAttribute.
+// Handles both account-level permissions and public (group "all") visibility.
 func (r *realAMIAPI) ModifyLaunchPermissions(ctx context.Context, imageId string, perms *LaunchPermsSpec) error {
 	observed, err := r.DescribeImage(ctx, imageId)
 	if err != nil {
@@ -304,6 +328,7 @@ func (r *realAMIAPI) ModifyLaunchPermissions(ctx context.Context, imageId string
 	return err
 }
 
+// EnableDeprecation schedules the AMI for deprecation at the specified RFC3339 time.
 func (r *realAMIAPI) EnableDeprecation(ctx context.Context, imageId, deprecateAt string) error {
 	parsed, err := time.Parse(time.RFC3339, deprecateAt)
 	if err != nil {
@@ -319,6 +344,7 @@ func (r *realAMIAPI) EnableDeprecation(ctx context.Context, imageId, deprecateAt
 	return err
 }
 
+// DisableDeprecation removes the deprecation schedule from the AMI.
 func (r *realAMIAPI) DisableDeprecation(ctx context.Context, imageId string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -327,6 +353,8 @@ func (r *realAMIAPI) DisableDeprecation(ctx context.Context, imageId string) err
 	return err
 }
 
+// WaitUntilAvailable blocks until the AMI reaches the "available" state.
+// Uses the SDK's built-in ImageAvailableWaiter.
 func (r *realAMIAPI) WaitUntilAvailable(ctx context.Context, imageId string, timeout time.Duration) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -335,6 +363,8 @@ func (r *realAMIAPI) WaitUntilAvailable(ctx context.Context, imageId string, tim
 	return waiter.Wait(ctx, &ec2sdk.DescribeImagesInput{ImageIds: []string{imageId}}, timeout)
 }
 
+// FindByManagedKey searches for an existing self-owned AMI with the given praxis:managed-key tag.
+// Returns "" if none found, the image ID if exactly one, or an error on ownership corruption.
 func (r *realAMIAPI) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -369,6 +399,7 @@ func (r *realAMIAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 }
 
+// extractTags converts EC2 SDK Tag slices to a plain map.
 func extractTags(tags []ec2types.Tag) map[string]string {
 	out := make(map[string]string, len(tags))
 	for _, tag := range tags {
@@ -377,18 +408,22 @@ func extractTags(tags []ec2types.Tag) map[string]string {
 	return out
 }
 
+// IsNotFound returns true if the error indicates the AMI does not exist or is unavailable.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidAMIID.NotFound", "InvalidAMIID.Unavailable")
 }
 
+// IsInvalidParam returns true for parameter validation errors (terminal, non-retryable).
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameter", "MissingParameter", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound")
 }
 
+// IsSnapshotNotFound returns true if the referenced EBS snapshot does not exist.
 func IsSnapshotNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidSnapshot.NotFound")
 }
 
+// IsAMIQuotaExceeded returns true if the account has hit the AMI registration quota.
 func IsAMIQuotaExceeded(err error) bool {
 	return awserr.HasCode(err, "AMIQuotaExceeded")
 }

@@ -2,6 +2,8 @@ package iaminstanceprofile
 
 import "strings"
 
+// HasDrift returns true if the role name or user-managed tags differ between
+// desired and observed state. Path is immutable and excluded from drift checks.
 func HasDrift(desired IAMInstanceProfileSpec, observed ObservedState) bool {
 	if desired.RoleName != observed.RoleName {
 		return true
@@ -9,6 +11,8 @@ func HasDrift(desired IAMInstanceProfileSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns a per-field list of differences between desired and observed state.
+// Reports path as an informational immutable diff; checks roleName and tags for actionable drift.
 func ComputeFieldDiffs(desired IAMInstanceProfileSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -32,6 +36,7 @@ func ComputeFieldDiffs(desired IAMInstanceProfileSpec, observed ObservedState) [
 	return diffs
 }
 
+// FieldDiffEntry describes a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
@@ -71,6 +76,8 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags removes "praxis:"-prefixed internal tags so user-managed tags
+// can be compared without noise from system-managed metadata.
 func filterPraxisTags(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return map[string]string{}

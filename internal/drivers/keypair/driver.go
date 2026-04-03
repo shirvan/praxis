@@ -14,17 +14,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// KeyPairDriver implements the Praxis driver for AWS EC2 Key Pairs.
 type KeyPairDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) KeyPairAPI
 }
 
+// NewKeyPairDriver creates a production driver with default EC2 client factory.
 func NewKeyPairDriver(auth authservice.AuthClient) *KeyPairDriver {
 	return NewKeyPairDriverWithFactory(auth, func(cfg aws.Config) KeyPairAPI {
 		return NewKeyPairAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewKeyPairDriverWithFactory creates a driver with a custom KeyPairAPI factory (for testing).
 func NewKeyPairDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) KeyPairAPI) *KeyPairDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) KeyPairAPI {
@@ -34,10 +37,23 @@ func NewKeyPairDriverWithFactory(auth authservice.AuthClient, factory func(aws.C
 	return &KeyPairDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name used for routing.
 func (d *KeyPairDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or converges an EC2 Key Pair.
+//
+// Flow:
+//  1. Validate required fields (region, keyName, keyType). Apply defaults.
+//  2. Load state, increment generation, set status=Provisioning.
+//  3. If a key pair ID exists in state, verify it still exists in AWS.
+//  4. If no key pair exists: CreateKeyPair (AWS-generated) or ImportKeyPair
+//     (user-provided public key). Private key is only returned on CreateKeyPair.
+//  5. If key pair already exists: converge tags only.
+//  6. Final DescribeKeyPair to capture outputs. Set status=Ready, schedule reconcile.
+//
+// Private key material is returned to the caller but NOT persisted in state.
 func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (KeyPairOutputs, error) {
 	ctx.Log().Info("provisioning key pair", "key", restate.Key(ctx), "keyName", spec.KeyName)
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -184,6 +200,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
 	return outputs, nil
 }
 
+// Import adopts an existing EC2 Key Pair by name into Praxis management.
 func (d *KeyPairDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (KeyPairOutputs, error) {
 	ctx.Log().Info("importing key pair", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -229,6 +246,8 @@ func (d *KeyPairDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (
 	return outputs, nil
 }
 
+// Delete removes the key pair from AWS. Observed-mode resources cannot be deleted (409).
+// DeleteKeyPair is idempotent — NotFound is suppressed.
 func (d *KeyPairDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting key pair", "key", restate.Key(ctx))
 	state, err := restate.Get[KeyPairState](ctx, drivers.StateKey)
@@ -281,6 +300,8 @@ func (d *KeyPairDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection and correction loop.
+// Detects external deletion, tag drift, and corrects drift in Managed mode.
 func (d *KeyPairDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[KeyPairState](ctx, drivers.StateKey)
 	if err != nil {
@@ -385,6 +406,7 @@ func (d *KeyPairDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus returns the current lifecycle status (shared/concurrent handler).
 func (d *KeyPairDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[KeyPairState](ctx, drivers.StateKey)
 	if err != nil {
@@ -398,6 +420,7 @@ func (d *KeyPairDriver) GetStatus(ctx restate.ObjectSharedContext) (types.Status
 	}, nil
 }
 
+// GetOutputs returns the provisioned outputs (shared/concurrent handler).
 func (d *KeyPairDriver) GetOutputs(ctx restate.ObjectSharedContext) (KeyPairOutputs, error) {
 	state, err := restate.Get[KeyPairState](ctx, drivers.StateKey)
 	if err != nil {
@@ -406,6 +429,7 @@ func (d *KeyPairDriver) GetOutputs(ctx restate.ObjectSharedContext) (KeyPairOutp
 	return state.Outputs, nil
 }
 
+// correctDrift applies in-place tag updates to bring the key pair back to desired state.
 func (d *KeyPairDriver) correctDrift(ctx restate.ObjectContext, api KeyPairAPI, keyPairID string, desired KeyPairSpec, observed ObservedState) error {
 	if !tagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -418,6 +442,7 @@ func (d *KeyPairDriver) correctDrift(ctx restate.ObjectContext, api KeyPairAPI, 
 	return nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *KeyPairDriver) scheduleReconcile(ctx restate.ObjectContext, state *KeyPairState) {
 	if state.ReconcileScheduled {
 		return
@@ -428,6 +453,7 @@ func (d *KeyPairDriver) scheduleReconcile(ctx restate.ObjectContext, state *KeyP
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates a KeyPairAPI for the given Praxis account.
 func (d *KeyPairDriver) apiForAccount(ctx restate.ObjectContext, account string) (KeyPairAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("KeyPairDriver is not configured with an auth registry")
@@ -439,6 +465,7 @@ func (d *KeyPairDriver) apiForAccount(ctx restate.ObjectContext, account string)
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// applyDefaults sets KeyType to "ed25519" if empty and initializes nil Tags.
 func applyDefaults(spec KeyPairSpec) KeyPairSpec {
 	if spec.KeyType == "" {
 		spec.KeyType = "ed25519"
@@ -449,6 +476,7 @@ func applyDefaults(spec KeyPairSpec) KeyPairSpec {
 	return spec
 }
 
+// specFromObserved reconstructs a KeyPairSpec from observed AWS state for Import.
 func specFromObserved(obs ObservedState) KeyPairSpec {
 	return KeyPairSpec{
 		KeyName: obs.KeyName,
@@ -457,6 +485,7 @@ func specFromObserved(obs ObservedState) KeyPairSpec {
 	}
 }
 
+// outputsFromObserved maps ObservedState to user-facing KeyPairOutputs.
 func outputsFromObserved(obs ObservedState) KeyPairOutputs {
 	return KeyPairOutputs{
 		KeyName:        obs.KeyName,

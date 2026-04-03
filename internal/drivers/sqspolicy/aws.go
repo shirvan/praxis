@@ -1,3 +1,9 @@
+// Package sqspolicy – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS SQS Queue Policy.
+// It defines the SQSQueuePolicyAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon Simple Queue Service (SQS) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package sqspolicy
 
 import (
@@ -12,6 +18,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// PolicyAPI abstracts all Amazon Simple Queue Service (SQS) SDK operations needed
+// to manage a AWS SQS Queue Policy. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type PolicyAPI interface {
 	GetQueueUrl(ctx context.Context, queueName string) (string, error)
 	GetQueuePolicy(ctx context.Context, queueURL string) (ObservedState, error)
@@ -24,10 +33,13 @@ type realPolicyAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewPolicyAPI constructs a production SQSQueuePolicyAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewPolicyAPI(client *sqssdk.Client) PolicyAPI {
 	return &realPolicyAPI{client: client, limiter: ratelimit.New("sqs", 50, 20)}
 }
 
+// GetQueueUrl reads the current state of the AWS SQS Queue Policy from Amazon Simple Queue Service (SQS).
 func (r *realPolicyAPI) GetQueueUrl(ctx context.Context, queueName string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -39,6 +51,7 @@ func (r *realPolicyAPI) GetQueueUrl(ctx context.Context, queueName string) (stri
 	return aws.ToString(out.QueueUrl), nil
 }
 
+// GetQueuePolicy reads the current state of the AWS SQS Queue Policy from Amazon Simple Queue Service (SQS).
 func (r *realPolicyAPI) GetQueuePolicy(ctx context.Context, queueURL string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -60,6 +73,7 @@ func (r *realPolicyAPI) GetQueuePolicy(ctx context.Context, queueURL string) (Ob
 	}, nil
 }
 
+// SetQueuePolicy updates mutable properties of the AWS SQS Queue Policy via Amazon Simple Queue Service (SQS).
 func (r *realPolicyAPI) SetQueuePolicy(ctx context.Context, queueURL, policy string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -77,6 +91,7 @@ func (r *realPolicyAPI) RemoveQueuePolicy(ctx context.Context, queueURL string) 
 	return r.SetQueuePolicy(ctx, queueURL, "")
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS SQS Queue Policy does not exist.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false

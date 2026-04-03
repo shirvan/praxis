@@ -1,17 +1,4 @@
-# Target Group Driver — Implementation Plan
-
-> A Restate Virtual Object driver that manages ELBv2 Target Groups,
-> providing full lifecycle management including creation, import, deletion, drift
-> detection, and drift correction for health check configuration, target
-> registrations, stickiness settings, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~tgName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned target group
-> ARN lives only in state/outputs.
->
-> **Note:** Integration tests are present but skip on LocalStack community edition
-> (v4.x) because ELBv2 is a paid-tier service. They should run against a real AWS
-> account.
+# Target Group Driver — Implementation Spec
 
 ---
 
@@ -482,10 +469,10 @@ Targets are normalized to a canonical form for comparison:
 
 ```go
 type TargetGroupDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewTargetGroupDriver(accounts *auth.Registry) *TargetGroupDriver {
+func NewTargetGroupDriver(auth       authservice.AuthClient) *TargetGroupDriver {
     return &TargetGroupDriver{accounts: accounts}
 }
 
@@ -533,10 +520,10 @@ deleted first.
 
 ```go
 type TargetGroupAdapter struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewTargetGroupAdapterWithRegistry(accounts *auth.Registry) *TargetGroupAdapter {
+func NewTargetGroupAdapterWithAuth(auth       authservice.AuthClient) *TargetGroupAdapter {
     return &TargetGroupAdapter{accounts: accounts}
 }
 
@@ -559,7 +546,7 @@ The Plan method checks for immutable field changes that require recreate:
 
 ## Step 7 — Registry Integration
 
-Add `NewTargetGroupAdapterWithRegistry` to `internal/core/provider/registry.go`.
+Add `NewTargetGroupAdapterWithAuth` to `internal/core/provider/registry.go`.
 
 ---
 

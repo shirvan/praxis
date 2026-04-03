@@ -1,9 +1,5 @@
 # CloudWatch Driver Pack — Overview
 
-> This document summarizes the CloudWatch driver family for Praxis: three drivers
-> covering CloudWatch Log Groups, Metric Alarms, and Dashboards. It describes their
-> relationships, shared infrastructure, runtime deployment, and implementation order.
-
 ---
 
 ## Table of Contents
@@ -25,7 +21,7 @@
 
 ## 1. Driver Summary
 
-| Driver | Kind | Key | Key Scope | Mutable | Tags | Plan Doc |
+| Driver | Kind | Key | Key Scope | Mutable | Tags | Spec Doc |
 |---|---|---|---|---|---|---|
 | CloudWatch Log Group | `LogGroup` | `region~logGroupName` | `KeyScopeRegion` | retentionInDays, kmsKeyId, tags | Yes | [LOG_GROUP_DRIVER_PLAN.md](LOG_GROUP_DRIVER_PLAN.md) |
 | CloudWatch Metric Alarm | `MetricAlarm` | `region~alarmName` | `KeyScopeRegion` | threshold, comparisonOperator, evaluationPeriods, period, statistic, treatMissingData, alarmActions, okActions, insufficientDataActions, datapointsToAlarm, tags | Yes | [METRIC_ALARM_DRIVER_PLAN.md](METRIC_ALARM_DRIVER_PLAN.md) |
@@ -113,9 +109,9 @@ func main() {
     cfg := config.Load()
 
     srv := server.NewRestate().
-        Bind(restate.Reflect(loggroup.NewLogGroupDriver(cfg.Auth()))).
-        Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(cfg.Auth()))).
-        Bind(restate.Reflect(dashboard.NewDashboardDriver(cfg.Auth())))
+        Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth))).
+        Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth))).
+        Bind(restate.Reflect(dashboard.NewDashboardDriver(auth)))
 
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
         slog.Error("praxis-monitoring exited unexpectedly", "err", err.Error())
@@ -370,14 +366,14 @@ Add all three adapters to `NewRegistry()`:
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
 
         // CloudWatch / Monitoring drivers
-        NewLogGroupAdapterWithRegistry(accounts),
-        NewMetricAlarmAdapterWithRegistry(accounts),
-        NewDashboardAdapterWithRegistry(accounts),
+        NewLogGroupAdapterWithAuth(auth),
+        NewMetricAlarmAdapterWithAuth(auth),
+        NewDashboardAdapterWithAuth(auth),
     )
 }
 ```

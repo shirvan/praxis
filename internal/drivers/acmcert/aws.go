@@ -1,3 +1,9 @@
+// Package acmcert – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS ACM Certificate.
+// It defines the ACMCertificateAPI interface (used for testing with mocks)
+// and the real implementation that calls AWS Certificate Manager (ACM) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package acmcert
 
 import (
@@ -16,6 +22,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// CertificateAPI abstracts all AWS Certificate Manager (ACM) SDK operations needed
+// to manage a AWS ACM Certificate. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type CertificateAPI interface {
 	RequestCertificate(ctx context.Context, spec ACMCertificateSpec) (string, error)
 	DescribeCertificate(ctx context.Context, certificateArn string) (ObservedState, error)
@@ -30,6 +39,8 @@ type realCertificateAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewCertificateAPI constructs a production ACMCertificateAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewCertificateAPI(client *acmsdk.Client) CertificateAPI {
 	return &realCertificateAPI{client: client, limiter: ratelimit.New("acm-certificate", 10, 5)}
 }
@@ -67,6 +78,7 @@ func (r *realCertificateAPI) RequestCertificate(ctx context.Context, spec ACMCer
 	return aws.ToString(out.CertificateArn), nil
 }
 
+// DescribeCertificate reads the current state of the AWS ACM Certificate from AWS Certificate Manager (ACM).
 func (r *realCertificateAPI) DescribeCertificate(ctx context.Context, certificateArn string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -85,6 +97,7 @@ func (r *realCertificateAPI) DescribeCertificate(ctx context.Context, certificat
 	return fromCertificateDetail(out.Certificate, tags), nil
 }
 
+// UpdateCertificateOptions updates mutable properties of the AWS ACM Certificate via AWS Certificate Manager (ACM).
 func (r *realCertificateAPI) UpdateCertificateOptions(ctx context.Context, certificateArn string, options *CertificateOptions) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -98,6 +111,7 @@ func (r *realCertificateAPI) UpdateCertificateOptions(ctx context.Context, certi
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS ACM Certificate via AWS Certificate Manager (ACM).
 func (r *realCertificateAPI) UpdateTags(ctx context.Context, certificateArn string, tags map[string]string) error {
 	current, err := r.listTags(ctx, certificateArn)
 	if err != nil {
@@ -143,6 +157,7 @@ func (r *realCertificateAPI) UpdateTags(ctx context.Context, certificateArn stri
 	return err
 }
 
+// DeleteCertificate removes the AWS ACM Certificate from AWS via AWS Certificate Manager (ACM).
 func (r *realCertificateAPI) DeleteCertificate(ctx context.Context, certificateArn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -151,6 +166,7 @@ func (r *realCertificateAPI) DeleteCertificate(ctx context.Context, certificateA
 	return err
 }
 
+// FindByManagedKey searches for the AWS ACM Certificate using alternative identifiers.
 func (r *realCertificateAPI) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
 	paginator := acmsdk.NewListCertificatesPaginator(r.client, &acmsdk.ListCertificatesInput{})
 	var matches []string
@@ -289,6 +305,7 @@ func idempotencyToken(managedKey string) string {
 	return strings.ToLower(b.String())
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS ACM Certificate does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException")
 }

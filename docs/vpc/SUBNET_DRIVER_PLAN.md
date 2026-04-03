@@ -1,11 +1,4 @@
-# Subnet Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS VPC Subnets, following the
-> exact patterns established by the VPC, Security Group, and EC2 Instance drivers.
->
-> Key scope: `KeyScopeCustom` — key format is `vpcId~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned Subnet ID
-> lives only in state/outputs.
+# Subnet Driver — Implementation Specification
 
 ---
 
@@ -36,7 +29,7 @@
 
 The Subnet driver manages the lifecycle of AWS **Subnets** only. Route table
 associations, network ACL associations, and NAT gateway placements within subnets
-are handled by their respective drivers. This plan focuses exclusively on the
+are handled by their respective drivers. This document covers exclusively the
 Subnet resource itself.
 
 ### Why Subnets
@@ -48,7 +41,7 @@ include networking — templates must rely on pre-existing subnets. Implementing
 subnets unblocks multi-AZ deployments, public/private network topologies, and
 compound templates that provision end-to-end stacks.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope (Separate Drivers/Resources) |
 |---|---|
@@ -136,23 +129,23 @@ Import key: `region~subnetId` — separate Virtual Object from template-managed 
 
 ## 3. File Inventory
 
-Create or modify these files (✦ = new file, ✎ = modify existing):
+Files (✓ = implemented):
 
 ```text
-✦ internal/drivers/subnet/types.go             — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/subnet/aws.go               — SubnetAPI interface + realSubnetAPI implementation
-✦ internal/drivers/subnet/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/subnet/driver.go            — SubnetDriver Virtual Object
-✦ internal/drivers/subnet/driver_test.go       — Unit tests for driver (mocked AWS)
-✦ internal/drivers/subnet/aws_test.go          — Unit tests for error classification helpers
-✦ internal/drivers/subnet/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/subnet_adapter.go     — SubnetAdapter implementing provider.Adapter
-✦ internal/core/provider/subnet_adapter_test.go — Unit tests for Subnet adapter
-✦ schemas/aws/subnet/subnet.cue               — CUE schema for Subnet resource
-✦ tests/integration/subnet_driver_test.go      — Integration tests (Testcontainers + LocalStack)
-✎ cmd/praxis-network/main.go                  — Add Subnet driver `.Bind()` to network pack
-✎ internal/core/provider/registry.go           — Add NewSubnetAdapter to NewRegistry()
-✎ justfile                                     — Add subnet test targets
+✓ internal/drivers/subnet/types.go             — Spec, Outputs, ObservedState, State structs
+✓ internal/drivers/subnet/aws.go               — SubnetAPI interface + realSubnetAPI implementation
+✓ internal/drivers/subnet/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/subnet/driver.go            — SubnetDriver Virtual Object
+✓ internal/drivers/subnet/driver_test.go       — Unit tests for driver (mocked AWS)
+✓ internal/drivers/subnet/aws_test.go          — Unit tests for error classification helpers
+✓ internal/drivers/subnet/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/subnet_adapter.go     — SubnetAdapter implementing provider.Adapter
+✓ internal/core/provider/subnet_adapter_test.go — Unit tests for Subnet adapter
+✓ schemas/aws/subnet/subnet.cue               — CUE schema for Subnet resource
+✓ tests/integration/subnet_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+✓ cmd/praxis-network/main.go                  — Add Subnet driver `.Bind()` to network pack
+✓ internal/core/provider/registry.go           — Add NewSubnetAdapter to NewRegistry()
+✓ justfile                                     — Add subnet test targets
 ```
 
 ---
@@ -466,18 +459,21 @@ func (a *SubnetAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 
 ## Step 8 — Registry Integration
 
-**File**: `internal/core/provider/registry.go` — **MODIFY**
+**File**: `internal/core/provider/registry.go`
 
-Add `NewSubnetAdapterWithRegistry(accounts)` to `NewRegistry()`.
+`NewSubnetAdapterWithAuth` is registered in `NewRegistry()`.
 
 ---
 
 ## Step 9 — Binary Entry Point & Dockerfile
 
-**File**: `cmd/praxis-network/main.go` — **MODIFY**
+**File**: `cmd/praxis-network/main.go`
 
-Add `.Bind(restate.Reflect(subnet.NewSubnetDriver(cfg.Auth())))` to the network
-driver pack. No new Dockerfile needed.
+The Subnet driver is bound in `cmd/praxis-network/main.go`:
+
+`.Bind(restate.Reflect(subnet.NewSubnetDriver(auth)))`
+
+No new Dockerfile needed.
 
 ---
 

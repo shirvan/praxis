@@ -8,6 +8,10 @@ import (
 )
 
 // SlackWatchConfig is a Restate Virtual Object keyed by "global".
+// It manages the set of event-watch rules that determine which Praxis CloudEvents
+// trigger Slack thread creation. Each mutation (add/remove/update) also syncs
+// the merged filter to the NotificationSinkConfig, which controls what events
+// the SinkRouter sends to the SlackEventReceiver.
 type SlackWatchConfig struct{}
 
 func (SlackWatchConfig) ServiceName() string { return SlackWatchConfigServiceName }
@@ -151,6 +155,8 @@ func (SlackWatchConfig) GetWatch(ctx restate.ObjectSharedContext, id string) (*W
 	return nil, nil
 }
 
+// loadWatchState reads the watch state from Restate durable storage.
+// Returns a default state with SinkName="slack-gateway" if no state exists yet.
 func loadWatchState(ctx restate.ObjectContext) (WatchState, error) {
 	ptr, err := restate.Get[*WatchState](ctx, "state")
 	if err != nil {
@@ -162,6 +168,8 @@ func loadWatchState(ctx restate.ObjectContext) (WatchState, error) {
 	return *ptr, nil
 }
 
+// loadWatchStateShared is the read-only variant of loadWatchState, used by
+// shared handlers (ListWatches, GetWatch) that run on ObjectSharedContext.
 func loadWatchStateShared(ctx restate.ObjectSharedContext) (WatchState, error) {
 	ptr, err := restate.Get[*WatchState](ctx, "state")
 	if err != nil {
@@ -173,6 +181,7 @@ func loadWatchStateShared(ctx restate.ObjectSharedContext) (WatchState, error) {
 	return *ptr, nil
 }
 
+// saveWatchState persists the watch state to Restate durable storage.
 func saveWatchState(ctx restate.ObjectContext, state WatchState) error {
 	restate.Set(ctx, "state", state)
 	return nil
@@ -208,6 +217,10 @@ type SinkRegistration struct {
 	Filter  SinkFilter `json:"filter"`
 }
 
+// MergeFilters unions the filters from all enabled watch rules into a single
+// SinkFilter. The merged filter is registered with the NotificationSinkConfig
+// so the SinkRouter only delivers events that at least one rule cares about.
+// This is a superset filter — individual rule matching happens in Receive().
 func MergeFilters(rules []WatchRule) SinkFilter {
 	seen := struct {
 		types, categories, severities, workspaces, deployments map[string]bool
@@ -246,6 +259,9 @@ func MergeFilters(rules []WatchRule) SinkFilter {
 	}
 }
 
+// keys extracts the keys from a boolean set map into a string slice.
+// Returns nil (not empty slice) when the map is empty, which produces
+// clean JSON serialization (omitted field vs empty array).
 func keys(m map[string]bool) []string {
 	if len(m) == 0 {
 		return nil
@@ -258,6 +274,9 @@ func keys(m map[string]bool) []string {
 }
 
 // matchesRule checks if a CloudEventEnvelope matches a WatchRule filter.
+// All filter fields are ANDed: if any field doesn't match, the rule doesn't match.
+// Within a field, values are ORed: if any value matches, the field matches.
+// Empty filter fields are wildcards (match everything).
 func matchesRule(rule WatchRule, event CloudEventEnvelope) bool {
 	if !rule.Enabled {
 		return false
@@ -292,6 +311,7 @@ func matchAllRules(rules []WatchRule, event CloudEventEnvelope) []WatchRule {
 	return matched
 }
 
+// contains checks for exact string membership in a slice.
 func contains(haystack []string, needle string) bool {
 	for _, v := range haystack {
 		if v == needle {
@@ -301,6 +321,9 @@ func contains(haystack []string, needle string) bool {
 	return false
 }
 
+// containsPrefix returns true if the value starts with any of the given prefixes.
+// Used for event type matching where rules can match event type hierarchies
+// (e.g., "praxis.resource.drift" matches "praxis.resource.drift.detected").
 func containsPrefix(prefixes []string, value string) bool {
 	for _, p := range prefixes {
 		if len(value) >= len(p) && value[:len(p)] == p {
@@ -310,6 +333,9 @@ func containsPrefix(prefixes []string, value string) bool {
 	return false
 }
 
+// containsGlob supports simple glob matching with trailing wildcards.
+// "*" matches everything, "prefix*" matches any string starting with "prefix".
+// Used for deployment name matching (e.g., "prod-*" matches "prod-web", "prod-api").
 func containsGlob(patterns []string, value string) bool {
 	for _, p := range patterns {
 		if p == "*" || p == value {

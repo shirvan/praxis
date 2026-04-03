@@ -1,3 +1,8 @@
+// styles.go defines the color/typography theme for styled CLI output.
+//
+// Praxis detects whether the terminal has a dark or light background and
+// selects ANSI-256 palette values accordingly. The plainTheme fallback
+// produces unstyled output for JSON mode, piped output, and --plain.
 package cli
 
 import (
@@ -6,7 +11,9 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 )
 
-// Theme holds reusable styles for human-readable CLI output.
+// Theme holds reusable lipgloss styles for human-readable CLI output.
+// Each style controls foreground color, weight, and padding for a specific
+// semantic category (status badges, diff markers, table cells, etc.).
 type Theme struct {
 	StatusReady   lipgloss.Style
 	StatusError   lipgloss.Style
@@ -32,6 +39,9 @@ type Theme struct {
 	TableAltRow lipgloss.Style
 }
 
+// newTheme builds a rich-color theme. It probes stdin/stdout to decide
+// between dark-background and light-background palettes so the output
+// remains readable regardless of the user's terminal emulator.
 func newTheme() *Theme {
 	readyColor := lipgloss.Color("42")
 	warnColor := lipgloss.Color("214")
@@ -75,6 +85,9 @@ func newTheme() *Theme {
 	}
 }
 
+// plainTheme returns a theme where every style is a no-op. It is used
+// when --plain is set, output is JSON, NO_COLOR is set, or stdout is not
+// an interactive terminal.
 func plainTheme() *Theme {
 	plain := lipgloss.NewStyle()
 	return &Theme{

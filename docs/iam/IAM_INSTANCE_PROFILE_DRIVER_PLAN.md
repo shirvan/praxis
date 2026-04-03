@@ -1,13 +1,4 @@
-# IAM Instance Profile Driver — Implementation Plan
-
-> ✅ Implemented
-> Target: A Restate Virtual Object driver that manages IAM Instance Profiles,
-> providing full lifecycle management including creation, import, deletion, drift
-> detection, and drift correction for the role association and tags.
->
-> Key scope: `KeyScopeGlobal` — key format is `instanceProfileName`, permanent and
-> immutable for the lifetime of the Virtual Object. Instance profile names are unique
-> within an AWS account.
+# IAM Instance Profile Driver — Implementation Spec
 
 ---
 
@@ -475,9 +466,9 @@ const ServiceName = "IAMInstanceProfile"
 ### Constructor Pattern
 
 ```go
-func NewIAMInstanceProfileDriver(accounts *auth.Registry) *IAMInstanceProfileDriver
+func NewIAMInstanceProfileDriver(auth authservice.AuthClient) *IAMInstanceProfileDriver
 func NewIAMInstanceProfileDriverWithFactory(
-    accounts *auth.Registry,
+    auth authservice.AuthClient,
     factory func(aws.Config) IAMInstanceProfileAPI,
 ) *IAMInstanceProfileDriver
 ```
@@ -738,25 +729,25 @@ ordering. The driver does not check for EC2 references before deletion.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/iam/instance_profile.cue` created
-- [ ] **Types**: `internal/drivers/iaminstanceprofile/types.go` created
-- [ ] **AWS API**: `internal/drivers/iaminstanceprofile/aws.go` created
-- [ ] **Drift**: `internal/drivers/iaminstanceprofile/drift.go` created
-- [ ] **Driver**: `internal/drivers/iaminstanceprofile/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/iaminstanceprofile_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMInstanceProfile driver bound in `cmd/praxis-identity/main.go`
-- [ ] **Unit tests (drift)**: `internal/drivers/iaminstanceprofile/drift_test.go`
-- [ ] **Unit tests (aws)**: `internal/drivers/iaminstanceprofile/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/iaminstanceprofile/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/iaminstanceprofile_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/iaminstanceprofile_driver_test.go`
-- [ ] **Role association**: Single role, remove-then-add for changes
-- [ ] **Path immutability**: Terminal error on path change
-- [ ] **Tags**: Full tag lifecycle management
-- [ ] **Import default mode**: `ModeObserved`
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Pre-deletion cleanup**: Remove associated role before deleting profile
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/iaminstanceprofile/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMInstanceProfile -tags=integration`
+- [x] **Schema**: `schemas/aws/iam/instance_profile.cue` created
+- [x] **Types**: `internal/drivers/iaminstanceprofile/types.go` created
+- [x] **AWS API**: `internal/drivers/iaminstanceprofile/aws.go` created
+- [x] **Drift**: `internal/drivers/iaminstanceprofile/drift.go` created
+- [x] **Driver**: `internal/drivers/iaminstanceprofile/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/iaminstanceprofile_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: IAMInstanceProfile driver bound in `cmd/praxis-identity/main.go`
+- [x] **Unit tests (drift)**: `internal/drivers/iaminstanceprofile/drift_test.go`
+- [x] **Unit tests (aws)**: `internal/drivers/iaminstanceprofile/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/iaminstanceprofile/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/iaminstanceprofile_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/iaminstanceprofile_driver_test.go`
+- [x] **Role association**: Single role, remove-then-add for changes
+- [x] **Path immutability**: Terminal error on path change
+- [x] **Tags**: Full tag lifecycle management
+- [x] **Import default mode**: `ModeObserved`
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Pre-deletion cleanup**: Remove associated role before deleting profile
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/iaminstanceprofile/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMInstanceProfile -tags=integration`

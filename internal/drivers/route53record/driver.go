@@ -15,6 +15,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// RecordDriver is the Restate virtual object that manages a single Route53 DNS record set.
 type RecordDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RecordAPI
@@ -37,6 +38,8 @@ func (d *RecordDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent UPSERT-based provisioning pattern for DNS records.
+// Uses the Route53 UPSERT action which creates or updates the record in a single call.
 func (d *RecordDriver) Provision(ctx restate.ObjectContext, spec RecordSpec) (RecordOutputs, error) {
 	ctx.Log().Info("provisioning route53 record", "key", restate.Key(ctx))
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -139,6 +142,7 @@ func (d *RecordDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (R
 	return outputs, nil
 }
 
+// Delete removes the DNS record from Route53 by fetching live state and issuing a DELETE action.
 func (d *RecordDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting route53 record", "key", restate.Key(ctx))
 	state, err := restate.Get[RecordState](ctx, drivers.StateKey)
@@ -343,6 +347,8 @@ func identityFromSpec(spec RecordSpec) RecordIdentity {
 	return RecordIdentity{HostedZoneId: spec.HostedZoneId, Name: spec.Name, Type: spec.Type, SetIdentifier: spec.SetIdentifier}
 }
 
+// parseRecordIdentity splits the Restate object key (hostedZoneId~name~type~setIdentifier)
+// into its composite identity parts. The "~" delimiter separates 3 or 4 fields.
 func parseRecordIdentity(key string) (RecordIdentity, error) {
 	parts := strings.Split(key, "~")
 	if len(parts) < 3 || len(parts) > 4 {

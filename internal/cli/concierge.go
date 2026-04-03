@@ -1,7 +1,26 @@
+// concierge.go implements the `praxis concierge` command group.
+//
+// The Concierge is an AI-powered infrastructure assistant backed by an LLM.
+// It runs as a Restate Virtual Object (ConciergeSession) keyed by session ID.
+// The CLI sends natural-language prompts to the session, which can plan/apply
+// deployments, answer questions, and request human-in-the-loop approval for
+// destructive actions.
+//
+// Subcommands:
+//   - ask       — Send a prompt
+//   - configure — Set the LLM provider (OpenAI or Claude)
+//   - status    — Show session details and pending approvals
+//   - history   — Show conversation history
+//   - reset     — Clear session state
+//   - approve   — Approve or reject a pending action
+//   - slack     — Manage the Slack gateway integration
+//
+// The concierge service is optional — if not deployed, all commands print a
+// friendly unavailable message.
 package cli
 
 import (
-	"context"
+	context "context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -11,9 +30,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// conciergeUnavailableMsg is an embedded text file shown when the concierge
+// service is not registered with Restate (connection refused or service not found).
+//
 //go:embed prompts/concierge_unavailable.txt
 var conciergeUnavailableMsg string
 
+// newConciergeCmd builds the `praxis concierge` parent command.
 func newConciergeCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "concierge",
@@ -39,6 +62,9 @@ LLM provider. See 'praxis concierge configure --help' for setup.`,
 	return cmd
 }
 
+// newConciergeAskCmd builds `praxis concierge ask <prompt>`. Sends the
+// prompt to ConciergeSession.Ask. The session ID defaults to "default" for
+// single-user workflows; use --session for multi-conversation support.
 func newConciergeAskCmd(flags *rootFlags) *cobra.Command {
 	var (
 		session   string
@@ -92,6 +118,9 @@ func newConciergeAskCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConciergeConfigureCmd builds `praxis concierge configure`. Sends
+// LLM provider settings to ConciergeConfig.Configure (Virtual Object,
+// key="global"). Must be called before the concierge can process prompts.
 func newConciergeConfigureCmd(flags *rootFlags) *cobra.Command {
 	var (
 		provider string
@@ -137,6 +166,9 @@ func newConciergeConfigureCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConciergeStatusCmd builds `praxis concierge status`. Queries
+// ConciergeSession.GetStatus and displays provider, model, turn count,
+// and any pending approval awaiting human decision.
 func newConciergeStatusCmd(flags *rootFlags) *cobra.Command {
 	var session string
 
@@ -184,6 +216,8 @@ func newConciergeStatusCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConciergeHistoryCmd builds `praxis concierge history`. Retrieves
+// the full conversation message list from ConciergeSession.GetHistory.
 func newConciergeHistoryCmd(flags *rootFlags) *cobra.Command {
 	var session string
 
@@ -227,6 +261,8 @@ func newConciergeHistoryCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConciergeResetCmd builds `praxis concierge reset`. Clears the
+// session's durable state by calling ConciergeSession.Reset.
 func newConciergeResetCmd(flags *rootFlags) *cobra.Command {
 	var session string
 
@@ -261,6 +297,10 @@ func newConciergeResetCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConciergeApproveCmd builds `praxis concierge approve`. Resolves a
+// Restate Awakeable that the concierge is blocked on, either approving or
+// rejecting the pending action. The --awakeable-id is displayed by the
+// `status` command.
 func newConciergeApproveCmd(flags *rootFlags) *cobra.Command {
 	var (
 		awakeableID string

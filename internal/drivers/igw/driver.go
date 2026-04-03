@@ -14,17 +14,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IGWDriver is a Restate Virtual Object that manages EC2 Internet Gateway lifecycle.
 type IGWDriver struct {
-	auth       authservice.AuthClient
-	apiFactory func(aws.Config) IGWAPI
+	auth       authservice.AuthClient  // Resolves AWS credentials per account alias.
+	apiFactory func(aws.Config) IGWAPI // Creates IGWAPI; injectable for tests.
 }
 
+// NewIGWDriver creates a production IGWDriver.
 func NewIGWDriver(auth authservice.AuthClient) *IGWDriver {
 	return NewIGWDriverWithFactory(auth, func(cfg aws.Config) IGWAPI {
 		return NewIGWAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewIGWDriverWithFactory allows tests to inject a custom IGWAPI factory.
 func NewIGWDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IGWAPI) *IGWDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) IGWAPI {
@@ -38,6 +41,13 @@ func (d *IGWDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements idempotent create-or-converge for an Internet Gateway.
+//
+// Flow: validate → load state → ownership check → create if missing →
+// attach to VPC (detach-reattach if VPC changed) → apply tags → describe
+// final state → commit state → schedule reconcile.
+//
+// Idempotency: IsAlreadyAttached during attach is treated as success.
 func (d *IGWDriver) Provision(ctx restate.ObjectContext, spec IGWSpec) (IGWOutputs, error) {
 	ctx.Log().Info("provisioning internet gateway", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -219,6 +229,7 @@ func (d *IGWDriver) Provision(ctx restate.ObjectContext, spec IGWSpec) (IGWOutpu
 	return outputs, nil
 }
 
+// Import captures an existing IGW's live state as the baseline.
 func (d *IGWDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IGWOutputs, error) {
 	ctx.Log().Info("importing internet gateway", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -267,6 +278,8 @@ func (d *IGWDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (IGWO
 	return outputs, nil
 }
 
+// Delete removes the Internet Gateway. Detaches from VPC first, then deletes.
+// Handles IsNotAttached gracefully during detach.
 func (d *IGWDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting internet gateway", "key", restate.Key(ctx))
 	state, err := restate.Get[IGWState](ctx, drivers.StateKey)
@@ -366,6 +379,8 @@ func (d *IGWDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual state against desired and corrects drift (Managed)
+// or reports it (Observed). Drift includes VPC attachment and tags.
 func (d *IGWDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[IGWState](ctx, drivers.StateKey)
 	if err != nil {
@@ -486,6 +501,8 @@ func (d *IGWDriver) GetOutputs(ctx restate.ObjectSharedContext) (IGWOutputs, err
 	return state.Outputs, nil
 }
 
+// correctDrift re-attaches the IGW to the correct VPC if needed and
+// fixes tag drift.
 func (d *IGWDriver) correctDrift(ctx restate.ObjectContext, api IGWAPI, internetGatewayID string, desired IGWSpec, observed ObservedState) error {
 	if desired.VpcId != observed.AttachedVpcId {
 		if observed.AttachedVpcId != "" {

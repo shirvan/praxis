@@ -14,17 +14,21 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// VPCDriver is a Restate Virtual Object that manages EC2 VPC lifecycle.
+// Each instance is keyed by a stable resource identifier.
 type VPCDriver struct {
-	auth       authservice.AuthClient
-	apiFactory func(aws.Config) VPCAPI
+	auth       authservice.AuthClient  // Resolves AWS credentials per account alias.
+	apiFactory func(aws.Config) VPCAPI // Creates VPCAPI from resolved config; injectable for tests.
 }
 
+// NewVPCDriver creates a production VPCDriver that resolves real AWS EC2 clients.
 func NewVPCDriver(auth authservice.AuthClient) *VPCDriver {
 	return NewVPCDriverWithFactory(auth, func(cfg aws.Config) VPCAPI {
 		return NewVPCAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewVPCDriverWithFactory allows tests to inject a custom VPCAPI factory.
 func NewVPCDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) VPCAPI) *VPCDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) VPCAPI {
@@ -38,6 +42,15 @@ func (d *VPCDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements idempotent create-or-converge for a VPC.
+//
+// Flow: validate → load state → ownership check (FindByManagedKey) →
+// create if missing → wait until available → configure DNS attributes (with
+// ordering: enable support before hostnames, disable hostnames before support)
+// → apply tags → describe final state → commit state → schedule reconcile.
+//
+// All AWS calls are wrapped in restate.Run() for deterministic replay.
+// Terminal errors (invalid params, CIDR conflicts) stop retries immediately.
 func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutputs, error) {
 	ctx.Log().Info("provisioning VPC", "name", spec.Tags["Name"], "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -258,6 +271,8 @@ func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutpu
 	return outputs, nil
 }
 
+// Import captures an existing VPC's live state as the baseline desired and
+// observed state. The first reconciliation after import will see no drift.
 func (d *VPCDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (VPCOutputs, error) {
 	ctx.Log().Info("importing VPC", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -335,6 +350,8 @@ func defaultVPCImportMode(m types.Mode) types.Mode {
 	return m
 }
 
+// Delete removes a VPC. Blocks deletion of default VPCs and VPCs in
+// Observed mode (which should not be destroyed by Praxis).
 func (d *VPCDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting VPC", "key", restate.Key(ctx))
 
@@ -405,6 +422,9 @@ func (d *VPCDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks the actual AWS state against the desired spec and either
+// corrects drift (Managed mode) or reports it (Observed mode). Drift on
+// immutable fields (CidrBlock, InstanceTenancy) is reported but not corrected.
 func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[VPCState](ctx, drivers.StateKey)
 	if err != nil {
@@ -506,6 +526,9 @@ func (d *VPCDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	return types.ReconcileResult{}, nil
 }
 
+// correctDrift applies in-place fixes for mutable VPC attributes.
+// DNS settings are modified in dependency order: enable support before
+// hostnames, disable hostnames before support (since hostnames requires support).
 func (d *VPCDriver) correctDrift(ctx restate.ObjectContext, api VPCAPI, vpcId string, desired VPCSpec, observed ObservedState) error {
 	// DNS support must be corrected before DNS hostnames (dependency).
 	if desired.EnableDnsSupport != observed.EnableDnsSupport {
@@ -551,6 +574,8 @@ func (d *VPCDriver) correctDrift(ctx restate.ObjectContext, api VPCAPI, vpcId st
 	return nil
 }
 
+// GetStatus returns the current lifecycle status of this VPC resource.
+// Uses ObjectSharedContext for concurrent reads.
 func (d *VPCDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[VPCState](ctx, drivers.StateKey)
 	if err != nil {
@@ -564,6 +589,7 @@ func (d *VPCDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResp
 	}, nil
 }
 
+// GetOutputs returns the stable output identifiers (VpcId, ARN, etc.).
 func (d *VPCDriver) GetOutputs(ctx restate.ObjectSharedContext) (VPCOutputs, error) {
 	state, err := restate.Get[VPCState](ctx, drivers.StateKey)
 	if err != nil {
@@ -581,6 +607,9 @@ func (d *VPCDriver) reportDriftEvent(ctx restate.ObjectContext, eventType, error
 	})
 }
 
+// scheduleReconcile sends a delayed self-invocation to Reconcile after
+// drivers.ReconcileInterval (5 min). The ReconcileScheduled flag prevents
+// duplicate scheduling across handler invocations.
 func (d *VPCDriver) scheduleReconcile(ctx restate.ObjectContext, state *VPCState) {
 	if state.ReconcileScheduled {
 		return
@@ -591,6 +620,8 @@ func (d *VPCDriver) scheduleReconcile(ctx restate.ObjectContext, state *VPCState
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials for the given account alias and
+// returns an API client plus the resolved region string.
 func (d *VPCDriver) apiForAccount(ctx restate.ObjectContext, account string) (VPCAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("VPCDriver is not configured with an auth registry")

@@ -1,17 +1,4 @@
-# RDS DB Instance Driver — Implementation Plan
-
-> **Implementation note:** This plan references a `praxis-database` driver pack.
-> The actual implementation places the RDS Instance driver in **`praxis-storage`**
-> (`cmd/praxis-storage/main.go`).
->
-> Target: A Restate Virtual Object driver that manages RDS DB Instances, providing
-> full lifecycle management including creation, configuration, import, deletion,
-> drift detection, and drift correction for instance properties, storage, networking,
-> parameter groups, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~dbIdentifier`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned DbiResourceId
-> lives only in state/outputs.
+# RDS DB Instance Driver — Implementation Spec
 
 ---
 
@@ -28,7 +15,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Database Driver Pack Entry Point](#step-9--database-driver-pack-entry-point)
+12. [Step 9 — Storage Driver Pack Entry Point](#step-9--storage-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -153,11 +140,11 @@ are stable, unique, and the primary AWS lookup key.
 ✦ internal/core/provider/rdsinstance_adapter.go        — RDSInstanceAdapter implementing provider.Adapter
 ✦ internal/core/provider/rdsinstance_adapter_test.go   — Unit tests for adapter
 ✦ tests/integration/rdsinstance_driver_test.go         — Integration tests
-✦ cmd/praxis-database/main.go                          — Database driver pack entry point (NEW pack)
-✦ cmd/praxis-database/Dockerfile                       — Multi-stage Docker build
+✔ cmd/praxis-storage/main.go                          — Storage driver pack entry point
+✔ cmd/praxis-storage/Dockerfile                       — Multi-stage Docker build
 ✎ internal/infra/awsclient/client.go                   — Add NewRDSClient()
 ✎ internal/core/provider/registry.go                   — Add NewRDSInstanceAdapter to NewRegistry()
-✎ docker-compose.yaml                                  — Add praxis-database service on port 9086
+✔ docker-compose.yaml                                  — praxis-storage service includes RDS drivers
 ✎ justfile                                             — Add database build/test/register targets
 ```
 
@@ -907,8 +894,8 @@ const ServiceName = "RDSInstance"
 ### Constructor Pattern
 
 ```go
-func NewRDSInstanceDriver(accounts *auth.Registry) *RDSInstanceDriver
-func NewRDSInstanceDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) RDSInstanceAPI) *RDSInstanceDriver
+func NewRDSInstanceDriver(auth authservice.AuthClient) *RDSInstanceDriver
+func NewRDSInstanceDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RDSInstanceAPI) *RDSInstanceDriver
 ```
 
 ### Provision Handler
@@ -992,7 +979,7 @@ Standard shared handlers — read state and return projections.
 
 ```go
 type RDSInstanceAdapter struct {
-    auth              *auth.Registry
+    auth              authservice.AuthClient
     staticPlanningAPI rdsinstance.RDSInstanceAPI
     apiFactory        func(aws.Config) rdsinstance.RDSInstanceAPI
 }
@@ -1023,68 +1010,37 @@ If found → `ComputeFieldDiffs()`. If no diffs → `OpNoOp`. If diffs → `OpUp
 
 **File**: `internal/core/provider/registry.go` (modified)
 
-Add `NewRDSInstanceAdapterWithRegistry(accounts)` to `NewRegistry()`.
+Add `NewRDSInstanceAdapterWithRegistry(auth)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — Database Driver Pack Entry Point
+## Step 9 — Storage Driver Pack Entry Point
 
-**File**: `cmd/praxis-database/main.go`
+**File**: `cmd/praxis-storage/main.go`
 
-The database driver pack hosts all RDS-related drivers (DB Instance, Aurora Cluster,
-DB Parameter Group, DB Subnet Group).
+The RDS Instance driver is registered in the `praxis-storage` pack alongside
+other storage drivers (S3, EBS, SNS, SQS, etc.).
 
 ```go
-func main() {
-    cfg := config.Load()
+auth := authservice.NewAuthClient()
 
-    srv := server.NewRestate().
-        Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth())))
-        // Future: other RDS drivers
-
-    slog.Info("starting database driver pack", "addr", cfg.ListenAddr)
-    if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
-        slog.Error("database driver pack exited", "err", err.Error())
-        os.Exit(1)
-    }
-}
+srv := server.NewRestate().
+    // ... other storage drivers ...
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth)))
 ```
 
 ---
 
 ## Step 10 — Docker Compose & Justfile
 
-### Docker Compose
-
-```yaml
-praxis-database:
-    build:
-      context: .
-      dockerfile: cmd/praxis-database/Dockerfile
-    container_name: praxis-database
-    env_file:
-      - .env
-    depends_on:
-      restate:
-        condition: service_healthy
-      localstack-init:
-        condition: service_completed_successfully
-    ports:
-      - "9086:9080"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-```
+Part of the `praxis-storage` service (port 9081). No additional configuration needed.
 
 ### Justfile Targets
 
 | Target | Command |
 |---|---|
-| `logs-database` | `docker compose logs -f praxis-database` |
 | `test-rdsinstance` | `go test ./internal/drivers/rdsinstance/... -v -count=1 -race` |
 | `test-rdsinstance-integration` | `go test ./tests/integration/ -run TestRDSInstance -v -count=1 -tags=integration -timeout=15m` |
-| `build` (shared) | Add `go build -o bin/praxis-database ./cmd/praxis-database` |
-| `register` (shared) | Register database pack at `http://praxis-database:9080` |
-| `up` (shared) | Add `praxis-database` to the list of services |
 
 ---
 
@@ -1283,9 +1239,9 @@ uses state-driven discovery due to mutable Name tags).
 - [x] **Driver**: `internal/drivers/rdsinstance/driver.go` created with all 6 handlers
 - [x] **Adapter**: `internal/core/provider/rdsinstance_adapter.go` created
 - [x] **Registry**: `internal/core/provider/registry.go` updated
-- [x] **Entry point**: `cmd/praxis-database/main.go` created (or updated)
-- [x] **Dockerfile**: `cmd/praxis-database/Dockerfile` created
-- [x] **Docker Compose**: `docker-compose.yaml` updated with praxis-database service
+- [x] **Entry point**: `cmd/praxis-storage/main.go` — `.Bind()` call for RDS Instance driver
+- [x] **Dockerfile**: `cmd/praxis-storage/Dockerfile` (existing)
+- [x] **Docker Compose**: Part of `praxis-storage` service
 - [x] **Justfile**: Updated with RDS instance targets
 - [x] **Unit tests (drift)**: `internal/drivers/rdsinstance/drift_test.go`
 - [x] **Unit tests (aws helpers)**: `internal/drivers/rdsinstance/aws_test.go`

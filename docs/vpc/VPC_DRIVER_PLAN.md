@@ -1,15 +1,4 @@
-# VPC Driver — Implementation Plan
-
-> **Status: IMPLEMENTED** — The VPC driver has been fully implemented following this plan.
-> All core files, unit tests, integration tests, and wiring are in place.
->
-> Target: A Restate Virtual Object driver that manages AWS VPCs, following the
-> exact patterns established by the S3 Bucket, Security Group, and EC2 Instance
-> drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned VPC ID
-> lives only in state/outputs.
+# VPC Driver — Implementation Specification
 
 ---
 
@@ -40,9 +29,8 @@
 
 The VPC driver manages the lifecycle of AWS **VPCs** only. Subnets, route tables,
 internet gateways, NAT gateways, VPC peering connections, and network ACLs are
-listed in the FUTURE.md roster under the VPC driver service umbrella but should be
-implemented as **separate drivers** (separate Virtual Objects, separate binaries,
-separate CUE schemas) — not rolled into this plan. This plan focuses exclusively on
+implemented as **separate drivers** (separate Virtual Objects, separate CUE schemas)
+within the same `praxis-network` runtime pack. This document covers exclusively
 the VPC resource itself.
 
 ### Why VPCs First
@@ -55,7 +43,7 @@ Implementing the VPC driver unblocks the entire networking layer and makes it
 possible to compose end-to-end stacks that don't rely on pre-existing VPC
 infrastructure.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope (Separate Drivers) |
 |---|---|
@@ -181,24 +169,24 @@ The plan-time resolution follows the EC2 adapter's state-driven pattern:
 
 ## 3. File Inventory
 
-Create or modify these files (✦ = new file, ✎ = modify existing):
+Files (✓ = implemented):
 
 ```text
-✦ internal/drivers/vpc/types.go             — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/vpc/aws.go               — VPCAPI interface + realVPCAPI implementation
-✦ internal/drivers/vpc/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/vpc/driver.go            — VPCDriver Virtual Object
-✦ internal/drivers/vpc/driver_test.go       — Unit tests for driver (mocked AWS)
-✦ internal/drivers/vpc/aws_test.go          — Unit tests for error classification helpers
-✦ internal/drivers/vpc/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/vpc_adapter.go     — VPCAdapter implementing provider.Adapter
-✦ internal/core/provider/vpc_adapter_test.go — Unit tests for VPC adapter
-✦ schemas/aws/vpc/vpc.cue                   — CUE schema for VPC resource
-✦ tests/integration/vpc_driver_test.go      — Integration tests (Testcontainers + LocalStack)
-✎ cmd/praxis-network/main.go               — Add VPC driver `.Bind()` to network pack
-✎ internal/core/provider/registry.go        — Add NewVPCAdapter to NewRegistry()
-✎ docker-compose.yaml                       — No change needed (VPC joins existing praxis-network service)
-✎ justfile                                  — Add vpc test targets
+✓ internal/drivers/vpc/types.go             — Spec, Outputs, ObservedState, State structs
+✓ internal/drivers/vpc/aws.go               — VPCAPI interface + realVPCAPI implementation
+✓ internal/drivers/vpc/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/vpc/driver.go            — VPCDriver Virtual Object
+✓ internal/drivers/vpc/driver_test.go       — Unit tests for driver (mocked AWS)
+✓ internal/drivers/vpc/aws_test.go          — Unit tests for error classification helpers
+✓ internal/drivers/vpc/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/vpc_adapter.go     — VPCAdapter implementing provider.Adapter
+✓ internal/core/provider/vpc_adapter_test.go — Unit tests for VPC adapter
+✓ schemas/aws/vpc/vpc.cue                   — CUE schema for VPC resource
+✓ tests/integration/vpc_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+✓ cmd/praxis-network/main.go               — Add VPC driver `.Bind()` to network pack
+✓ internal/core/provider/registry.go        — Add NewVPCAdapter to NewRegistry()
+✓ docker-compose.yaml                       — No change needed (VPC joins existing praxis-network service)
+✓ justfile                                  — Add vpc test targets
 ```
 
 ---
@@ -1002,33 +990,30 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     restate "github.com/restatedev/sdk-go"
 
-    "github.com/shirvan/praxis/internal/core/auth"
+    "github.com/shirvan/praxis/internal/core/authservice"
     "github.com/shirvan/praxis/internal/drivers"
     "github.com/shirvan/praxis/internal/infra/awsclient"
     "github.com/shirvan/praxis/pkg/types"
 )
 
 type VPCDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) VPCAPI
 }
 
-func NewVPCDriver(accounts *auth.Registry) *VPCDriver {
-    return NewVPCDriverWithFactory(accounts, func(cfg aws.Config) VPCAPI {
+func NewVPCDriver(auth authservice.AuthClient) *VPCDriver {
+    return NewVPCDriverWithFactory(auth, func(cfg aws.Config) VPCAPI {
         return NewVPCAPI(awsclient.NewEC2Client(cfg))
     })
 }
 
-func NewVPCDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) VPCAPI) *VPCDriver {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewVPCDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) VPCAPI) *VPCDriver {
     if factory == nil {
         factory = func(cfg aws.Config) VPCAPI {
             return NewVPCAPI(awsclient.NewEC2Client(cfg))
         }
     }
-    return &VPCDriver{auth: accounts, apiFactory: factory}
+    return &VPCDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *VPCDriver) ServiceName() string {
@@ -1709,21 +1694,14 @@ import (
 
 // VPCAdapter adapts generic resource documents to the strongly typed VPC driver.
 type VPCAdapter struct {
-    auth              *auth.Registry
+    auth              authservice.AuthClient
     staticPlanningAPI vpc.VPCAPI
     apiFactory        func(aws.Config) vpc.VPCAPI
 }
 
-func NewVPCAdapter() *VPCAdapter {
-    return NewVPCAdapterWithRegistry(auth.LoadFromEnv())
-}
-
-func NewVPCAdapterWithRegistry(accounts *auth.Registry) *VPCAdapter {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewVPCAdapterWithAuth(auth authservice.AuthClient) *VPCAdapter {
     return &VPCAdapter{
-        auth: accounts,
+        auth: auth,
         apiFactory: func(cfg aws.Config) vpc.VPCAPI {
             return vpc.NewVPCAPI(awsclient.NewEC2Client(cfg))
         },
@@ -1968,33 +1946,20 @@ func (a *VPCAdapter) planningAPI(account string) (vpc.VPCAPI, error) {
 
 ## Step 8 — Registry Integration
 
-**File**: `internal/core/provider/registry.go` — **MODIFY**
+**File**: `internal/core/provider/registry.go`
 
-Add `NewVPCAdapter` to the hardcoded adapter set in `NewRegistry()`.
+`NewVPCAdapter` is registered in the hardcoded adapter set in `NewRegistry()`.
 
 ### Change
 
-In the `NewRegistry()` function, add one line:
+The VPC adapter is registered in the `NewRegistry()` function:
 
 ```go
-// Before:
-func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+func NewRegistry(auth authservice.AuthClient) *Registry {
     return NewRegistryWithAdapters(
-        NewS3AdapterWithRegistry(accounts),
-        NewEC2AdapterWithRegistry(accounts),
-        NewSecurityGroupAdapterWithRegistry(accounts),
-    )
-}
-
-// After:
-func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
-    return NewRegistryWithAdapters(
-        NewS3AdapterWithRegistry(accounts),
-        NewEC2AdapterWithRegistry(accounts),
-        NewSecurityGroupAdapterWithRegistry(accounts),
-        NewVPCAdapterWithRegistry(accounts),
+        // ... other adapters ...
+        NewSecurityGroupAdapterWithAuth(auth),
+        NewVPCAdapterWithAuth(auth),
     )
 }
 ```
@@ -2005,7 +1970,7 @@ func NewRegistry() *Registry {
 
 ### Entry Point
 
-**File**: `cmd/praxis-network/main.go` — **MODIFY**
+**File**: `cmd/praxis-network/main.go`
 
 The VPC driver joins the existing **network** driver pack alongside SecurityGroup. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls:
 
@@ -2028,9 +1993,11 @@ import (
 func main() {
     cfg := config.Load()
 
+    auth := authservice.NewAuthClient()
+
     srv := server.NewRestate().
-        Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth()))).
-        Bind(restate.Reflect(vpc.NewVPCDriver(cfg.Auth())))
+        Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
+        Bind(restate.Reflect(vpc.NewVPCDriver(auth)))
 
     slog.Info("starting network driver pack", "addr", cfg.ListenAddr)
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
@@ -2046,7 +2013,7 @@ No new Dockerfile needed — the existing `cmd/praxis-network/Dockerfile` alread
 
 ## Step 10 — Justfile
 
-### justfile — **MODIFY**
+### justfile
 
 No Docker Compose changes needed — the VPC driver automatically registers with Restate as part of the existing `praxis-network` service when the network pack is registered.
 

@@ -1,11 +1,5 @@
 # Identity Driver Pack — Overview
 
-> ✅ Implemented
-> This document summarizes the IAM driver family for Praxis: five drivers covering
-> IAM Roles, Policies, Users, Groups, and Instance Profiles. It describes their
-> relationships, shared infrastructure, implementation order, and the new
-> `praxis-identity` driver pack.
-
 ---
 
 ## Table of Contents
@@ -89,6 +83,7 @@ import (
     restate "github.com/restatedev/sdk-go"
     server "github.com/restatedev/sdk-go/server"
 
+    "github.com/shirvan/praxis/internal/core/authservice"
     "github.com/shirvan/praxis/internal/core/config"
     "github.com/shirvan/praxis/internal/drivers/iamrole"
     "github.com/shirvan/praxis/internal/drivers/iampolicy"
@@ -99,16 +94,18 @@ import (
 
 func main() {
     cfg := config.Load()
+    auth := authservice.NewAuthClient()
 
     srv := server.NewRestate().
-        Bind(restate.Reflect(iamrole.NewIAMRoleDriver(cfg.Auth()))).
-        Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(cfg.Auth()))).
-        Bind(restate.Reflect(iamuser.NewIAMUserDriver(cfg.Auth()))).
-        Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(cfg.Auth()))).
-        Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(cfg.Auth())))
+        Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth))).
+        Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth))).
+        Bind(restate.Reflect(iamuser.NewIAMUserDriver(auth))).
+        Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(auth))).
+        Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(auth)))
 
-    if err := srv.Start(context.Background(), ":9085"); err != nil {
-        slog.Error("praxis-identity exited unexpectedly", "err", err.Error())
+    slog.Info("starting identity driver pack", "addr", cfg.ListenAddr)
+    if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
+        slog.Error("identity driver pack exited", "err", err.Error())
         os.Exit(1)
     }
 }
@@ -216,7 +213,7 @@ testing:
 ### Phase 3: Bridge
 
 5. **IAM Instance Profile** — References roles by name. Simple resource but critical
-   for EC2 integration. Should be implemented last so the Role driver is available
+   for EC2 integration. Implemented last so the Role driver is available
    for end-to-end testing.
 
 ### Dependency Test Order
@@ -415,45 +412,45 @@ references.
 
 ### Infrastructure
 
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/iam` added
-- [ ] `cmd/praxis-identity/main.go` created
-- [ ] `cmd/praxis-identity/Dockerfile` created
-- [ ] `docker-compose.yaml` updated with `praxis-identity` service
-- [ ] `justfile` updated with IAM targets
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/iam` added
+- [x] `cmd/praxis-identity/main.go` created
+- [x] `cmd/praxis-identity/Dockerfile` created
+- [x] `docker-compose.yaml` updated with `praxis-identity` service
+- [x] `justfile` updated with IAM targets
 
 ### Schemas
 
-- [ ] `schemas/aws/iam/role.cue`
-- [ ] `schemas/aws/iam/policy.cue`
-- [ ] `schemas/aws/iam/user.cue`
-- [ ] `schemas/aws/iam/group.cue`
-- [ ] `schemas/aws/iam/instance_profile.cue`
+- [x] `schemas/aws/iam/role.cue`
+- [x] `schemas/aws/iam/policy.cue`
+- [x] `schemas/aws/iam/user.cue`
+- [x] `schemas/aws/iam/group.cue`
+- [x] `schemas/aws/iam/instance_profile.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
 
-- [ ] `internal/drivers/iamrole/`
-- [ ] `internal/drivers/iampolicy/`
-- [ ] `internal/drivers/iamuser/`
-- [ ] `internal/drivers/iamgroup/`
-- [ ] `internal/drivers/iaminstanceprofile/`
+- [x] `internal/drivers/iamrole/`
+- [x] `internal/drivers/iampolicy/`
+- [x] `internal/drivers/iamuser/`
+- [x] `internal/drivers/iamgroup/`
+- [x] `internal/drivers/iaminstanceprofile/`
 
 ### Adapters
 
-- [ ] `internal/core/provider/iamrole_adapter.go`
-- [ ] `internal/core/provider/iampolicy_adapter.go`
-- [ ] `internal/core/provider/iamuser_adapter.go`
-- [ ] `internal/core/provider/iamgroup_adapter.go`
-- [ ] `internal/core/provider/iaminstanceprofile_adapter.go`
+- [x] `internal/core/provider/iamrole_adapter.go`
+- [x] `internal/core/provider/iampolicy_adapter.go`
+- [x] `internal/core/provider/iamuser_adapter.go`
+- [x] `internal/core/provider/iamgroup_adapter.go`
+- [x] `internal/core/provider/iaminstanceprofile_adapter.go`
 
 ### Registry
 
-- [ ] All 5 adapters registered in `NewRegistry()`
+- [x] All 5 adapters registered in `NewRegistry()`
 
 ### Tests
 
-- [ ] Unit tests for all 5 drivers
-- [ ] Integration tests for all 5 drivers
-- [ ] Cross-driver integration test (Policy → Role → Instance Profile → EC2)
+- [x] Unit tests for all 5 drivers
+- [x] Integration tests for all 5 drivers
+- [x] Cross-driver integration test (Policy → Role → Instance Profile → EC2)
 
 ### Documentation
 

@@ -5,12 +5,18 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift compares desired spec against observed state for all mutable fields:
+// engineVersion, port, dbSubnetGroupName, dbClusterParameterGroupName,
+// vpcSecurityGroupIds, storageEncrypted, kmsKeyId, backup settings,
+// deletionProtection, enabledCloudwatchLogsExports, and tags.
+// Immutable fields (engine, masterUsername, databaseName) are NOT checked here.
 func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
 	if desired.EngineVersion != observed.EngineVersion || desired.Port != observed.Port {
@@ -37,6 +43,9 @@ func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns a structured list of differences for display.
+// Immutable fields (engine, masterUsername, databaseName, storageEncrypted, kmsKeyId)
+// are annotated with "(immutable, ignored)" so operators see them but the driver won't correct.
 func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []FieldDiffEntry {
 	desired = applyDefaults(desired)
 	var diffs []FieldDiffEntry
@@ -79,6 +88,8 @@ func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []Fiel
 	return diffs
 }
 
+// applyDefaults fills zero-values with Aurora defaults (BackupRetentionPeriod=7)
+// and normalizes nil slices to empty for deterministic comparison.
 func applyDefaults(spec AuroraClusterSpec) AuroraClusterSpec {
 	if spec.BackupRetentionPeriod == 0 {
 		spec.BackupRetentionPeriod = 7
@@ -97,6 +108,7 @@ func applyDefaults(spec AuroraClusterSpec) AuroraClusterSpec {
 	return spec
 }
 
+// normalizeStrings trims whitespace, removes empties, and sorts for deterministic comparison.
 func normalizeStrings(values []string) []string {
 	if len(values) == 0 {
 		return []string{}
@@ -112,6 +124,7 @@ func normalizeStrings(values []string) []string {
 	return normalized
 }
 
+// stringSliceEqual normalizes both slices then compares element-by-element.
 func stringSliceEqual(a, b []string) bool {
 	aa := normalizeStrings(a)
 	bb := normalizeStrings(b)
@@ -126,6 +139,7 @@ func stringSliceEqual(a, b []string) bool {
 	return true
 }
 
+// tagsMatch compares two tag maps after filtering praxis: internal tags.
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -140,6 +154,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags removes praxis:-prefixed tags used for internal bookkeeping.
 func filterPraxisTags(tags map[string]string) map[string]string {
 	if len(tags) == 0 {
 		return map[string]string{}

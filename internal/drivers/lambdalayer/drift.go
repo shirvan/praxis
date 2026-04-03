@@ -1,17 +1,27 @@
+// Drift detection for Lambda Layers.
+// Since layer versions are immutable, "drift" means either
+// (a) an external publish created a newer version, or (b) permission changes.
+// Configuration fields (description, runtimes, architectures, license) are
+// reported as diffs but cannot be corrected in-place — they require a new publish.
 package lambdalayer
 
 import "slices"
 
+// FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any field differs between desired and observed state.
 func HasDrift(desired LambdaLayerSpec, observed ObservedState, outputs LambdaLayerOutputs) bool {
 	return len(ComputeFieldDiffs(desired, observed, outputs)) > 0
 }
 
+// ComputeFieldDiffs returns per-field diffs.
+// Checks: version mismatch (external publish), description, compatibleRuntimes,
+// compatibleArchitectures, licenseInfo, and permissions (accountIds + public flag).
 func ComputeFieldDiffs(desired LambdaLayerSpec, observed ObservedState, outputs LambdaLayerOutputs) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	if outputs.Version != 0 && observed.Version != outputs.Version {

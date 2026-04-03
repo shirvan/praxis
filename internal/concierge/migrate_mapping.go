@@ -1,6 +1,15 @@
 package concierge
 
-// resourceTypeMap maps source format resource types to Praxis kinds.
+// resourceTypeMap maps source format resource types to Praxis resource kinds.
+// This is the canonical mapping used during migration to translate external IaC
+// resource types to their Praxis equivalents. The map covers three source formats:
+//
+//	Terraform:       aws_s3_bucket          → S3Bucket
+//	CloudFormation:  AWS::S3::Bucket        → S3Bucket
+//	Crossplane:      Bucket                 → S3Bucket
+//
+// Resources not found in this map are reported as UnmappedTypes in the migration
+// inventory, and the LLM is warned to skip or approximate them.
 var resourceTypeMap = map[string]string{
 	// Terraform → Praxis
 	"aws_s3_bucket":                   "S3Bucket",
@@ -86,12 +95,14 @@ var resourceTypeMap = map[string]string{
 }
 
 // LookupPraxisKind returns the Praxis kind for a source resource type.
+// Returns false if the source type has no known Praxis equivalent.
 func LookupPraxisKind(sourceType string) (string, bool) {
 	kind, ok := resourceTypeMap[sourceType]
 	return kind, ok
 }
 
-// FormatMappingTable returns a human-readable mapping table for the LLM.
+// FormatMappingTable returns a human-readable mapping table included in the
+// migration prompt so the LLM knows which source types map to which Praxis kinds.
 func FormatMappingTable() string {
 	var s string
 	s += "Source Type → Praxis Kind\n"

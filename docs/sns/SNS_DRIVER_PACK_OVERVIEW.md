@@ -1,10 +1,5 @@
 # SNS Driver Pack — Overview
 
-> This document summarizes the SNS driver family for Praxis: two drivers covering
-> SNS Topics and SNS Subscriptions. It describes their relationships, shared
-> infrastructure, runtime deployment, implementation order, and cross-driver
-> references.
-
 ---
 
 ## Table of Contents
@@ -25,7 +20,7 @@
 
 ## 1. Driver Summary
 
-| Driver | Kind | Key | Key Scope | Mutable | Tags | Plan Doc |
+| Driver | Kind | Key | Key Scope | Mutable | Tags | Spec Doc |
 |---|---|---|---|---|---|---|
 | SNS Topic | `SNSTopic` | `region~topicName` | `KeyScopeRegion` | displayName, policy, deliveryPolicy, kmsMasterKeyId, fifoTopic (immutable), contentBasedDeduplication, tags | Yes | [SNS_TOPIC_DRIVER_PLAN.md](SNS_TOPIC_DRIVER_PLAN.md) |
 | SNS Subscription | `SNSSubscription` | `region~topicArn~protocol~endpoint` | `KeyScopeCustom` | deliveryPolicy, filterPolicy, filterPolicyScope, rawMessageDelivery, redrivePolicy | No | [SNS_SUBSCRIPTION_DRIVER_PLAN.md](SNS_SUBSCRIPTION_DRIVER_PLAN.md) |
@@ -93,15 +88,15 @@ docker-compose.yaml header already identifies SNS as a future praxis-storage ser
 ```go
 // cmd/praxis-storage/main.go
 srv := server.NewRestate().
-    Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth()))).
-    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(cfg.Auth()))).
+    Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth))).
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth))).
     // SNS drivers
-    Bind(restate.Reflect(snstopic.NewSNSTopicDriver(cfg.Auth()))).
-    Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(cfg.Auth())))
+    Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth))).
+    Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth)))
 ```
 
 ---
@@ -255,11 +250,11 @@ Both adapters are registered in `internal/core/provider/registry.go`:
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
-        NewSNSTopicAdapterWithRegistry(accounts),
-        NewSNSSubscriptionAdapterWithRegistry(accounts),
+        NewSNSTopicAdapterWithAuth(auth),
+        NewSNSSubscriptionAdapterWithAuth(auth),
         // ...
     )
 }
@@ -430,34 +425,34 @@ references.
 
 ### Schemas
 
-- [ ] `schemas/aws/sns/topic.cue`
-- [ ] `schemas/aws/sns/subscription.cue`
+- [x] `schemas/aws/sns/topic.cue`
+- [x] `schemas/aws/sns/subscription.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
 
-- [ ] `internal/drivers/snstopic/`
-- [ ] `internal/drivers/snssub/`
+- [x] `internal/drivers/snstopic/`
+- [x] `internal/drivers/snssub/`
 
 ### Adapters
 
-- [ ] `internal/core/provider/snstopic_adapter.go`
-- [ ] `internal/core/provider/snssub_adapter.go`
+- [x] `internal/core/provider/snstopic_adapter.go`
+- [x] `internal/core/provider/snssub_adapter.go`
 
 ### Registry
 
-- [ ] Both adapters registered in `NewRegistry()`
+- [x] Both adapters registered in `NewRegistry()`
 
 ### Tests
 
-- [ ] Unit tests for both drivers
-- [ ] Integration tests for both drivers
+- [x] Unit tests for both drivers
+- [x] Integration tests for both drivers
 
 ### Infrastructure
 
-- [ ] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
-- [ ] `cmd/praxis-storage/main.go` — Bind both SNS drivers
-- [ ] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
-- [ ] `justfile` — Add SNS test targets
+- [x] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
+- [x] `cmd/praxis-storage/main.go` — Bind both SNS drivers
+- [x] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
+- [x] `justfile` — Add SNS test targets
 
 ### Documentation
 

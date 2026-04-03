@@ -1,3 +1,9 @@
+// Package ecrpolicy – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS ECR Lifecycle Policy.
+// It defines the ECRLifecyclePolicyAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon Elastic Container Registry (ECR) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package ecrpolicy
 
 import (
@@ -15,6 +21,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// LifecyclePolicyAPI abstracts all Amazon Elastic Container Registry (ECR) SDK operations needed
+// to manage a AWS ECR Lifecycle Policy. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type LifecyclePolicyAPI interface {
 	PutLifecyclePolicy(ctx context.Context, spec ECRLifecyclePolicySpec) (ObservedState, error)
 	GetLifecyclePolicy(ctx context.Context, repositoryName string) (ObservedState, error)
@@ -26,6 +35,8 @@ type realLifecyclePolicyAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewLifecyclePolicyAPI constructs a production ECRLifecyclePolicyAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewLifecyclePolicyAPI(client *ecrsdk.Client) LifecyclePolicyAPI {
 	return &realLifecyclePolicyAPI{client: client, limiter: ratelimit.New("ecr-lifecycle-policy", 15, 5)}
 }
@@ -41,6 +52,7 @@ func (r *realLifecyclePolicyAPI) PutLifecyclePolicy(ctx context.Context, spec EC
 	return r.GetLifecyclePolicy(ctx, spec.RepositoryName)
 }
 
+// GetLifecyclePolicy reads the current state of the AWS ECR Lifecycle Policy from Amazon Elastic Container Registry (ECR).
 func (r *realLifecyclePolicyAPI) GetLifecyclePolicy(ctx context.Context, repositoryName string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -60,6 +72,7 @@ func (r *realLifecyclePolicyAPI) GetLifecyclePolicy(ctx context.Context, reposit
 	return state, nil
 }
 
+// DeleteLifecyclePolicy removes the AWS ECR Lifecycle Policy from AWS via Amazon Elastic Container Registry (ECR).
 func (r *realLifecyclePolicyAPI) DeleteLifecyclePolicy(ctx context.Context, repositoryName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -99,6 +112,7 @@ func regionFromRepositoryARN(arn string) string {
 	return ""
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS ECR Lifecycle Policy does not exist.
 func IsNotFound(err error) bool {
 	if awserr.HasCode(err, "LifecyclePolicyNotFoundException", "RepositoryNotFoundException") {
 		return true

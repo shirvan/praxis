@@ -7,16 +7,27 @@ import (
 	restate "github.com/restatedev/sdk-go"
 )
 
-// ConciergeSession is a Restate Virtual Object keyed by session ID.
+// ConciergeSession is the main Restate Virtual Object that implements the AI
+// conversation loop. Each instance is keyed by a unique session ID, giving us:
+//   - Durable state: conversation history persists across crashes and restarts
+//   - Single-writer concurrency: Restate ensures only one Ask() executes per session
+//     at a time, preventing race conditions on shared conversation state
+//   - Automatic lifecycle: sessions self-expire via delayed Restate messages
+//
+// The session holds references to the LLM provider router, tool registry, and
+// template migrator — all stateless collaborators wired at construction time.
 type ConciergeSession struct {
-	llm      *ProviderRouter
-	tools    *ToolRegistry
-	migrator *TemplateMigrator
+	llm      *ProviderRouter   // Selects OpenAI or Claude based on config
+	tools    *ToolRegistry     // All available tools (read, write, explain, migrate)
+	migrator *TemplateMigrator // Orchestrates Terraform/CloudFormation/Crossplane → CUE conversion
 }
 
+// ServiceName returns the Restate service name used for registration and cross-service calls.
 func (ConciergeSession) ServiceName() string { return ConciergeSessionServiceName }
 
 // NewConciergeSession creates a session handler with all dependencies wired.
+// This is called once at startup; the returned handler is registered with the
+// Restate server and handles all session keys.
 func NewConciergeSession() *ConciergeSession {
 	llm := &ProviderRouter{}
 	tools := NewToolRegistry()
@@ -28,11 +39,26 @@ func NewConciergeSession() *ConciergeSession {
 	}
 }
 
-// Ask processes a user prompt through the LLM tool loop.
+// Ask processes a user prompt through the LLM tool loop. This is the primary
+// entry point for all user interaction with the Concierge.
+//
+// The handler implements an agentic tool-calling loop:
+//  1. Load LLM configuration from ConciergeConfig Virtual Object
+//  2. Capture a durable timestamp via restate.Run() (deterministic on replay)
+//  3. Load or initialize session state from Restate's KV store
+//  4. Append user message to conversation history
+//  5. Enter tool loop: call LLM → execute tool calls → repeat
+//  6. When LLM returns text without tool calls, return to user
+//
+// The tool loop distinguishes read-only tools (execute immediately) from write
+// tools (suspend on a Restate awakeable for human approval). The entire loop
+// runs within Restate's durable execution — if the process crashes mid-loop,
+// it resumes from the last completed journal entry.
 func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskResponse, error) {
 	sessionID := restate.Key(ctx)
 
-	// 1. Load concierge configuration.
+	// 1. Load concierge configuration from the ConciergeConfig Virtual Object.
+	// This cross-service call is durable — the result is journaled by Restate.
 	config, err := restate.Object[ConciergeConfiguration](
 		ctx, ConciergeConfigServiceName, "global", "Get",
 	).Request(restate.Void{})
@@ -45,7 +71,8 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 		)
 	}
 
-	// Load the unredacted config for API key access.
+	// Load the unredacted config for API key access. The Get handler returns a
+	// redacted copy (secrets masked), so we call GetFull for service-to-service use.
 	fullConfig, err := restate.Object[*ConciergeConfiguration](
 		ctx, ConciergeConfigServiceName, "global", "GetFull",
 	).Request(restate.Void{})
@@ -55,7 +82,10 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	}
 	cfg := fullConfig.Defaults()
 
-	// 2. Capture a durable timestamp.
+	// 2. Capture a durable timestamp. Using restate.Run() ensures the timestamp
+	// is recorded in the journal and replayed deterministically on retries.
+	// Never use time.Now() directly in a Restate handler — it would return
+	// different values on replay.
 	now, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 		return time.Now().UTC().Format(time.RFC3339), nil
 	})
@@ -63,7 +93,9 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 		return AskResponse{}, err
 	}
 
-	// 3. Load or initialize session state.
+	// 3. Load or initialize session state from Restate's durable KV store.
+	// On the first call to a session, statePtr will be nil and we create
+	// fresh state. On subsequent calls, we resume the existing conversation.
 	statePtr, err := restate.Get[*SessionState](ctx, "state")
 	if err != nil {
 		return AskResponse{}, err
@@ -74,7 +106,10 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	} else {
 		state = initSession(req, cfg.SessionTTL, now)
 
-		// Schedule proactive session expiry.
+		// Schedule proactive session expiry using a delayed self-message.
+		// This is a Restate durable timer — it survives process restarts.
+		// When the timer fires, the Expire handler checks if the session
+		// is still expired and clears state if so.
 		ttl, _ := time.ParseDuration(cfg.SessionTTL)
 		if ttl == 0 {
 			ttl = 24 * time.Hour
@@ -115,7 +150,8 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 		Timestamp: now,
 	})
 
-	// 7. Trim history.
+	// 7. Trim history to stay within token/message limits.
+	// Preserves the system prompt and keeps the most recent messages.
 	state.Messages = trimHistory(state.Messages, cfg)
 
 	// 8. Resolve API key.
@@ -124,14 +160,20 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	// Set migrator context for this invocation.
 	SetMigratorContext(a.migrator, cfg, resolvedKey)
 
-	// 9. Tool loop.
+	// 9. Tool loop: iteratively call the LLM and execute tool calls.
+	// The loop continues until either:
+	//   a) The LLM returns a response with no tool calls (final answer)
+	//   b) The maximum turn count is reached
+	// Each LLM call and tool execution is journaled by Restate for durability.
 	provider := a.llm.ForConfig(cfg, resolvedKey)
 	tools := a.tools.Definitions()
 
 	for turn := 0; turn < cfg.MaxTurns; turn++ {
 		state.TurnCount++
 
-		// Call LLM (durable).
+		// Call LLM inside restate.Run() to make it durable. The LLM response
+		// is journaled — on replay, Restate returns the cached result instead
+		// of calling the LLM again. This prevents duplicate API calls and costs.
 		llmResp, err := restate.Run(ctx, func(rc restate.RunContext) (LLMResponse, error) {
 			return provider.ChatCompletion(rc, ChatRequest{
 				Messages:    state.Messages,
@@ -143,7 +185,7 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 			return AskResponse{}, err
 		}
 
-		// No tool calls → final response.
+		// No tool calls → the LLM produced a final text response for the user.
 		if len(llmResp.ToolCalls) == 0 {
 			state.Messages = append(state.Messages, Message{
 				Role:      "assistant",
@@ -167,7 +209,8 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 			Timestamp: now,
 		})
 
-		// Execute each tool call.
+		// Execute each tool call. Read-only tools run immediately; write tools
+		// (RequiresApproval=true) suspend on a Restate awakeable for human approval.
 		for _, tc := range llmResp.ToolCalls {
 			tool := a.tools.Get(tc.Name)
 			if tool == nil {
@@ -209,12 +252,26 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	}, nil
 }
 
-// executeTool runs a tool and returns its result.
+// executeTool runs a tool and returns its result. Tools receive the Restate
+// context (for making durable cross-service calls) and the current session state
+// (for accessing account/workspace context).
 func (a *ConciergeSession) executeTool(ctx restate.Context, tool *ToolDef, tc ToolCall, state SessionState) (string, error) {
 	return tool.Execute(ctx, tc.Args, state)
 }
 
-// executeWithApproval suspends on an awakeable for human approval.
+// executeWithApproval implements the human-in-the-loop approval flow for write tools.
+//
+// Flow:
+//  1. Create a Restate awakeable — a durable promise that can be resolved externally
+//  2. Start a timeout timer (ApprovalTTL, default 5 minutes)
+//  3. Store the awakeable ID in SessionState so transports can discover it via GetStatus()
+//  4. Race the awakeable against the timer using restate.WaitFirst()
+//     5a. If timer wins → auto-reject (timeout)
+//     5b. If awakeable wins → check the decision, execute tool if approved
+//
+// The awakeable is resolved externally by ApprovalRelay.Resolve(), which is called
+// by the CLI (polling GetStatus) or Slack gateway (interactive button callback).
+// The entire handler is suspended during the wait — no compute resources are consumed.
 func (a *ConciergeSession) executeWithApproval(
 	ctx restate.ObjectContext,
 	state *SessionState,
@@ -285,7 +342,9 @@ func (a *ConciergeSession) executeWithApproval(
 	return "Unexpected approval state", nil
 }
 
-// GetHistory returns the conversation history.
+// GetHistory returns the conversation history. This is a shared handler
+// (ObjectSharedContext) meaning it can run concurrently with other shared handlers
+// and does NOT block exclusive handlers like Ask(). Safe for polling.
 func (a *ConciergeSession) GetHistory(ctx restate.ObjectSharedContext) ([]Message, error) {
 	statePtr, err := restate.Get[*SessionState](ctx, "state")
 	if err != nil {
@@ -297,7 +356,9 @@ func (a *ConciergeSession) GetHistory(ctx restate.ObjectSharedContext) ([]Messag
 	return statePtr.Messages, nil
 }
 
-// GetStatus returns session metadata.
+// GetStatus returns session metadata. This is a shared handler used by transports
+// to poll for pending approvals. When PendingApproval is non-nil, the transport
+// should display the approval prompt and allow the user to approve or reject.
 func (a *ConciergeSession) GetStatus(ctx restate.ObjectSharedContext) (SessionStatus, error) {
 	statePtr, err := restate.Get[*SessionState](ctx, "state")
 	if err != nil {
@@ -316,13 +377,17 @@ func (a *ConciergeSession) GetStatus(ctx restate.ObjectSharedContext) (SessionSt
 	}, nil
 }
 
-// Reset clears conversation history and state.
+// Reset clears conversation history and state. This is an exclusive handler
+// (ObjectContext) that wipes all Restate KV state for this session key.
 func (a *ConciergeSession) Reset(ctx restate.ObjectContext) error {
 	restate.ClearAll(ctx)
 	return nil
 }
 
-// Expire proactively cleans up expired sessions.
+// Expire proactively cleans up expired sessions. Called via a delayed self-message
+// scheduled when the session is first created. If the session has been extended
+// (e.g., by further activity), Expire re-schedules itself for the new expiry time.
+// This pattern avoids relying on external cron jobs for session cleanup.
 func (a *ConciergeSession) Expire(ctx restate.ObjectContext) error {
 	statePtr, err := restate.Get[*SessionState](ctx, "state")
 	if err != nil {
@@ -354,6 +419,8 @@ func (a *ConciergeSession) Expire(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// appendToolResult adds a successful tool result message to the conversation history.
+// The ToolCallID correlates this result back to the LLM's original tool call request.
 func appendToolResult(state *SessionState, toolCallID, toolName, result string) {
 	state.Messages = append(state.Messages, Message{
 		Role:       "tool",
@@ -363,6 +430,9 @@ func appendToolResult(state *SessionState, toolCallID, toolName, result string) 
 	})
 }
 
+// appendToolError adds a tool error message to the conversation history.
+// The error is prefixed with "Error: " so the LLM can distinguish failures
+// from successful results and respond appropriately to the user.
 func appendToolError(state *SessionState, toolCallID, toolName, errMsg string) {
 	state.Messages = append(state.Messages, Message{
 		Role:       "tool",

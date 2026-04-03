@@ -17,24 +17,29 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// RouteTableAPI abstracts the AWS EC2 SDK operations for Route Tables.
+// Routes and associations are modified individually via the EC2 API;
+// there is no atomic "replace all routes" operation.
 type RouteTableAPI interface {
-	CreateRouteTable(ctx context.Context, spec RouteTableSpec) (string, error)
-	DescribeRouteTable(ctx context.Context, routeTableId string) (ObservedState, error)
-	DeleteRouteTable(ctx context.Context, routeTableId string) error
-	CreateRoute(ctx context.Context, routeTableId string, route Route) error
-	DeleteRoute(ctx context.Context, routeTableId string, destinationCidr string) error
-	ReplaceRoute(ctx context.Context, routeTableId string, route Route) error
-	AssociateSubnet(ctx context.Context, routeTableId string, subnetId string) (string, error)
-	DisassociateSubnet(ctx context.Context, associationId string) error
-	UpdateTags(ctx context.Context, routeTableId string, tags map[string]string) error
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	CreateRouteTable(ctx context.Context, spec RouteTableSpec) (string, error)                 // Creates a route table with managed-key tag.
+	DescribeRouteTable(ctx context.Context, routeTableId string) (ObservedState, error)        // Fetches live state; sorts routes by CIDR.
+	DeleteRouteTable(ctx context.Context, routeTableId string) error                           // Deletes the route table.
+	CreateRoute(ctx context.Context, routeTableId string, route Route) error                   // Adds a single route entry.
+	DeleteRoute(ctx context.Context, routeTableId string, destinationCidr string) error        // Removes a single route by destination CIDR.
+	ReplaceRoute(ctx context.Context, routeTableId string, route Route) error                  // Replaces a route's target in-place.
+	AssociateSubnet(ctx context.Context, routeTableId string, subnetId string) (string, error) // Associates a subnet, returns association ID.
+	DisassociateSubnet(ctx context.Context, associationId string) error                        // Removes a subnet association.
+	UpdateTags(ctx context.Context, routeTableId string, tags map[string]string) error         // Replaces all user tags (preserves praxis: tags).
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)                   // Finds route table by praxis:managed-key tag.
 }
 
+// realRouteTableAPI implements RouteTableAPI using the actual AWS SDK v2 EC2 client.
 type realRouteTableAPI struct {
 	client  *ec2sdk.Client
-	limiter *ratelimit.Limiter
+	limiter *ratelimit.Limiter // Token-bucket: 20 burst, 10/s refill.
 }
 
+// NewRouteTableAPI creates a new RouteTableAPI backed by the given EC2 SDK client.
 func NewRouteTableAPI(client *ec2sdk.Client) RouteTableAPI {
 	return &realRouteTableAPI{
 		client:  client,
@@ -313,22 +318,33 @@ func applyRouteTargetToReplaceInput(input *ec2sdk.ReplaceRouteInput, route Route
 	}
 }
 
+// Error classifiers — used by the driver to decide between retryable
+// errors, terminal errors, and idempotent success paths.
+
+// IsNotFound returns true when the route table does not exist in AWS.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidRouteTableID.NotFound")
 }
 
+// IsRouteNotFound returns true when a specific route entry does not exist.
+// Used for idempotent delete-route operations.
 func IsRouteNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidRoute.NotFound")
 }
 
+// IsAssociationNotFound returns true when a subnet association does not exist.
 func IsAssociationNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidAssociationID.NotFound")
 }
 
+// IsRouteAlreadyExists returns true when a route with the same destination
+// already exists. The driver falls back to ReplaceRoute in this case.
 func IsRouteAlreadyExists(err error) bool {
 	return awserr.HasCode(err, "RouteAlreadyExists")
 }
 
+// IsMainRouteTable returns true when attempting to delete or disassociate
+// the VPC's main route table, which AWS does not allow.
 func IsMainRouteTable(err error) bool {
 	if err == nil {
 		return false
@@ -337,6 +353,7 @@ func IsMainRouteTable(err error) bool {
 	return strings.Contains(errText, "main route table") || strings.Contains(errText, "cannot delete main route table")
 }
 
+// IsInvalidParam returns true for various invalid parameter errors (terminal).
 func IsInvalidParam(err error) bool {
 	if err == nil {
 		return false
@@ -351,6 +368,8 @@ func IsInvalidParam(err error) bool {
 	return false
 }
 
+// IsInvalidRoute returns true when the route target is invalid (e.g.
+// referencing a non-existent gateway or NAT gateway). Terminal error.
 func IsInvalidRoute(err error) bool {
 	if err == nil {
 		return false
@@ -366,6 +385,8 @@ func IsInvalidRoute(err error) bool {
 	return strings.Contains(errText, "InvalidRoute.") || strings.Contains(errText, "invalid route")
 }
 
+// IsDependencyViolation returns true when the route table has dependent
+// resources preventing deletion.
 func IsDependencyViolation(err error) bool {
 	return awserr.HasCode(err, "DependencyViolation")
 }

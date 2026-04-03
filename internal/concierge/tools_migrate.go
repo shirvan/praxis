@@ -7,6 +7,16 @@ import (
 	restate "github.com/restatedev/sdk-go"
 )
 
+// registerMigrationTools adds tools for converting external IaC formats (Terraform,
+// CloudFormation, Crossplane) to Praxis CUE templates. Migration is LLM-guided:
+//
+//  1. The tool inventories the source content (regex extraction of resource types)
+//  2. Builds a migration context with resource type mappings and known gotchas
+//  3. Sends the source + context to the LLM with a specialized migration prompt
+//  4. Verifies the generated CUE via a dry-run plan
+//  5. Retries up to 3 times if verification fails, feeding errors back to the LLM
+//
+// Also includes a standalone validateTemplate tool for checking CUE without migration.
 func (r *ToolRegistry) registerMigrationTools() {
 	r.Register(&ToolDef{
 		Name:        "migrateTerraform",
@@ -69,24 +79,33 @@ var globalConfig ConciergeConfiguration
 var globalResolvedKey string
 
 // SetMigratorContext sets the migration context for the current Ask invocation.
+// This uses package-level state (not ideal, but avoids circular dependencies
+// between ToolRegistry and TemplateMigrator). This is safe because Restate
+// guarantees single-writer per Virtual Object key — only one Ask() runs at a
+// time per session.
 func SetMigratorContext(m *TemplateMigrator, cfg ConciergeConfiguration, key string) {
 	globalMigrator = m
 	globalConfig = cfg
 	globalResolvedKey = key
 }
 
+// toolMigrateTerraform converts Terraform HCL to Praxis CUE.
 func toolMigrateTerraform(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	return runMigration(ctx, "terraform", argsJSON)
 }
 
+// migrateCloudFormation converts CloudFormation JSON/YAML to Praxis CUE.
 func migrateCloudFormation(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	return runMigration(ctx, "cloudformation", argsJSON)
 }
 
+// migrateCrossplane converts Crossplane YAML manifests to Praxis CUE.
 func migrateCrossplane(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	return runMigration(ctx, "crossplane", argsJSON)
 }
 
+// runMigration is the shared implementation for all migration tools. It parses
+// the source argument and delegates to the TemplateMigrator's full pipeline.
 func runMigration(ctx restate.Context, format, argsJSON string) (string, error) {
 	var args struct {
 		Source string `json:"source"`
@@ -110,6 +129,8 @@ func runMigration(ctx restate.Context, format, argsJSON string) (string, error) 
 	return result, nil
 }
 
+// toolValidateTemplate validates a CUE template against Praxis schemas without
+// applying it. Runs a dry-run plan and reports parse, schema, and plan results.
 func toolValidateTemplate(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		Template string `json:"template"`

@@ -1,12 +1,4 @@
-# CloudWatch Metric Alarm Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages CloudWatch Metric Alarms,
-> following the exact patterns established by the S3, Security Group, EC2, VPC, EBS,
-> Elastic IP, Key Pair, AMI, and Lambda drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~alarmName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned alarm ARN
-> lives only in state/outputs.
+# CloudWatch Metric Alarm Driver — Implementation Spec
 
 ---
 
@@ -705,19 +697,19 @@ func datapointsMatch(desired *int32, observed int32, evaluationPeriods int32) bo
 
 ```go
 type MetricAlarmDriver struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) MetricAlarmAPI
 }
 
-func NewMetricAlarmDriver(accounts *auth.Registry) *MetricAlarmDriver {
-    return NewMetricAlarmDriverWithFactory(accounts, func(cfg aws.Config) MetricAlarmAPI {
+func NewMetricAlarmDriver(auth authservice.AuthClient) *MetricAlarmDriver {
+    return NewMetricAlarmDriverWithFactory(auth, func(cfg aws.Config) MetricAlarmAPI {
         return NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg))
     })
 }
 
-func NewMetricAlarmDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) MetricAlarmAPI) *MetricAlarmDriver {
+func NewMetricAlarmDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) MetricAlarmAPI) *MetricAlarmDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) MetricAlarmAPI {
@@ -999,13 +991,13 @@ func (d *MetricAlarmDriver) GetOutputs(ctx restate.ObjectSharedContext) (MetricA
 
 ```go
 type MetricAlarmAdapter struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) metricalarm.MetricAlarmAPI
 }
 
-func NewMetricAlarmAdapterWithRegistry(accounts *auth.Registry) *MetricAlarmAdapter {
+func NewMetricAlarmAdapterWithAuth(auth authservice.AuthClient) *MetricAlarmAdapter {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     return &MetricAlarmAdapter{
         accounts: accounts,
@@ -1047,7 +1039,7 @@ func (a *MetricAlarmAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error
 
 ```go
 // Add to the NewRegistryWithAdapters(...) call:
-NewMetricAlarmAdapterWithRegistry(accounts),
+NewMetricAlarmAdapterWithAuth(auth),
 ```
 
 ---
@@ -1058,9 +1050,9 @@ NewMetricAlarmAdapterWithRegistry(accounts),
 
 ```go
 srv := server.NewRestate().
-    Bind(restate.Reflect(loggroup.NewLogGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dashboard.NewDashboardDriver(cfg.Auth())))
+    Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth))).
+    Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth))).
+    Bind(restate.Reflect(dashboard.NewDashboardDriver(auth)))
 ```
 
 ---

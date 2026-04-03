@@ -1,3 +1,12 @@
+// workspace.go implements the `praxis workspace` command group.
+//
+// Workspaces are logical groupings of deployments under a shared account,
+// region, and set of default template variables. The active workspace is
+// persisted in ~/.praxis/config.json and automatically injected into every
+// apply, plan, deploy, and import command.
+//
+// Workspaces are stored as WorkspaceService Virtual Objects in Restate
+// and indexed by the WorkspaceIndex Virtual Object (key="global").
 package cli
 
 import (

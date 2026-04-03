@@ -1,3 +1,9 @@
+// Package listener – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS ELBv2 Listener.
+// It defines the ListenerAPI interface (used for testing with mocks)
+// and the real implementation that calls Elastic Load Balancing v2 through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package listener
 
 import (
@@ -14,6 +20,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// ListenerAPI abstracts all Elastic Load Balancing v2 SDK operations needed
+// to manage a AWS ELBv2 Listener. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type ListenerAPI interface {
 	CreateListener(ctx context.Context, spec ListenerSpec) (arn string, err error)
 	DescribeListener(ctx context.Context, arn string) (ObservedState, error)
@@ -28,10 +37,13 @@ type realListenerAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewListenerAPI constructs a production ListenerAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewListenerAPI(client *elbv2sdk.Client) ListenerAPI {
 	return &realListenerAPI{client: client, limiter: ratelimit.New("listener", 15, 8)}
 }
 
+// CreateListener calls Elastic Load Balancing v2 to create a new AWS ELBv2 Listener from the given spec.
 func (r *realListenerAPI) CreateListener(ctx context.Context, spec ListenerSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -64,6 +76,7 @@ func (r *realListenerAPI) CreateListener(ctx context.Context, spec ListenerSpec)
 	return aws.ToString(out.Listeners[0].ListenerArn), nil
 }
 
+// DescribeListener reads the current state of the AWS ELBv2 Listener from Elastic Load Balancing v2.
 func (r *realListenerAPI) DescribeListener(ctx context.Context, arn string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -78,6 +91,7 @@ func (r *realListenerAPI) DescribeListener(ctx context.Context, arn string) (Obs
 	return r.buildObservedState(ctx, out.Listeners[0])
 }
 
+// FindListenerByPort searches for the AWS ELBv2 Listener using alternative identifiers.
 func (r *realListenerAPI) FindListenerByPort(ctx context.Context, lbArn string, port int) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -121,6 +135,7 @@ func (r *realListenerAPI) buildObservedState(ctx context.Context, l elbv2types.L
 	}, nil
 }
 
+// DeleteListener removes the AWS ELBv2 Listener from AWS via Elastic Load Balancing v2.
 func (r *realListenerAPI) DeleteListener(ctx context.Context, arn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -129,6 +144,7 @@ func (r *realListenerAPI) DeleteListener(ctx context.Context, arn string) error 
 	return err
 }
 
+// ModifyListener updates mutable properties of the AWS ELBv2 Listener via Elastic Load Balancing v2.
 func (r *realListenerAPI) ModifyListener(ctx context.Context, arn string, spec ListenerSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -152,6 +168,7 @@ func (r *realListenerAPI) ModifyListener(ctx context.Context, arn string, spec L
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS ELBv2 Listener via Elastic Load Balancing v2.
 func (r *realListenerAPI) UpdateTags(ctx context.Context, arn string, desired map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -297,26 +314,32 @@ func filterPraxisTags(tags map[string]string) map[string]string {
 	return out
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS ELBv2 Listener does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ListenerNotFound")
 }
 
+// IsDuplicate returns true if the AWS error indicates a naming conflict.
 func IsDuplicate(err error) bool {
 	return awserr.HasCode(err, "DuplicateListener")
 }
 
+// IsTooMany returns true if the AWS error indicates a service quota has been reached.
 func IsTooMany(err error) bool {
 	return awserr.HasCode(err, "TooManyListeners")
 }
 
+// IsTargetGroupNotFound returns true if a referenced target group does not exist.
 func IsTargetGroupNotFound(err error) bool {
 	return awserr.HasCode(err, "TargetGroupNotFound")
 }
 
+// IsInvalidConfig returns true if the AWS error indicates an invalid configuration.
 func IsInvalidConfig(err error) bool {
 	return awserr.HasCode(err, "InvalidConfigurationRequest")
 }
 
+// IsCertificateNotFound returns true if a referenced ACM certificate does not exist.
 func IsCertificateNotFound(err error) bool {
 	return awserr.HasCode(err, "CertificateNotFound")
 }

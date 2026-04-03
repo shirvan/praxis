@@ -1,12 +1,4 @@
-# Event Source Mapping Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages Lambda event source mappings
-> (ESMs), following the exact patterns established by the S3, Security Group, EC2,
-> VPC, and Lambda Function drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~functionName~eventSourceArn`,
-> permanent and immutable for the lifetime of the Virtual Object. The AWS-assigned
-> UUID lives only in state/outputs.
+# Event Source Mapping Driver — Implementation Spec
 
 ---
 
@@ -455,8 +447,8 @@ type realESMAPI struct {
     limiter ratelimit.Limiter
 }
 
-func newRealESMAPI(client *lambda.Client, limiter ratelimit.Limiter) ESMAPI {
-    return &realESMAPI{client: client, limiter: limiter}
+func NewESMAPI(client *lambdasdk.Client) ESMAPI {
+    return &realESMAPI{client: client, limiter: ratelimit.New("lambda-esm", 15, 10)}
 }
 ```
 
@@ -695,14 +687,24 @@ func ComputeFieldDiffs(desired EventSourceMappingSpec, observed ObservedState) [
 
 ```go
 type EventSourceMappingDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
+    apiFactory func(aws.Config) ESMAPI
 }
 
-func NewEventSourceMappingDriver(accounts *auth.Registry) *EventSourceMappingDriver {
-    return &EventSourceMappingDriver{accounts: accounts}
+func NewEventSourceMappingDriver(auth authservice.AuthClient) *EventSourceMappingDriver {
+    return NewEventSourceMappingDriverWithFactory(auth, func(cfg aws.Config) ESMAPI {
+        return NewESMAPI(awsclient.NewLambdaClient(cfg))
+    })
 }
 
-func (EventSourceMappingDriver) ServiceName() string { return ServiceName }
+func NewEventSourceMappingDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) ESMAPI) *EventSourceMappingDriver {
+    if factory == nil {
+        factory = func(cfg aws.Config) ESMAPI { return NewESMAPI(awsclient.NewLambdaClient(cfg)) }
+    }
+    return &EventSourceMappingDriver{auth: auth, apiFactory: factory}
+}
+
+func (d *EventSourceMappingDriver) ServiceName() string { return ServiceName }
 ```
 
 ### Provision
@@ -1077,11 +1079,11 @@ Follow the standard pattern.
 
 ```go
 type EventSourceMappingAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
-func NewEventSourceMappingAdapterWithRegistry(accounts *auth.Registry) *EventSourceMappingAdapter {
-    return &EventSourceMappingAdapter{accounts: accounts}
+func NewEventSourceMappingAdapterWithRegistry(auth authservice.AuthClient) *EventSourceMappingAdapter {
+    return &EventSourceMappingAdapter{auth: auth}
 }
 
 func (a *EventSourceMappingAdapter) Kind() string { return esm.ServiceName }
@@ -1125,7 +1127,7 @@ func (a *EventSourceMappingAdapter) Plan(ctx restate.Context, key string, accoun
         return types.PlanResult{}, err
     }
     client := awsclient.NewLambdaClient(cfg)
-    api := newRealESMAPI(client, ratelimit.New("event-source-mapping", 15, 10))
+    api := NewESMAPI(client)
 
     uuid, ok := currentOutputs["uuid"].(string)
     if !ok || uuid == "" {
@@ -1166,7 +1168,8 @@ Add `NewEventSourceMappingAdapterWithRegistry(accounts)` to `NewRegistry()`.
 ```go
 import "github.com/shirvan/praxis/internal/drivers/esm"
 
-Bind(restate.Reflect(esm.NewEventSourceMappingDriver(cfg.Auth())))
+auth := authservice.NewAuthClient()
+Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth)))
 ```
 
 ---
@@ -1338,23 +1341,23 @@ the driver simple and forward-compatible with new source types.
 
 ### Implementation
 
-- [ ] `schemas/aws/lambda/event_source_mapping.cue`
-- [ ] `internal/drivers/esm/types.go`
-- [ ] `internal/drivers/esm/aws.go`
-- [ ] `internal/drivers/esm/drift.go`
-- [ ] `internal/drivers/esm/driver.go`
-- [ ] `internal/core/provider/esm_adapter.go`
+- [x] `schemas/aws/lambda/event_source_mapping.cue`
+- [x] `internal/drivers/esm/types.go`
+- [x] `internal/drivers/esm/aws.go`
+- [x] `internal/drivers/esm/drift.go`
+- [x] `internal/drivers/esm/driver.go`
+- [x] `internal/core/provider/esm_adapter.go`
 
 ### Tests
 
-- [ ] `internal/drivers/esm/driver_test.go`
-- [ ] `internal/drivers/esm/aws_test.go`
-- [ ] `internal/drivers/esm/drift_test.go`
-- [ ] `internal/core/provider/esm_adapter_test.go`
-- [ ] `tests/integration/esm_driver_test.go`
+- [x] `internal/drivers/esm/driver_test.go`
+- [x] `internal/drivers/esm/aws_test.go`
+- [x] `internal/drivers/esm/drift_test.go`
+- [x] `internal/core/provider/esm_adapter_test.go`
+- [x] `tests/integration/esm_driver_test.go`
 
 ### Integration
 
-- [ ] `cmd/praxis-compute/main.go` — Bind driver
-- [ ] `internal/core/provider/registry.go` — Register adapter
-- [ ] `justfile` — Add test targets
+- [x] `cmd/praxis-compute/main.go` — Bind driver
+- [x] `internal/core/provider/registry.go` — Register adapter
+- [x] `justfile` — Add test targets

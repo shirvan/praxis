@@ -14,19 +14,27 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// KeyPairAPI abstracts AWS EC2 Key Pair operations for testability.
 type KeyPairAPI interface {
+	// CreateKeyPair asks AWS to generate a new key pair; returns the private key material exactly once.
 	CreateKeyPair(ctx context.Context, name, keyType string, tags map[string]string) (keyPairID, fingerprint, privateKey string, err error)
+	// ImportKeyPair uploads a user-provided public key; no private key is returned.
 	ImportKeyPair(ctx context.Context, name, publicKeyMaterial string, tags map[string]string) (keyPairID, fingerprint string, err error)
+	// DescribeKeyPair fetches the current state of a key pair by name.
 	DescribeKeyPair(ctx context.Context, keyName string) (ObservedState, error)
+	// DeleteKeyPair removes the key pair from EC2.
 	DeleteKeyPair(ctx context.Context, keyName string) error
+	// UpdateTags performs a delete-then-create sync of user tags on the key pair.
 	UpdateTags(ctx context.Context, keyPairID string, tags map[string]string) error
 }
 
+// realKeyPairAPI is the production implementation backed by the EC2 SDK client.
 type realKeyPairAPI struct {
 	client  *ec2sdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewKeyPairAPI creates a production KeyPairAPI with rate limiting (20 tokens/s, burst 10).
 func NewKeyPairAPI(client *ec2sdk.Client) KeyPairAPI {
 	return &realKeyPairAPI{
 		client:  client,
@@ -34,6 +42,9 @@ func NewKeyPairAPI(client *ec2sdk.Client) KeyPairAPI {
 	}
 }
 
+// CreateKeyPair calls EC2 CreateKeyPair to generate a new key pair.
+// AWS generates both halves; the private key material is returned exactly once.
+// Tags are applied atomically via TagSpecifications.
 func (r *realKeyPairAPI) CreateKeyPair(ctx context.Context, name, keyType string, tags map[string]string) (string, string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", "", err
@@ -57,6 +68,8 @@ func (r *realKeyPairAPI) CreateKeyPair(ctx context.Context, name, keyType string
 	return aws.ToString(out.KeyPairId), aws.ToString(out.KeyFingerprint), aws.ToString(out.KeyMaterial), nil
 }
 
+// ImportKeyPair uploads a user-provided public key to AWS.
+// No private key is returned since the user already possesses it.
 func (r *realKeyPairAPI) ImportKeyPair(ctx context.Context, name, publicKeyMaterial string, tags map[string]string) (string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", err
@@ -80,6 +93,8 @@ func (r *realKeyPairAPI) ImportKeyPair(ctx context.Context, name, publicKeyMater
 	return aws.ToString(out.KeyPairId), aws.ToString(out.KeyFingerprint), nil
 }
 
+// DescribeKeyPair fetches key pair metadata by name via EC2 DescribeKeyPairs.
+// Returns ObservedState with all tags converted from EC2 format.
 func (r *realKeyPairAPI) DescribeKeyPair(ctx context.Context, keyName string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -109,6 +124,7 @@ func (r *realKeyPairAPI) DescribeKeyPair(ctx context.Context, keyName string) (O
 	return obs, nil
 }
 
+// DeleteKeyPair removes the key pair by name from EC2.
 func (r *realKeyPairAPI) DeleteKeyPair(ctx context.Context, keyName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -117,6 +133,11 @@ func (r *realKeyPairAPI) DeleteKeyPair(ctx context.Context, keyName string) erro
 	return err
 }
 
+// UpdateTags synchronizes tags on an existing key pair using delete-then-create.
+// Steps:
+//  1. Describe the current tags on the key pair.
+//  2. Delete all non-praxis: tags (praxis: tags are system-managed).
+//  3. Create the desired user tags.
 func (r *realKeyPairAPI) UpdateTags(ctx context.Context, keyPairID string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -159,6 +180,7 @@ func (r *realKeyPairAPI) UpdateTags(ctx context.Context, keyPairID string, tags 
 	return err
 }
 
+// toEC2Tags converts a map to EC2 Tag slice, filtering out praxis: namespace tags.
 func toEC2Tags(tags map[string]string) []ec2types.Tag {
 	if len(tags) == 0 {
 		return nil
@@ -173,14 +195,17 @@ func toEC2Tags(tags map[string]string) []ec2types.Tag {
 	return ec2Tags
 }
 
+// IsNotFound returns true if the error is an InvalidKeyPair.NotFound API error.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidKeyPair.NotFound")
 }
 
+// IsDuplicate returns true if a key pair with the same name already exists.
 func IsDuplicate(err error) bool {
 	return awserr.HasCode(err, "InvalidKeyPair.Duplicate")
 }
 
+// IsInvalidKeyFormat returns true if the public key material is malformed.
 func IsInvalidKeyFormat(err error) bool {
 	return awserr.HasCode(err, "InvalidKey.Format", "InvalidKeyPair.Format")
 }

@@ -1,12 +1,4 @@
-# Internet Gateway Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS Internet Gateways (IGWs),
-> following the exact patterns established by the VPC, Subnet, Security Group, and
-> EC2 Instance drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned Internet Gateway
-> ID lives only in state/outputs.
+# Internet Gateway Driver — Implementation Specification
 
 ---
 
@@ -48,7 +40,7 @@ cannot reach instances. Every VPC that needs internet connectivity requires an I
 The IGW driver, combined with VPC, Subnet, and Route Table drivers, completes the
 minimum viable public networking stack.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope |
 |---|---|
@@ -110,20 +102,20 @@ checked by `FindByManagedKey` pre-flight.
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/igw/types.go             — Spec, Outputs, ObservedState, State
-✦ internal/drivers/igw/aws.go               — IGWAPI interface + realIGWAPI
-✦ internal/drivers/igw/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/igw/driver.go            — IGWDriver Virtual Object
-✦ internal/drivers/igw/driver_test.go       — Unit tests for driver
-✦ internal/drivers/igw/aws_test.go          — Unit tests for error classification
-✦ internal/drivers/igw/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/igw_adapter.go     — IGWAdapter
-✦ internal/core/provider/igw_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/igw/igw.cue                   — CUE schema
-✦ tests/integration/igw_driver_test.go      — Integration tests
-✎ cmd/praxis-network/main.go               — Add IGW driver .Bind()
-✎ internal/core/provider/registry.go        — Add NewIGWAdapter
-✎ justfile                                  — Add igw test targets
+✓ internal/drivers/igw/types.go             — Spec, Outputs, ObservedState, State
+✓ internal/drivers/igw/aws.go               — IGWAPI interface + realIGWAPI
+✓ internal/drivers/igw/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/igw/driver.go            — IGWDriver Virtual Object
+✓ internal/drivers/igw/driver_test.go       — Unit tests for driver
+✓ internal/drivers/igw/aws_test.go          — Unit tests for error classification
+✓ internal/drivers/igw/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/igw_adapter.go     — IGWAdapter
+✓ internal/core/provider/igw_adapter_test.go — Unit tests for adapter
+✓ schemas/aws/igw/igw.cue                   — CUE schema
+✓ tests/integration/igw_driver_test.go      — Integration tests
+✓ cmd/praxis-network/main.go               — Add IGW driver .Bind()
+✓ internal/core/provider/registry.go        — Add NewIGWAdapter
+✓ justfile                                  — Add igw test targets
 ```
 
 ---
@@ -371,14 +363,15 @@ drift is detected and correction reattaches it to the desired VPC.
 
 ## Step 8 — Registry Integration
 
-Add `NewIGWAdapterWithRegistry(accounts)` to `NewRegistry()`.
+`NewIGWAdapterWithAuth` is registered in `NewRegistry()`.
 
 ---
 
 ## Step 9 — Binary Entry Point & Dockerfile
 
-Add `.Bind(restate.Reflect(igw.NewIGWDriver(cfg.Auth())))` to
-`cmd/praxis-network/main.go`.
+The IGW driver is bound in `cmd/praxis-network/main.go`:
+
+`.Bind(restate.Reflect(igw.NewIGWDriver(auth)))`
 
 ---
 

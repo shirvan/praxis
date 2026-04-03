@@ -6,12 +6,20 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if the desired spec and observed state differ.
+//
+// Network ACL drift rules:
+//   - Tags are compared (excluding praxis:-prefixed tags).
+//   - Ingress and egress rules are compared by rule number, normalizing
+//     protocol names to IANA numbers (e.g. "tcp" → "6").
+//   - Subnet associations are compared as sets of subnet IDs.
 func HasDrift(desired NetworkACLSpec, observed ObservedState) bool {
 	if !tagsMatch(desired.Tags, observed.Tags) {
 		return true

@@ -1,3 +1,13 @@
+// IAMRole provider adapter.
+//
+// This file implements the provider.Adapter interface for AWS IAM (Role)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the IAMRole Restate Virtual Object driver.
+//
+// Key scope: global (IAM is region-free).
+// Key parts: role name (optionally with path prefix).
+// IAM roles are global; the key is derived from the role name.
 package provider
 
 import (
@@ -15,12 +25,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IAMRoleAdapter implements provider.Adapter for IAMRole (AWS IAM (Role)) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type IAMRoleAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI iamrole.IAMRoleAPI
 	apiFactory        func(aws.Config) iamrole.IAMRoleAPI
 }
 
+// NewIAMRoleAdapterWithAuth creates a production IAMRole adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewIAMRoleAdapterWithAuth(auth authservice.AuthClient) *IAMRoleAdapter {
 	return &IAMRoleAdapter{
 		auth: auth,
@@ -30,22 +48,34 @@ func NewIAMRoleAdapterWithAuth(auth authservice.AuthClient) *IAMRoleAdapter {
 	}
 }
 
+// NewIAMRoleAdapterWithAPI creates a IAMRole adapter with a pre-built API
+// client. This is primarily useful in tests that supply a mock implementation
+// and do not need per-account credential resolution.
 func NewIAMRoleAdapterWithAPI(api iamrole.IAMRoleAPI) *IAMRoleAdapter {
 	return &IAMRoleAdapter{staticPlanningAPI: api}
 }
 
+// Kind returns the resource kind string "IAMRole" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *IAMRoleAdapter) Kind() string {
 	return iamrole.ServiceName
 }
 
+// ServiceName returns the Restate Virtual Object service name for the
+// IAMRole driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *IAMRoleAdapter) ServiceName() string {
 	return iamrole.ServiceName
 }
 
+// Scope returns the key-scope strategy for IAMRole resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *IAMRoleAdapter) Scope() KeyScope {
 	return KeyScopeGlobal
 }
 
+// BuildKey derives the canonical Restate object key for a IAMRole resource
+// from the raw JSON resource document. The key is composed of role name (optionally with path prefix),
+// ensuring uniqueness within the Restate Virtual Object namespace.
 func (a *IAMRoleAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -61,6 +91,8 @@ func (a *IAMRoleAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	return spec.RoleName, nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete IAMRole spec struct expected by the driver.
 func (a *IAMRoleAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -69,6 +101,11 @@ func (a *IAMRoleAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the IAMRole Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *IAMRoleAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[iamrole.IAMRoleSpec](spec)
 	if err != nil {
@@ -83,6 +120,9 @@ func (a *IAMRoleAdapter) Provision(ctx restate.Context, key string, account stri
 	return &provisionHandle[iamrole.IAMRoleOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
 }
 
+// Delete sends a durable Delete request to the IAMRole Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *IAMRoleAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](
 		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
@@ -90,6 +130,9 @@ func (a *IAMRoleAdapter) Delete(ctx restate.Context, key string) (DeleteInvocati
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed IAMRole driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *IAMRoleAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[iamrole.IAMRoleOutputs](raw)
 	if err != nil {
@@ -98,6 +141,11 @@ func (a *IAMRoleAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	return map[string]any{"arn": out.Arn, "roleId": out.RoleId, "roleName": out.RoleName}, nil
 }
 
+// Plan compares the desired IAMRole spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *IAMRoleAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[iamrole.IAMRoleSpec](desiredSpec)
 	if err != nil {
@@ -145,6 +193,8 @@ func (a *IAMRoleAdapter) Plan(ctx restate.Context, key string, account string, d
 	return types.OpUpdate, fields, nil
 }
 
+// BuildImportKey derives the canonical Restate object key for importing
+// an existing IAMRole resource by its region and provider-native ID.
 func (a *IAMRoleAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("resource ID", resourceID); err != nil {
 		return "", err
@@ -152,6 +202,8 @@ func (a *IAMRoleAdapter) BuildImportKey(region, resourceID string) (string, erro
 	return resourceID, nil
 }
 
+// Import adopts an existing IAMRole resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *IAMRoleAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, iamrole.IAMRoleOutputs](
@@ -167,6 +219,9 @@ func (a *IAMRoleAdapter) Import(ctx restate.Context, key string, account string,
 	return types.StatusReady, outputs, nil
 }
 
+// Lookup performs a read-only data-source query for an existing IAMRole
+// resource, matching by ID, name, or tags. This is used by template data
+// source blocks to resolve references to pre-existing infrastructure.
 func (a *IAMRoleAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
 	api, err := a.planningAPI(ctx, account)
 	if err != nil {
@@ -184,6 +239,10 @@ func (a *IAMRoleAdapter) Lookup(ctx restate.Context, account string, filter Look
 	return a.NormalizeOutputs(iamrole.IAMRoleOutputs{Arn: observed.Arn, RoleId: observed.RoleId, RoleName: observed.RoleName})
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed IAMRole spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *IAMRoleAdapter) decodeSpec(doc resourceDocument) (iamrole.IAMRoleSpec, error) {
 	var spec struct {
 		Path                     string            `json:"path"`
@@ -233,6 +292,9 @@ func (a *IAMRoleAdapter) decodeSpec(doc resourceDocument) (iamrole.IAMRoleSpec, 
 	}, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *IAMRoleAdapter) planningAPI(ctx restate.Context, account string) (iamrole.IAMRoleAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

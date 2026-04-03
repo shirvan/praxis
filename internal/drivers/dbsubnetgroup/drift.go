@@ -5,12 +5,15 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift compares desired spec against observed for mutable fields:
+// description, subnetIds, and tags. GroupName is immutable and not checked.
 func HasDrift(desired DBSubnetGroupSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
 	if desired.Description != observed.Description {
@@ -22,6 +25,8 @@ func HasDrift(desired DBSubnetGroupSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs returns a structured list of differences for display.
+// GroupName is annotated "(immutable, ignored)" when different.
 func ComputeFieldDiffs(desired DBSubnetGroupSpec, observed ObservedState) []FieldDiffEntry {
 	desired = applyDefaults(desired)
 	var diffs []FieldDiffEntry
@@ -51,6 +56,7 @@ func ComputeFieldDiffs(desired DBSubnetGroupSpec, observed ObservedState) []Fiel
 	return diffs
 }
 
+// applyDefaults normalizes nil tags to empty map and sorts subnet IDs.
 func applyDefaults(spec DBSubnetGroupSpec) DBSubnetGroupSpec {
 	if spec.Tags == nil {
 		spec.Tags = map[string]string{}
@@ -59,6 +65,7 @@ func applyDefaults(spec DBSubnetGroupSpec) DBSubnetGroupSpec {
 	return spec
 }
 
+// tagsMatch compares two tag maps after filtering praxis: internal tags.
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -73,6 +80,7 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags removes praxis:-prefixed tags used for internal bookkeeping.
 func filterPraxisTags(tags map[string]string) map[string]string {
 	if len(tags) == 0 {
 		return map[string]string{}
@@ -86,6 +94,7 @@ func filterPraxisTags(tags map[string]string) map[string]string {
 	return out
 }
 
+// stringSliceEqual normalizes both slices then compares element-by-element.
 func stringSliceEqual(a, b []string) bool {
 	na := normalizeStrings(a)
 	nb := normalizeStrings(b)
@@ -100,6 +109,7 @@ func stringSliceEqual(a, b []string) bool {
 	return true
 }
 
+// normalizeStrings trims whitespace, removes empties, and sorts for deterministic comparison.
 func normalizeStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil

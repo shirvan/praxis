@@ -1,10 +1,5 @@
 # ECR Driver Pack — Overview
 
-> This document summarizes the ECR driver family for Praxis: two drivers covering
-> ECR Repositories and ECR Lifecycle Policies. It describes their relationships,
-> shared infrastructure, runtime deployment, implementation order, and integration
-> with the existing `praxis-compute` driver pack.
-
 ---
 
 ## Table of Contents
@@ -25,7 +20,7 @@
 
 ## 1. Driver Summary
 
-| Driver | Kind | Key | Key Scope | Mutable | Tags | Plan Doc |
+| Driver | Kind | Key | Key Scope | Mutable | Tags | Spec Doc |
 |---|---|---|---|---|---|---|
 | ECR Repository | `ECRRepository` | `region~repositoryName` | `KeyScopeRegion` | imageTagMutability, imageScanningConfiguration, repositoryPolicy, tags | Yes | [ECR_REPOSITORY_DRIVER_PLAN.md](ECR_REPOSITORY_DRIVER_PLAN.md) |
 | ECR Lifecycle Policy | `ECRLifecyclePolicy` | `region~repositoryName` | `KeyScopeCustom` | lifecyclePolicyText | No | [ECR_LIFECYCLE_POLICY_DRIVER_PLAN.md](ECR_LIFECYCLE_POLICY_DRIVER_PLAN.md) |
@@ -92,16 +87,16 @@ with other compute-plane services follows the established domain alignment.
 ```go
 // cmd/praxis-compute/main.go
 srv := server.NewRestate().
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ami.NewAMIDriver(cfg.Auth()))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(cfg.Auth()))).
-    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(cfg.Auth()))).
-    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(cfg.Auth()))).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth))).
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
     // ECR drivers
-    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(cfg.Auth())))
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
+    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth)))
 ```
 
 ---
@@ -209,11 +204,11 @@ Both adapters are registered in `internal/core/provider/registry.go` inside
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
-        NewECRRepositoryAdapterWithRegistry(accounts),
-        NewECRLifecyclePolicyAdapterWithRegistry(accounts),
+        NewECRRepositoryAdapterWithAuth(auth),
+        NewECRLifecyclePolicyAdapterWithAuth(auth),
     )
 }
 ```
@@ -282,31 +277,31 @@ settings. This matches the `fifoTopic` pattern in the SNS Topic driver.
 
 ### ECR Repository
 
-- [ ] CUE schema (`schemas/aws/ecr/repository.cue`)
-- [ ] Driver types (`internal/drivers/ecrrepo/types.go`)
-- [ ] AWS API abstraction (`internal/drivers/ecrrepo/aws.go`)
-- [ ] Drift detection (`internal/drivers/ecrrepo/drift.go`)
-- [ ] Driver Virtual Object (`internal/drivers/ecrrepo/driver.go`)
-- [ ] Unit tests (`internal/drivers/ecrrepo/driver_test.go`, `aws_test.go`, `drift_test.go`)
-- [ ] Provider adapter (`internal/core/provider/ecrrepository_adapter.go`)
-- [ ] Adapter tests (`internal/core/provider/ecrrepository_adapter_test.go`)
-- [ ] Registry entry (`internal/core/provider/registry.go`)
-- [ ] Entry point bind (`cmd/praxis-compute/main.go`)
-- [ ] Integration tests (`tests/integration/ecr_repository_driver_test.go`)
-- [ ] AWS client factory (`internal/infra/awsclient/client.go`)
-- [ ] LocalStack SERVICES (`docker-compose.yaml`)
-- [ ] Justfile targets
+- [x] CUE schema (`schemas/aws/ecr/repository.cue`)
+- [x] Driver types (`internal/drivers/ecrrepo/types.go`)
+- [x] AWS API abstraction (`internal/drivers/ecrrepo/aws.go`)
+- [x] Drift detection (`internal/drivers/ecrrepo/drift.go`)
+- [x] Driver Virtual Object (`internal/drivers/ecrrepo/driver.go`)
+- [x] Unit tests (`internal/drivers/ecrrepo/driver_test.go`, `aws_test.go`, `drift_test.go`)
+- [x] Provider adapter (`internal/core/provider/ecrrepository_adapter.go`)
+- [x] Adapter tests (`internal/core/provider/ecrrepository_adapter_test.go`)
+- [x] Registry entry (`internal/core/provider/registry.go`)
+- [x] Entry point bind (`cmd/praxis-compute/main.go`)
+- [x] Integration tests (`tests/integration/ecr_repository_driver_test.go`)
+- [x] AWS client factory (`internal/infra/awsclient/client.go`)
+- [x] LocalStack SERVICES (`docker-compose.yaml`)
+- [x] Justfile targets
 
 ### ECR Lifecycle Policy
 
-- [ ] CUE schema (`schemas/aws/ecr/lifecycle_policy.cue`)
-- [ ] Driver types (`internal/drivers/ecrpolicy/types.go`)
-- [ ] AWS API abstraction (`internal/drivers/ecrpolicy/aws.go`)
-- [ ] Drift detection (`internal/drivers/ecrpolicy/drift.go`)
-- [ ] Driver Virtual Object (`internal/drivers/ecrpolicy/driver.go`)
-- [ ] Unit tests (`internal/drivers/ecrpolicy/driver_test.go`, `aws_test.go`, `drift_test.go`)
-- [ ] Provider adapter (`internal/core/provider/ecrlifecyclepolicy_adapter.go`)
-- [ ] Adapter tests (`internal/core/provider/ecrlifecyclepolicy_adapter_test.go`)
-- [ ] Registry entry (`internal/core/provider/registry.go`)
-- [ ] Entry point bind (`cmd/praxis-compute/main.go`)
-- [ ] Integration tests (`tests/integration/ecr_lifecycle_policy_driver_test.go`)
+- [x] CUE schema (`schemas/aws/ecr/lifecycle_policy.cue`)
+- [x] Driver types (`internal/drivers/ecrpolicy/types.go`)
+- [x] AWS API abstraction (`internal/drivers/ecrpolicy/aws.go`)
+- [x] Drift detection (`internal/drivers/ecrpolicy/drift.go`)
+- [x] Driver Virtual Object (`internal/drivers/ecrpolicy/driver.go`)
+- [x] Unit tests (`internal/drivers/ecrpolicy/driver_test.go`, `aws_test.go`, `drift_test.go`)
+- [x] Provider adapter (`internal/core/provider/ecrlifecyclepolicy_adapter.go`)
+- [x] Adapter tests (`internal/core/provider/ecrlifecyclepolicy_adapter_test.go`)
+- [x] Registry entry (`internal/core/provider/registry.go`)
+- [x] Entry point bind (`cmd/praxis-compute/main.go`)
+- [x] Integration tests (`tests/integration/ecr_lifecycle_policy_driver_test.go`)

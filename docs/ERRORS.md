@@ -1,7 +1,5 @@
 # Errors
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [CLI](CLI.md) | [Developers](DEVELOPERS.md)
-
 ---
 
 ## Overview

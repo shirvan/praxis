@@ -1,12 +1,4 @@
-# VPC Peering Connection Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS VPC Peering Connections,
-> following the exact patterns established by the VPC, Subnet, IGW, and EC2 Instance
-> drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned VPC Peering
-> Connection ID lives only in state/outputs.
+# VPC Peering Connection Driver — Implementation Specification
 
 ---
 
@@ -53,7 +45,7 @@ VPC peering is fundamental for multi-VPC architectures. Common patterns include:
 Without a peering driver, users cannot establish private connectivity between VPCs
 managed by Praxis.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope |
 |---|---|
@@ -114,20 +106,20 @@ Same pattern: `praxis:managed-key = <region~metadata.name>` written at creation.
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/vpcpeering/types.go             — Spec, Outputs, ObservedState, State
-✦ internal/drivers/vpcpeering/aws.go               — VPCPeeringAPI interface + realVPCPeeringAPI
-✦ internal/drivers/vpcpeering/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/vpcpeering/driver.go            — VPCPeeringDriver Virtual Object
-✦ internal/drivers/vpcpeering/driver_test.go       — Unit tests for driver
-✦ internal/drivers/vpcpeering/aws_test.go          — Unit tests for error classification
-✦ internal/drivers/vpcpeering/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/vpcpeering_adapter.go     — VPCPeeringAdapter
-✦ internal/core/provider/vpcpeering_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/vpcpeering/vpcpeering.cue            — CUE schema
-✦ tests/integration/vpcpeering_driver_test.go       — Integration tests
-✎ cmd/praxis-network/main.go                       — Add VPCPeering driver .Bind()
-✎ internal/core/provider/registry.go                — Add NewVPCPeeringAdapter
-✎ justfile                                          — Add vpcpeering test targets
+✓ internal/drivers/vpcpeering/types.go             — Spec, Outputs, ObservedState, State
+✓ internal/drivers/vpcpeering/aws.go               — VPCPeeringAPI interface + realVPCPeeringAPI
+✓ internal/drivers/vpcpeering/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/vpcpeering/driver.go            — VPCPeeringDriver Virtual Object
+✓ internal/drivers/vpcpeering/driver_test.go       — Unit tests for driver
+✓ internal/drivers/vpcpeering/aws_test.go          — Unit tests for error classification
+✓ internal/drivers/vpcpeering/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/vpcpeering_adapter.go     — VPCPeeringAdapter
+✓ internal/core/provider/vpcpeering_adapter_test.go — Unit tests for adapter
+✓ schemas/aws/vpcpeering/vpcpeering.cue            — CUE schema
+✓ tests/integration/vpcpeering_driver_test.go       — Integration tests
+✓ cmd/praxis-network/main.go                       — Add VPCPeering driver .Bind()
+✓ internal/core/provider/registry.go                — Add NewVPCPeeringAdapter
+✓ justfile                                          — Add vpcpeering test targets
 ```
 
 ---
@@ -465,14 +457,15 @@ the driver re-attempts acceptance (for same-account peering).
 
 ## Step 8 — Registry Integration
 
-Add `NewVPCPeeringAdapterWithRegistry(accounts)` to `NewRegistry()`.
+`NewVPCPeeringAdapterWithAuth` is registered in `NewRegistry()`.
 
 ---
 
 ## Step 9 — Binary Entry Point & Dockerfile
 
-Add `.Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(cfg.Auth())))` to
-`cmd/praxis-network/main.go`.
+The VPC Peering driver is bound in `cmd/praxis-network/main.go`:
+
+`.Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(auth)))`
 
 ---
 

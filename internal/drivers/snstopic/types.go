@@ -1,3 +1,9 @@
+// Package snstopic implements the Praxis driver for AWS SNS Topic resources.
+//
+// This file defines the spec, outputs, observed-state, and reconciliation-state
+// types that flow through the driver lifecycle (Provision → Reconcile → Delete).
+// The spec is the user's desired configuration; the observed state is read from
+// Amazon Simple Notification Service (SNS); the driver state couples both together with status tracking.
 package snstopic
 
 import "github.com/shirvan/praxis/pkg/types"

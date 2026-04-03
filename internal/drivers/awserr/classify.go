@@ -1,3 +1,13 @@
+// Package awserr provides AWS error code extraction and classification helpers.
+// All Praxis drivers import this package to determine whether an AWS API error
+// is retryable (throttling), terminal (access denied), or informational.
+//
+// Error code extraction uses two strategies:
+//  1. Type assertion to smithy.APIError (preferred, works for typed SDK errors)
+//  2. String parsing of error messages (fallback for wrapped/serialized errors)
+//
+// This dual approach handles cases where errors have been serialized across
+// Restate service boundaries and lost their original Go type information.
 package awserr
 
 import (
@@ -10,6 +20,12 @@ import (
 
 // ErrorCode extracts the AWS error code from any error in the chain.
 // Returns empty string if the error is not an AWS API error.
+//
+// Two extraction strategies:
+//  1. Type assertion: uses errors.As to find a smithy.APIError and read its code.
+//  2. String parsing: looks for "api error <CODE>:" in the error message.
+//     This handles errors that were serialized (e.g., across Restate boundaries)
+//     and no longer carry the original smithy.APIError type.
 func ErrorCode(err error) string {
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
@@ -31,6 +47,8 @@ func ErrorCode(err error) string {
 	return strings.TrimSpace(code)
 }
 
+// errString safely converts an error to its string representation.
+// Returns empty string for nil errors.
 func errString(err error) string {
 	if err == nil {
 		return ""

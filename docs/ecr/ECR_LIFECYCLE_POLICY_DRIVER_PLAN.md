@@ -1,13 +1,4 @@
-# ECR Lifecycle Policy Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages ECR Lifecycle Policies,
-> following the exact patterns established by the S3, Lambda Permission, and SNS
-> Subscription drivers.
->
-> Key scope: `KeyScopeCustom` — key format is `region~repositoryName`, derived from
-> `spec.repositoryName` (the attached repository), not from `metadata.name`. The
-> lifecycle policy has no independent name; it is identified by the repository it
-> belongs to.
+# ECR Lifecycle Policy Driver — Implementation Spec
 
 ---
 
@@ -571,19 +562,19 @@ func countRules(policyText string) int {
 
 ```go
 type ECRLifecyclePolicyDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) LifecyclePolicyAPI
 }
 
-func NewECRLifecyclePolicyDriver(accounts *auth.Registry) *ECRLifecyclePolicyDriver {
-    return NewECRLifecyclePolicyDriverWithFactory(accounts, func(cfg aws.Config) LifecyclePolicyAPI {
+func NewECRLifecyclePolicyDriver(auth authservice.AuthClient) *ECRLifecyclePolicyDriver {
+    return NewECRLifecyclePolicyDriverWithFactory(auth, func(cfg aws.Config) LifecyclePolicyAPI {
         return NewLifecyclePolicyAPI(awsclient.NewECRClient(cfg))
     })
 }
 
-func NewECRLifecyclePolicyDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) LifecyclePolicyAPI) *ECRLifecyclePolicyDriver {
+func NewECRLifecyclePolicyDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LifecyclePolicyAPI) *ECRLifecyclePolicyDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) LifecyclePolicyAPI {
@@ -802,13 +793,13 @@ import (
 const ecrLifecyclePolicyKind = "ECRLifecyclePolicy"
 
 type ECRLifecyclePolicyAdapter struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) ecrpolicy.LifecyclePolicyAPI
 }
 
-func NewECRLifecyclePolicyAdapterWithRegistry(accounts *auth.Registry) *ECRLifecyclePolicyAdapter {
+func NewECRLifecyclePolicyAdapterWithAuth(auth authservice.AuthClient) *ECRLifecyclePolicyAdapter {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     return &ECRLifecyclePolicyAdapter{
         auth: accounts,
@@ -869,11 +860,11 @@ before it can be built.
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
-        NewECRRepositoryAdapterWithRegistry(accounts),
-        NewECRLifecyclePolicyAdapterWithRegistry(accounts),
+        NewECRRepositoryAdapterWithAuth(auth),
+        NewECRLifecyclePolicyAdapterWithAuth(auth),
     )
 }
 ```
@@ -892,8 +883,8 @@ import (
 
 srv := server.NewRestate().
     // ... existing bindings ...
-    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(cfg.Auth())))
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
+    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth)))
 ```
 
 ---
@@ -1055,15 +1046,15 @@ patterns in the Lambda Permission and SNS Subscription drivers.
 
 ## Checklist
 
-- [ ] CUE schema (`schemas/aws/ecr/lifecycle_policy.cue`)
-- [ ] Driver types (`internal/drivers/ecrpolicy/types.go`)
-- [ ] AWS API abstraction (`internal/drivers/ecrpolicy/aws.go`)
-- [ ] Drift detection (`internal/drivers/ecrpolicy/drift.go`)
-- [ ] Driver Virtual Object (`internal/drivers/ecrpolicy/driver.go`)
-- [ ] Unit tests: driver, aws, drift
-- [ ] Provider adapter (`internal/core/provider/ecrlifecyclepolicy_adapter.go`)
-- [ ] Adapter unit tests
-- [ ] Registry integration (`internal/core/provider/registry.go`)
-- [ ] Entry point bind (`cmd/praxis-compute/main.go`)
-- [ ] Integration tests (`tests/integration/ecr_lifecycle_policy_driver_test.go`)
-- [ ] Justfile targets
+- [x] CUE schema (`schemas/aws/ecr/lifecycle_policy.cue`)
+- [x] Driver types (`internal/drivers/ecrpolicy/types.go`)
+- [x] AWS API abstraction (`internal/drivers/ecrpolicy/aws.go`)
+- [x] Drift detection (`internal/drivers/ecrpolicy/drift.go`)
+- [x] Driver Virtual Object (`internal/drivers/ecrpolicy/driver.go`)
+- [x] Unit tests: driver, aws, drift
+- [x] Provider adapter (`internal/core/provider/ecrlifecyclepolicy_adapter.go`)
+- [x] Adapter unit tests
+- [x] Registry integration (`internal/core/provider/registry.go`)
+- [x] Entry point bind (`cmd/praxis-compute/main.go`)
+- [x] Integration tests (`tests/integration/ecr_lifecycle_policy_driver_test.go`)
+- [x] Justfile targets

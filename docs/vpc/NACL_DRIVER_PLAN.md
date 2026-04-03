@@ -1,11 +1,4 @@
-# Network ACL Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS Network ACLs, following
-> the exact patterns established by the VPC, SG, IGW, and EIP drivers.
->
-> Key scope: `KeyScopeCustom` — key format is `vpcId~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned Network ACL ID
-> lives only in state/outputs.
+# Network ACL Driver — Implementation Specification
 
 ---
 
@@ -51,7 +44,7 @@ Network ACLs provide defense-in-depth for VPC security:
 - **Rule ordering**: NACLs evaluate rules in numerical order, stopping at the first
   match. This enables precise traffic control with priority-based rules.
 
-### Resource Scope for This Plan
+### Resource Scope
 
 | In Scope | Out of Scope |
 |---|---|
@@ -103,20 +96,20 @@ Same pattern: `praxis:managed-key = <vpcId~metadata.name>` written at creation.
 ## 3. File Inventory
 
 ```text
-✦ internal/drivers/nacl/types.go             — Spec, Outputs, ObservedState, State
-✦ internal/drivers/nacl/aws.go               — NetworkACLAPI interface + realNetworkACLAPI
-✦ internal/drivers/nacl/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/nacl/driver.go            — NetworkACLDriver Virtual Object
-✦ internal/drivers/nacl/driver_test.go       — Unit tests for driver
-✦ internal/drivers/nacl/aws_test.go          — Unit tests for error classification
-✦ internal/drivers/nacl/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/nacl_adapter.go     — NetworkACLAdapter
-✦ internal/core/provider/nacl_adapter_test.go — Unit tests for adapter
-✦ schemas/aws/nacl/nacl.cue                  — CUE schema
-✦ tests/integration/nacl_driver_test.go       — Integration tests
-✎ cmd/praxis-network/main.go                 — Add NetworkACL driver .Bind()
-✎ internal/core/provider/registry.go          — Add NewNetworkACLAdapter
-✎ justfile                                    — Add nacl test targets
+✓ internal/drivers/nacl/types.go             — Spec, Outputs, ObservedState, State
+✓ internal/drivers/nacl/aws.go               — NetworkACLAPI interface + realNetworkACLAPI
+✓ internal/drivers/nacl/drift.go             — HasDrift(), ComputeFieldDiffs()
+✓ internal/drivers/nacl/driver.go            — NetworkACLDriver Virtual Object
+✓ internal/drivers/nacl/driver_test.go       — Unit tests for driver
+✓ internal/drivers/nacl/aws_test.go          — Unit tests for error classification
+✓ internal/drivers/nacl/drift_test.go        — Unit tests for drift detection
+✓ internal/core/provider/nacl_adapter.go     — NetworkACLAdapter
+✓ internal/core/provider/nacl_adapter_test.go — Unit tests for adapter
+✓ schemas/aws/nacl/nacl.cue                  — CUE schema
+✓ tests/integration/nacl_driver_test.go       — Integration tests
+✓ cmd/praxis-network/main.go                 — Add NetworkACL driver .Bind()
+✓ internal/core/provider/registry.go          — Add NewNetworkACLAdapter
+✓ justfile                                    — Add nacl test targets
 ```
 
 ---
@@ -347,6 +340,10 @@ type NetworkACLAPI interface {
     // FindAssociationIdForSubnet returns the current NACL association ID
     // for a given subnet. Needed to call ReplaceNetworkACLAssociation.
     FindAssociationIdForSubnet(ctx context.Context, subnetId string) (string, error)
+
+    // FindDefaultNetworkACL returns the default Network ACL ID for the given VPC.
+    // Used during delete to reassociate subnets back to the default NACL.
+    FindDefaultNetworkACL(ctx context.Context, vpcId string) (string, error)
 }
 ```
 
@@ -507,14 +504,15 @@ func HasDrift(desired NetworkACLSpec, observed ObservedState) bool {
 
 ## Step 8 — Registry Integration
 
-Add `NewNetworkACLAdapterWithRegistry(accounts)` to `NewRegistry()`.
+`NewNetworkACLAdapterWithAuth` is registered in `NewRegistry()`.
 
 ---
 
 ## Step 9 — Binary Entry Point & Dockerfile
 
-Add `.Bind(restate.Reflect(nacl.NewNetworkACLDriver(cfg.Auth())))` to
-`cmd/praxis-network/main.go`.
+The NACL driver is bound in `cmd/praxis-network/main.go`:
+
+`.Bind(restate.Reflect(nacl.NewNetworkACLDriver(auth)))`
 
 ---
 

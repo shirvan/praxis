@@ -1,3 +1,13 @@
+// LambdaFunction provider adapter.
+//
+// This file implements the provider.Adapter interface for AWS Lambda
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the LambdaFunction Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + function name.
+// Lambda functions are region-scoped; the key combines the AWS region and function name.
 package provider
 
 import (
@@ -14,24 +24,44 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LambdaAdapter implements provider.Adapter for LambdaFunction (AWS Lambda) resources.
+// It holds an auth client for credential resolution and a factory for creating
+// AWS API clients scoped to the target account. A staticPlanningAPI field allows
+// tests to inject a mock API without requiring real AWS credentials.
 type LambdaAdapter struct {
 	auth              authservice.AuthClient
 	staticPlanningAPI lambda.LambdaAPI
 	apiFactory        func(aws.Config) lambda.LambdaAPI
 }
 
+// NewLambdaAdapterWithAuth creates a production LambdaFunction adapter using
+// the given auth client for per-account credential resolution.
+// The apiFactory closure creates a real AWS API client from the resolved
+// aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewLambdaAdapterWithAuth(auth authservice.AuthClient) *LambdaAdapter {
 	return &LambdaAdapter{auth: auth, apiFactory: func(cfg aws.Config) lambda.LambdaAPI { return lambda.NewLambdaAPI(awsclient.NewLambdaClient(cfg)) }}
 }
 
+// NewLambdaAdapterWithAPI creates a LambdaFunction adapter with a pre-built API
+// client. This is primarily useful in tests that supply a mock implementation
+// and do not need per-account credential resolution.
 func NewLambdaAdapterWithAPI(api lambda.LambdaAPI) *LambdaAdapter {
 	return &LambdaAdapter{staticPlanningAPI: api}
 }
 
+// Kind returns the resource kind string "LambdaFunction" that maps template
+// resource documents to this adapter in the provider registry.
 func (a *LambdaAdapter) Kind() string        { return lambda.ServiceName }
+// ServiceName returns the Restate Virtual Object service name for the
+// LambdaFunction driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *LambdaAdapter) ServiceName() string { return lambda.ServiceName }
+// Scope returns the key-scope strategy for LambdaFunction resources,
+// which controls how BuildKey assembles the canonical object key.
 func (a *LambdaAdapter) Scope() KeyScope     { return KeyScopeRegion }
 
+// BuildKey derives the canonical Restate object key for a LambdaFunction resource
+// from the raw JSON resource document. The key is composed of region + function name,
+// ensuring uniqueness within the Restate Virtual Object namespace.
 func (a *LambdaAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -50,6 +80,8 @@ func (a *LambdaAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	return JoinKey(spec.Region, spec.FunctionName), nil
 }
 
+// DecodeSpec extracts the spec section from a raw JSON resource document and
+// returns it as the concrete LambdaFunction spec struct expected by the driver.
 func (a *LambdaAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
 	if err != nil {
@@ -58,6 +90,11 @@ func (a *LambdaAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
 	return a.decodeSpec(doc)
 }
 
+// Provision sends a durable Provision request to the LambdaFunction Restate
+// Virtual Object keyed by the given key. It returns a ProvisionInvocation
+// handle that the orchestrator can await via restate.Wait/WaitFirst.
+// The account string is injected into the spec so the driver knows which
+// AWS account to target.
 func (a *LambdaAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[lambda.LambdaFunctionSpec](spec)
 	if err != nil {
@@ -69,11 +106,17 @@ func (a *LambdaAdapter) Provision(ctx restate.Context, key string, account strin
 	return &provisionHandle[lambda.LambdaFunctionOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
 }
 
+// Delete sends a durable Delete request to the LambdaFunction Restate Virtual
+// Object keyed by the given key. It returns a DeleteInvocation handle
+// that the orchestrator can await alongside other parallel futures.
 func (a *LambdaAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
 	fut := restate.WithRequestType[restate.Void, restate.Void](restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete")).RequestFuture(restate.Void{})
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// NormalizeOutputs converts the typed LambdaFunction driver output struct into
+// the generic map[string]any used by deployment state, CLI display,
+// and cross-resource expression interpolation.
 func (a *LambdaAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	out, err := castOutput[lambda.LambdaFunctionOutputs](raw)
 	if err != nil {
@@ -98,6 +141,11 @@ func (a *LambdaAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	return result, nil
 }
 
+// Plan compares the desired LambdaFunction spec against the current provider
+// state. It first checks whether the resource already exists (via cached
+// outputs or a Describe API call), then computes field-level diffs.
+// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
+// or OpNoOp if the resource matches the desired state.
 func (a *LambdaAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
 	desired, err := castSpec[lambda.LambdaFunctionSpec](desiredSpec)
 	if err != nil {
@@ -153,6 +201,8 @@ func (a *LambdaAdapter) Plan(ctx restate.Context, key string, account string, de
 	return types.OpUpdate, fields, nil
 }
 
+// BuildImportKey derives the canonical Restate object key for importing
+// an existing LambdaFunction resource by its region and provider-native ID.
 func (a *LambdaAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("region", region); err != nil {
 		return "", err
@@ -163,6 +213,8 @@ func (a *LambdaAdapter) BuildImportKey(region, resourceID string) (string, error
 	return JoinKey(region, resourceID), nil
 }
 
+// Import adopts an existing LambdaFunction resource into Praxis management.
+// It delegates to the driver's Import handler and normalizes the outputs.
 func (a *LambdaAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
 	ref.Account = account
 	output, err := restate.WithRequestType[types.ImportRef, lambda.LambdaFunctionOutputs](restate.Object[lambda.LambdaFunctionOutputs](ctx, a.ServiceName(), key, "Import")).Request(ref)
@@ -176,6 +228,10 @@ func (a *LambdaAdapter) Import(ctx restate.Context, key string, account string, 
 	return types.StatusReady, outputs, nil
 }
 
+// decodeSpec unmarshals the raw JSON spec from a resource document into
+// the typed LambdaFunction spec struct, validates required fields, and applies
+// sensible defaults. The Account field is deliberately zeroed so that only
+// the orchestrator (not the template author) can set the target account.
 func (a *LambdaAdapter) decodeSpec(doc resourceDocument) (lambda.LambdaFunctionSpec, error) {
 	var spec lambda.LambdaFunctionSpec
 	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
@@ -195,6 +251,9 @@ func (a *LambdaAdapter) decodeSpec(doc resourceDocument) (lambda.LambdaFunctionS
 	return spec, nil
 }
 
+// planningAPI returns the AWS API client used for Plan (read-only) operations.
+// In production it resolves credentials for the given account via the auth
+// client and creates a fresh API. In tests it returns the staticPlanningAPI.
 func (a *LambdaAdapter) planningAPI(ctx restate.Context, account string) (lambda.LambdaAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

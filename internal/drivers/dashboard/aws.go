@@ -1,3 +1,9 @@
+// Package dashboard – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS CloudWatch Dashboard.
+// It defines the DashboardAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon CloudWatch through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package dashboard
 
 import (
@@ -11,6 +17,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// DashboardAPI abstracts all Amazon CloudWatch SDK operations needed
+// to manage a AWS CloudWatch Dashboard. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type DashboardAPI interface {
 	PutDashboard(ctx context.Context, spec DashboardSpec) ([]ValidationMessage, error)
 	GetDashboard(ctx context.Context, dashboardName string) (ObservedState, bool, error)
@@ -22,6 +31,8 @@ type realDashboardAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewDashboardAPI constructs a production DashboardAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewDashboardAPI(client *cloudwatch.Client) DashboardAPI {
 	return &realDashboardAPI{
 		client:  client,
@@ -50,6 +61,7 @@ func (r *realDashboardAPI) PutDashboard(ctx context.Context, spec DashboardSpec)
 	return messages, nil
 }
 
+// GetDashboard reads the current state of the AWS CloudWatch Dashboard from Amazon CloudWatch.
 func (r *realDashboardAPI) GetDashboard(ctx context.Context, dashboardName string) (ObservedState, bool, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, false, err
@@ -68,6 +80,7 @@ func (r *realDashboardAPI) GetDashboard(ctx context.Context, dashboardName strin
 	}, true, nil
 }
 
+// DeleteDashboard removes the AWS CloudWatch Dashboard from AWS via Amazon CloudWatch.
 func (r *realDashboardAPI) DeleteDashboard(ctx context.Context, dashboardName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -76,6 +89,7 @@ func (r *realDashboardAPI) DeleteDashboard(ctx context.Context, dashboardName st
 	return err
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS CloudWatch Dashboard does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFound", "DashboardNotFoundError")
 }

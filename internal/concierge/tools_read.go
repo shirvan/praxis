@@ -9,6 +9,17 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// registerReadTools adds all read-only tools to the registry. These tools query
+// Praxis state (deployments, templates, resources, workspaces) without making
+// changes. They execute immediately without requiring human approval.
+//
+// Read tools make cross-service calls to other Restate Virtual Objects:
+//   - DeploymentStateObj: individual deployment state
+//   - DeploymentIndex: global deployment listing
+//   - TemplateIndex / TemplateRegistry: template metadata and source
+//   - Resource Virtual Objects (e.g., S3Bucket, SecurityGroup): outputs and drift
+//   - PraxisCommandService: dry-run plans
+//   - WorkspaceIndex: workspace listing
 func (r *ToolRegistry) registerReadTools() {
 	r.Register(&ToolDef{
 		Name:        "getDeploymentStatus",
@@ -126,6 +137,9 @@ func (r *ToolRegistry) registerReadTools() {
 	})
 }
 
+// toolGetDeploymentStatus queries the DeploymentStateObj Virtual Object for a
+// deployment's current details (status, resources, errors). The deployment key
+// is the Virtual Object's key.
 func toolGetDeploymentStatus(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		DeploymentKey string `json:"deploymentKey"`
@@ -148,6 +162,8 @@ func toolGetDeploymentStatus(ctx restate.Context, argsJSON string, _ SessionStat
 	return string(result), nil
 }
 
+// toolListDeployments queries the DeploymentIndex for all deployments, optionally
+// filtered by workspace. Falls back to the session's workspace if not specified.
 func toolListDeployments(ctx restate.Context, argsJSON string, session SessionState) (string, error) {
 	var args struct {
 		Workspace string `json:"workspace"`
@@ -177,6 +193,7 @@ func toolListDeployments(ctx restate.Context, argsJSON string, session SessionSt
 	return string(result), nil
 }
 
+// toolListTemplates queries the TemplateIndex for all registered template metadata.
 func toolListTemplates(ctx restate.Context, _ string, _ SessionState) (string, error) {
 	templates, err := restate.Object[[]types.TemplateMetadata](
 		ctx, "TemplateIndex", "global", "List",
@@ -193,6 +210,8 @@ func toolListTemplates(ctx restate.Context, _ string, _ SessionState) (string, e
 	return string(result), nil
 }
 
+// toolDescribeTemplate retrieves detailed metadata for a named template, including
+// its variable schema, resource kinds, and description.
 func toolDescribeTemplate(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		TemplateName string `json:"templateName"`
@@ -215,6 +234,8 @@ func toolDescribeTemplate(ctx restate.Context, argsJSON string, _ SessionState) 
 	return string(result), nil
 }
 
+// toolGetTemplateSource retrieves the raw CUE source of a registered template.
+// Useful for the LLM to understand template structure or suggest modifications.
 func toolGetTemplateSource(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		TemplateName string `json:"templateName"`
@@ -236,6 +257,9 @@ func toolGetTemplateSource(ctx restate.Context, argsJSON string, _ SessionState)
 	return source, nil
 }
 
+// toolGetResourceOutputs queries a resource's Virtual Object for its outputs
+// (IDs, ARNs, endpoints). The kind determines which Virtual Object to call
+// (e.g., "S3Bucket", "SecurityGroup"), and the key identifies the instance.
 func toolGetResourceOutputs(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		Kind string `json:"kind"`
@@ -259,6 +283,8 @@ func toolGetResourceOutputs(ctx restate.Context, argsJSON string, _ SessionState
 	return string(result), nil
 }
 
+// toolGetDrift checks whether a resource has drifted from its desired state
+// by querying the resource's Virtual Object for its current status.
 func toolGetDrift(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		Kind string `json:"kind"`
@@ -282,6 +308,9 @@ func toolGetDrift(ctx restate.Context, argsJSON string, _ SessionState) (string,
 	return string(result), nil
 }
 
+// toolPlanDeployment runs a dry-run plan against PraxisCommandService. Plans are
+// read-only — they evaluate the CUE template and show what resources would be
+// created, updated, or deleted without actually making changes.
 func toolPlanDeployment(ctx restate.Context, argsJSON string, session SessionState) (string, error) {
 	var args struct {
 		Template  string         `json:"template"`
@@ -321,6 +350,7 @@ func toolPlanDeployment(ctx restate.Context, argsJSON string, session SessionSta
 	return string(result), nil
 }
 
+// toolListWorkspaces queries the WorkspaceIndex for all workspaces.
 func toolListWorkspaces(ctx restate.Context, _ string, _ SessionState) (string, error) {
 	type WorkspaceSummary struct {
 		Name string `json:"name"`

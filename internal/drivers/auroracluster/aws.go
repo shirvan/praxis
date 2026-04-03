@@ -16,26 +16,47 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// AuroraClusterAPI abstracts the AWS RDS SDK operations for Aurora cluster management.
+// In production, backed by realAuroraClusterAPI; in tests, by a mock.
 type AuroraClusterAPI interface {
+	// CreateDBCluster creates a new Aurora cluster and returns its ARN.
 	CreateDBCluster(ctx context.Context, spec AuroraClusterSpec) (string, error)
+
+	// DescribeDBCluster returns the observed state including endpoints and tags.
 	DescribeDBCluster(ctx context.Context, clusterIdentifier string) (ObservedState, error)
+
+	// ModifyDBCluster modifies mutable cluster attributes.
 	ModifyDBCluster(ctx context.Context, spec AuroraClusterSpec, applyImmediately bool) error
+
+	// DeleteDBCluster deletes the cluster. skipFinalSnapshot=true skips the final snapshot.
 	DeleteDBCluster(ctx context.Context, clusterIdentifier string, skipFinalSnapshot bool) error
+
+	// WaitUntilAvailable polls until the cluster reaches "available" (up to 30 min).
 	WaitUntilAvailable(ctx context.Context, clusterIdentifier string) error
+
+	// WaitUntilDeleted polls until the cluster is fully deleted (up to 30 min).
 	WaitUntilDeleted(ctx context.Context, clusterIdentifier string) error
+
+	// UpdateTags performs diff-based tag updates on the cluster.
 	UpdateTags(ctx context.Context, arn string, tags map[string]string) error
+
+	// ListTags returns all non-praxis tags on the cluster.
 	ListTags(ctx context.Context, arn string) (map[string]string, error)
 }
 
+// realAuroraClusterAPI implements AuroraClusterAPI using the AWS SDK v2 RDS client.
 type realAuroraClusterAPI struct {
 	client  *rdssdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewAuroraClusterAPI creates a new API backed by the given RDS client.
+// Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewAuroraClusterAPI(client *rdssdk.Client) AuroraClusterAPI {
 	return &realAuroraClusterAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
 }
 
+// CreateDBCluster calls rds:CreateDBCluster with the full spec.
 func (r *realAuroraClusterAPI) CreateDBCluster(ctx context.Context, spec AuroraClusterSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -86,6 +107,8 @@ func (r *realAuroraClusterAPI) CreateDBCluster(ctx context.Context, spec AuroraC
 	return aws.ToString(out.DBCluster.DBClusterArn), nil
 }
 
+// DescribeDBCluster calls rds:DescribeDBClusters and maps to ObservedState.
+// Fetches tags and sorts VPC security group IDs for deterministic comparison.
 func (r *realAuroraClusterAPI) DescribeDBCluster(ctx context.Context, clusterIdentifier string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -135,6 +158,8 @@ func (r *realAuroraClusterAPI) DescribeDBCluster(ctx context.Context, clusterIde
 	return observed, nil
 }
 
+// ModifyDBCluster calls rds:ModifyDBCluster. Uses CloudwatchLogsExportConfiguration
+// to manage log export settings.
 func (r *realAuroraClusterAPI) ModifyDBCluster(ctx context.Context, spec AuroraClusterSpec, applyImmediately bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -159,6 +184,7 @@ func (r *realAuroraClusterAPI) ModifyDBCluster(ctx context.Context, spec AuroraC
 	return err
 }
 
+// DeleteDBCluster calls rds:DeleteDBCluster.
 func (r *realAuroraClusterAPI) DeleteDBCluster(ctx context.Context, clusterIdentifier string, skipFinalSnapshot bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -167,16 +193,19 @@ func (r *realAuroraClusterAPI) DeleteDBCluster(ctx context.Context, clusterIdent
 	return err
 }
 
+// WaitUntilAvailable polls until the cluster reaches "available" (up to 30 min).
 func (r *realAuroraClusterAPI) WaitUntilAvailable(ctx context.Context, clusterIdentifier string) error {
 	waiter := rdssdk.NewDBClusterAvailableWaiter(r.client)
 	return waiter.Wait(ctx, &rdssdk.DescribeDBClustersInput{DBClusterIdentifier: aws.String(clusterIdentifier)}, 30*time.Minute)
 }
 
+// WaitUntilDeleted polls until the cluster is fully deleted (up to 30 min).
 func (r *realAuroraClusterAPI) WaitUntilDeleted(ctx context.Context, clusterIdentifier string) error {
 	waiter := rdssdk.NewDBClusterDeletedWaiter(r.client)
 	return waiter.Wait(ctx, &rdssdk.DescribeDBClustersInput{DBClusterIdentifier: aws.String(clusterIdentifier)}, 30*time.Minute)
 }
 
+// UpdateTags performs diff-based tag updates: removes, adds, and changes tags.
 func (r *realAuroraClusterAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
 	current, err := r.ListTags(ctx, arn)
 	if err != nil {
@@ -219,6 +248,7 @@ func (r *realAuroraClusterAPI) UpdateTags(ctx context.Context, arn string, tags 
 	return err
 }
 
+// ListTags returns all non-praxis tags on the resource.
 func (r *realAuroraClusterAPI) ListTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -238,6 +268,7 @@ func (r *realAuroraClusterAPI) ListTags(ctx context.Context, arn string) (map[st
 	return tags, nil
 }
 
+// toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
 func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	filtered := filterPraxisTags(tags)
 	out := make([]rdstypes.Tag, 0, len(filtered))
@@ -250,18 +281,22 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	return out
 }
 
+// IsNotFound returns true if the cluster does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "DBClusterNotFoundFault")
 }
 
+// IsAlreadyExists returns true if a cluster with the same identifier exists.
 func IsAlreadyExists(err error) bool {
 	return awserr.HasCode(err, "DBClusterAlreadyExistsFault")
 }
 
+// IsInvalidState returns true if the cluster is in a state preventing the operation.
 func IsInvalidState(err error) bool {
 	return awserr.HasCode(err, "InvalidDBClusterStateFault", "InvalidDBInstanceState")
 }
 
+// IsInvalidParam returns true if the error indicates invalid API parameters.
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

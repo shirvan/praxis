@@ -1,3 +1,15 @@
+// Package nlb – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS Network Load Balancer (NLB).
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package nlb
 
 import (
@@ -15,17 +27,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// NLBDriver is the Restate Virtual Object handler for AWS Network Load Balancer (NLB).
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type NLBDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) NLBAPI
 }
 
+// NewNLBDriver creates a NLB driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewNLBDriver(auth authservice.AuthClient) *NLBDriver {
 	return NewNLBDriverWithFactory(auth, func(cfg aws.Config) NLBAPI {
 		return NewNLBAPI(awsclient.NewELBv2Client(cfg))
 	})
 }
 
+// NewNLBDriverWithFactory creates a NLB driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewNLBDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) NLBAPI) *NLBDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) NLBAPI {
@@ -35,8 +54,13 @@ func NewNLBDriverWithFactory(auth authservice.AuthClient, factory func(aws.Confi
 	return &NLBDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *NLBDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a AWS Network Load Balancer (NLB). It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *NLBDriver) Provision(ctx restate.ObjectContext, spec NLBSpec) (NLBOutputs, error) {
 	ctx.Log().Info("provisioning NLB", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -144,6 +168,10 @@ func (d *NLBDriver) Provision(ctx restate.ObjectContext, spec NLBSpec) (NLBOutpu
 	return state.Outputs, nil
 }
 
+// Import adopts an existing AWS Network Load Balancer (NLB) into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *NLBDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (NLBOutputs, error) {
 	ctx.Log().Info("importing NLB", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -182,6 +210,9 @@ func (d *NLBDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (NLBO
 	return state.Outputs, nil
 }
 
+// Delete removes the AWS Network Load Balancer (NLB) from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *NLBDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting NLB", "key", restate.Key(ctx))
 	state, err := restate.Get[NLBState](ctx, drivers.StateKey)
@@ -240,6 +271,11 @@ func (d *NLBDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *NLBDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[NLBState](ctx, drivers.StateKey)
 	if err != nil {
@@ -319,6 +355,7 @@ func (d *NLBDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *NLBDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[NLBState](ctx, drivers.StateKey)
 	if err != nil {
@@ -327,6 +364,7 @@ func (d *NLBDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResp
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *NLBDriver) GetOutputs(ctx restate.ObjectSharedContext) (NLBOutputs, error) {
 	state, err := restate.Get[NLBState](ctx, drivers.StateKey)
 	if err != nil {

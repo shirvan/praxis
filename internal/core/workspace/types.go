@@ -1,3 +1,13 @@
+// Package workspace implements the Praxis workspace subsystem.
+//
+// A workspace is a named environment (e.g. "staging", "production") that
+// groups related deployments under a shared AWS account, region, and set of
+// default template variables. Workspaces are stored as Restate Virtual
+// Objects keyed by workspace name, with a global index for listing.
+//
+// Workspace configuration includes optional event-retention policies that
+// control how long operational CloudEvents are kept in the local Restate
+// event store before pruning.
 package workspace
 
 import (
@@ -5,6 +15,8 @@ import (
 	"regexp"
 )
 
+// nameRegex defines the allowed characters for workspace names:
+// lowercase alphanumeric, hyphens, and underscores. Max 63 chars.
 var nameRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
 // WorkspaceConfig is the operator-supplied configuration for a workspace.
@@ -53,6 +65,9 @@ type EventRetentionPolicy struct {
 	DrainSink              string `json:"drainSink,omitempty"`
 }
 
+// DefaultEventRetentionPolicy returns the system defaults used when no
+// workspace-specific retention policy has been configured. Events are kept
+// for 90 days with up to 10,000 events per deployment.
 func DefaultEventRetentionPolicy() EventRetentionPolicy {
 	return EventRetentionPolicy{
 		MaxAge:                 "90d",

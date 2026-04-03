@@ -1,16 +1,4 @@
-# DB Subnet Group Driver — Implementation Plan
-
-> **Implementation note:** This plan references a `praxis-database` driver pack.
-> The actual implementation places the DB Subnet Group driver in **`praxis-storage`**
-> (`cmd/praxis-storage/main.go`).
->
-> Target: A Restate Virtual Object driver that manages Amazon RDS DB Subnet
-> Groups, providing full lifecycle management including creation, configuration,
-> import, deletion, drift detection, and drift correction for subnet membership
-> and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~groupName`, permanent
-> and immutable for the lifetime of the Virtual Object.
+# DB Subnet Group Driver — Implementation Spec
 
 ---
 
@@ -27,7 +15,7 @@
 9. [Step 6 — Driver Implementation](#step-6--driver-implementation)
 10. [Step 7 — Provider Adapter](#step-7--provider-adapter)
 11. [Step 8 — Registry Integration](#step-8--registry-integration)
-12. [Step 9 — Database Driver Pack Entry Point](#step-9--database-driver-pack-entry-point)
+12. [Step 9 — Storage Driver Pack Entry Point](#step-9--storage-driver-pack-entry-point)
 13. [Step 10 — Docker Compose & Justfile](#step-10--docker-compose--justfile)
 14. [Step 11 — Unit Tests](#step-11--unit-tests)
 15. [Step 12 — Integration Tests](#step-12--integration-tests)
@@ -125,7 +113,7 @@ is taken.
 ✦ internal/core/provider/dbsubnetgroup_adapter_test.go          — Adapter unit tests
 ✦ tests/integration/dbsubnetgroup_driver_test.go                — Integration tests
 ✎ internal/core/provider/registry.go                            — Add NewDBSubnetGroupAdapter
-✎ cmd/praxis-database/main.go                                   — Bind DBSubnetGroupDriver
+✔ cmd/praxis-storage/main.go                                   — Bind DBSubnetGroupDriver
 ```
 
 ---
@@ -549,19 +537,19 @@ description, subnets, tags. No diffs → `OpNoOp`. Diffs → `OpUpdate`.
 
 ## Step 8 — Registry Integration
 
-Add `NewDBSubnetGroupAdapterWithRegistry(accounts)` to `NewRegistry()`.
+Add `NewDBSubnetGroupAdapterWithRegistry(auth)` to `NewRegistry()`.
 
 ---
 
-## Step 9 — Database Driver Pack Entry Point
+## Step 9 — Storage Driver Pack Entry Point
 
-Bind `DBSubnetGroupDriver` in `cmd/praxis-database/main.go`.
+Bind `DBSubnetGroupDriver` in `cmd/praxis-storage/main.go`.
 
 ---
 
 ## Step 10 — Docker Compose & Justfile
 
-Uses the same `praxis-database` service on port 9086.
+Part of the `praxis-storage` service (port 9081). No additional configuration needed.
 
 ### Justfile Targets
 
@@ -707,7 +695,7 @@ successfully. No waiter is needed, unlike DB instances and clusters.
 - [x] **Driver**: `internal/drivers/dbsubnetgroup/driver.go` created with all 6 handlers
 - [x] **Adapter**: `internal/core/provider/dbsubnetgroup_adapter.go` created
 - [x] **Registry**: `internal/core/provider/registry.go` updated
-- [x] **Entry point**: `cmd/praxis-database/main.go` updated with binding
+- [x] **Entry point**: `cmd/praxis-storage/main.go` — `.Bind()` call for DB Subnet Group driver
 - [x] **Unit tests (drift)**: `internal/drivers/dbsubnetgroup/drift_test.go`
 - [x] **Unit tests (aws helpers)**: `internal/drivers/dbsubnetgroup/aws_test.go`
 - [x] **Unit tests (driver)**: `internal/drivers/dbsubnetgroup/driver_test.go`

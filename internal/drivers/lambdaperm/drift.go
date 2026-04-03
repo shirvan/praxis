@@ -1,15 +1,21 @@
+// Drift detection for Lambda Permissions.
+// Permissions are replace-only (no in-place update), so all fields are compared.
+// Reconcile detects drift but does not auto-correct.
 package lambdaperm
 
+// FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any permission field differs between desired and observed.
 func HasDrift(desired LambdaPermissionSpec, observed ObservedState) bool {
 	return len(ComputeFieldDiffs(desired, observed)) > 0
 }
 
+// ComputeFieldDiffs returns per-field diffs: action, principal, sourceArn, sourceAccount, eventSourceToken.
 func ComputeFieldDiffs(desired LambdaPermissionSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	if desired.Action != observed.Action {

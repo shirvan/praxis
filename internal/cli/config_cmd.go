@@ -1,3 +1,12 @@
+// config_cmd.go implements the `praxis config` command group.
+//
+// Config commands read and write workspace-scoped settings stored in the
+// WorkspaceService Restate Virtual Object. Currently the only supported
+// config path is "events.retention", which controls the event retention
+// policy (max age, sweep interval, drain sink, etc.).
+//
+// Each config field has its own subcommand under `praxis config set` so
+// users can update individual fields without replacing the entire policy.
 package cli
 
 import (
@@ -14,6 +23,8 @@ import (
 	"github.com/shirvan/praxis/internal/core/workspace"
 )
 
+// newConfigCmd builds the `praxis config` parent command.
+// Subcommands: get, set.
 func newConfigCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -26,6 +37,9 @@ func newConfigCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConfigGetCmd builds `praxis config get <path>`. Reads a workspace-scoped
+// configuration value. The workspace is resolved from --workspace or the
+// active workspace in ~/.praxis/config.json.
 func newConfigGetCmd(flags *rootFlags) *cobra.Command {
 	var workspaceName string
 	cmd := &cobra.Command{
@@ -57,6 +71,8 @@ func newConfigGetCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConfigSetCmd builds the `praxis config set` parent. Individual retention
+// fields are registered as subcommands (e.g. `praxis config set events.retention.max-age 180d`).
 func newConfigSetCmd(flags *rootFlags) *cobra.Command {
 	var workspaceName string
 	cmd := &cobra.Command{
@@ -106,6 +122,8 @@ func newConfigSetCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newConfigSetRetentionCmd builds `praxis config set events.retention`.
+// Replaces the full retention policy from a JSON file (--from-file).
 func newConfigSetRetentionCmd(flags *rootFlags, workspaceName *string) *cobra.Command {
 	var fromFile string
 	cmd := &cobra.Command{
@@ -137,6 +155,9 @@ func newConfigSetRetentionCmd(flags *rootFlags, workspaceName *string) *cobra.Co
 	return cmd
 }
 
+// newConfigSetRetentionFieldCmd builds a subcommand that updates a single
+// field on the event retention policy. It reads the current policy, applies
+// the mutate function, and writes the updated policy back.
 func newConfigSetRetentionFieldCmd(flags *rootFlags, workspaceName *string, use string, mutate func(*workspace.EventRetentionPolicy, string) error) *cobra.Command {
 	return &cobra.Command{
 		Use:   use + " <value>",
@@ -168,6 +189,8 @@ func newConfigSetRetentionFieldCmd(flags *rootFlags, workspaceName *string, use 
 	}
 }
 
+// resolveWorkspaceName returns the explicitly provided workspace name, or
+// falls back to the active workspace from ~/.praxis/config.json.
 func resolveWorkspaceName(explicit string) (string, error) {
 	if trimmed := strings.TrimSpace(explicit); trimmed != "" {
 		return trimmed, nil
@@ -179,6 +202,8 @@ func resolveWorkspaceName(explicit string) (string, error) {
 	return cliCfg.ActiveWorkspace, nil
 }
 
+// loadEventRetentionPolicy reads and deserialises a retention policy from
+// a JSON file. Pass "-" to read from stdin.
 func loadEventRetentionPolicy(path string) (workspace.EventRetentionPolicy, error) {
 	var data []byte
 	var err error
@@ -197,6 +222,7 @@ func loadEventRetentionPolicy(path string) (workspace.EventRetentionPolicy, erro
 	return policy, nil
 }
 
+// printEventRetentionPolicy renders a retention policy as a label/value list.
 func printEventRetentionPolicy(r *Renderer, policy *workspace.EventRetentionPolicy) {
 	if policy == nil {
 		_, _ = fmt.Fprintln(r.out, r.renderMuted("No event retention policy configured."))

@@ -1,3 +1,9 @@
+// Package snstopic – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS SNS Topic.
+// It defines the SNSTopicAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon Simple Notification Service (SNS) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package snstopic
 
 import (
@@ -36,6 +42,7 @@ func NewTopicAPI(client *snssdk.Client) TopicAPI {
 	}
 }
 
+// CreateTopic calls Amazon Simple Notification Service (SNS) to create a new AWS SNS Topic from the given spec.
 func (r *realTopicAPI) CreateTopic(ctx context.Context, spec SNSTopicSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -75,6 +82,7 @@ func (r *realTopicAPI) CreateTopic(ctx context.Context, spec SNSTopicSpec) (stri
 	return aws.ToString(out.TopicArn), nil
 }
 
+// GetTopicAttributes reads the current state of the AWS SNS Topic from Amazon Simple Notification Service (SNS).
 func (r *realTopicAPI) GetTopicAttributes(ctx context.Context, topicArn string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -124,6 +132,7 @@ func (r *realTopicAPI) GetTopicAttributes(ctx context.Context, topicArn string) 
 	return obs, nil
 }
 
+// SetTopicAttribute updates mutable properties of the AWS SNS Topic via Amazon Simple Notification Service (SNS).
 func (r *realTopicAPI) SetTopicAttribute(ctx context.Context, topicArn, attrName, attrValue string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -136,6 +145,7 @@ func (r *realTopicAPI) SetTopicAttribute(ctx context.Context, topicArn, attrName
 	return err
 }
 
+// DeleteTopic removes the AWS SNS Topic from AWS via Amazon Simple Notification Service (SNS).
 func (r *realTopicAPI) DeleteTopic(ctx context.Context, topicArn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -146,6 +156,7 @@ func (r *realTopicAPI) DeleteTopic(ctx context.Context, topicArn string) error {
 	return err
 }
 
+// UpdateTags updates mutable properties of the AWS SNS Topic via Amazon Simple Notification Service (SNS).
 func (r *realTopicAPI) UpdateTags(ctx context.Context, topicArn string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -202,6 +213,7 @@ func (r *realTopicAPI) UpdateTags(ctx context.Context, topicArn string, tags map
 	return nil
 }
 
+// FindByName searches for the AWS SNS Topic using alternative identifiers.
 func (r *realTopicAPI) FindByName(ctx context.Context, topicName string) (string, error) {
 	var nextToken *string
 	for {

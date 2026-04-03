@@ -1,3 +1,13 @@
+// Route53HostedZone provider adapter.
+//
+// This file implements the provider.Adapter interface for Amazon Route 53 (Hosted Zone)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the Route53HostedZone Restate Virtual Object driver.
+//
+// Key scope: global (DNS zones are global).
+// Key parts: zone name.
+// Route 53 hosted zones are global; the key is the zone name.
 package provider
 
 import (

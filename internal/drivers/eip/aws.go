@@ -16,18 +16,31 @@ import (
 
 // EIPAPI abstracts the AWS EC2 SDK operations for Elastic IP management.
 type EIPAPI interface {
+	// AllocateAddress creates a new EIP and returns the allocation ID and public IP.
 	AllocateAddress(ctx context.Context, spec ElasticIPSpec) (allocationID, publicIP string, err error)
+
+	// DescribeAddress returns the observed state of an existing EIP.
 	DescribeAddress(ctx context.Context, allocationID string) (ObservedState, error)
+
+	// ReleaseAddress releases an EIP back to the pool.
 	ReleaseAddress(ctx context.Context, allocationID string) error
+
+	// UpdateTags performs a delete-then-create tag replacement (praxis: tags preserved).
 	UpdateTags(ctx context.Context, allocationID string, tags map[string]string) error
+
+	// FindByManagedKey searches for an EIP tagged with praxis:managed-key=<key>.
+	// Returns "" if none found, or an error if multiple match (ownership corruption).
 	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
 }
 
+// realEIPAPI implements EIPAPI using the AWS SDK v2 EC2 client.
 type realEIPAPI struct {
 	client  *ec2sdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewEIPAPI creates a new API backed by the given EC2 client.
+// Rate limited to 20 req/s with burst of 10 for the "elastic-ip" category.
 func NewEIPAPI(client *ec2sdk.Client) EIPAPI {
 	return &realEIPAPI{
 		client:  client,
@@ -35,6 +48,7 @@ func NewEIPAPI(client *ec2sdk.Client) EIPAPI {
 	}
 }
 
+// AllocateAddress calls ec2:AllocateAddress. Sets praxis:managed-key tag at creation.
 func (r *realEIPAPI) AllocateAddress(ctx context.Context, spec ElasticIPSpec) (string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", err
@@ -69,6 +83,7 @@ func (r *realEIPAPI) AllocateAddress(ctx context.Context, spec ElasticIPSpec) (s
 	return aws.ToString(out.AllocationId), aws.ToString(out.PublicIp), nil
 }
 
+// DescribeAddress calls ec2:DescribeAddresses and maps to ObservedState.
 func (r *realEIPAPI) DescribeAddress(ctx context.Context, allocationID string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -101,6 +116,7 @@ func (r *realEIPAPI) DescribeAddress(ctx context.Context, allocationID string) (
 	return observed, nil
 }
 
+// ReleaseAddress calls ec2:ReleaseAddress to free the EIP.
 func (r *realEIPAPI) ReleaseAddress(ctx context.Context, allocationID string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -109,6 +125,7 @@ func (r *realEIPAPI) ReleaseAddress(ctx context.Context, allocationID string) er
 	return err
 }
 
+// UpdateTags replaces user tags: deletes all non-praxis old tags, then creates new ones.
 func (r *realEIPAPI) UpdateTags(ctx context.Context, allocationID string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -158,6 +175,8 @@ func (r *realEIPAPI) UpdateTags(ctx context.Context, allocationID string, tags m
 	return err
 }
 
+// FindByManagedKey searches for an EIP with the praxis:managed-key tag.
+// Returns empty string if no match, or an error if multiple EIPs claim the same key.
 func (r *realEIPAPI) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -182,6 +201,7 @@ func (r *realEIPAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	return singleManagedKeyMatch(managedKey, matches)
 }
 
+// singleManagedKeyMatch ensures at most one EIP owns a managed key.
 func singleManagedKeyMatch(managedKey string, matches []string) (string, error) {
 	switch len(matches) {
 	case 0:
@@ -193,18 +213,22 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 	}
 }
 
+// IsNotFound returns true if the EIP does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidAllocationID.NotFound", "InvalidAddressID.NotFound")
 }
 
+// IsAssociationExists returns true if the EIP is still associated (cannot release).
 func IsAssociationExists(err error) bool {
 	return awserr.HasCode(err, "InvalidIPAddress.InUse")
 }
 
+// IsAddressLimitExceeded returns true if the account has hit the EIP quota.
 func IsAddressLimitExceeded(err error) bool {
 	return awserr.HasCode(err, "AddressLimitExceeded")
 }
 
+// IsQuotaExceeded is an alias for IsAddressLimitExceeded.
 func IsQuotaExceeded(err error) bool {
 	return IsAddressLimitExceeded(err)
 }

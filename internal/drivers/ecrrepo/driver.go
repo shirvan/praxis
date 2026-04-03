@@ -1,3 +1,15 @@
+// Package ecrrepo – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS ECR Repository.
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package ecrrepo
 
 import (
@@ -15,17 +27,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ECRRepositoryDriver is the Restate Virtual Object handler for AWS ECR Repository.
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type ECRRepositoryDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) RepositoryAPI
 }
 
+// NewECRRepositoryDriver creates a ECRRepository driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewECRRepositoryDriver(auth authservice.AuthClient) *ECRRepositoryDriver {
 	return NewECRRepositoryDriverWithFactory(auth, func(cfg aws.Config) RepositoryAPI {
 		return NewRepositoryAPI(awsclient.NewECRClient(cfg))
 	})
 }
 
+// NewECRRepositoryDriverWithFactory creates a ECRRepository driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewECRRepositoryDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) RepositoryAPI) *ECRRepositoryDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) RepositoryAPI { return NewRepositoryAPI(awsclient.NewECRClient(cfg)) }
@@ -33,8 +52,13 @@ func NewECRRepositoryDriverWithFactory(auth authservice.AuthClient, factory func
 	return &ECRRepositoryDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *ECRRepositoryDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a AWS ECR Repository. It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *ECRRepositoryDriver) Provision(ctx restate.ObjectContext, spec ECRRepositorySpec) (ECRRepositoryOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -115,6 +139,10 @@ func (d *ECRRepositoryDriver) Provision(ctx restate.ObjectContext, spec ECRRepos
 	return state.Outputs, nil
 }
 
+// Import adopts an existing AWS ECR Repository into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *ECRRepositoryDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ECRRepositoryOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -150,6 +178,9 @@ func (d *ECRRepositoryDriver) Import(ctx restate.ObjectContext, ref types.Import
 	return state.Outputs, nil
 }
 
+// Delete removes the AWS ECR Repository from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *ECRRepositoryDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[ECRRepositoryState](ctx, drivers.StateKey)
 	if err != nil {
@@ -199,6 +230,11 @@ func (d *ECRRepositoryDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *ECRRepositoryDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[ECRRepositoryState](ctx, drivers.StateKey)
 	if err != nil {
@@ -271,6 +307,7 @@ func (d *ECRRepositoryDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *ECRRepositoryDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[ECRRepositoryState](ctx, drivers.StateKey)
 	if err != nil {
@@ -279,6 +316,7 @@ func (d *ECRRepositoryDriver) GetStatus(ctx restate.ObjectSharedContext) (types.
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *ECRRepositoryDriver) GetOutputs(ctx restate.ObjectSharedContext) (ECRRepositoryOutputs, error) {
 	state, err := restate.Get[ECRRepositoryState](ctx, drivers.StateKey)
 	if err != nil {

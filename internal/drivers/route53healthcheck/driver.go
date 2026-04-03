@@ -14,6 +14,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// HealthCheckDriver is the Restate virtual object that manages a single Route53 health check.
 type HealthCheckDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) HealthCheckAPI
@@ -36,6 +37,9 @@ func (d *HealthCheckDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for Route53 health checks.
+// Creates the check if not found, then converges all mutable fields (type and requestInterval
+// are immutable). Uses version-based optimistic concurrency for updates.
 func (d *HealthCheckDriver) Provision(ctx restate.ObjectContext, spec HealthCheckSpec) (HealthCheckOutputs, error) {
 	ctx.Log().Info("provisioning route53 health check", "key", restate.Key(ctx))
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -177,6 +181,7 @@ func (d *HealthCheckDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	return outputs, nil
 }
 
+// Delete removes the health check from AWS. Refuses deletion in Observed mode.
 func (d *HealthCheckDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting route53 health check", "key", restate.Key(ctx))
 	state, err := restate.Get[HealthCheckState](ctx, drivers.StateKey)
@@ -317,6 +322,8 @@ func (d *HealthCheckDriver) GetOutputs(ctx restate.ObjectSharedContext) (HealthC
 	return state.Outputs, nil
 }
 
+// correctDrift converges health check configuration and tags from observed toward desired state.
+// Uses version-based optimistic concurrency via UpdateHealthCheck, then updates tags separately.
 func (d *HealthCheckDriver) correctDrift(ctx restate.ObjectContext, api HealthCheckAPI, healthCheckID string, desired HealthCheckSpec, observed ObservedState) error {
 	if observed.HealthCheckId != "" {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

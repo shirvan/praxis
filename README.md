@@ -2,11 +2,11 @@
 
 **Declarative infrastructure automation — without the cluster.**
 
-[Why Praxis](#why-praxis) · [Quickstart](#quickstart) · [Docs](#documentation) · [Roadmap](FUTURE.md)
+[Why Praxis](#why-praxis) · [Quickstart](#quickstart) · [Docs](#documentation) · [Future](FUTURE.md)
 
 ---
 
-## >>> Praxis is very much in active development and not ready for any sort of real world use. <<<
+## >>> Praxis is in alpha, things will change quickly and may break stuff. <<<
 
 Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers — continuous reconciliation, drift correction, dependency-aware orchestration — but **without requiring a Kubernetes cluster to run it**.
 
@@ -25,12 +25,14 @@ graph TD
         Network
         Compute
         Identity
+        Monitoring
     end
 
     Storage --> AWS["AWS APIs"]
     Network --> AWS
     Compute --> AWS
     Identity --> AWS
+    Monitoring --> AWS
 ```
 
 ---
@@ -90,7 +92,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 - [Docker](https://www.docker.com/) + Docker Compose
 - [just](https://github.com/casey/just) (task runner)
-- [Go](https://go.dev/) >= 1.24 (for building from source)
+- [Go](https://go.dev/) >= 1.25 (for building from source)
 
 ### Start the Stack
 
@@ -166,17 +168,18 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 ## Current Scope
 
 - **Cloud:** AWS
-- **Drivers (38):**
-  - *Network:* VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule
-  - *Compute:* EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy
-  - *Storage:* S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster
-  - *Identity:* IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile
+- **Drivers (45):**
+  - *Network (18):* VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule, ACM Certificate
+  - *Compute (9):* EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy
+  - *Storage (10):* S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster, SNS Topic, SNS Subscription, SQS Queue, SQS Queue Policy
+  - *Identity (5):* IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile
+  - *Monitoring (3):* Log Group, Metric Alarm, Dashboard
 - **Accounts:** One operator-defined account per deployed stack
 - **Deployment:** Docker Compose reference stack (LocalStack for local dev)
 - **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
 - **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`, `workspace`, `state`, `concierge`, `fmt`, `version`
 
-See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for ready-to-use templates.
+See [FUTURE.md](FUTURE.md) for future direction and [`examples/`](examples/) for ready-to-use templates.
 
 ---
 
@@ -194,6 +197,7 @@ See [FUTURE.md](FUTURE.md) for the roadmap and [`examples/`](examples/) for read
 | [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
 | [Concierge](docs/CONCIERGE.md) | Contributors | AI assistant — LLM integration, tool framework, migration, approval flow |
+| [Slack Gateway](docs/SLACK_GATEWAY.md) | Contributors | Slack integration — DM conversations, event-watch threads, approval buttons |
 
 ---
 

@@ -1,3 +1,13 @@
+// SQSQueuePolicy provider adapter.
+//
+// This file implements the provider.Adapter interface for Amazon SQS (Queue Policy)
+// resources. It translates between the generic JSON resource documents used by
+// the orchestrator / command service and the strongly typed Go structs expected
+// by the SQSQueuePolicy Restate Virtual Object driver.
+//
+// Key scope: region-scoped.
+// Key parts: region + queue name.
+// SQS queue policies are region-scoped, tied to a queue; the key combines the AWS region and queue name.
 package provider
 
 import (

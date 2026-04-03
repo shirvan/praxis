@@ -1,15 +1,5 @@
 # Launch Template Driver — Implementation Plan
 
-> **Status: Not yet implemented.** This document is a plan only.
->
-> Target: A Restate Virtual Object driver that manages EC2 launch templates,
-> following the exact patterns established by the S3, Security Group, EC2, VPC,
-> EBS, Elastic IP, and Key Pair drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent
-> and immutable for the lifetime of the Virtual Object. The CUE schema maps
-> `metadata.name` to the launch template name.
-
 ---
 
 ## Table of Contents

@@ -1,3 +1,17 @@
+// runtime.go provides the shared runtime helpers used by the apply, delete,
+// and rollback workflows. It contains:
+//
+//   - executionState: the in-memory tracker that mirrors resource progress
+//     during a DAG dispatch loop (provisioning, ready, failed, skipped).
+//   - Graph/plan conversion helpers that bridge PlanResource slices and the
+//     DAG scheduler.
+//   - Restate RPC wrappers for the DeploymentState Virtual Object, the
+//     DeploymentIndex, and the ResourceEventOwner bridge.
+//   - CloudEvent emission helpers that route events through the EventBus.
+//
+// All Restate interactions in this file go through restate.Object or
+// restate.WithRequestType to invoke Virtual Object handlers, keeping the
+// workflows agnostic of serialization details.
 package orchestrator
 
 import (
@@ -16,6 +30,11 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// executionState is the in-memory bookkeeper for a single DAG dispatch loop.
+// It tracks every resource's current status, outputs, and whether it has been
+// dispatched, completed, failed, or skipped. The workflows (apply, delete,
+// rollback) mutate this state as futures resolve and use it to build the
+// final DeploymentResult.
 type executionState struct {
 	order      []string
 	plan       map[string]PlanResource
@@ -28,6 +47,8 @@ type executionState struct {
 	skipped    map[string]bool
 }
 
+// newExecutionState initialises an executionState from a plan's resource list,
+// setting every resource to Pending status with empty outputs.
 func newExecutionState(resources []PlanResource) *executionState {
 	state := &executionState{
 		order:      make([]string, 0, len(resources)),
@@ -48,24 +69,32 @@ func newExecutionState(resources []PlanResource) *executionState {
 	return state
 }
 
+// loadOutputs merges previously-stored outputs (from a prior generation) into
+// the execution state so that expression hydration can reference them.
 func (s *executionState) loadOutputs(outputs map[string]map[string]any) {
 	maps.Copy(s.outputs, outputs)
 }
 
+// ready returns resource names whose dependencies are satisfied and that have
+// not yet been dispatched, delegating to the DAG scheduler.
 func (s *executionState) ready(schedule *dag.Schedule) []string {
 	return schedule.Ready(s.completed, s.dispatched)
 }
 
+// markProvisioning transitions a resource to Provisioning and records it as dispatched.
 func (s *executionState) markProvisioning(name string) {
 	s.statuses[name] = types.DeploymentResourceProvisioning
 	s.dispatched[name] = true
 }
 
+// markDeleting transitions a resource to Deleting and records it as dispatched.
 func (s *executionState) markDeleting(name string) {
 	s.statuses[name] = types.DeploymentResourceDeleting
 	s.dispatched[name] = true
 }
 
+// markReady transitions a resource to Ready, stores its outputs, clears any
+// prior error/failure/skip flags, and marks it completed.
 func (s *executionState) markReady(name string, outputs map[string]any) {
 	s.statuses[name] = types.DeploymentResourceReady
 	s.outputs[name] = outputs
@@ -75,6 +104,7 @@ func (s *executionState) markReady(name string, outputs map[string]any) {
 	delete(s.skipped, name)
 }
 
+// markDeleted transitions a resource to Deleted and marks it completed.
 func (s *executionState) markDeleted(name string) {
 	s.statuses[name] = types.DeploymentResourceDeleted
 	s.completed[name] = true
@@ -83,6 +113,8 @@ func (s *executionState) markDeleted(name string) {
 	delete(s.skipped, name)
 }
 
+// markFailed transitions a resource to Error status, records the error message,
+// and marks it as both dispatched and failed.
 func (s *executionState) markFailed(name, errMsg string) {
 	s.statuses[name] = types.DeploymentResourceError
 	s.errors[name] = errMsg
@@ -90,6 +122,9 @@ func (s *executionState) markFailed(name, errMsg string) {
 	s.dispatched[name] = true
 }
 
+// markSkipped transitions a resource to Skipped status if it hasn't already
+// been dispatched, completed, failed, or skipped. Returns true if the skip
+// was applied.
 func (s *executionState) markSkipped(name, errMsg string) bool {
 	if s.dispatched[name] || s.completed[name] || s.failed[name] || s.skipped[name] {
 		return false
@@ -100,6 +135,9 @@ func (s *executionState) markSkipped(name, errMsg string) bool {
 	return true
 }
 
+// skipAffectedDependents marks all transitive dependents of a failed resource
+// as Skipped, using the DAG scheduler's AffectedByFailure traversal. Returns
+// the names of resources that were newly skipped.
 func (s *executionState) skipAffectedDependents(schedule *dag.Schedule, failed, errMsg string) []string {
 	affected := schedule.AffectedByFailure(failed)
 	skipped := make([]string, 0)
@@ -111,6 +149,8 @@ func (s *executionState) skipAffectedDependents(schedule *dag.Schedule, failed, 
 	return skipped
 }
 
+// skipPendingForCancellation marks all resources that have not yet been
+// dispatched or completed as Skipped due to a deployment cancellation request.
 func (s *executionState) skipPendingForCancellation() []string {
 	pending := make([]string, 0)
 	for _, name := range s.order {
@@ -121,6 +161,9 @@ func (s *executionState) skipPendingForCancellation() []string {
 	return pending
 }
 
+// dependencyClosure returns all transitive dependencies of root in plan order.
+// This is used by the delete workflow's skipDependencies to cascade a failure
+// down to the resources that root depends on.
 func (s *executionState) dependencyClosure(root string) []string {
 	visited := make(map[string]bool)
 	var visit func(string)
@@ -148,6 +191,9 @@ func (s *executionState) dependencyClosure(root string) []string {
 	return ordered
 }
 
+// skipDependencies marks all transitive dependencies of root as Skipped.
+// Used by the delete workflow when a resource's deletion fails: its upstream
+// dependencies must not be deleted since they may still be in use.
 func (s *executionState) skipDependencies(root, errMsg string) []string {
 	closure := s.dependencyClosure(root)
 	skipped := make([]string, 0, len(closure))
@@ -159,10 +205,13 @@ func (s *executionState) skipDependencies(root, errMsg string) []string {
 	return skipped
 }
 
+// hasFailures reports whether any resource failed during execution.
 func (s *executionState) hasFailures() bool {
 	return len(s.failed) > 0
 }
 
+// publicResources converts the internal execution state into the public
+// DeploymentResource slice used in API responses.
 func (s *executionState) publicResources() []types.DeploymentResource {
 	resources := make([]types.DeploymentResource, 0, len(s.order))
 	for _, name := range s.order {
@@ -181,6 +230,8 @@ func (s *executionState) publicResources() []types.DeploymentResource {
 	return resources
 }
 
+// result builds the final DeploymentResult from the execution state, including
+// any resource errors and aggregated outputs.
 func (s *executionState) result(key string, status types.DeploymentStatus, errMsg string) DeploymentResult {
 	return DeploymentResult{
 		Key:            key,
@@ -192,6 +243,8 @@ func (s *executionState) result(key string, status types.DeploymentStatus, errMs
 	}
 }
 
+// failureSummary returns a human-readable summary of all failed resources,
+// suitable for inclusion in terminal events and error messages.
 func (s *executionState) failureSummary() string {
 	if len(s.failed) == 0 {
 		return ""
@@ -217,6 +270,8 @@ func (s *executionState) failureSummary() string {
 	return b.String()
 }
 
+// failureMap returns a map of resource name → error message for all failed
+// resources, or nil if there are no failures.
 func (s *executionState) failureMap() map[string]string {
 	if len(s.failed) == 0 {
 		return nil
@@ -228,6 +283,8 @@ func (s *executionState) failureMap() map[string]string {
 	return result
 }
 
+// graphFromPlanResources builds a DAG graph from the plan's resource list,
+// used to compute scheduling order and dependency relationships.
 func graphFromPlanResources(resources []PlanResource) (*dag.Graph, error) {
 	nodes := make([]*types.ResourceNode, 0, len(resources))
 	for i := range resources {
@@ -247,6 +304,9 @@ func graphFromPlanResources(resources []PlanResource) (*dag.Graph, error) {
 	return dag.NewGraph(nodes)
 }
 
+// planResourcesFromState reconstructs PlanResource slices from an existing
+// DeploymentState, enabling delete and rollback workflows to build a DAG
+// from the last known state rather than from a fresh plan.
 func planResourcesFromState(state *DeploymentState) []PlanResource {
 	if state == nil || len(state.Resources) == 0 {
 		return nil
@@ -272,6 +332,8 @@ func planResourcesFromState(state *DeploymentState) []PlanResource {
 	return resources
 }
 
+// deploymentSummaryFromState converts a DeploymentState into a lightweight
+// DeploymentSummary for index storage.
 func deploymentSummaryFromState(state *DeploymentState) types.DeploymentSummary {
 	resources := 0
 	if state != nil {
@@ -287,16 +349,20 @@ func deploymentSummaryFromState(state *DeploymentState) types.DeploymentSummary 
 	}
 }
 
+// currentTime returns the current UTC time, wrapped in restate.Run so the
+// value is journaled and deterministic on replay.
 func currentTime(ctx restate.Context) (time.Time, error) {
 	return restate.Run(ctx, func(runCtx restate.RunContext) (time.Time, error) {
 		return time.Now().UTC(), nil
 	})
 }
 
+// getDeploymentState fetches the full DeploymentState from the Virtual Object.
 func getDeploymentState(ctx restate.Context, deploymentKey string) (*DeploymentState, error) {
 	return restate.Object[*DeploymentState](ctx, DeploymentStateServiceName, deploymentKey, "GetState").Request(restate.Void{})
 }
 
+// setDeploymentStatus sends a status update to the DeploymentState Virtual Object.
 func setDeploymentStatus(ctx restate.Context, deploymentKey string, update StatusUpdate) error {
 	_, err := restate.WithRequestType[StatusUpdate, restate.Void](
 		restate.Object[restate.Void](ctx, DeploymentStateServiceName, deploymentKey, "SetStatus"),
@@ -304,6 +370,8 @@ func setDeploymentStatus(ctx restate.Context, deploymentKey string, update Statu
 	return err
 }
 
+// updateDeploymentResource sends a per-resource status update to the
+// DeploymentState Virtual Object.
 func updateDeploymentResource(ctx restate.Context, deploymentKey string, update ResourceUpdate) error {
 	_, err := restate.WithRequestType[ResourceUpdate, restate.Void](
 		restate.Object[restate.Void](ctx, DeploymentStateServiceName, deploymentKey, "UpdateResource"),
@@ -311,6 +379,8 @@ func updateDeploymentResource(ctx restate.Context, deploymentKey string, update 
 	return err
 }
 
+// finalizeDeployment sends the terminal finalization request to the
+// DeploymentState Virtual Object, setting the final status and resources.
 func finalizeDeployment(ctx restate.Context, deploymentKey string, final FinalizeRequest) error {
 	_, err := restate.WithRequestType[FinalizeRequest, restate.Void](
 		restate.Object[restate.Void](ctx, DeploymentStateServiceName, deploymentKey, "Finalize"),
@@ -318,10 +388,14 @@ func finalizeDeployment(ctx restate.Context, deploymentKey string, final Finaliz
 	return err
 }
 
+// deploymentCancelled checks whether a cancellation has been requested for the
+// given deployment, used by the dispatch loop to break early.
 func deploymentCancelled(ctx restate.Context, deploymentKey string) (bool, error) {
 	return restate.Object[bool](ctx, DeploymentStateServiceName, deploymentKey, "IsCancelled").Request(restate.Void{})
 }
 
+// upsertDeploymentSummary updates the global DeploymentIndex with the latest
+// summary for this deployment.
 func upsertDeploymentSummary(ctx restate.Context, summary types.DeploymentSummary) error {
 	_, err := restate.WithRequestType[types.DeploymentSummary, restate.Void](
 		restate.Object[restate.Void](ctx, DeploymentIndexServiceName, DeploymentIndexGlobalKey, "Upsert"),
@@ -329,6 +403,8 @@ func upsertDeploymentSummary(ctx restate.Context, summary types.DeploymentSummar
 	return err
 }
 
+// removeDeploymentSummary deletes a deployment's entry from the global index,
+// called after a successful complete deletion.
 func removeDeploymentSummary(ctx restate.Context, deploymentKey string) error {
 	_, err := restate.WithRequestType[string, restate.Void](
 		restate.Object[restate.Void](ctx, DeploymentIndexServiceName, DeploymentIndexGlobalKey, "Remove"),
@@ -336,6 +412,8 @@ func removeDeploymentSummary(ctx restate.Context, deploymentKey string) error {
 	return err
 }
 
+// upsertResourceEventOwner registers a resource key → deployment mapping in
+// the ResourceEventOwner bridge so drift events can be routed.
 func upsertResourceEventOwner(ctx restate.Context, resourceKey string, owner eventing.ResourceEventOwner) error {
 	_, err := restate.WithRequestType[eventing.ResourceEventOwner, restate.Void](
 		restate.Object[restate.Void](ctx, eventing.ResourceEventOwnerServiceName, resourceKey, "Upsert"),
@@ -343,6 +421,8 @@ func upsertResourceEventOwner(ctx restate.Context, resourceKey string, owner eve
 	return err
 }
 
+// deleteResourceEventOwner removes a resource key's ownership mapping,
+// called when a resource is deleted from a deployment.
 func deleteResourceEventOwner(ctx restate.Context, resourceKey string) error {
 	_, err := restate.WithRequestType[restate.Void, restate.Void](
 		restate.Object[restate.Void](ctx, eventing.ResourceEventOwnerServiceName, resourceKey, "Delete"),
@@ -350,6 +430,8 @@ func deleteResourceEventOwner(ctx restate.Context, resourceKey string) error {
 	return err
 }
 
+// EmitDeploymentCloudEvent validates the deployment extension is present, sets
+// e journaled timestamp if missing, and routes the event through the EventBus.
 func EmitDeploymentCloudEvent(ctx restate.Context, event cloudevents.Event) error {
 	deploymentKey := strings.TrimSpace(eventStringExtension(event, EventExtensionDeployment))
 	if deploymentKey == "" {
@@ -368,6 +450,8 @@ func EmitDeploymentCloudEvent(ctx restate.Context, event cloudevents.Event) erro
 	return err
 }
 
+// EmitCloudEvent routes an arbitrary CloudEvent through the EventBus without
+// requiring a deployment extension.
 func EmitCloudEvent(ctx restate.Context, event cloudevents.Event) error {
 	_, err := restate.WithRequestType[cloudevents.Event, restate.Void](
 		restate.Object[restate.Void](ctx, EventBusServiceName, EventBusGlobalKey, "Emit"),

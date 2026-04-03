@@ -1,7 +1,5 @@
 # Templates
 
-> **See also:** [Architecture](ARCHITECTURE.md) | [Orchestrator](ORCHESTRATOR.md) | [Drivers](DRIVERS.md) | [Events](EVENTS.md) | [Auth](AUTH.md) | [Errors](ERRORS.md) | [CLI](CLI.md)
-
 ---
 
 ## Overview
@@ -290,7 +288,7 @@ The trade-off is that data source lookups run synchronously during `plan` and `a
 | `IAMRole` | roleId, arn, roleName | id, name, tag |
 | `Route53HostedZone` | hostedZoneId, nameServers, isPrivate | id, name, tag |
 
-All other adapter kinds return a `501` error indicating lookup is not yet supported. Additional adapters will gain lookup support as demand arises.
+All other adapter kinds return a `501` error indicating lookup is not supported for that kind.
 
 ### Data Source Error Handling
 
@@ -323,9 +321,9 @@ In JSON output mode, the same information appears in the `dataSources` response 
 - [examples/stacks/data-source-vpc.cue](../examples/stacks/data-source-vpc.cue) — VPC lookup with security group deployment
 - [examples/stacks/data-source-multi.cue](../examples/stacks/data-source-multi.cue) — Multiple lookups (S3Bucket + IAMRole)
 
-### Future Extensibility: Non-AWS Data Sources
+### Extensibility: Non-AWS Data Sources
 
-The design avoids encoding AWS-specific concepts into the syntax. The `kind` field maps to an adapter, and adapters can wrap any cloud provider. When GCP or Azure support is added:
+The design avoids encoding AWS-specific concepts into the syntax. The `kind` field maps to an adapter, and adapters can wrap any cloud provider. Adding GCP or Azure support follows the same pattern:
 
 1. A GCP VPC adapter registers with `Kind() = "GCPVPC"`.
 2. Templates reference it as `kind: "GCPVPC"`.

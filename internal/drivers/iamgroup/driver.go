@@ -14,6 +14,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IAMGroupDriver is the Restate virtual object that manages the lifecycle of a single IAM group.
 type IAMGroupDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMGroupAPI
@@ -38,6 +39,9 @@ func (d *IAMGroupDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for IAM groups.
+// Creates the group if not found, then corrects any drift in path, inline policies,
+// and managed policy attachments. Schedules periodic reconciliation on success.
 func (d *IAMGroupDriver) Provision(ctx restate.ObjectContext, spec IAMGroupSpec) (IAMGroupOutputs, error) {
 	ctx.Log().Info("provisioning iam group", "key", restate.Key(ctx), "groupName", spec.GroupName)
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -200,6 +204,8 @@ func (d *IAMGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) 
 	return outputs, nil
 }
 
+// Delete removes an IAM group from AWS after cleaning up members, managed policies,
+// and inline policies. Refuses deletion in Observed mode.
 func (d *IAMGroupDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting iam group", "key", restate.Key(ctx))
 	state, err := restate.Get[IAMGroupState](ctx, drivers.StateKey)
@@ -395,6 +401,8 @@ func (d *IAMGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMGroupOu
 	return state.Outputs, nil
 }
 
+// correctDrift converges all mutable IAM group fields from observed toward desired state:
+// path, inline policies (add/update/remove), and managed policy ARNs (attach/detach).
 func (d *IAMGroupDriver) correctDrift(ctx restate.ObjectContext, api IAMGroupAPI, groupName string, desired IAMGroupSpec, observed ObservedState) error {
 	if desired.Path != observed.Path {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

@@ -9,7 +9,11 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// VerificationResult holds the result of verifying generated CUE.
+// VerificationResult holds the result of verifying generated CUE against Praxis.
+// The verification pipeline runs a dry-run plan that validates three things:
+//   - ParseOK:  CUE syntax is valid
+//   - SchemaOK: Resources conform to Praxis schemas
+//   - PlanOK:   Resource references resolve and the plan succeeds
 type VerificationResult struct {
 	ParseOK      bool                `json:"parseOk"`
 	ParseErrors  []string            `json:"parseErrors,omitempty"`
@@ -21,7 +25,9 @@ type VerificationResult struct {
 }
 
 // VerifyMigrationOutput checks the generated CUE for correctness by running
-// a plan dry-run through PraxisCommandService.
+// a plan dry-run through PraxisCommandService. This is a single validation step
+// that catches CUE syntax errors, schema violations, and reference issues all at
+// once. Used by both the migration retry loop and the standalone validateTemplate tool.
 func VerifyMigrationOutput(ctx restate.Context, cueSource string) (*VerificationResult, error) {
 	result := &VerificationResult{}
 
@@ -46,7 +52,8 @@ func VerifyMigrationOutput(ctx restate.Context, cueSource string) (*Verification
 	return result, nil
 }
 
-// FormatVerificationErrors returns a human-readable string of verification errors.
+// FormatVerificationErrors returns a human-readable string of verification errors,
+// categorized by type (parse, schema, plan). Fed back to the LLM during retry loops.
 func FormatVerificationErrors(v *VerificationResult) string {
 	var s string
 	if len(v.ParseErrors) > 0 {
@@ -70,7 +77,8 @@ func FormatVerificationErrors(v *VerificationResult) string {
 	return s
 }
 
-// FormatVerificationResult returns a summary of a successful verification.
+// FormatVerificationResult returns a summary of a successful verification,
+// including the plan output if available.
 func FormatVerificationResult(v *VerificationResult) string {
 	if v.PlanResult != nil {
 		result, _ := json.MarshalIndent(v.PlanResult, "", "  ")

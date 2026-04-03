@@ -13,6 +13,8 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// IAMGroupAPI defines the interface for all AWS IAM group operations used by the driver.
+// Includes group CRUD, inline/managed policy management, and member removal.
 type IAMGroupAPI interface {
 	CreateGroup(ctx context.Context, spec IAMGroupSpec) (arn, groupID string, err error)
 	DescribeGroup(ctx context.Context, groupName string) (ObservedState, error)
@@ -30,6 +32,7 @@ type realIAMGroupAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewIAMGroupAPI constructs a production IAMGroupAPI with IAM rate limiting.
 func NewIAMGroupAPI(client *iamsdk.Client) IAMGroupAPI {
 	return &realIAMGroupAPI{
 		client:  client,
@@ -136,6 +139,8 @@ func (r *realIAMGroupAPI) DetachManagedPolicy(ctx context.Context, groupName, po
 	return err
 }
 
+// RemoveAllMembers paginates through all group members and removes each one.
+// Required before DeleteGroup, which fails if the group has members.
 func (r *realIAMGroupAPI) RemoveAllMembers(ctx context.Context, groupName string) error {
 	paginator := iamsdk.NewGetGroupPaginator(r.client, &iamsdk.GetGroupInput{GroupName: aws.String(groupName)})
 	for paginator.HasMorePages() {
@@ -206,6 +211,7 @@ func (r *realIAMGroupAPI) listManagedPolicies(ctx context.Context, groupName str
 	return arns, nil
 }
 
+// IsNotFound returns true when the IAM error code indicates the entity does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "NoSuchEntity")
 }

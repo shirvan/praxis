@@ -15,17 +15,21 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// DBSubnetGroupDriver is a Restate Virtual Object that manages the lifecycle of
+// AWS RDS DB Subnet Groups. Restate guarantees single-writer access per key.
 type DBSubnetGroupDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) DBSubnetGroupAPI
 }
 
+// NewDBSubnetGroupDriver creates a driver backed by real AWS RDS clients.
 func NewDBSubnetGroupDriver(auth authservice.AuthClient) *DBSubnetGroupDriver {
 	return NewDBSubnetGroupDriverWithFactory(auth, func(cfg aws.Config) DBSubnetGroupAPI {
 		return NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg))
 	})
 }
 
+// NewDBSubnetGroupDriverWithFactory creates a driver with a custom API factory (for tests).
 func NewDBSubnetGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) DBSubnetGroupAPI) *DBSubnetGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) DBSubnetGroupAPI { return NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg)) }
@@ -33,10 +37,13 @@ func NewDBSubnetGroupDriverWithFactory(auth authservice.AuthClient, factory func
 	return &DBSubnetGroupDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate service name for registration.
 func (d *DBSubnetGroupDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or converges a DB Subnet Group to the desired spec.
+// Idempotent: if the group exists, applies drift corrections for description, subnets, and tags.
 func (d *DBSubnetGroupDriver) Provision(ctx restate.ObjectContext, spec DBSubnetGroupSpec) (DBSubnetGroupOutputs, error) {
 	ctx.Log().Info("provisioning db subnet group", "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -136,6 +143,8 @@ func (d *DBSubnetGroupDriver) Provision(ctx restate.ObjectContext, spec DBSubnet
 	return state.Outputs, nil
 }
 
+// Import discovers an existing DB Subnet Group and adopts it into Praxis state.
+// Synthesizes a spec from the observed state. Defaults to Observed mode.
 func (d *DBSubnetGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (DBSubnetGroupOutputs, error) {
 	ctx.Log().Info("importing db subnet group", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -175,6 +184,8 @@ func (d *DBSubnetGroupDriver) Import(ctx restate.ObjectContext, ref types.Import
 	return state.Outputs, nil
 }
 
+// Delete removes the DB Subnet Group. Blocks deletion in Observed mode.
+// Deletion is immediate (no wait needed); NotFound is treated as success.
 func (d *DBSubnetGroupDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting db subnet group", "key", restate.Key(ctx))
 	state, err := restate.Get[DBSubnetGroupState](ctx, drivers.StateKey)
@@ -225,6 +236,8 @@ func (d *DBSubnetGroupDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is invoked on a timer to detect and correct drift.
+// In Managed mode, corrects description/subnet/tag drift. In Observed mode, only reports.
 func (d *DBSubnetGroupDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[DBSubnetGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -310,6 +323,7 @@ func (d *DBSubnetGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 }
 
+// GetStatus is a SHARED handler returning the group's status without exclusive access.
 func (d *DBSubnetGroupDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[DBSubnetGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -318,6 +332,7 @@ func (d *DBSubnetGroupDriver) GetStatus(ctx restate.ObjectSharedContext) (types.
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a SHARED handler returning the group's outputs without exclusive access.
 func (d *DBSubnetGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (DBSubnetGroupOutputs, error) {
 	state, err := restate.Get[DBSubnetGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -326,6 +341,7 @@ func (d *DBSubnetGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (DBSub
 	return state.Outputs, nil
 }
 
+// correctDrift applies ModifyDBSubnetGroup and/or UpdateTags to converge.
 func (d *DBSubnetGroupDriver) correctDrift(ctx restate.ObjectContext, api DBSubnetGroupAPI, desired DBSubnetGroupSpec, observed ObservedState) error {
 	if desired.Description != observed.Description || !stringSliceEqual(desired.SubnetIds, observed.SubnetIds) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -353,6 +369,8 @@ func (d *DBSubnetGroupDriver) correctDrift(ctx restate.ObjectContext, api DBSubn
 	return nil
 }
 
+// scheduleReconcile enqueues the next reconciliation via a Restate delayed send.
+// Uses the ReconcileScheduled flag to prevent timer fan-out.
 func (d *DBSubnetGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state *DBSubnetGroupState) {
 	if state == nil || state.ReconcileScheduled {
 		return
@@ -362,6 +380,7 @@ func (d *DBSubnetGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates an API client for the given account.
 func (d *DBSubnetGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (DBSubnetGroupAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("db subnet group driver is not configured")
@@ -373,6 +392,7 @@ func (d *DBSubnetGroupDriver) apiForAccount(ctx restate.ObjectContext, account s
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// validateSpec checks required fields. SubnetIds must have at least 2 entries.
 func validateSpec(spec DBSubnetGroupSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -389,6 +409,7 @@ func validateSpec(spec DBSubnetGroupSpec) error {
 	return nil
 }
 
+// specFromObserved synthesises a spec from observed state for import.
 func specFromObserved(observed ObservedState) DBSubnetGroupSpec {
 	return DBSubnetGroupSpec{
 		GroupName:   observed.GroupName,
@@ -398,6 +419,7 @@ func specFromObserved(observed ObservedState) DBSubnetGroupSpec {
 	}
 }
 
+// outputsFromObserved maps observed state to the output struct.
 func outputsFromObserved(observed ObservedState) DBSubnetGroupOutputs {
 	return DBSubnetGroupOutputs{
 		GroupName:         observed.GroupName,
@@ -409,6 +431,7 @@ func outputsFromObserved(observed ObservedState) DBSubnetGroupOutputs {
 	}
 }
 
+// defaultImportMode returns ModeObserved if no explicit mode is given.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved

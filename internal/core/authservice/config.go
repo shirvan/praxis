@@ -1,3 +1,5 @@
+// Package authservice — config.go defines account configuration types,
+// validation rules, and environment-variable bootstrap loading.
 package authservice
 
 import (
@@ -9,20 +11,43 @@ import (
 )
 
 const (
-	CredentialSourceStatic  = "static"
-	CredentialSourceRole    = "role"
+	// CredentialSourceStatic uses inline access key ID + secret access key.
+	// Credentials never expire but cannot be rotated without a config update.
+	CredentialSourceStatic = "static"
+
+	// CredentialSourceRole uses STS AssumeRole to obtain temporary credentials.
+	// The base credentials (for calling STS) come from the default chain.
+	// Temporary credentials are cached and proactively refreshed before expiry.
+	CredentialSourceRole = "role"
+
+	// CredentialSourceDefault uses the AWS default credential chain (env vars,
+	// instance metadata, ECS task role, etc.). The chain manages its own
+	// credential refresh internally.
 	CredentialSourceDefault = "default"
 
-	defaultAccountName     = "default"
-	defaultAccountRegion   = "us-east-1"
-	minSessionDuration     = 15 * time.Minute
-	maxSessionDuration     = 12 * time.Hour
+	// defaultAccountName is the account alias used when PRAXIS_ACCOUNT_NAME is unset.
+	defaultAccountName = "default"
+
+	// defaultAccountRegion is the AWS region used when PRAXIS_ACCOUNT_REGION is unset.
+	defaultAccountRegion = "us-east-1"
+
+	// minSessionDuration is the AWS STS minimum session duration (15 minutes).
+	minSessionDuration = 15 * time.Minute
+
+	// maxSessionDuration is the AWS STS maximum session duration (12 hours).
+	maxSessionDuration = 12 * time.Hour
+
+	// defaultSessionDuration is used when no session duration is specified.
 	defaultSessionDuration = 1 * time.Hour
 )
 
+// aliasRegex validates account alias format: lowercase alphanumeric with
+// hyphens and underscores, 1-63 characters, must start with alphanumeric.
 var aliasRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
 // AccountConfig holds the credential configuration for a single AWS account alias.
+// Each field maps to a PRAXIS_ACCOUNT_* environment variable for bootstrap, or
+// can be set at runtime via the AuthService.Configure handler.
 type AccountConfig struct {
 	Region           string        `json:"region"`
 	CredentialSource string        `json:"credentialSource"`
@@ -35,6 +60,8 @@ type AccountConfig struct {
 }
 
 // AccountsConfig is the top-level config holding a map of account aliases.
+// Populated from PRAXIS_ACCOUNT_* environment variables at startup and passed
+// to NewAuthService as the bootstrap seed for first-boot configuration.
 type AccountsConfig struct {
 	Accounts map[string]AccountConfig
 }
@@ -101,6 +128,9 @@ func ValidateAlias(alias string) error {
 }
 
 // LoadBootstrapFromEnv creates an AccountsConfig from PRAXIS_ACCOUNT_* env vars.
+// This is the zero-configuration bootstrap path: on first boot, the AuthService
+// seeds its Restate state from these env vars. Subsequent starts read from
+// Restate state directly, so env vars are only needed for initial setup.
 func LoadBootstrapFromEnv() *AccountsConfig {
 	name := envOr("PRAXIS_ACCOUNT_NAME", defaultAccountName)
 	return &AccountsConfig{
@@ -118,6 +148,7 @@ func LoadBootstrapFromEnv() *AccountsConfig {
 	}
 }
 
+// envOr returns the env var value if set and non-empty, otherwise the fallback.
 func envOr(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value

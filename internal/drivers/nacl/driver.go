@@ -16,17 +16,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// NetworkACLDriver is a Restate Virtual Object that manages EC2 Network ACL lifecycle.
 type NetworkACLDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) NetworkACLAPI
 }
 
+// NewNetworkACLDriver creates a production NetworkACLDriver.
 func NewNetworkACLDriver(auth authservice.AuthClient) *NetworkACLDriver {
 	return NewNetworkACLDriverWithFactory(auth, func(cfg aws.Config) NetworkACLAPI {
 		return NewNetworkACLAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewNetworkACLDriverWithFactory allows tests to inject a custom NetworkACLAPI factory.
 func NewNetworkACLDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) NetworkACLAPI) *NetworkACLDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) NetworkACLAPI {
@@ -40,6 +43,15 @@ func (d *NetworkACLDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements idempotent create-or-converge for a Network ACL.
+//
+// Flow: normalize spec (validate rules, dedup) → load state → ownership check →
+// create if missing → apply desired state (rules + associations + tags) →
+// describe final state → commit state → schedule reconcile.
+//
+// Rule convergence: add new rules → replace changed rules → remove old rules.
+// Association convergence: associate missing subnets → disassociate extra subnets
+// (disassociation moves the subnet back to the VPC's default NACL).
 func (d *NetworkACLDriver) Provision(ctx restate.ObjectContext, spec NetworkACLSpec) (NetworkACLOutputs, error) {
 	ctx.Log().Info("provisioning network ACL", "key", restate.Key(ctx))
 	if spec.ManagedKey == "" {
@@ -175,6 +187,7 @@ func (d *NetworkACLDriver) Provision(ctx restate.ObjectContext, spec NetworkACLS
 	return outputs, nil
 }
 
+// Import captures an existing Network ACL's live state as the baseline.
 func (d *NetworkACLDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (NetworkACLOutputs, error) {
 	ctx.Log().Info("importing network ACL", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -220,6 +233,8 @@ func (d *NetworkACLDriver) Import(ctx restate.ObjectContext, ref types.ImportRef
 	return outputs, nil
 }
 
+// Delete removes the Network ACL. Before deleting, all associated subnets
+// are reassociated to the VPC's default NACL via ReplaceNetworkACLAssociation.
 func (d *NetworkACLDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting network ACL", "key", restate.Key(ctx))
 	state, err := restate.Get[NetworkACLState](ctx, drivers.StateKey)
@@ -328,6 +343,8 @@ func (d *NetworkACLDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile checks actual state against desired and corrects drift (Managed)
+// or reports it (Observed). Drift includes rules, associations, and tags.
 func (d *NetworkACLDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[NetworkACLState](ctx, drivers.StateKey)
 	if err != nil {
@@ -445,6 +462,9 @@ func (d *NetworkACLDriver) GetOutputs(ctx restate.ObjectSharedContext) (NetworkA
 	return state.Outputs, nil
 }
 
+// applyDesiredState converges rules, associations, and tags to match the
+// desired spec. Delegates to applyRuleDiff for ingress/egress rules and
+// applyAssociationDiff for subnet associations.
 func (d *NetworkACLDriver) applyDesiredState(ctx restate.ObjectContext, api NetworkACLAPI, networkAclID string, desired NetworkACLSpec, observed ObservedState) error {
 	if err := d.applyRuleDiff(ctx, api, networkAclID, desired.IngressRules, observed.IngressRules, false); err != nil {
 		return err
@@ -466,6 +486,8 @@ func (d *NetworkACLDriver) applyDesiredState(ctx restate.ObjectContext, api Netw
 	return nil
 }
 
+// applyRuleDiff computes the diff between desired and observed rules by
+// rule number, then applies changes in add → replace → remove order.
 func (d *NetworkACLDriver) applyRuleDiff(ctx restate.ObjectContext, api NetworkACLAPI, networkAclID string, desiredRules, observedRules []NetworkACLRule, egress bool) error {
 	desiredMap := ruleMap(desiredRules)
 	observedMap := ruleMap(observedRules)
@@ -548,6 +570,9 @@ func (d *NetworkACLDriver) applyRuleDiff(ctx restate.ObjectContext, api NetworkA
 	return nil
 }
 
+// applyAssociationDiff adds and removes subnet associations to match the
+// desired set. Adding associates the subnet with this NACL; removing
+// reassociates the subnet to the VPC's default NACL.
 func (d *NetworkACLDriver) applyAssociationDiff(ctx restate.ObjectContext, api NetworkACLAPI, networkAclID string, vpcID string, desiredSubnets []string, observedAssociations []NetworkACLAssociation) error {
 	desiredSet := make(map[string]struct{}, len(desiredSubnets))
 	for _, subnetID := range desiredSubnets {
@@ -635,6 +660,9 @@ func (d *NetworkACLDriver) apiForAccount(ctx restate.ObjectContext, account stri
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// normalizeSpec validates and normalizes a NetworkACLSpec: checks required
+// fields, normalizes protocol names to IANA numbers, validates rule number
+// ranges (1-32766), deduplicates rules and subnet associations.
 func normalizeSpec(spec NetworkACLSpec) (NetworkACLSpec, error) {
 	if spec.Region == "" {
 		return NetworkACLSpec{}, fmt.Errorf("region is required")

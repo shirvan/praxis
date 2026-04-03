@@ -9,6 +9,18 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// registerWriteTools adds all write (mutating) tools to the registry. These tools
+// modify infrastructure state and ALL have RequiresApproval=true, meaning they
+// trigger the human-in-the-loop approval flow:
+//
+//  1. LLM invokes the tool (e.g., "applyTemplate")
+//  2. Session creates a Restate awakeable and suspends execution
+//  3. Transport (CLI/Slack) shows the approval prompt with DescribeAction() output
+//  4. Human approves → awakeable resolved → tool executes via PraxisCommandService
+//  5. Human rejects → awakeable rejected → rejection message returned to LLM
+//
+// Write tools delegate to PraxisCommandService (a separate Restate service) for
+// the actual infrastructure operations (Apply, Deploy, DeleteDeployment, Import).
 func (r *ToolRegistry) registerWriteTools() {
 	r.Register(&ToolDef{
 		Name:             "applyTemplate",
@@ -118,6 +130,9 @@ func (r *ToolRegistry) registerWriteTools() {
 	})
 }
 
+// toolApplyTemplate applies a raw CUE template to provision resources via
+// PraxisCommandService.Apply. Falls back to session's account/workspace if not
+// provided in the arguments.
 func toolApplyTemplate(ctx restate.Context, argsJSON string, session SessionState) (string, error) {
 	var args struct {
 		Template      string         `json:"template"`
@@ -155,6 +170,8 @@ func toolApplyTemplate(ctx restate.Context, argsJSON string, session SessionStat
 	return fmt.Sprintf("Deployment submitted.\nKey: %s\nStatus: %s", resp.DeploymentKey, resp.Status), nil
 }
 
+// toolDeployTemplate deploys from a registered template (by name) via
+// PraxisCommandService.Deploy. Uses the session's account/workspace context.
 func toolDeployTemplate(ctx restate.Context, argsJSON string, session SessionState) (string, error) {
 	var args struct {
 		TemplateName  string         `json:"templateName"`
@@ -181,6 +198,8 @@ func toolDeployTemplate(ctx restate.Context, argsJSON string, session SessionSta
 	return fmt.Sprintf("Deployment submitted.\nKey: %s\nStatus: %s", resp.DeploymentKey, resp.Status), nil
 }
 
+// toolDeleteDeployment deletes all resources in a deployment via
+// PraxisCommandService.DeleteDeployment.
 func toolDeleteDeployment(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		DeploymentKey string `json:"deploymentKey"`
@@ -204,6 +223,9 @@ func toolDeleteDeployment(ctx restate.Context, argsJSON string, _ SessionState) 
 	return fmt.Sprintf("Deletion started.\nKey: %s\nStatus: %s", resp.DeploymentKey, resp.Status), nil
 }
 
+// toolImportResource imports an existing cloud resource into Praxis management via
+// PraxisCommandService.Import. Supports Managed (full control) and Observed (read-only)
+// modes. Uses the session's account/workspace context.
 func toolImportResource(ctx restate.Context, argsJSON string, session SessionState) (string, error) {
 	var args struct {
 		Kind       string `json:"kind"`

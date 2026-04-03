@@ -1,13 +1,4 @@
-# ACM Certificate Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages ACM Certificates, providing
-> full lifecycle management including request, import, deletion, drift detection,
-> and status polling for DNS and email validated public certificates and private
-> CA-issued certificates.
->
-> Key scope: `KeyScopeRegion` — key format is `region~name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned certificate
-> ARN lives only in state/outputs.
+# ACM Certificate Driver — Implementation Spec
 
 ---
 
@@ -881,19 +872,19 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 
 ```go
 type ACMCertificateDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) CertificateAPI
 }
 
-func NewACMCertificateDriver(accounts *auth.Registry) *ACMCertificateDriver {
+func NewACMCertificateDriver(auth authservice.AuthClient) *ACMCertificateDriver {
     return NewACMCertificateDriverWithFactory(accounts, func(cfg aws.Config) CertificateAPI {
         return NewCertificateAPI(awsclient.NewACMClient(cfg))
     })
 }
 
-func NewACMCertificateDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) CertificateAPI) *ACMCertificateDriver {
+func NewACMCertificateDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) CertificateAPI) *ACMCertificateDriver {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     if factory == nil {
         factory = func(cfg aws.Config) CertificateAPI {
@@ -1281,13 +1272,13 @@ import (
 )
 
 type ACMCertificateAdapter struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) acmcert.CertificateAPI
 }
 
-func NewACMCertificateAdapterWithRegistry(accounts *auth.Registry) *ACMCertificateAdapter {
+func NewACMCertificateAdapterWithAuth(auth authservice.AuthClient) *ACMCertificateAdapter {
     if accounts == nil {
-        accounts = auth.LoadFromEnv()
+        auth = authservice.NewAuthClient()
     }
     return &ACMCertificateAdapter{
         auth: accounts,
@@ -1361,10 +1352,10 @@ func (a *ACMCertificateAdapter) Import(ctx restate.Context, key string, account 
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
-        NewACMCertificateAdapterWithRegistry(accounts),
+        NewACMCertificateAdapterWithAuth(auth),
     )
 }
 ```
@@ -1379,7 +1370,7 @@ func NewRegistry() *Registry {
 // Bind ACMCertificate driver alongside existing network drivers
 srv := server.NewRestate().
     // ... existing bindings ...
-    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(cfg.Auth())))
+    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth)))
 ```
 
 ---

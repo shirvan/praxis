@@ -15,13 +15,33 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// TemplateRegistry stores one durable record per template name.
+// TemplateRegistry is a Restate Virtual Object that stores one durable CUE
+// template record per template name. Each template is keyed by its name,
+// meaning Restate routes all operations for the same template name to the
+// same Virtual Object instance, providing serialized access and consistent
+// state.
+//
+// Storage layout:
+//   - State key "record" holds the full types.TemplateRecord (source, digest,
+//     metadata, variable schema, previous version for rollback).
+//   - On register, the index VO (TemplateIndex) is notified via a one-way
+//     message to keep the global template listing in sync.
 type TemplateRegistry struct{}
 
+// ServiceName returns the Restate service name used to register this Virtual Object.
 func (TemplateRegistry) ServiceName() string {
 	return TemplateRegistryServiceName
 }
 
+// Register creates or updates a template record. This is an exclusive handler
+// (ObjectContext) so concurrent writes to the same template name are serialized
+// by Restate.
+//
+// The method:
+//  1. Reads the existing record (if any) from Restate state.
+//  2. Captures the current time via restate.Run for deterministic journaling.
+//  3. Validates and compiles the CUE source, extracts the variable schema.
+//  4. Persists the new record and sends an async update to the TemplateIndex.
 func (TemplateRegistry) Register(ctx restate.ObjectContext, req types.RegisterTemplateRequest) (types.RegisterTemplateResponse, error) {
 	existing, err := restate.Get[*types.TemplateRecord](ctx, stateKey)
 	if err != nil {
@@ -45,6 +65,9 @@ func (TemplateRegistry) Register(ctx restate.ObjectContext, req types.RegisterTe
 	return resp, nil
 }
 
+// Delete removes a template record and notifies the index to drop it from
+// the global listing. Returns a TerminalError(404) if the template does not
+// exist, stopping Restate retries immediately.
 func (TemplateRegistry) Delete(ctx restate.ObjectContext, req types.DeleteTemplateRequest) error {
 	existing, err := restate.Get[*types.TemplateRecord](ctx, stateKey)
 	if err != nil {
@@ -59,6 +82,9 @@ func (TemplateRegistry) Delete(ctx restate.ObjectContext, req types.DeleteTempla
 	return nil
 }
 
+// Get retrieves the full template record. This is a shared (read-only) handler
+// so it does not block concurrent reads on the same key. Returns a
+// TerminalError(404) if the template has never been registered.
 func (TemplateRegistry) Get(ctx restate.ObjectSharedContext, _ restate.Void) (types.TemplateRecord, error) {
 	record, err := restate.Get[*types.TemplateRecord](ctx, stateKey)
 	if err != nil {
@@ -70,6 +96,10 @@ func (TemplateRegistry) Get(ctx restate.ObjectSharedContext, _ restate.Void) (ty
 	return *record, nil
 }
 
+// GetSource returns just the raw CUE source text. This is a lightweight shared
+// handler used by the command service and template engine when only the source
+// is needed (e.g. for evaluation), avoiding the cost of deserializing the full
+// record with metadata and variable schema.
 func (TemplateRegistry) GetSource(ctx restate.ObjectSharedContext, _ restate.Void) (string, error) {
 	record, err := restate.Get[*types.TemplateRecord](ctx, stateKey)
 	if err != nil {
@@ -81,6 +111,9 @@ func (TemplateRegistry) GetSource(ctx restate.ObjectSharedContext, _ restate.Voi
 	return record.Source, nil
 }
 
+// GetVariableSchema returns the extracted variable schema for the template.
+// The CLI uses this to validate user-provided variables before evaluation and
+// to generate interactive prompts for required fields.
 func (TemplateRegistry) GetVariableSchema(ctx restate.ObjectSharedContext, _ restate.Void) (types.VariableSchema, error) {
 	record, err := restate.Get[*types.TemplateRecord](ctx, stateKey)
 	if err != nil {
@@ -92,6 +125,16 @@ func (TemplateRegistry) GetVariableSchema(ctx restate.ObjectSharedContext, _ res
 	return record.VariableSchema, nil
 }
 
+// registerTemplateRecord is a pure function (no Restate context) that builds
+// the new template record, template summary, and response from inputs. This
+// separation makes the logic unit-testable without a Restate runtime.
+//
+// Validation steps:
+//  1. Name must be non-empty and match the VO key.
+//  2. CUE source must be non-empty and syntactically valid.
+//  3. Variable schema is extracted from the CUE source for runtime validation.
+//  4. If updating an existing record, the previous source and digest are preserved
+//     for rollback support.
 func registerTemplateRecord(key string, existing *types.TemplateRecord, req types.RegisterTemplateRequest, now time.Time) (types.TemplateRecord, types.TemplateSummary, types.RegisterTemplateResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -149,6 +192,8 @@ func registerTemplateRecord(key string, existing *types.TemplateRecord, req type
 	return record, summary, resp, nil
 }
 
+// deleteTemplateRecord validates the delete request. Returns the template name
+// on success so the caller can notify the index.
 func deleteTemplateRecord(existing *types.TemplateRecord, req types.DeleteTemplateRequest) (string, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -160,11 +205,16 @@ func deleteTemplateRecord(existing *types.TemplateRecord, req types.DeleteTempla
 	return name, nil
 }
 
+// templateDigest computes a SHA-256 hex digest of the CUE source. This is
+// stored alongside the record and returned to clients so they can detect
+// whether a template has changed without comparing the full source text.
 func templateDigest(source string) string {
 	sum := sha256.Sum256([]byte(source))
 	return hex.EncodeToString(sum[:])
 }
 
+// cloneLabels creates a defensive copy of a label map to avoid shared
+// mutation between the request and the stored record.
 func cloneLabels(labels map[string]string) map[string]string {
 	if len(labels) == 0 {
 		return nil

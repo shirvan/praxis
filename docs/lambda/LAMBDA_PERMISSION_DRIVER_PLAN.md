@@ -1,11 +1,4 @@
-# Lambda Permission Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages Lambda resource-based policy
-> statements, following the exact patterns established by the S3, Security Group, EC2,
-> VPC, and Lambda Function drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~functionName~statementId`,
-> permanent and immutable for the lifetime of the Virtual Object.
+# Lambda Permission Driver — Implementation Spec
 
 ---
 
@@ -323,8 +316,8 @@ type realPermissionAPI struct {
     limiter ratelimit.Limiter
 }
 
-func newRealPermissionAPI(client *lambda.Client, limiter ratelimit.Limiter) PermissionAPI {
-    return &realPermissionAPI{client: client, limiter: limiter}
+func NewPermissionAPI(client *lambdasdk.Client) PermissionAPI {
+    return &realPermissionAPI{client: client, limiter: ratelimit.New("lambda-permission", 20, 10)}
 }
 ```
 
@@ -485,14 +478,17 @@ func ComputeFieldDiffs(desired LambdaPermissionSpec, observed ObservedState) []t
 
 ```go
 type LambdaPermissionDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
+    apiFactory func(aws.Config) PermissionAPI
 }
 
-func NewLambdaPermissionDriver(accounts *auth.Registry) *LambdaPermissionDriver {
-    return &LambdaPermissionDriver{accounts: accounts}
+func NewLambdaPermissionDriver(auth authservice.AuthClient) *LambdaPermissionDriver {
+    return NewLambdaPermissionDriverWithFactory(auth, func(cfg aws.Config) PermissionAPI {
+        return NewPermissionAPI(awsclient.NewLambdaClient(cfg))
+    })
 }
 
-func (LambdaPermissionDriver) ServiceName() string { return ServiceName }
+func (d *LambdaPermissionDriver) ServiceName() string { return ServiceName }
 ```
 
 ### Provision

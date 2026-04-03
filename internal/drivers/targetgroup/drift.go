@@ -1,3 +1,10 @@
+// Package targetgroup – drift.go
+//
+// This file implements drift detection for AWS ELBv2 Target Group.
+// HasDrift compares the desired spec against the observed state from AWS and
+// returns true when any mutable field has diverged. ComputeFieldDiffs produces
+// a structured list of individual field changes for plan output and logging.
+// Immutable fields (those that require resource replacement) are annotated.
 package targetgroup
 
 import (
@@ -6,12 +13,18 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field-level difference between the desired
+// spec and the observed state. Path uses dot notation (e.g. "spec.name");
+// immutable fields are annotated with "(immutable, requires replacement)".
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift compares the desired TargetGroup spec against the observed
+// state from AWS and returns true if any mutable field has diverged.
+// It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired TargetGroupSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
 	if desired.Protocol != observed.Protocol || desired.Port != observed.Port || desired.VpcId != observed.VpcId || desired.TargetType != observed.TargetType || desired.ProtocolVersion != observed.ProtocolVersion {
@@ -32,6 +45,9 @@ func HasDrift(desired TargetGroupSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs produces a structured list of individual field changes
+// between the desired spec and observed state. Used for plan output, CLI
+// display, and audit logging. Immutable field changes are clearly annotated.
 func ComputeFieldDiffs(desired TargetGroupSpec, observed ObservedState) []FieldDiffEntry {
 	desired = applyDefaults(desired)
 	var diffs []FieldDiffEntry

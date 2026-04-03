@@ -24,12 +24,26 @@ type CredentialStatus struct {
 }
 
 // AuthState is the durable state stored per Virtual Object key (per account-alias).
+// This is the single Restate state entry for each AuthService instance.
+// It combines configuration, cached credentials, and operational metadata.
 type AuthState struct {
-	Config           AccountConfig     `json:"config"`
+	// Config is the account's credential configuration (source, region, role ARN, etc.).
+	Config AccountConfig `json:"config"`
+
+	// CachedCredential holds the most recently resolved credentials.
+	// Nil when no credentials have been resolved yet.
 	CachedCredential *CachedCredential `json:"cachedCredential,omitempty"`
-	LastRefresh      string            `json:"lastRefresh,omitempty"`
-	RefreshScheduled bool              `json:"refreshScheduled"`
-	Error            string            `json:"error,omitempty"`
+
+	// LastRefresh is the RFC 3339 timestamp of the most recent credential resolution.
+	LastRefresh string `json:"lastRefresh,omitempty"`
+
+	// RefreshScheduled is true when a durable Restate timer has been set to
+	// proactively refresh credentials before expiry. Prevents duplicate timers.
+	RefreshScheduled bool `json:"refreshScheduled"`
+
+	// Error holds the last error message from a failed credential resolution.
+	// Cleared on the next successful resolution.
+	Error string `json:"error,omitempty"`
 }
 
 // CachedCredential holds the credential data cached in Restate state.

@@ -1,27 +1,12 @@
 # Route 53 Driver Pack — Overview
 
-> **Status: IMPLEMENTED** — All three drivers (Hosted Zone, DNS Record, Health
-> Check) are fully implemented with unit tests, integration tests, CUE schemas,
-> provider adapters, registry integration.
->
-> **Implementation note:** This plan originally proposed a standalone `praxis-dns`
-> driver pack on port 9086. The actual implementation places all three Route 53 drivers
-> in the existing **`praxis-network`** pack (`cmd/praxis-network/`). References to
-> `praxis-dns`, `cmd/praxis-dns/`, and port 9086 below reflect the original plan;
-> the canonical source of truth is `cmd/praxis-network/main.go`.
->
-> This document summarizes the Route 53 driver family for Praxis: three drivers
-> covering Hosted Zones, DNS Records, and Health Checks. It describes their
-> relationships, shared infrastructure, implementation order, and the new
-> `praxis-dns` driver pack.
-
 ---
 
 ## Table of Contents
 
 1. [Driver Summary](#1-driver-summary)
 2. [Relationships & Dependencies](#2-relationships--dependencies)
-3. [Driver Pack: praxis-dns](#3-driver-pack-praxis-dns)
+3. [Driver Pack: praxis-network](#3-driver-pack-praxis-network)
 4. [Shared Infrastructure](#4-shared-infrastructure)
 5. [Implementation Order](#5-implementation-order)
 6. [go.mod Changes](#6-gomod-changes)
@@ -89,73 +74,42 @@ graph TD
 
 ---
 
-## 3. Driver Pack: praxis-dns
+## 3. Driver Pack: praxis-network
 
-### New Entry Point
+All three Route 53 drivers are registered in the **`praxis-network`** pack
+alongside VPC, SG, EIP, subnet, and other network drivers.
 
-**File**: `cmd/praxis-dns/main.go`
+### Entry Point
+
+**File**: `cmd/praxis-network/main.go` (excerpt — Route 53 bindings)
 
 ```go
-package main
+auth := authservice.NewAuthClient()
 
-import (
-    "context"
-    "log/slog"
-    "os"
-
-    restate "github.com/restatedev/sdk-go"
-    server "github.com/restatedev/sdk-go/server"
-
-    "github.com/shirvan/praxis/internal/core/config"
-    "github.com/shirvan/praxis/internal/drivers/route53zone"
-    "github.com/shirvan/praxis/internal/drivers/route53record"
-    "github.com/shirvan/praxis/internal/drivers/route53healthcheck"
-)
-
-func main() {
-    cfg := config.Load()
-
-    srv := server.NewRestate().
-        Bind(restate.Reflect(route53zone.NewHostedZoneDriver(cfg.Auth()))).
-        Bind(restate.Reflect(route53record.NewDNSRecordDriver(cfg.Auth()))).
-        Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(cfg.Auth())))
-
-    if err := srv.Start(context.Background(), ":9086"); err != nil {
-        slog.Error("praxis-dns exited unexpectedly", "err", err.Error())
-        os.Exit(1)
-    }
-}
+srv := server.NewRestate().
+    // ... other network drivers ...
+    Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth))).
+    Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth))).
+    Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth)))
 ```
 
-### Dockerfile
+Constructor signature for all three drivers:
 
-**File**: `cmd/praxis-dns/Dockerfile`
-
-Follows the same pattern as existing driver packs (`cmd/praxis-compute/Dockerfile`).
-
-```dockerfile
-FROM golang:1.25 AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /praxis-dns ./cmd/praxis-dns
-
-FROM gcr.io/distroless/static-debian12
-COPY --from=builder /praxis-dns /praxis-dns
-ENTRYPOINT ["/praxis-dns"]
+```go
+func NewHostedZoneDriver(auth authservice.AuthClient) *HostedZoneDriver
+func NewDNSRecordDriver(auth authservice.AuthClient) *RecordDriver
+func NewHealthCheckDriver(auth authservice.AuthClient) *HealthCheckDriver
 ```
 
-### Port: 9086
+### Port: 9082 (shared with praxis-network)
 
 | Pack | Port |
 |---|---|
 | praxis-storage | 9081 |
-| praxis-network | 9082 |
+| **praxis-network** | **9082** |
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
 | praxis-identity | 9085 |
-| **praxis-dns** | **9086** |
 
 ---
 
@@ -229,25 +183,24 @@ not globally unique.
 
 ## 5. Implementation Order
 
-The recommended implementation order respects dependencies and allows incremental
-testing:
+The drivers were implemented in this order, respecting dependencies:
 
-### Phase 1: Foundation (no cross-driver dependencies)
+### Foundation (no cross-driver dependencies)
 
 1. **Hosted Zone** — Root of all DNS resources. No dependencies on other Route 53
-   resources. Must be implemented first since DNS records reference a hosted zone ID.
+   resources. Implemented first since DNS records reference a hosted zone ID.
    Supports both public and private zones.
 
-2. **Health Check** — Standalone resource with no Route 53 dependencies. Can be
-   tested independently. Supports endpoint checks, calculated checks, and
-   CloudWatch alarm checks.
+2. **Health Check** — Standalone resource with no Route 53 dependencies. Tested
+   independently. Supports endpoint checks, calculated checks, and CloudWatch
+   alarm checks.
 
-### Phase 2: Records
+### Records
 
 3. **DNS Record** — References hosted zone (required) and health check (optional).
    Most complex driver due to diverse record types, alias vs standard records, and
-   multiple routing policies. Should be implemented last so both dependencies are
-   available for end-to-end testing.
+   multiple routing policies. Implemented last so both dependencies were available
+   for end-to-end testing.
 
 ### Dependency Test Order
 
@@ -276,49 +229,19 @@ go mod tidy
 
 ## 7. Docker Compose Changes
 
-**File**: `docker-compose.yaml` — add the `praxis-dns` service:
+The Route 53 drivers are part of the `praxis-network` service in `docker-compose.yaml`
+(port 9082). No additional service entry is needed.
 
-```yaml
-  praxis-dns:
-    build:
-      context: .
-      dockerfile: cmd/praxis-dns/Dockerfile
-    container_name: praxis-dns
-    env_file:
-      - .env
-    depends_on:
-      restate:
-        condition: service_healthy
-      localstack-init:
-        condition: service_completed_successfully
-    ports:
-      - "9086:9080"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-```
-
-### Restate Registration
-
-```bash
-curl -s -X POST http://localhost:9070/deployments \
-  -H 'content-type: application/json' \
-  -d '{"uri": "http://praxis-dns:9080"}'
-```
-
-All three services are discovered automatically from the single registration
-endpoint via Restate's reflection-based service discovery.
+All three Route 53 services are discovered automatically from the `praxis-network`
+registration endpoint via Restate's reflection-based service discovery.
 
 ---
 
 ## 8. Justfile Changes
 
-Add targets for the new driver pack and individual drivers:
+The Route 53 drivers are built and tested as part of the `praxis-network` pack:
 
 ```just
-# Route 53 driver pack
-build-dns:
-    go build ./cmd/praxis-dns/...
-
 test-route53:
     go test ./internal/drivers/route53zone/... ./internal/drivers/route53record/... \
             ./internal/drivers/route53healthcheck/... \
@@ -327,20 +250,6 @@ test-route53:
 test-route53-integration:
     go test ./tests/integration/ -run "TestRoute53HostedZone|TestRoute53Record|TestRoute53HealthCheck" \
             -v -count=1 -tags=integration -timeout=10m
-
-# Individual driver targets
-test-route53zone:
-    go test ./internal/drivers/route53zone/... -v -count=1 -race
-
-test-route53record:
-    go test ./internal/drivers/route53record/... -v -count=1 -race
-
-test-route53healthcheck:
-    go test ./internal/drivers/route53healthcheck/... -v -count=1 -race
-
-# Logs
-logs-dns:
-    docker compose logs -f praxis-dns
 ```
 
 ---
@@ -372,7 +281,6 @@ func NewRegistry() *Registry {
 | Hosted Zone | `internal/core/provider/route53zone_adapter.go` |
 | DNS Record | `internal/core/provider/route53record_adapter.go` |
 | Health Check | `internal/core/provider/route53healthcheck_adapter.go` |
-
 ---
 
 ## 10. Cross-Driver References
@@ -539,9 +447,8 @@ references.
 ### Infrastructure
 
 - [x] `go get github.com/aws/aws-sdk-go-v2/service/route53` added
-- [x] `cmd/praxis-dns/main.go` created
-- [x] `cmd/praxis-dns/Dockerfile` created
-- [x] `docker-compose.yaml` updated with `praxis-dns` service
+- [x] Route 53 drivers bound in `cmd/praxis-network/main.go`
+- [x] `docker-compose.yaml` — `praxis-network` service on port 9082
 - [x] `justfile` updated with Route 53 targets
 
 ### Schemas

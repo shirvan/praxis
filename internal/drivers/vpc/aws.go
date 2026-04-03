@@ -78,6 +78,10 @@ func (r *realVPCAPI) CreateVpc(ctx context.Context, spec VPCSpec) (string, error
 	return aws.ToString(out.Vpc.VpcId), nil
 }
 
+// DescribeVpc fetches the live state of a VPC. This requires three separate
+// EC2 API calls: DescribeVpcs for core attributes, then two DescribeVpcAttribute
+// calls for EnableDnsHostnames and EnableDnsSupport (which are not returned
+// by DescribeVpcs). Each call acquires the rate limiter.
 func (r *realVPCAPI) DescribeVpc(ctx context.Context, vpcId string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err

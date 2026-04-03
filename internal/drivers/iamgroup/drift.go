@@ -6,6 +6,8 @@ import (
 	"sort"
 )
 
+// HasDrift returns true if any mutable field (path, inline policies, managed policy ARNs)
+// differs between the desired spec and the observed AWS state.
 func HasDrift(desired IAMGroupSpec, observed ObservedState) bool {
 	if desired.Path != observed.Path {
 		return true
@@ -16,6 +18,8 @@ func HasDrift(desired IAMGroupSpec, observed ObservedState) bool {
 	return !stringSetEqual(desired.ManagedPolicyArns, observed.ManagedPolicyArns)
 }
 
+// ComputeFieldDiffs returns a per-field list of differences between desired and observed state.
+// Used for logging and drift-event reporting.
 func ComputeFieldDiffs(desired IAMGroupSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -29,12 +33,14 @@ func ComputeFieldDiffs(desired IAMGroupSpec, observed ObservedState) []FieldDiff
 	return diffs
 }
 
+// FieldDiffEntry describes a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// inlinePoliciesEqual compares two inline-policy maps after normalising each JSON document.
 func inlinePoliciesEqual(desired, observed map[string]string) bool {
 	nd := normalizePolicyMap(desired)
 	no := normalizePolicyMap(observed)
@@ -79,6 +85,8 @@ func computeInlinePolicyDiffs(desired, observed map[string]string) []FieldDiffEn
 	return diffs
 }
 
+// normalizePolicyDocument URL-decodes and re-serialises a JSON policy document for
+// stable comparison, since AWS may return URL-encoded or whitespace-varied documents.
 func normalizePolicyDocument(document string) string {
 	if document == "" {
 		return ""

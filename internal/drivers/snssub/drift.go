@@ -1,3 +1,10 @@
+// Package snssub – drift.go
+//
+// This file implements drift detection for AWS SNS Subscription.
+// HasDrift compares the desired spec against the observed state from AWS and
+// returns true when any mutable field has diverged. ComputeFieldDiffs produces
+// a structured list of individual field changes for plan output and logging.
+// Immutable fields (those that require resource replacement) are annotated.
 package snssub
 
 import "encoding/json"

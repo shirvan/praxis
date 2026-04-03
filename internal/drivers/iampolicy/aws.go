@@ -22,6 +22,8 @@ import (
 
 var errNotFound = errors.New("iam policy not found")
 
+// IAMPolicyAPI defines the interface for all AWS IAM policy operations used by the driver.
+// This abstraction enables mock injection for testing.
 type IAMPolicyAPI interface {
 	CreatePolicy(ctx context.Context, spec IAMPolicySpec) (arn, policyID string, err error)
 	DescribePolicy(ctx context.Context, policyArn string) (ObservedState, error)
@@ -35,6 +37,8 @@ type IAMPolicyAPI interface {
 	UpdateTags(ctx context.Context, policyArn string, tags map[string]string) error
 }
 
+// PolicyVersionInfo represents metadata about a single version of an IAM policy.
+// IAM allows up to 5 versions per policy; the driver manages version rotation automatically.
 type PolicyVersionInfo struct {
 	VersionID        string
 	IsDefaultVersion bool
@@ -46,6 +50,7 @@ type realIAMPolicyAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewIAMPolicyAPI constructs a production IAMPolicyAPI with rate limiting for IAM's throttle limits.
 func NewIAMPolicyAPI(client *iamsdk.Client) IAMPolicyAPI {
 	return &realIAMPolicyAPI{
 		client:  client,
@@ -53,6 +58,8 @@ func NewIAMPolicyAPI(client *iamsdk.Client) IAMPolicyAPI {
 	}
 }
 
+// CreatePolicy calls the AWS IAM CreatePolicy API with the given spec.
+// Returns the policy ARN and unique policy ID.
 func (r *realIAMPolicyAPI) CreatePolicy(ctx context.Context, spec IAMPolicySpec) (string, string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", "", err
@@ -75,6 +82,8 @@ func (r *realIAMPolicyAPI) CreatePolicy(ctx context.Context, spec IAMPolicySpec)
 	return aws.ToString(out.Policy.Arn), aws.ToString(out.Policy.PolicyId), nil
 }
 
+// DescribePolicy calls GetPolicy + GetPolicyVersion (for the default version's document)
+// + ListPolicyTags to build a complete observed state snapshot.
 func (r *realIAMPolicyAPI) DescribePolicy(ctx context.Context, policyArn string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -114,6 +123,8 @@ func (r *realIAMPolicyAPI) DescribePolicy(ctx context.Context, policyArn string)
 	return observed, nil
 }
 
+// DescribePolicyByName searches for a customer-managed policy by name (optionally scoped by path).
+// Paginates through ListPolicies(Scope=Local) and returns the first name match.
 func (r *realIAMPolicyAPI) DescribePolicyByName(ctx context.Context, policyName, path string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -145,6 +156,8 @@ func (r *realIAMPolicyAPI) DeletePolicy(ctx context.Context, policyArn string) e
 	return err
 }
 
+// CreatePolicyVersion creates a new default version with the given document. IAM limits
+// policies to 5 versions; this method auto-deletes the oldest non-default version if at capacity.
 func (r *realIAMPolicyAPI) CreatePolicyVersion(ctx context.Context, policyArn, policyDocument string) error {
 	versions, err := r.ListPolicyVersions(ctx, policyArn)
 	if err != nil {
@@ -217,6 +230,8 @@ func (r *realIAMPolicyAPI) DeletePolicyVersion(ctx context.Context, policyArn, v
 	return err
 }
 
+// DetachAllPrincipals removes the policy from all attached roles, users, and groups.
+// Required before policy deletion since IAM prevents deleting policies with attachments.
 func (r *realIAMPolicyAPI) DetachAllPrincipals(ctx context.Context, policyArn string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -347,6 +362,8 @@ func (r *realIAMPolicyAPI) detachGroupPolicy(ctx context.Context, policyArn, gro
 	return err
 }
 
+// findOldestNonDefault returns the version ID of the oldest non-default policy version,
+// used to make room when the 5-version limit is reached.
 func findOldestNonDefault(versions []PolicyVersionInfo) string {
 	var oldest *PolicyVersionInfo
 	for i := range versions {
@@ -376,6 +393,8 @@ func toIAMTags(tags map[string]string) []iamtypes.Tag {
 	return awsTags
 }
 
+// normalizePolicyDocument URL-decodes and re-marshals a JSON policy document to canonical form.
+// This eliminates whitespace and key-order differences for reliable comparison.
 func normalizePolicyDocument(doc string) string {
 	decoded, err := url.QueryUnescape(doc)
 	if err != nil {

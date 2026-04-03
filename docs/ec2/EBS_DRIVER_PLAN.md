@@ -1,12 +1,4 @@
-# EBS Volume Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages EBS volumes, following the
-> exact patterns established by the S3 Bucket, Security Group, EC2 Instance, and
-> VPC drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~metadata.name`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned volume ID
-> lives only in state/outputs.
+# EBS Volume Driver — Implementation Specification
 
 ---
 
@@ -147,23 +139,20 @@ State-driven, same as EC2 and VPC:
 
 ## 3. File Inventory
 
-Create or modify these files (✦ = new file, ✎ = modify existing):
-
 ```text
-✦ internal/drivers/ebs/types.go             — Spec, Outputs, ObservedState, State structs
-✦ internal/drivers/ebs/aws.go               — EBSAPI interface + realEBSAPI implementation
-✦ internal/drivers/ebs/drift.go             — HasDrift(), ComputeFieldDiffs()
-✦ internal/drivers/ebs/driver.go            — EBSVolumeDriver Virtual Object
-✦ internal/drivers/ebs/driver_test.go       — Unit tests for driver (mocked AWS)
-✦ internal/drivers/ebs/aws_test.go          — Unit tests for error classification helpers
-✦ internal/drivers/ebs/drift_test.go        — Unit tests for drift detection
-✦ internal/core/provider/ebs_adapter.go     — EBSAdapter implementing provider.Adapter
-✦ internal/core/provider/ebs_adapter_test.go — Unit tests for EBS adapter
-✦ schemas/aws/ebs/ebs.cue                   — CUE schema for EBSVolume resource
-✦ tests/integration/ebs_driver_test.go      — Integration tests (Testcontainers + LocalStack)
-✎ cmd/praxis-storage/main.go               — Add EBS driver `.Bind()` to storage pack
-✎ internal/core/provider/registry.go        — Add NewEBSAdapter to NewRegistry()
-✎ docker-compose.yaml                       — No change needed (EBS joins existing praxis-storage service)
+internal/drivers/ebs/types.go             — Spec, Outputs, ObservedState, State structs
+internal/drivers/ebs/aws.go               — EBSAPI interface + realEBSAPI implementation
+internal/drivers/ebs/drift.go             — HasDrift(), ComputeFieldDiffs()
+internal/drivers/ebs/driver.go            — EBSVolumeDriver Virtual Object
+internal/drivers/ebs/driver_test.go       — Unit tests for driver (mocked AWS)
+internal/drivers/ebs/aws_test.go          — Unit tests for error classification helpers
+internal/drivers/ebs/drift_test.go        — Unit tests for drift detection
+internal/core/provider/ebs_adapter.go     — EBSAdapter implementing provider.Adapter
+internal/core/provider/ebs_adapter_test.go — Unit tests for EBS adapter
+schemas/aws/ebs/ebs.cue                   — CUE schema for EBSVolume resource
+tests/integration/ebs_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+cmd/praxis-storage/main.go               — Bind EBS driver in storage pack
+internal/core/provider/registry.go        — EBSAdapter registered in NewRegistry()
 ```
 
 ---
@@ -283,7 +272,7 @@ type EBSVolumeSpec struct {
 // EBSVolumeOutputs is produced after provisioning and stored in Restate K/V.
 type EBSVolumeOutputs struct {
     VolumeId         string `json:"volumeId"`
-    ARN              string `json:"arn"`
+    ARN              string `json:"arn,omitempty"`
     AvailabilityZone string `json:"availabilityZone"`
     State            string `json:"state"`
     SizeGiB          int32  `json:"sizeGiB"`
@@ -711,26 +700,23 @@ type FieldDiffEntry struct {
 package ebs
 
 type EBSVolumeDriver struct {
-    auth       *auth.Registry
+    auth       authservice.AuthClient
     apiFactory func(aws.Config) EBSAPI
 }
 
-func NewEBSVolumeDriver(accounts *auth.Registry) *EBSVolumeDriver {
-    return NewEBSVolumeDriverWithFactory(accounts, func(cfg aws.Config) EBSAPI {
+func NewEBSVolumeDriver(auth authservice.AuthClient) *EBSVolumeDriver {
+    return NewEBSVolumeDriverWithFactory(auth, func(cfg aws.Config) EBSAPI {
         return NewEBSAPI(awsclient.NewEC2Client(cfg))
     })
 }
 
-func NewEBSVolumeDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) EBSAPI) *EBSVolumeDriver {
-    if accounts == nil {
-        accounts = auth.LoadFromEnv()
-    }
+func NewEBSVolumeDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EBSAPI) *EBSVolumeDriver {
     if factory == nil {
         factory = func(cfg aws.Config) EBSAPI {
             return NewEBSAPI(awsclient.NewEC2Client(cfg))
         }
     }
-    return &EBSVolumeDriver{auth: accounts, apiFactory: factory}
+    return &EBSVolumeDriver{auth: auth, apiFactory: factory}
 }
 
 func (d *EBSVolumeDriver) ServiceName() string {
@@ -742,7 +728,7 @@ func (d *EBSVolumeDriver) ServiceName() string {
 
 ```go
 func (d *EBSVolumeDriver) Provision(ctx restate.ObjectContext, spec EBSVolumeSpec) (EBSVolumeOutputs, error) {
-    api, _, err := d.apiForAccount(spec.Account)
+    api, _, err := d.apiForAccount(ctx, spec.Account)
     if err != nil {
         return EBSVolumeOutputs{}, restate.TerminalError(err, 400)
     }
@@ -919,7 +905,7 @@ func (d *EBSVolumeDriver) Delete(ctx restate.ObjectContext) error {
     state.Status = types.StatusDeleting
     restate.Set(ctx, drivers.StateKey, state)
 
-    api, _, err := d.apiForAccount(state.Desired.Account)
+    api, _, err := d.apiForAccount(ctx, state.Desired.Account)
     if err != nil {
         return restate.TerminalError(err, 400)
     }

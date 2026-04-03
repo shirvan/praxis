@@ -1,3 +1,9 @@
+// Package metricalarm – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS CloudWatch Metric Alarm.
+// It defines the MetricAlarmAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon CloudWatch through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package metricalarm
 
 import (
@@ -15,6 +21,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// MetricAlarmAPI abstracts all Amazon CloudWatch SDK operations needed
+// to manage a AWS CloudWatch Metric Alarm. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type MetricAlarmAPI interface {
 	PutMetricAlarm(ctx context.Context, spec MetricAlarmSpec) error
 	DescribeAlarm(ctx context.Context, alarmName string) (ObservedState, bool, error)
@@ -29,6 +38,8 @@ type realMetricAlarmAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewMetricAlarmAPI constructs a production MetricAlarmAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewMetricAlarmAPI(client *cloudwatch.Client) MetricAlarmAPI {
 	return &realMetricAlarmAPI{
 		client:  client,
@@ -84,6 +95,7 @@ func (r *realMetricAlarmAPI) PutMetricAlarm(ctx context.Context, spec MetricAlar
 	return err
 }
 
+// DescribeAlarm reads the current state of the AWS CloudWatch Metric Alarm from Amazon CloudWatch.
 func (r *realMetricAlarmAPI) DescribeAlarm(ctx context.Context, alarmName string) (ObservedState, bool, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, false, err
@@ -126,6 +138,7 @@ func (r *realMetricAlarmAPI) DescribeAlarm(ctx context.Context, alarmName string
 	return normalizeObserved(observed), true, nil
 }
 
+// DeleteAlarm removes the AWS CloudWatch Metric Alarm from AWS via Amazon CloudWatch.
 func (r *realMetricAlarmAPI) DeleteAlarm(ctx context.Context, alarmName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -162,6 +175,7 @@ func (r *realMetricAlarmAPI) UntagResource(ctx context.Context, alarmArn string,
 	return err
 }
 
+// ListTagsForResource enumerates AWS CloudWatch Metric Alarm resources from Amazon CloudWatch.
 func (r *realMetricAlarmAPI) ListTagsForResource(ctx context.Context, alarmArn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -177,6 +191,7 @@ func (r *realMetricAlarmAPI) ListTagsForResource(ctx context.Context, alarmArn s
 	return tags, nil
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS CloudWatch Metric Alarm does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFound")
 }

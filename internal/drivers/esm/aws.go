@@ -15,24 +15,34 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// ESMAPI abstracts AWS Lambda Event Source Mapping operations for testability.
 type ESMAPI interface {
+	// CreateEventSourceMapping creates a new mapping between an event source and a function.
 	CreateEventSourceMapping(ctx context.Context, spec EventSourceMappingSpec) (EventSourceMappingOutputs, error)
+	// GetEventSourceMapping fetches the current state of a mapping by UUID.
 	GetEventSourceMapping(ctx context.Context, uuid string) (ObservedState, error)
+	// FindEventSourceMapping searches for an existing mapping by function+eventSourceArn pair.
 	FindEventSourceMapping(ctx context.Context, functionName, eventSourceArn string) (string, error)
+	// UpdateEventSourceMapping updates a mapping's mutable configuration.
 	UpdateEventSourceMapping(ctx context.Context, uuid string, spec EventSourceMappingSpec) error
+	// DeleteEventSourceMapping removes a mapping by UUID.
 	DeleteEventSourceMapping(ctx context.Context, uuid string) error
+	// WaitForStableState polls until the mapping reaches Enabled, Disabled, or Deleted.
 	WaitForStableState(ctx context.Context, uuid string) (string, error)
 }
 
+// realESMAPI is the production implementation backed by the Lambda SDK client.
 type realESMAPI struct {
 	client  *lambdasdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewESMAPI creates a production ESMAPI with rate limiting (15 tokens/s, burst 10).
 func NewESMAPI(client *lambdasdk.Client) ESMAPI {
 	return &realESMAPI{client: client, limiter: ratelimit.New("lambda-esm", 15, 10)}
 }
 
+// CreateEventSourceMapping creates a new mapping with the full spec applied.
 func (r *realESMAPI) CreateEventSourceMapping(ctx context.Context, spec EventSourceMappingSpec) (EventSourceMappingOutputs, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return EventSourceMappingOutputs{}, err
@@ -53,6 +63,7 @@ func (r *realESMAPI) CreateEventSourceMapping(ctx context.Context, spec EventSou
 	}, nil
 }
 
+// GetEventSourceMapping fetches the current mapping state by UUID.
 func (r *realESMAPI) GetEventSourceMapping(ctx context.Context, uuid string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -64,6 +75,8 @@ func (r *realESMAPI) GetEventSourceMapping(ctx context.Context, uuid string) (Ob
 	return observedFromMapping(out), nil
 }
 
+// FindEventSourceMapping searches for an existing mapping by function name + event source ARN.
+// Used for idempotent creation: if a mapping already exists, its UUID is returned.
 func (r *realESMAPI) FindEventSourceMapping(ctx context.Context, functionName, eventSourceArn string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -80,6 +93,7 @@ func (r *realESMAPI) FindEventSourceMapping(ctx context.Context, functionName, e
 	return "", nil
 }
 
+// UpdateEventSourceMapping updates the mutable fields of an existing mapping.
 func (r *realESMAPI) UpdateEventSourceMapping(ctx context.Context, uuid string, spec EventSourceMappingSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -90,6 +104,7 @@ func (r *realESMAPI) UpdateEventSourceMapping(ctx context.Context, uuid string, 
 	return err
 }
 
+// DeleteEventSourceMapping removes the mapping by UUID.
 func (r *realESMAPI) DeleteEventSourceMapping(ctx context.Context, uuid string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -98,6 +113,8 @@ func (r *realESMAPI) DeleteEventSourceMapping(ctx context.Context, uuid string) 
 	return err
 }
 
+// WaitForStableState polls the mapping every 5s until it reaches a terminal state
+// (Enabled, Disabled, Deleted) or times out after 3 minutes.
 func (r *realESMAPI) WaitForStableState(ctx context.Context, uuid string) (string, error) {
 	deadline := time.NewTimer(3 * time.Minute)
 	ticker := time.NewTicker(5 * time.Second)
@@ -129,6 +146,7 @@ func (r *realESMAPI) WaitForStableState(ctx context.Context, uuid string) (strin
 	}
 }
 
+// applyCreateInput maps all optional spec fields to the CreateEventSourceMapping SDK input.
 func applyCreateInput(input *lambdasdk.CreateEventSourceMappingInput, spec EventSourceMappingSpec) {
 	if spec.BatchSize != nil {
 		input.BatchSize = spec.BatchSize
@@ -173,6 +191,7 @@ func applyCreateInput(input *lambdasdk.CreateEventSourceMappingInput, spec Event
 	}
 }
 
+// applyUpdateInput maps all optional spec fields to the UpdateEventSourceMapping SDK input.
 func applyUpdateInput(input *lambdasdk.UpdateEventSourceMappingInput, spec EventSourceMappingSpec) {
 	if spec.BatchSize != nil {
 		input.BatchSize = spec.BatchSize
@@ -244,6 +263,7 @@ func fromFunctionResponseTypes(values []lambdatypes.FunctionResponseType) []stri
 	return result
 }
 
+// observedFromMapping converts a GetEventSourceMapping response to ObservedState.
 func observedFromMapping(out *lambdasdk.GetEventSourceMappingOutput) ObservedState {
 	return ObservedState{
 		UUID:                           aws.ToString(out.UUID),
@@ -298,18 +318,22 @@ func scalingFromAWS(input *lambdatypes.ScalingConfig) *ScalingSpec {
 	return &ScalingSpec{MaximumConcurrency: aws.ToInt32(input.MaximumConcurrency)}
 }
 
+// outputsFromObserved maps ObservedState to user-facing EventSourceMappingOutputs.
 func outputsFromObserved(observed ObservedState) EventSourceMappingOutputs {
 	return EventSourceMappingOutputs{UUID: observed.UUID, EventSourceArn: observed.EventSourceArn, FunctionArn: observed.FunctionArn, State: observed.State, LastModified: observed.LastModified, BatchSize: observed.BatchSize}
 }
 
+// IsNotFound returns true if the mapping UUID does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
+// IsConflict returns true if a conflicting operation is in progress.
 func IsConflict(err error) bool {
 	return awserr.HasCode(err, "ResourceConflictException")
 }
 
+// IsInvalidParameter returns true if a parameter value is invalid.
 func IsInvalidParameter(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValueException")
 }

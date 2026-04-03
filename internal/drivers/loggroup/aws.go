@@ -1,3 +1,9 @@
+// Package loggroup – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS CloudWatch Log Group.
+// It defines the LogGroupAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon CloudWatch Logs through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package loggroup
 
 import (
@@ -14,6 +20,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// LogGroupAPI abstracts all Amazon CloudWatch Logs SDK operations needed
+// to manage a AWS CloudWatch Log Group. The real implementation calls AWS;
+// tests supply a mock to verify driver logic without network calls.
 type LogGroupAPI interface {
 	CreateLogGroup(ctx context.Context, spec LogGroupSpec) error
 	DescribeLogGroup(ctx context.Context, logGroupName string) (ObservedState, bool, error)
@@ -32,6 +41,8 @@ type realLogGroupAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewLogGroupAPI constructs a production LogGroupAPI backed by the given
+// AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewLogGroupAPI(client *cloudwatchlogs.Client) LogGroupAPI {
 	return &realLogGroupAPI{
 		client:  client,
@@ -39,6 +50,7 @@ func NewLogGroupAPI(client *cloudwatchlogs.Client) LogGroupAPI {
 	}
 }
 
+// CreateLogGroup calls Amazon CloudWatch Logs to create a new AWS CloudWatch Log Group from the given spec.
 func (r *realLogGroupAPI) CreateLogGroup(ctx context.Context, spec LogGroupSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -57,6 +69,7 @@ func (r *realLogGroupAPI) CreateLogGroup(ctx context.Context, spec LogGroupSpec)
 	return err
 }
 
+// DescribeLogGroup reads the current state of the AWS CloudWatch Log Group from Amazon CloudWatch Logs.
 func (r *realLogGroupAPI) DescribeLogGroup(ctx context.Context, logGroupName string) (ObservedState, bool, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, false, err
@@ -103,6 +116,7 @@ func (r *realLogGroupAPI) PutRetentionPolicy(ctx context.Context, logGroupName s
 	return err
 }
 
+// DeleteRetentionPolicy removes the AWS CloudWatch Log Group from AWS via Amazon CloudWatch Logs.
 func (r *realLogGroupAPI) DeleteRetentionPolicy(ctx context.Context, logGroupName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -130,6 +144,7 @@ func (r *realLogGroupAPI) DisassociateKmsKey(ctx context.Context, logGroupName s
 	return err
 }
 
+// DeleteLogGroup removes the AWS CloudWatch Log Group from AWS via Amazon CloudWatch Logs.
 func (r *realLogGroupAPI) DeleteLogGroup(ctx context.Context, logGroupName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -166,6 +181,7 @@ func (r *realLogGroupAPI) UntagResource(ctx context.Context, arn string, tagKeys
 	return err
 }
 
+// ListTagsForResource enumerates AWS CloudWatch Log Group resources from Amazon CloudWatch Logs.
 func (r *realLogGroupAPI) ListTagsForResource(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -179,6 +195,7 @@ func (r *realLogGroupAPI) ListTagsForResource(ctx context.Context, arn string) (
 	return tags, nil
 }
 
+// IsNotFound returns true if the AWS error indicates the AWS CloudWatch Log Group does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException")
 }

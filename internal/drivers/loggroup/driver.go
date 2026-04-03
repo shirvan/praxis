@@ -1,3 +1,15 @@
+// Package loggroup – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS CloudWatch Log Group.
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package loggroup
 
 import (
@@ -15,17 +27,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LogGroupDriver is the Restate Virtual Object handler for AWS CloudWatch Log Group.
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type LogGroupDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) LogGroupAPI
 }
 
+// NewLogGroupDriver creates a LogGroup driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewLogGroupDriver(auth authservice.AuthClient) *LogGroupDriver {
 	return NewLogGroupDriverWithFactory(auth, func(cfg aws.Config) LogGroupAPI {
 		return NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg))
 	})
 }
 
+// NewLogGroupDriverWithFactory creates a LogGroup driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewLogGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LogGroupAPI) *LogGroupDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) LogGroupAPI {
@@ -35,10 +54,15 @@ func NewLogGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.
 	return &LogGroupDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *LogGroupDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or updates a AWS CloudWatch Log Group. It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *LogGroupDriver) Provision(ctx restate.ObjectContext, spec LogGroupSpec) (LogGroupOutputs, error) {
 	ctx.Log().Info("provisioning CloudWatch log group", "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -133,6 +157,10 @@ func (d *LogGroupDriver) Provision(ctx restate.ObjectContext, spec LogGroupSpec)
 	return outputs, nil
 }
 
+// Import adopts an existing AWS CloudWatch Log Group into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *LogGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LogGroupOutputs, error) {
 	ctx.Log().Info("importing CloudWatch log group", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -167,6 +195,9 @@ func (d *LogGroupDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) 
 	return outputs, nil
 }
 
+// Delete removes the AWS CloudWatch Log Group from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *LogGroupDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting CloudWatch log group", "key", restate.Key(ctx))
 	state, err := restate.Get[LogGroupState](ctx, drivers.StateKey)
@@ -216,6 +247,11 @@ func (d *LogGroupDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *LogGroupDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[LogGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -287,6 +323,7 @@ func (d *LogGroupDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 	return types.ReconcileResult{Drift: drift}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *LogGroupDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[LogGroupState](ctx, drivers.StateKey)
 	if err != nil {
@@ -295,6 +332,7 @@ func (d *LogGroupDriver) GetStatus(ctx restate.ObjectSharedContext) (types.Statu
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *LogGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (LogGroupOutputs, error) {
 	state, err := restate.Get[LogGroupState](ctx, drivers.StateKey)
 	if err != nil {

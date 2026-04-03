@@ -1,3 +1,27 @@
+// client.go is the Restate ingress client wrapper for the CLI.
+//
+// The CLI never reads or writes cloud resources directly. Every operation is
+// a typed HTTP/JSON call through the Restate ingress endpoint, which routes
+// to the correct Restate service handler. This file maps each CLI operation
+// to its corresponding Restate service + handler pair.
+//
+// Service topology accessed from this client:
+//
+//	PraxisCommandService (Service)       — Apply, Plan, Delete, Import, Deploy,
+//	                                       PlanDeploy, RegisterTemplate, etc.
+//	DeploymentStateObj   (Virtual Object) — GetDetail, MoveResource, etc.
+//	DeploymentIndex      (Virtual Object) — List (key="global")
+//	DeploymentEventStore (Virtual Object) — ListSince (per-deployment events)
+//	EventIndex           (Virtual Object) — Query (cross-deployment search)
+//	NotificationSinkConfig (Virtual Object) — Upsert, List, Get, Remove, Health
+//	SinkRouter           (Service)        — Test delivery
+//	WorkspaceService     (Virtual Object) — Configure, Get, Delete, retention
+//	WorkspaceIndex       (Virtual Object) — List (key="global")
+//	ConciergeSession     (Virtual Object) — Ask, GetStatus, GetHistory, Reset
+//	ConciergeConfig      (Virtual Object) — Configure, Get
+//	ApprovalRelay        (Service)        — Resolve awakeable
+//	SlackGatewayConfig   (Virtual Object) — Configure, Get, allowed-user ops
+//	SlackWatchConfig     (Virtual Object) — AddWatch, ListWatches, etc.
 package cli
 
 import (
@@ -544,6 +568,7 @@ func (c *Client) ConciergeReset(ctx context.Context, sessionID string) error {
 // importing internal/concierge into the CLI binary. Fields match the
 // JSON contract of the concierge Restate handlers.
 
+// conciergeAskRequest is the payload sent to ConciergeSession.Ask.
 type conciergeAskRequest struct {
 	Prompt    string `json:"prompt"`
 	Account   string `json:"account,omitempty"`
@@ -551,12 +576,14 @@ type conciergeAskRequest struct {
 	Source    string `json:"source,omitempty"`
 }
 
+// conciergeAskResponse is the reply from ConciergeSession.Ask.
 type conciergeAskResponse struct {
 	Response  string `json:"response"`
 	SessionID string `json:"sessionId"`
 	TurnCount int    `json:"turnCount"`
 }
 
+// conciergeSessionStatus is returned by ConciergeSession.GetStatus.
 type conciergeSessionStatus struct {
 	Provider        string             `json:"provider"`
 	Model           string             `json:"model"`
@@ -566,6 +593,7 @@ type conciergeSessionStatus struct {
 	PendingApproval *conciergeApproval `json:"pendingApproval,omitempty"`
 }
 
+// conciergeApproval describes a pending action that needs human approval.
 type conciergeApproval struct {
 	AwakeableID string `json:"awakeableId"`
 	Action      string `json:"action"`
@@ -573,12 +601,14 @@ type conciergeApproval struct {
 	RequestedAt string `json:"requestedAt"`
 }
 
+// conciergeMessage is a single turn in the conversation history.
 type conciergeMessage struct {
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	Timestamp string `json:"timestamp"`
 }
 
+// conciergeConfigureRequest is the payload sent to ConciergeConfig.Configure.
 type conciergeConfigureRequest struct {
 	Provider    string  `json:"provider"`
 	Model       string  `json:"model"`
@@ -592,6 +622,7 @@ type conciergeConfigureRequest struct {
 	ApprovalTTL string  `json:"approvalTTL,omitempty"`
 }
 
+// conciergeConfiguration is the redacted config returned by ConciergeConfig.Get.
 type conciergeConfiguration struct {
 	Provider    string  `json:"provider"`
 	Model       string  `json:"model"`
@@ -603,6 +634,7 @@ type conciergeConfiguration struct {
 	ApprovalTTL string  `json:"approvalTTL"`
 }
 
+// conciergeApprovalRequest resolves a pending Restate Awakeable.
 type conciergeApprovalRequest struct {
 	AwakeableID string `json:"awakeableId"`
 	Approved    bool   `json:"approved"`
@@ -704,8 +736,10 @@ func (c *Client) SlackListWatches(ctx context.Context) ([]slackWatchRule, error)
 	return resp, nil
 }
 
-// Slack request/response types
+// Slack request/response types — mirror the JSON contracts of the
+// SlackGatewayConfig and SlackWatchConfig Restate handlers.
 
+// slackConfigRequest is the payload for SlackGatewayConfig.Configure.
 type slackConfigRequest struct {
 	BotToken     string   `json:"botToken,omitempty"`
 	BotTokenRef  string   `json:"botTokenRef,omitempty"`
@@ -718,6 +752,7 @@ type slackConfigRequest struct {
 	AllowedUsers []string `json:"allowedUsers,omitempty"`
 }
 
+// slackConfiguration is returned by SlackGatewayConfig.Get (tokens redacted).
 type slackConfiguration struct {
 	BotToken     string   `json:"botToken,omitempty"`
 	BotTokenRef  string   `json:"botTokenRef,omitempty"`
@@ -731,10 +766,12 @@ type slackConfiguration struct {
 	Version      int      `json:"version"`
 }
 
+// slackSetAllowedUsersRequest replaces the allowed-user list.
 type slackSetAllowedUsersRequest struct {
 	UserIDs []string `json:"userIds"`
 }
 
+// slackWatchRule is a single event-routing rule for Slack notifications.
 type slackWatchRule struct {
 	ID        string           `json:"id"`
 	Name      string           `json:"name"`
@@ -745,6 +782,7 @@ type slackWatchRule struct {
 	Enabled   bool             `json:"enabled"`
 }
 
+// slackWatchFilter specifies which events a watch rule matches.
 type slackWatchFilter struct {
 	Types       []string `json:"types,omitempty"`
 	Categories  []string `json:"categories,omitempty"`
@@ -753,6 +791,7 @@ type slackWatchFilter struct {
 	Deployments []string `json:"deployments,omitempty"`
 }
 
+// slackAddWatchRequest is the payload for SlackWatchConfig.AddWatch.
 type slackAddWatchRequest struct {
 	Name      string           `json:"name"`
 	Channel   string           `json:"channel,omitempty"`
@@ -760,10 +799,13 @@ type slackAddWatchRequest struct {
 	CreatedBy string           `json:"createdBy,omitempty"`
 }
 
+// slackRemoveWatchRequest is the payload for SlackWatchConfig.RemoveWatch.
 type slackRemoveWatchRequest struct {
 	ID string `json:"id"`
 }
 
+// slackUpdateWatchRequest is the payload for SlackWatchConfig.UpdateWatch.
+// nil fields are left unchanged.
 type slackUpdateWatchRequest struct {
 	ID      string            `json:"id"`
 	Name    *string           `json:"name,omitempty"`

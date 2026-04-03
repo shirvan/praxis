@@ -6,6 +6,12 @@ import (
 )
 
 // HasDrift returns true if the desired spec and observed state differ on mutable fields.
+// Only checks drift when the volume is in "available" or "in-use" state — volumes
+// in transient states ("creating", "deleting") are not compared.
+//
+// Compared fields: volumeType, sizeGiB, iops (if specified), throughput (if specified), tags.
+// Immutable fields (availabilityZone, encrypted, kmsKeyId) are NOT compared here
+// because they cannot be changed after creation.
 func HasDrift(desired EBSVolumeSpec, observed ObservedState) bool {
 	if observed.State != "available" && observed.State != "in-use" {
 		return false
@@ -31,6 +37,10 @@ func HasDrift(desired EBSVolumeSpec, observed ObservedState) bool {
 }
 
 // ComputeFieldDiffs returns field-level differences for plan output.
+// This powers the `praxis plan` output showing what would change.
+// Immutable fields are annotated with "(immutable, ignored)" in the path
+// to inform operators that those changes cannot be applied.
+// Size shrink is annotated with "(shrink not supported, ignored)".
 func ComputeFieldDiffs(desired EBSVolumeSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
@@ -83,12 +93,21 @@ func ComputeFieldDiffs(desired EBSVolumeSpec, observed ObservedState) []FieldDif
 	return diffs
 }
 
+// FieldDiffEntry represents a single field-level change between desired and observed.
+// Used by the diff/plan engine to produce human-readable plan output.
 type FieldDiffEntry struct {
-	Path     string
+	// Path is the dot-separated path to the field (e.g., "spec.volumeType").
+	Path string
+
+	// OldValue is the current value in AWS (nil for new fields).
 	OldValue any
+
+	// NewValue is the desired value (nil for removed fields).
 	NewValue any
 }
 
+// computeTagDiffs produces per-tag diff entries for added, changed, and removed tags.
+// Tags prefixed with "praxis:" are filtered out (they are internal ownership markers).
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	desiredFiltered := filterPraxisTags(desired)
@@ -108,6 +127,8 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	return diffs
 }
 
+// tagsMatch returns true when the two tag maps are semantically equal,
+// ignoring tags prefixed with "praxis:" (internal ownership markers).
 func tagsMatch(a, b map[string]string) bool {
 	fa := filterPraxisTags(a)
 	fb := filterPraxisTags(b)
@@ -122,6 +143,8 @@ func tagsMatch(a, b map[string]string) bool {
 	return true
 }
 
+// filterPraxisTags returns a copy of the map with "praxis:"-prefixed keys removed.
+// These are internal tags used for ownership tracking and should not be compared.
 func filterPraxisTags(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return map[string]string{}
@@ -135,6 +158,8 @@ func filterPraxisTags(m map[string]string) map[string]string {
 	return out
 }
 
+// formatManagedKeyConflict produces a human-readable error when a volume with
+// the same managed key already exists. This indicates a naming collision.
 func formatManagedKeyConflict(managedKey, volumeID string) error {
 	return fmt.Errorf("volume name %q in this region is already managed by Praxis (volumeId: %s); remove the existing resource or use a different metadata.name", managedKey, volumeID)
 }

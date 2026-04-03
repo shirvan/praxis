@@ -17,17 +17,21 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// AMIDriver implements the Praxis driver interface for Amazon Machine Images.
+// Uses Restate Virtual Object semantics with exclusive per-key access.
 type AMIDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) AMIAPI
 }
 
+// NewAMIDriver creates a production AMI driver using the default EC2 client factory.
 func NewAMIDriver(auth authservice.AuthClient) *AMIDriver {
 	return NewAMIDriverWithFactory(auth, func(cfg aws.Config) AMIAPI {
 		return NewAMIAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewAMIDriverWithFactory creates an AMI driver with a custom AMIAPI factory (for testing).
 func NewAMIDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) AMIAPI) *AMIDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) AMIAPI {
@@ -37,10 +41,24 @@ func NewAMIDriverWithFactory(auth authservice.AuthClient, factory func(aws.Confi
 	return &AMIDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name.
 func (d *AMIDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for AMIs.
+//
+// Flow:
+//  1. Validate required fields (region, name, source). Apply defaults for managedKey and name.
+//  2. Load state, increment generation, set status=Provisioning.
+//  3. If an image ID exists in state, verify it still exists in AWS.
+//  4. If no image but managedKey is set, search by tag (FindByManagedKey) for recovery.
+//  5. If no image exists: create via RegisterImage or CopyImage, apply tags, wait until
+//     available, then apply mutable attributes (description, permissions, deprecation).
+//  6. If image exists: converge mutable attributes in-place.
+//  7. Final DescribeImage to capture outputs. Set status=Ready, schedule reconcile.
+//
+// All AWS calls are wrapped in restate.Run() for durable journaling.
 func (d *AMIDriver) Provision(ctx restate.ObjectContext, spec AMISpec) (AMIOutputs, error) {
 	if spec.ManagedKey == "" {
 		spec.ManagedKey = restate.Key(ctx)
@@ -154,6 +172,8 @@ func (d *AMIDriver) Provision(ctx restate.ObjectContext, spec AMISpec) (AMIOutpu
 	return outputs, nil
 }
 
+// createAMI handles first-time AMI creation (either RegisterImage or CopyImage),
+// followed by tag application, availability wait, and mutable attribute setup.
 func (d *AMIDriver) createAMI(ctx restate.ObjectContext, api AMIAPI, spec AMISpec, state *AMIState) (string, error) {
 	imageID, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 		if spec.Source.FromSnapshot != nil {
@@ -200,6 +220,9 @@ func (d *AMIDriver) createAMI(ctx restate.ObjectContext, api AMIAPI, spec AMISpe
 	return imageID, nil
 }
 
+// Import adopts an existing AMI into Praxis management.
+// Supports both AMI ID and AMI name as resource identifiers.
+// Stamps the praxis:managed-key tag on the AMI if not already present.
 func (d *AMIDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (AMIOutputs, error) {
 	ctx.Log().Info("importing AMI", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -259,6 +282,8 @@ func (d *AMIDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (AMIO
 	return outputs, nil
 }
 
+// resolveImportImage attempts to find the AMI, first by ID (if it looks like ami-xxx),
+// then by name. This allows users to import by either identifier.
 func resolveImportImage(ctx context.Context, api AMIAPI, resourceID string) (ObservedState, error) {
 	resourceID = strings.TrimSpace(resourceID)
 	if looksLikeAMIID(resourceID) {
@@ -273,6 +298,8 @@ func resolveImportImage(ctx context.Context, api AMIAPI, resourceID string) (Obs
 	return api.DescribeImageByName(ctx, resourceID)
 }
 
+// Delete deregisters the AMI. Observed-mode resources cannot be deleted (terminal 409).
+// DeregisterImage is idempotent — NotFound is suppressed.
 func (d *AMIDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[AMIState](ctx, drivers.StateKey)
 	if err != nil {
@@ -316,6 +343,9 @@ func (d *AMIDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection and correction loop for AMIs.
+// Detects external deregistration, failed state, and mutable attribute drift.
+// In Managed mode, drift is corrected. In Observed mode, drift is reported only.
 func (d *AMIDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[AMIState](ctx, drivers.StateKey)
 	if err != nil {
@@ -407,6 +437,8 @@ func (d *AMIDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult,
 	return types.ReconcileResult{}, nil
 }
 
+// correctDrift applies in-place updates to bring the AMI back to the desired spec.
+// Corrects: description, tags, launch permissions, and deprecation schedule.
 func (d *AMIDriver) correctDrift(ctx restate.ObjectContext, api AMIAPI, imageID string, desired AMISpec, observed ObservedState) error {
 	if desired.Description != observed.Description {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -457,6 +489,7 @@ func (d *AMIDriver) correctDrift(ctx restate.ObjectContext, api AMIAPI, imageID 
 	return nil
 }
 
+// GetStatus returns the current lifecycle status (shared/concurrent handler).
 func (d *AMIDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[AMIState](ctx, drivers.StateKey)
 	if err != nil {
@@ -470,6 +503,7 @@ func (d *AMIDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResp
 	}, nil
 }
 
+// GetOutputs returns the provisioned outputs (shared/concurrent handler).
 func (d *AMIDriver) GetOutputs(ctx restate.ObjectSharedContext) (AMIOutputs, error) {
 	state, err := restate.Get[AMIState](ctx, drivers.StateKey)
 	if err != nil {
@@ -478,6 +512,7 @@ func (d *AMIDriver) GetOutputs(ctx restate.ObjectSharedContext) (AMIOutputs, err
 	return state.Outputs, nil
 }
 
+// updateTags applies the full desired tag set (user + praxis:managed-key) to the AMI.
 func (d *AMIDriver) updateTags(ctx restate.ObjectContext, api AMIAPI, imageID string, spec AMISpec, state *AMIState) error {
 	allTags := desiredTags(spec)
 	_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -496,6 +531,7 @@ func (d *AMIDriver) updateTags(ctx restate.ObjectContext, api AMIAPI, imageID st
 	return nil
 }
 
+// waitUntilAvailable blocks until the AMI reaches "available" state (up to 10 min).
 func (d *AMIDriver) waitUntilAvailable(ctx restate.ObjectContext, api AMIAPI, imageID string, state *AMIState) error {
 	_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		if err := api.WaitUntilAvailable(rc, imageID, 10*time.Minute); err != nil {
@@ -513,6 +549,7 @@ func (d *AMIDriver) waitUntilAvailable(ctx restate.ObjectContext, api AMIAPI, im
 	return nil
 }
 
+// applyMutableAttributes converges description, tags, launch permissions, and deprecation.
 func (d *AMIDriver) applyMutableAttributes(ctx restate.ObjectContext, api AMIAPI, imageID string, spec AMISpec, observed ObservedState, state *AMIState) error {
 	if desiredDescription := spec.Description; desiredDescription != observed.Description {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -569,6 +606,7 @@ func (d *AMIDriver) applyMutableAttributes(ctx restate.ObjectContext, api AMIAPI
 	return nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message. Dedup guard prevents stacking.
 func (d *AMIDriver) scheduleReconcile(ctx restate.ObjectContext, state *AMIState) {
 	if state.ReconcileScheduled {
 		return
@@ -579,6 +617,7 @@ func (d *AMIDriver) scheduleReconcile(ctx restate.ObjectContext, state *AMIState
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates an AMIAPI for the given Praxis account.
 func (d *AMIDriver) apiForAccount(ctx restate.ObjectContext, account string) (AMIAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("AMIDriver is not configured with an auth registry")
@@ -590,6 +629,7 @@ func (d *AMIDriver) apiForAccount(ctx restate.ObjectContext, account string) (AM
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// validateSource ensures exactly one of FromSnapshot or FromAMI is set, with required sub-fields.
 func validateSource(source SourceSpec) error {
 	hasSnapshot := source.FromSnapshot != nil
 	hasAMI := source.FromAMI != nil
@@ -612,6 +652,7 @@ func validateSource(source SourceSpec) error {
 	return nil
 }
 
+// desiredTags merges user tags with the Name and praxis:managed-key system tags.
 func desiredTags(spec AMISpec) map[string]string {
 	return mergeTags(spec.Tags, map[string]string{
 		"Name":               spec.Name,
@@ -619,6 +660,7 @@ func desiredTags(spec AMISpec) map[string]string {
 	})
 }
 
+// mergeTags combines base and extras maps. Empty-value extras are skipped.
 func mergeTags(base, extras map[string]string) map[string]string {
 	out := make(map[string]string, len(base)+len(extras))
 	maps.Copy(out, base)
@@ -630,6 +672,7 @@ func mergeTags(base, extras map[string]string) map[string]string {
 	return out
 }
 
+// outputsFromObserved maps ObservedState fields to user-facing AMIOutputs.
 func outputsFromObserved(observed ObservedState) AMIOutputs {
 	return AMIOutputs{
 		ImageId:            observed.ImageId,
@@ -643,6 +686,7 @@ func outputsFromObserved(observed ObservedState) AMIOutputs {
 	}
 }
 
+// specFromObserved reconstructs an AMISpec from observed AWS state for Import.
 func specFromObserved(observed ObservedState) AMISpec {
 	spec := AMISpec{
 		Name:        observed.Name,
@@ -661,6 +705,7 @@ func specFromObserved(observed ObservedState) AMISpec {
 	return spec
 }
 
+// defaultAMIImportMode returns Observed if no mode was explicitly specified.
 func defaultAMIImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved
@@ -668,6 +713,7 @@ func defaultAMIImportMode(mode types.Mode) types.Mode {
 	return mode
 }
 
+// looksLikeAMIID returns true if the value starts with "ami-" (case-insensitive).
 func looksLikeAMIID(value string) bool {
 	value = strings.TrimSpace(strings.ToLower(value))
 	return strings.HasPrefix(value, "ami-")

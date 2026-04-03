@@ -1,20 +1,4 @@
-# Route 53 Hosted Zone Driver — Implementation Plan
-
-> **Status: IMPLEMENTED** — Driver is fully implemented with unit tests,
-> integration tests, CUE schema, provider adapter, and registry integration.
->
-> **Implementation note:** This plan references a `praxis-dns` driver pack.
-> The actual implementation places the Hosted Zone driver in **`praxis-network`**
-> (`cmd/praxis-network/main.go`).
->
-> Target: A Restate Virtual Object driver that manages Route 53 Hosted Zones,
-> providing full lifecycle management including creation, import, deletion, drift
-> detection, and drift correction for zone properties, VPC associations (private
-> zones), and tags.
->
-> Key scope: `KeyScopeGlobal` — key format is `zoneName` (e.g., `example.com`),
-> permanent and immutable for the lifetime of the Virtual Object. Route 53 is a
-> global AWS service. The AWS-assigned hosted zone ID lives only in state/outputs.
+# Route 53 Hosted Zone Driver — Implementation Spec
 
 ---
 
@@ -161,11 +145,11 @@ detection on first provision, consistent with the EC2/VPC pattern.
 ✦ internal/core/provider/route53zone_adapter.go             — HostedZoneAdapter implementing provider.Adapter
 ✦ internal/core/provider/route53zone_adapter_test.go        — Unit tests for adapter
 ✦ tests/integration/route53_hosted_zone_driver_test.go      — Integration tests
-✦ cmd/praxis-dns/main.go                                    — DNS driver pack entry point (NEW pack)
-✦ cmd/praxis-dns/Dockerfile                                 — Multi-stage Docker build
+✔ cmd/praxis-network/main.go                               — Network driver pack entry point
+✔ cmd/praxis-network/Dockerfile                            — Multi-stage Docker build
 ✎ internal/infra/awsclient/client.go                        — Add NewRoute53Client factory
 ✎ internal/core/provider/registry.go                        — Add NewRoute53HostedZoneAdapter to NewRegistry()
-✎ docker-compose.yaml                                       — Add praxis-dns service on port 9086
+✔ docker-compose.yaml                                       — praxis-network service (port 9082)
 ✎ justfile                                                  — Add Route 53 build/test/register targets
 ```
 
@@ -272,7 +256,7 @@ import "github.com/shirvan/praxis/pkg/types"
 const ServiceName = "Route53HostedZone"
 
 // VPCAssociation represents a VPC associated with a private hosted zone.
-type VPCAssociation struct {
+type HostedZoneVPC struct {
     VpcId     string `json:"vpcId"`
     VpcRegion string `json:"vpcRegion"`
 }
@@ -281,9 +265,9 @@ type VPCAssociation struct {
 type HostedZoneSpec struct {
     Account    string            `json:"account,omitempty"`
     Name       string            `json:"name"`
-    IsPrivate  bool              `json:"isPrivate"`
+    IsPrivate  bool              `json:"isPrivate,omitempty"`
     Comment    string            `json:"comment,omitempty"`
-    VPCs       []VPCAssociation  `json:"vpcs,omitempty"`
+    VPCs       []HostedZoneVPC   `json:"vpcs,omitempty"`
     Tags       map[string]string `json:"tags,omitempty"`
     ManagedKey string            `json:"managedKey,omitempty"`
 }
@@ -306,7 +290,7 @@ type ObservedState struct {
     IsPrivate       bool              `json:"isPrivate"`
     RecordCount     int64             `json:"recordCount"`
     NameServers     []string          `json:"nameServers"`
-    VPCs            []VPCAssociation  `json:"vpcs"`
+    VPCs            []HostedZoneVPC   `json:"vpcs,omitempty"`
     Tags            map[string]string `json:"tags"`
 }
 
@@ -808,7 +792,7 @@ Produces human-readable diffs:
 ### VPC Association Comparison
 
 ```go
-func vpcAssociationsEqual(desired, observed []VPCAssociation) bool {
+func vpcAssociationsEqual(desired, observed []HostedZoneVPC) bool {
     if len(desired) != len(observed) {
         return false
     }
@@ -834,8 +818,8 @@ func vpcAssociationsEqual(desired, observed []VPCAssociation) bool {
 ### Constructor Pattern
 
 ```go
-func NewHostedZoneDriver(accounts *auth.Registry) *HostedZoneDriver
-func NewHostedZoneDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) HostedZoneAPI) *HostedZoneDriver
+func NewHostedZoneDriver(auth authservice.AuthClient) *HostedZoneDriver
+func NewHostedZoneDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) HostedZoneAPI) *HostedZoneDriver
 ```
 
 ### Provision Handler
@@ -908,7 +892,7 @@ Standard 5-minute timer pattern:
 
 ```go
 type Route53HostedZoneAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
 func (a *Route53HostedZoneAdapter) Kind() string            { return "Route53HostedZone" }
@@ -952,10 +936,10 @@ NewRoute53HostedZoneAdapterWithRegistry(accounts),
 
 ---
 
-## Step 9 — DNS Driver Pack Entry Point
+## Step 9 — Network Driver Pack Entry Point
 
 See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) §3 for the
-full `cmd/praxis-dns/main.go`.
+`cmd/praxis-network/main.go` Route 53 bindings.
 
 ---
 
@@ -1110,5 +1094,4 @@ enhancement. The driver does not create or manage KMS keys for DNSSEC.
 ### Infrastructure
 
 - [x] `internal/infra/awsclient/client.go` — `NewRoute53Client`
-- [x] `cmd/praxis-dns/main.go` — `.Bind()` call
-- [x] `cmd/praxis-dns/Dockerfile`
+- [x] Route 53 Hosted Zone driver bound in `cmd/praxis-network/main.go`

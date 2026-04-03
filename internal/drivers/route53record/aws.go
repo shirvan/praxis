@@ -15,6 +15,8 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// RecordAPI defines the interface for Route53 DNS record operations.
+// Uses UPSERT for both create and update, with waitForChange for propagation.
 type RecordAPI interface {
 	UpsertRecord(ctx context.Context, spec RecordSpec) error
 	DescribeRecord(ctx context.Context, identity RecordIdentity) (ObservedState, error)
@@ -26,10 +28,12 @@ type realRecordAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewRecordAPI constructs a production RecordAPI with Route53 rate limiting.
 func NewRecordAPI(client *route53sdk.Client) RecordAPI {
 	return &realRecordAPI{client: client, limiter: ratelimit.New("route53", 5, 3)}
 }
 
+// UpsertRecord calls ChangeResourceRecordSets with UPSERT action, creating or updating the record.
 func (r *realRecordAPI) UpsertRecord(ctx context.Context, spec RecordSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err

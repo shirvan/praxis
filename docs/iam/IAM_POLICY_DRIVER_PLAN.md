@@ -1,14 +1,4 @@
-# IAM Policy Driver — Implementation Plan
-
-> ✅ Implemented
-> Target: A Restate Virtual Object driver that manages IAM Policies (customer-managed
-> policies), providing full lifecycle management including creation, import, deletion,
-> versioning, drift detection, and drift correction for policy documents and tags.
->
-> Key scope: `KeyScopeGlobal` — key format is `policyName`, permanent and immutable
-> for the lifetime of the Virtual Object. IAM policy names are unique within an AWS
-> account (IAM is a global service with no region scoping). The policy ARN is stored
-> in state/outputs.
+# IAM Policy Driver — Implementation Spec
 
 ---
 
@@ -623,8 +613,8 @@ const ServiceName = "IAMPolicy"
 ### Constructor Pattern
 
 ```go
-func NewIAMPolicyDriver(accounts *auth.Registry) *IAMPolicyDriver
-func NewIAMPolicyDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMPolicyAPI) *IAMPolicyDriver
+func NewIAMPolicyDriver(auth authservice.AuthClient) *IAMPolicyDriver
+func NewIAMPolicyDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMPolicyAPI) *IAMPolicyDriver
 ```
 
 ### Provision Handler
@@ -893,24 +883,24 @@ future coordination via the Central Rate Limit Advisor.
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/iam/policy.cue` created
-- [ ] **Types**: `internal/drivers/iampolicy/types.go` created
-- [ ] **AWS API**: `internal/drivers/iampolicy/aws.go` created
-- [ ] **Drift**: `internal/drivers/iampolicy/drift.go` created
-- [ ] **Driver**: `internal/drivers/iampolicy/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/iampolicy_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMPolicy driver bound in `cmd/praxis-identity/main.go`
-- [ ] **Unit tests (drift)**: `internal/drivers/iampolicy/drift_test.go`
-- [ ] **Unit tests (aws)**: `internal/drivers/iampolicy/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/iampolicy/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/iampolicy_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/iampolicy_driver_test.go`
-- [ ] **Policy doc canonicalization**: URL-decode + JSON normalize
-- [ ] **Version rotation**: Auto-delete oldest non-default at 5-version limit
-- [ ] **Pre-deletion cleanup**: Detach all principals, delete all versions
-- [ ] **Import default mode**: `ModeObserved`
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/iampolicy/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMPolicy -tags=integration`
+- [x] **Schema**: `schemas/aws/iam/policy.cue` created
+- [x] **Types**: `internal/drivers/iampolicy/types.go` created
+- [x] **AWS API**: `internal/drivers/iampolicy/aws.go` created
+- [x] **Drift**: `internal/drivers/iampolicy/drift.go` created
+- [x] **Driver**: `internal/drivers/iampolicy/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/iampolicy_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: IAMPolicy driver bound in `cmd/praxis-identity/main.go`
+- [x] **Unit tests (drift)**: `internal/drivers/iampolicy/drift_test.go`
+- [x] **Unit tests (aws)**: `internal/drivers/iampolicy/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/iampolicy/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/iampolicy_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/iampolicy_driver_test.go`
+- [x] **Policy doc canonicalization**: URL-decode + JSON normalize
+- [x] **Version rotation**: Auto-delete oldest non-default at 5-version limit
+- [x] **Pre-deletion cleanup**: Detach all principals, delete all versions
+- [x] **Import default mode**: `ModeObserved`
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/iampolicy/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMPolicy -tags=integration`

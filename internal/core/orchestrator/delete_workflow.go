@@ -1,3 +1,13 @@
+// delete_workflow.go implements the deployment-wide delete workflow.
+//
+// Unlike the apply workflow which dispatches resources in forward topological
+// order (dependencies first), the delete workflow destroys resources in reverse
+// topological order (dependents first). This ensures a resource is not deleted
+// while something that references it is still alive.
+//
+// Delete is a separate Restate Workflow (not a method on the apply workflow)
+// so that each operation gets its own durable execution and can be independently
+// retried, cancelled, and observed.
 package orchestrator
 
 import (
@@ -18,10 +28,13 @@ type DeploymentDeleteWorkflow struct {
 	providers *provider.Registry
 }
 
+// NewDeploymentDeleteWorkflow constructs the delete workflow with the provider
+// registry used to resolve driver adapters for each resource kind.
 func NewDeploymentDeleteWorkflow(providers *provider.Registry) *DeploymentDeleteWorkflow {
 	return &DeploymentDeleteWorkflow{providers: providers}
 }
 
+// ServiceName returns the Restate service name for the delete workflow.
 func (*DeploymentDeleteWorkflow) ServiceName() string {
 	return DeploymentDeleteWorkflowServiceName
 }
@@ -45,6 +58,8 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("deployment %q not found", req.DeploymentKey), 404)
 	}
 
+	// Reconstruct the DAG from the stored deployment resources so we can
+	// determine the reverse topological order for safe deletion.
 	resources := planResourcesFromState(state)
 	graph, err := graphFromPlanResources(resources)
 	if err != nil {
@@ -77,6 +92,10 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	exec := newExecutionState(resources)
 	exec.loadOutputs(state.Outputs)
 
+	// Walk resources in reverse topological order: dependents before their
+	// dependencies. This guarantees that if resource B depends on resource A,
+	// B is deleted before A. If B's deletion fails, A (and its other deps)
+	// are skipped because B may still hold a live reference to A.
 	for _, name := range graph.ReverseTopo() {
 		if exec.skipped[name] {
 			continue
@@ -84,6 +103,8 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 
 		resource := exec.plan[name]
 
+		// Respect lifecycle.preventDestroy: if the template declared this
+		// resource as undestroyable, emit a policy event and mark it failed.
 		if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
 			policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
 			if eventErr != nil {
@@ -175,6 +196,8 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	state.Error = finalError
 	state.UpdatedAt = now
 
+	// On full success, remove this deployment from the global listing.
+	// On partial failure, keep it so operators can see the failed state.
 	if finalStatus == types.DeploymentDeleted {
 		if err := removeDeploymentSummary(ctx, req.DeploymentKey); err != nil {
 			return DeploymentResult{}, err
@@ -195,6 +218,11 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	return exec.result(req.DeploymentKey, finalStatus, finalError), nil
 }
 
+// recordDeleteFailure handles a resource-level failure during deletion.
+// It marks the resource as Error, emits a resource.delete.error event, and then
+// skips the resource's direct dependencies (not dependents). During deletion,
+// if a dependent fails to delete, its *dependencies* are skipped because they
+// may still be referenced by the failed (still-existing) dependent.
 func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,

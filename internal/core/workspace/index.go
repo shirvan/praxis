@@ -1,3 +1,9 @@
+// index.go implements the WorkspaceIndex Restate Virtual Object.
+//
+// WorkspaceIndex is a single-key ("global") Virtual Object that maintains
+// the set of known workspace names. It follows the same singleton-index
+// pattern used by DeploymentIndex: Register/Deregister mutate the set,
+// and List returns all names sorted.
 package workspace
 
 import (
@@ -6,15 +12,18 @@ import (
 	restate "github.com/restatedev/sdk-go"
 )
 
+// WorkspaceIndexServiceName is the Restate service name for the workspace index.
 const (
 	WorkspaceIndexServiceName = "WorkspaceIndex"
-	WorkspaceIndexGlobalKey   = "global"
+	// WorkspaceIndexGlobalKey is the single Virtual Object key for the index.
+	WorkspaceIndexGlobalKey = "global"
 )
 
 // WorkspaceIndex is a single-key Virtual Object that maintains the set
 // of known workspace names. This follows the same pattern as DeploymentIndex.
 type WorkspaceIndex struct{}
 
+// ServiceName returns the Restate service registration name.
 func (WorkspaceIndex) ServiceName() string { return WorkspaceIndexServiceName }
 
 // Register adds a workspace name to the global set.

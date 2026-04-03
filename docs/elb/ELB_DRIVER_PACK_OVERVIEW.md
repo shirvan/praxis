@@ -1,10 +1,5 @@
 # ELB Driver Pack — Overview
 
-> This document summarizes the ELB driver family for Praxis: five drivers covering
-> Application Load Balancers (ALBs), Network Load Balancers (NLBs), Target Groups,
-> Listeners, and Listener Rules. It describes their relationships, shared
-> infrastructure, implementation order, and how the ELB drivers are served by the `praxis-network` driver pack.
-
 ---
 
 ## Table of Contents
@@ -26,7 +21,7 @@
 
 ## 1. Driver Summary
 
-| Driver | Kind | Key | Key Scope | Mutable | Tags | Plan Doc |
+| Driver | Kind | Key | Key Scope | Mutable | Tags | Spec Doc |
 |---|---|---|---|---|---|---|
 | ALB | `ALB` | `region~albName` | `KeyScopeRegion` | subnets, securityGroups, ipAddressType, accessLogs, deletionProtection, idleTimeout, tags | Yes | [ALB_DRIVER_PLAN.md](ALB_DRIVER_PLAN.md) |
 | NLB | `NLB` | `region~nlbName` | `KeyScopeRegion` | subnets, crossZoneLoadBalancing, deletionProtection, tags | Yes | [NLB_DRIVER_PLAN.md](NLB_DRIVER_PLAN.md) |
@@ -112,11 +107,11 @@ The ELB drivers are registered alongside all other networking drivers:
 ```go
 srv := server.NewRestate().
     // ... VPC, SG, Route 53, etc. ...
-    Bind(restate.Reflect(alb.NewALBDriver(cfg.Auth()))).
-    Bind(restate.Reflect(nlb.NewNLBDriver(cfg.Auth()))).
-    Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(listener.NewListenerDriver(cfg.Auth()))).
-    Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(cfg.Auth())))
+    Bind(restate.Reflect(alb.NewALBDriver(auth))).
+    Bind(restate.Reflect(nlb.NewNLBDriver(auth))).
+    Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth))).
+    Bind(restate.Reflect(listener.NewListenerDriver(auth))).
+    Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth)))
 ```
 
 ### Port: 9082 (same as praxis-network)
@@ -306,16 +301,16 @@ Add all five adapters to `NewRegistry()`:
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
 
         // ELB drivers
-        NewALBAdapterWithRegistry(accounts),
-        NewNLBAdapterWithRegistry(accounts),
-        NewTargetGroupAdapterWithRegistry(accounts),
-        NewListenerAdapterWithRegistry(accounts),
-        NewListenerRuleAdapterWithRegistry(accounts),
+        NewALBAdapterWithAuth(auth),
+        NewNLBAdapterWithAuth(auth),
+        NewTargetGroupAdapterWithAuth(auth),
+        NewListenerAdapterWithAuth(auth),
+        NewListenerRuleAdapterWithAuth(auth),
     )
 }
 ```

@@ -19,25 +19,38 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// LambdaAPI abstracts AWS Lambda operations for testability.
 type LambdaAPI interface {
+	// CreateFunction creates a new Lambda function from the spec.
 	CreateFunction(ctx context.Context, spec LambdaFunctionSpec) (string, error)
+	// UpdateFunctionCode updates only the code deployment artifact.
 	UpdateFunctionCode(ctx context.Context, spec LambdaFunctionSpec) error
+	// UpdateFunctionConfiguration updates runtime config (role, memory, timeout, etc.).
 	UpdateFunctionConfiguration(ctx context.Context, spec LambdaFunctionSpec, observed ObservedState) error
+	// DescribeFunction fetches the current function state via GetFunction.
 	DescribeFunction(ctx context.Context, functionName string) (ObservedState, error)
+	// DeleteFunction removes the function.
 	DeleteFunction(ctx context.Context, functionName string) error
+	// UpdateTags synchronizes tags (untag stale + tag desired).
 	UpdateTags(ctx context.Context, functionArn string, tags map[string]string) error
+	// WaitForFunctionStable polls until the function reaches Active/Successful state.
 	WaitForFunctionStable(ctx context.Context, functionName string, timeout time.Duration) error
 }
 
+// realLambdaAPI is the production implementation backed by the Lambda SDK client.
 type realLambdaAPI struct {
 	client  *lambdasdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewLambdaAPI creates a production LambdaAPI with rate limiting (15 tokens/s, burst 10).
 func NewLambdaAPI(client *lambdasdk.Client) LambdaAPI {
 	return &realLambdaAPI{client: client, limiter: ratelimit.New("lambda-function", 15, 10)}
 }
 
+// CreateFunction creates a new Lambda function from the full spec.
+// Maps CodeSpec to FunctionCode, handles Zip vs Image package types,
+// and applies managed-key tag alongside user tags.
 func (r *realLambdaAPI) CreateFunction(ctx context.Context, spec LambdaFunctionSpec) (string, error) {
 	if err := validateCode(spec.Code); err != nil {
 		return "", err
@@ -91,6 +104,7 @@ func (r *realLambdaAPI) CreateFunction(ctx context.Context, spec LambdaFunctionS
 	return aws.ToString(output.FunctionArn), nil
 }
 
+// UpdateFunctionCode replaces the function's deployment artifact (S3, zip, or image).
 func (r *realLambdaAPI) UpdateFunctionCode(ctx context.Context, spec LambdaFunctionSpec) error {
 	if err := validateCode(spec.Code); err != nil {
 		return err
@@ -118,6 +132,8 @@ func (r *realLambdaAPI) UpdateFunctionCode(ctx context.Context, spec LambdaFunct
 	return err
 }
 
+// UpdateFunctionConfiguration updates runtime configuration fields.
+// Covers role, description, memory, timeout, environment, layers, VPC, DLQ, tracing, ephemeral storage.
 func (r *realLambdaAPI) UpdateFunctionConfiguration(ctx context.Context, spec LambdaFunctionSpec, observed ObservedState) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -153,6 +169,9 @@ func (r *realLambdaAPI) UpdateFunctionConfiguration(ctx context.Context, spec La
 	return err
 }
 
+// DescribeFunction calls GetFunction and maps the result to ObservedState.
+// Extracts configuration, environment, layers, VPC, DLQ, tracing, architectures,
+// ephemeral storage, tags, and code metadata.
 func (r *realLambdaAPI) DescribeFunction(ctx context.Context, functionName string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -210,6 +229,7 @@ func (r *realLambdaAPI) DescribeFunction(ctx context.Context, functionName strin
 	return observed, nil
 }
 
+// DeleteFunction removes the Lambda function.
 func (r *realLambdaAPI) DeleteFunction(ctx context.Context, functionName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -218,6 +238,8 @@ func (r *realLambdaAPI) DeleteFunction(ctx context.Context, functionName string)
 	return err
 }
 
+// UpdateTags synchronizes tags on the function using untag-stale + tag-desired pattern.
+// Stale non-praxis: tags are removed first, then desired tags are applied.
 func (r *realLambdaAPI) UpdateTags(ctx context.Context, functionArn string, tags map[string]string) error {
 	observed, err := r.DescribeFunction(ctx, functionArn)
 	if err != nil {
@@ -253,6 +275,8 @@ func (r *realLambdaAPI) UpdateTags(ctx context.Context, functionArn string, tags
 	return err
 }
 
+// WaitForFunctionStable polls DescribeFunction until LastUpdateStatus=Successful and State=Active,
+// or until the timeout is reached. Returns a terminal error if the update failed.
 func (r *realLambdaAPI) WaitForFunctionStable(ctx context.Context, functionName string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -274,6 +298,7 @@ func (r *realLambdaAPI) WaitForFunctionStable(ctx context.Context, functionName 
 	}
 }
 
+// validateCode ensures exactly one code source is set (S3, ZipFile, or ImageURI).
 func validateCode(code CodeSpec) error {
 	count := 0
 	if code.S3 != nil {
@@ -291,6 +316,7 @@ func validateCode(code CodeSpec) error {
 	return nil
 }
 
+// functionCode converts CodeSpec to the Lambda SDK FunctionCode type.
 func functionCode(code CodeSpec) *lambdatypes.FunctionCode {
 	input := &lambdatypes.FunctionCode{}
 	if code.S3 != nil {
@@ -308,6 +334,7 @@ func functionCode(code CodeSpec) *lambdatypes.FunctionCode {
 	return input
 }
 
+// toArchitectures converts string slice to Lambda Architecture enum slice.
 func toArchitectures(values []string) []lambdatypes.Architecture {
 	out := make([]lambdatypes.Architecture, 0, len(values))
 	for _, value := range values {
@@ -316,6 +343,7 @@ func toArchitectures(values []string) []lambdatypes.Architecture {
 	return out
 }
 
+// normalizeEnv returns a defensive copy of the env map, or nil if empty.
 func normalizeEnv(values map[string]string) map[string]string {
 	if len(values) == 0 {
 		return nil
@@ -325,6 +353,7 @@ func normalizeEnv(values map[string]string) map[string]string {
 	return out
 }
 
+// withManagedKey merges user tags with the praxis:managed-key system tag.
 func withManagedKey(managedKey string, tags map[string]string) map[string]string {
 	if len(tags) == 0 && managedKey == "" {
 		return nil
@@ -337,6 +366,7 @@ func withManagedKey(managedKey string, tags map[string]string) map[string]string
 	return out
 }
 
+// optionalString returns a *string or nil if the value is empty.
 func optionalString(value string) *string {
 	if value == "" {
 		return nil
@@ -344,22 +374,27 @@ func optionalString(value string) *string {
 	return aws.String(value)
 }
 
+// IsNotFound returns true if the Lambda function does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
+// IsConflict returns true if a conflicting operation is in progress.
 func IsConflict(err error) bool {
 	return awserr.HasCode(err, "ResourceConflictException")
 }
 
+// IsInvalidParameter returns true if a parameter value is invalid.
 func IsInvalidParameter(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValueException")
 }
 
+// IsAccessDenied returns true if the caller lacks IAM permissions.
 func IsAccessDenied(err error) bool {
 	return awserr.HasCode(err, "AccessDeniedException")
 }
 
+// IsThrottled returns true if the request was rate-limited by AWS.
 func IsThrottled(err error) bool {
 	return awserr.HasCode(err, "TooManyRequestsException")
 }

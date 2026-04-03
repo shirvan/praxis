@@ -1,15 +1,28 @@
+// Package acmcert – drift.go
+//
+// This file implements drift detection for AWS ACM Certificate.
+// HasDrift compares the desired spec against the observed state from AWS and
+// returns true when any mutable field has diverged. ComputeFieldDiffs produces
+// a structured list of individual field changes for plan output and logging.
+// Immutable fields (those that require resource replacement) are annotated.
 package acmcert
 
 import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field-level difference between the desired
+// spec and the observed state. Path uses dot notation (e.g. "spec.name");
+// immutable fields are annotated with "(immutable, requires replacement)".
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift compares the desired ACMCertificate spec against the observed
+// state from AWS and returns true if any mutable field has diverged.
+// It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired ACMCertificateSpec, observed ObservedState) bool {
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {
 		return true
@@ -17,6 +30,9 @@ func HasDrift(desired ACMCertificateSpec, observed ObservedState) bool {
 	return !tagsMatch(desired.Tags, observed.Tags)
 }
 
+// ComputeFieldDiffs produces a structured list of individual field changes
+// between the desired spec and observed state. Used for plan output, CLI
+// display, and audit logging. Immutable field changes are clearly annotated.
 func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []FieldDiffEntry {
 	diffs := make([]FieldDiffEntry, 0, 4)
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {

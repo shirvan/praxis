@@ -16,17 +16,21 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ElasticIPDriver is a Restate Virtual Object that manages the lifecycle of
+// AWS Elastic IP addresses. Uses managed-key tagging to prevent duplicate allocations.
 type ElasticIPDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) EIPAPI
 }
 
+// NewElasticIPDriver creates a driver backed by real AWS EC2 clients.
 func NewElasticIPDriver(auth authservice.AuthClient) *ElasticIPDriver {
 	return NewElasticIPDriverWithFactory(auth, func(cfg aws.Config) EIPAPI {
 		return NewEIPAPI(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewElasticIPDriverWithFactory creates a driver with a custom API factory (for tests).
 func NewElasticIPDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EIPAPI) *ElasticIPDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) EIPAPI {
@@ -36,10 +40,13 @@ func NewElasticIPDriverWithFactory(auth authservice.AuthClient, factory func(aws
 	return &ElasticIPDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate service name for registration.
 func (d *ElasticIPDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision allocates or converges an Elastic IP. Checks for managed-key conflicts
+// before allocating to prevent duplicate EIPs. Only tags are mutable after allocation.
 func (d *ElasticIPDriver) Provision(ctx restate.ObjectContext, spec ElasticIPSpec) (ElasticIPOutputs, error) {
 	ctx.Log().Info("provisioning elastic IP", "key", restate.Key(ctx))
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -172,6 +179,7 @@ func (d *ElasticIPDriver) Provision(ctx restate.ObjectContext, spec ElasticIPSpe
 	return outputs, nil
 }
 
+// Import discovers an existing EIP by allocation ID and adopts it into Praxis state.
 func (d *ElasticIPDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ElasticIPOutputs, error) {
 	ctx.Log().Info("importing elastic IP", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -221,6 +229,8 @@ func (d *ElasticIPDriver) Import(ctx restate.ObjectContext, ref types.ImportRef)
 	return outputs, nil
 }
 
+// Delete releases the Elastic IP. Blocks deletion in Observed mode.
+// Fails terminally if the EIP is still associated with an instance/ENI.
 func (d *ElasticIPDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting elastic IP", "key", restate.Key(ctx))
 	state, err := restate.Get[ElasticIPState](ctx, drivers.StateKey)
@@ -275,6 +285,7 @@ func (d *ElasticIPDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is invoked on a timer to detect and correct tag drift.
 func (d *ElasticIPDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[ElasticIPState](ctx, drivers.StateKey)
 	if err != nil {
@@ -374,6 +385,7 @@ func (d *ElasticIPDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileR
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a SHARED handler returning the EIP's status without exclusive access.
 func (d *ElasticIPDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[ElasticIPState](ctx, drivers.StateKey)
 	if err != nil {
@@ -387,6 +399,7 @@ func (d *ElasticIPDriver) GetStatus(ctx restate.ObjectSharedContext) (types.Stat
 	}, nil
 }
 
+// GetOutputs is a SHARED handler returning the EIP's outputs without exclusive access.
 func (d *ElasticIPDriver) GetOutputs(ctx restate.ObjectSharedContext) (ElasticIPOutputs, error) {
 	state, err := restate.Get[ElasticIPState](ctx, drivers.StateKey)
 	if err != nil {
@@ -395,6 +408,7 @@ func (d *ElasticIPDriver) GetOutputs(ctx restate.ObjectSharedContext) (ElasticIP
 	return state.Outputs, nil
 }
 
+// correctDrift updates tags if they've drifted. EIPs have no other mutable fields.
 func (d *ElasticIPDriver) correctDrift(ctx restate.ObjectContext, api EIPAPI, allocationID string, desired ElasticIPSpec, observed ObservedState) error {
 	if !tagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -407,6 +421,7 @@ func (d *ElasticIPDriver) correctDrift(ctx restate.ObjectContext, api EIPAPI, al
 	return nil
 }
 
+// scheduleReconcile enqueues the next reconciliation via a Restate delayed send.
 func (d *ElasticIPDriver) scheduleReconcile(ctx restate.ObjectContext, state *ElasticIPState) {
 	if state.ReconcileScheduled {
 		return
@@ -417,6 +432,7 @@ func (d *ElasticIPDriver) scheduleReconcile(ctx restate.ObjectContext, state *El
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates an API client for the given account.
 func (d *ElasticIPDriver) apiForAccount(ctx restate.ObjectContext, account string) (EIPAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("ElasticIPDriver is not configured with an auth registry")
@@ -428,6 +444,7 @@ func (d *ElasticIPDriver) apiForAccount(ctx restate.ObjectContext, account strin
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// specFromObserved synthesises a spec from observed state for import.
 func specFromObserved(obs ObservedState) ElasticIPSpec {
 	return ElasticIPSpec{
 		Domain:             obs.Domain,
@@ -436,6 +453,7 @@ func specFromObserved(obs ObservedState) ElasticIPSpec {
 	}
 }
 
+// outputsFromObserved maps observed state to outputs, constructing the ARN.
 func outputsFromObserved(obs ObservedState, region, accountID string) ElasticIPOutputs {
 	arn := ""
 	if region != "" && accountID != "" && obs.AllocationId != "" {
@@ -450,6 +468,7 @@ func outputsFromObserved(obs ObservedState, region, accountID string) ElasticIPO
 	}
 }
 
+// defaultEIPImportMode returns ModeObserved if no explicit mode is given.
 func defaultEIPImportMode(m types.Mode) types.Mode {
 	if m == "" {
 		return types.ModeObserved
@@ -457,6 +476,7 @@ func defaultEIPImportMode(m types.Mode) types.Mode {
 	return m
 }
 
+// accountIDForAccount resolves the AWS account ID via sts:GetCallerIdentity.
 func (d *ElasticIPDriver) accountIDForAccount(ctx restate.Context, account string) (string, error) {
 	if d == nil || d.auth == nil {
 		return "", restate.TerminalError(fmt.Errorf("ElasticIPDriver is not configured with an auth registry"), 500)
@@ -478,6 +498,7 @@ func (d *ElasticIPDriver) accountIDForAccount(ctx restate.Context, account strin
 	return accountID, nil
 }
 
+// applyDefaults sets Domain to "vpc" and ensures Tags is non-nil.
 func applyDefaults(spec ElasticIPSpec) ElasticIPSpec {
 	if spec.Domain == "" {
 		spec.Domain = "vpc"
@@ -488,6 +509,7 @@ func applyDefaults(spec ElasticIPSpec) ElasticIPSpec {
 	return spec
 }
 
+// formatManagedKeyConflict returns an error when a managed-key is already in use.
 func formatManagedKeyConflict(managedKey, allocationID string) error {
 	return fmt.Errorf("elastic IP name %q in this region is already managed by Praxis (allocationId: %s); remove the existing resource or use a different metadata.name", managedKey, allocationID)
 }

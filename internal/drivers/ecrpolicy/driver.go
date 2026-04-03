@@ -1,3 +1,15 @@
+// Package ecrpolicy – driver.go
+//
+// This file implements the Restate Virtual Object handler for AWS ECR Lifecycle Policy.
+// The driver exposes five durable handlers:
+//   - Provision: create-or-update the resource and persist state
+//   - Import:    adopt an existing AWS resource into Praxis management
+//   - Delete:    remove the resource from AWS (managed mode only)
+//   - Reconcile: periodic drift check + auto-correction (managed mode)
+//   - GetStatus / GetOutputs: read-only shared handlers for status queries
+//
+// All mutating AWS calls are wrapped in restate.Run for durable execution,
+// and reconciliation is self-scheduled via delayed Restate messages.
 package ecrpolicy
 
 import (
@@ -15,17 +27,24 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ECRLifecyclePolicyDriver is the Restate Virtual Object handler for AWS ECR Lifecycle Policy.
+// It holds an auth client (for cross-account credential resolution)
+// and an API factory (swappable for testing).
 type ECRLifecyclePolicyDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) LifecyclePolicyAPI
 }
 
+// NewECRLifecyclePolicyDriver creates a ECRLifecyclePolicy driver wired to the given
+// auth client. It uses the default AWS SDK client factory.
 func NewECRLifecyclePolicyDriver(auth authservice.AuthClient) *ECRLifecyclePolicyDriver {
 	return NewECRLifecyclePolicyDriverWithFactory(auth, func(cfg aws.Config) LifecyclePolicyAPI {
 		return NewLifecyclePolicyAPI(awsclient.NewECRClient(cfg))
 	})
 }
 
+// NewECRLifecyclePolicyDriverWithFactory creates a ECRLifecyclePolicy driver with a custom API
+// factory, primarily used in tests to inject mock AWS clients.
 func NewECRLifecyclePolicyDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LifecyclePolicyAPI) *ECRLifecyclePolicyDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) LifecyclePolicyAPI { return NewLifecyclePolicyAPI(awsclient.NewECRClient(cfg)) }
@@ -33,8 +52,13 @@ func NewECRLifecyclePolicyDriverWithFactory(auth authservice.AuthClient, factory
 	return &ECRLifecyclePolicyDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object service name for registration.
 func (d *ECRLifecyclePolicyDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a AWS ECR Lifecycle Policy. It validates the spec,
+// checks for an existing resource (by ARN or name), detects immutable-field
+// conflicts, and either creates a new resource or corrects drift on the
+// existing one. State is persisted in Restate K/V after every step.
 func (d *ECRLifecyclePolicyDriver) Provision(ctx restate.ObjectContext, spec ECRLifecyclePolicySpec) (ECRLifecyclePolicyOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -83,6 +107,10 @@ func (d *ECRLifecyclePolicyDriver) Provision(ctx restate.ObjectContext, spec ECR
 	return state.Outputs, nil
 }
 
+// Import adopts an existing AWS ECR Lifecycle Policy into Praxis management.
+// It reads the current configuration from AWS, synthesizes a spec from
+// the observed state, and stores it. Default import mode is Observed
+// (read-only); users can re-import with --mode managed to enable writes.
 func (d *ECRLifecyclePolicyDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (ECRLifecyclePolicyOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -118,6 +146,9 @@ func (d *ECRLifecyclePolicyDriver) Import(ctx restate.ObjectContext, ref types.I
 	return state.Outputs, nil
 }
 
+// Delete removes the AWS ECR Lifecycle Policy from AWS. It is blocked for
+// resources in Observed mode. The method handles not-found gracefully
+// (idempotent delete) and sets the final state to StatusDeleted.
 func (d *ECRLifecyclePolicyDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[ECRLifecyclePolicyState](ctx, drivers.StateKey)
 	if err != nil {
@@ -161,6 +192,11 @@ func (d *ECRLifecyclePolicyDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-check handler. It re-reads the
+// resource from AWS, compares against desired state, and auto-corrects
+// drift when in Managed mode. In Observed mode it only reports drift.
+// External deletions are detected and flagged as errors.
+// The handler self-schedules via a delayed Restate message.
 func (d *ECRLifecyclePolicyDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[ECRLifecyclePolicyState](ctx, drivers.StateKey)
 	if err != nil {
@@ -236,6 +272,7 @@ func (d *ECRLifecyclePolicyDriver) Reconcile(ctx restate.ObjectContext) (types.R
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus is a shared (read-only) handler that returns the current lifecycle status.
 func (d *ECRLifecyclePolicyDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[ECRLifecyclePolicyState](ctx, drivers.StateKey)
 	if err != nil {
@@ -244,6 +281,7 @@ func (d *ECRLifecyclePolicyDriver) GetStatus(ctx restate.ObjectSharedContext) (t
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs is a shared (read-only) handler that returns the provisioned resource outputs.
 func (d *ECRLifecyclePolicyDriver) GetOutputs(ctx restate.ObjectSharedContext) (ECRLifecyclePolicyOutputs, error) {
 	state, err := restate.Get[ECRLifecyclePolicyState](ctx, drivers.StateKey)
 	if err != nil {

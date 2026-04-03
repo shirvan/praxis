@@ -19,7 +19,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
-// EC2API abstracts the AWS operations used by the driver.
+// EC2API abstracts all AWS EC2 API operations used by the EC2 instance driver.
+// Each method maps to one or more EC2 SDK calls and is rate-limited via a shared token-bucket limiter.
+// This interface enables unit testing by allowing injection of a mock implementation.
 type EC2API interface {
 	RunInstance(ctx context.Context, spec EC2InstanceSpec) (string, error)
 	DescribeInstance(ctx context.Context, instanceId string) (ObservedState, error)
@@ -32,11 +34,16 @@ type EC2API interface {
 	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
 }
 
+// realEC2API is the production implementation of EC2API backed by the AWS SDK v2 EC2 client.
+// All calls go through a rate limiter configured at 20 tokens/sec with a burst of 10 to stay
+// within EC2 API rate limits and avoid throttling.
 type realEC2API struct {
 	client  *ec2sdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewEC2API creates a production EC2API backed by the given SDK client.
+// The rate limiter is shared across all operations on this API instance.
 func NewEC2API(client *ec2sdk.Client) EC2API {
 	return &realEC2API{
 		client:  client,
@@ -44,6 +51,12 @@ func NewEC2API(client *ec2sdk.Client) EC2API {
 	}
 }
 
+// RunInstance launches a single EC2 instance via the RunInstances API.
+// It maps all spec fields to the RunInstances input, including optional fields like
+// KeyName, SecurityGroupIds, UserData (base64-encoded), IamInstanceProfile (supports
+// both ARN and name), RootVolume (BlockDeviceMappings), and Monitoring.
+// A praxis:managed-key tag is always applied for idempotent lookup.
+// Returns the new instance ID on success.
 func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -111,6 +124,11 @@ func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec) (str
 	return aws.ToString(out.Instances[0].InstanceId), nil
 }
 
+// DescribeInstance fetches the full observed state of an EC2 instance.
+// It calls DescribeInstances for the core instance metadata, then DescribeVolumes
+// for the root volume details (type, size, encryption). Security group IDs are
+// sorted for deterministic drift comparison. The IAM instance profile ARN is
+// parsed to extract just the profile name.
 func (r *realEC2API) DescribeInstance(ctx context.Context, instanceId string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -175,6 +193,8 @@ func (r *realEC2API) DescribeInstance(ctx context.Context, instanceId string) (O
 	return obs, nil
 }
 
+// TerminateInstance destroys the EC2 instance via the TerminateInstances API.
+// This is irreversible — the instance transitions to shutting-down then terminated.
 func (r *realEC2API) TerminateInstance(ctx context.Context, instanceId string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -183,6 +203,8 @@ func (r *realEC2API) TerminateInstance(ctx context.Context, instanceId string) e
 	return err
 }
 
+// WaitUntilRunning blocks until the instance reaches the "running" state.
+// Uses the SDK's built-in InstanceRunningWaiter with a 5-minute timeout.
 func (r *realEC2API) WaitUntilRunning(ctx context.Context, instanceId string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -191,6 +213,11 @@ func (r *realEC2API) WaitUntilRunning(ctx context.Context, instanceId string) er
 	return waiter.Wait(ctx, &ec2sdk.DescribeInstancesInput{InstanceIds: []string{instanceId}}, 5*time.Minute)
 }
 
+// ModifyInstanceType changes the instance type in-place. This requires a full
+// stop → modify → start cycle because EC2 does not support hot-resizing.
+// Steps: (1) check if already stopped, (2) StopInstances + wait, (3) ModifyInstanceAttribute,
+// (4) StartInstances + wait until running. Handles IncorrectInstanceState gracefully
+// in case the instance is already stopping/stopped.
 func (r *realEC2API) ModifyInstanceType(ctx context.Context, instanceId, newType string) error {
 	obs, err := r.DescribeInstance(ctx, instanceId)
 	if err != nil {
@@ -244,6 +271,8 @@ func (r *realEC2API) ModifyInstanceType(ctx context.Context, instanceId, newType
 	return nil
 }
 
+// ModifySecurityGroups replaces the security groups on the instance's primary ENI.
+// This is a hot operation — no stop/start required. Uses ModifyInstanceAttribute.
 func (r *realEC2API) ModifySecurityGroups(ctx context.Context, instanceId string, sgIds []string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -255,6 +284,8 @@ func (r *realEC2API) ModifySecurityGroups(ctx context.Context, instanceId string
 	return err
 }
 
+// UpdateMonitoring toggles detailed CloudWatch monitoring on the instance.
+// Calls MonitorInstances to enable or UnmonitorInstances to disable.
 func (r *realEC2API) UpdateMonitoring(ctx context.Context, instanceId string, enabled bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -267,6 +298,9 @@ func (r *realEC2API) UpdateMonitoring(ctx context.Context, instanceId string, en
 	return err
 }
 
+// UpdateTags performs a full tag sync: first deletes all user tags (excluding praxis:-prefixed ones),
+// then applies the desired tags via CreateTags. This delete-then-create approach ensures
+// stale tags are removed. praxis: tags are never touched to preserve internal metadata.
 func (r *realEC2API) UpdateTags(ctx context.Context, instanceId string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -313,6 +347,12 @@ func (r *realEC2API) UpdateTags(ctx context.Context, instanceId string, tags map
 	return err
 }
 
+// FindByManagedKey searches for an existing instance with the given praxis:managed-key tag.
+// This powers the idempotent create-or-converge pattern: if a previous Provision created
+// an instance but the handler was interrupted before saving state, we can find and adopt it.
+// Only considers non-terminated instances (pending, running, stopping, stopped).
+// Returns "" if no match, the instance ID if exactly one match, or an error if multiple
+// instances claim the same managed key (ownership corruption requiring manual intervention).
 func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -346,22 +386,32 @@ func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 }
 
+// IsNotFound returns true if the error indicates the instance does not exist.
+// Matches both NotFound and Malformed instance ID error codes.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidInstanceID.NotFound", "InvalidInstanceID.Malformed")
 }
 
+// IsInvalidParam returns true if the error is due to invalid parameters in the request
+// (bad AMI ID, invalid subnet, missing security group, etc.). These are terminal — retrying won't help.
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound", "InvalidSubnetID.NotFound", "InvalidGroup.NotFound")
 }
 
+// IsInsufficientCapacity returns true if the error indicates AWS capacity limits
+// (no capacity in AZ, account instance limit reached, or unsupported instance type).
+// These are terminal — the user must change their spec or wait for capacity.
 func IsInsufficientCapacity(err error) bool {
 	return awserr.HasCode(err, "InsufficientInstanceCapacity", "InstanceLimitExceeded", "Unsupported")
 }
 
+// base64Encode encodes a string to standard base64, used for EC2 UserData.
 func base64Encode(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
 
+// extractProfileName extracts the instance profile name from its full ARN.
+// e.g. "arn:aws:iam::123456:instance-profile/my-profile" → "my-profile"
 func extractProfileName(arn string) string {
 	parts := strings.Split(arn, "/")
 	if len(parts) > 1 {

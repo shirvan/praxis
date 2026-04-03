@@ -15,23 +15,37 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// DBSubnetGroupAPI abstracts AWS RDS SDK operations for DB Subnet Group management.
 type DBSubnetGroupAPI interface {
+	// CreateDBSubnetGroup creates a new subnet group and returns its ARN.
 	CreateDBSubnetGroup(ctx context.Context, spec DBSubnetGroupSpec) (string, error)
+
+	// DescribeDBSubnetGroup returns the observed state including subnets, AZs, and tags.
 	DescribeDBSubnetGroup(ctx context.Context, groupName string) (ObservedState, error)
+
+	// ModifyDBSubnetGroup updates description and subnet IDs.
 	ModifyDBSubnetGroup(ctx context.Context, spec DBSubnetGroupSpec) error
+
+	// DeleteDBSubnetGroup deletes the subnet group.
 	DeleteDBSubnetGroup(ctx context.Context, groupName string) error
+
+	// UpdateTags performs diff-based tag updates on the subnet group.
 	UpdateTags(ctx context.Context, arn string, tags map[string]string) error
 }
 
+// realDBSubnetGroupAPI implements DBSubnetGroupAPI using the AWS SDK v2 RDS client.
 type realDBSubnetGroupAPI struct {
 	client  *rdssdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewDBSubnetGroupAPI creates a new API backed by the given RDS client.
+// Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewDBSubnetGroupAPI(client *rdssdk.Client) DBSubnetGroupAPI {
 	return &realDBSubnetGroupAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
 }
 
+// CreateDBSubnetGroup calls rds:CreateDBSubnetGroup.
 func (r *realDBSubnetGroupAPI) CreateDBSubnetGroup(ctx context.Context, spec DBSubnetGroupSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -51,6 +65,8 @@ func (r *realDBSubnetGroupAPI) CreateDBSubnetGroup(ctx context.Context, spec DBS
 	return aws.ToString(out.DBSubnetGroup.DBSubnetGroupArn), nil
 }
 
+// DescribeDBSubnetGroup calls rds:DescribeDBSubnetGroups and maps to ObservedState.
+// Sorts subnet IDs and deduplicates availability zones for deterministic comparison.
 func (r *realDBSubnetGroupAPI) DescribeDBSubnetGroup(ctx context.Context, groupName string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -97,6 +113,7 @@ func (r *realDBSubnetGroupAPI) DescribeDBSubnetGroup(ctx context.Context, groupN
 	return observed, nil
 }
 
+// ModifyDBSubnetGroup calls rds:ModifyDBSubnetGroup to update description and subnets.
 func (r *realDBSubnetGroupAPI) ModifyDBSubnetGroup(ctx context.Context, spec DBSubnetGroupSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -109,6 +126,7 @@ func (r *realDBSubnetGroupAPI) ModifyDBSubnetGroup(ctx context.Context, spec DBS
 	return err
 }
 
+// DeleteDBSubnetGroup calls rds:DeleteDBSubnetGroup.
 func (r *realDBSubnetGroupAPI) DeleteDBSubnetGroup(ctx context.Context, groupName string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -117,6 +135,7 @@ func (r *realDBSubnetGroupAPI) DeleteDBSubnetGroup(ctx context.Context, groupNam
 	return err
 }
 
+// UpdateTags performs diff-based tag updates: removes stale, adds new/changed.
 func (r *realDBSubnetGroupAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
 	current, err := r.listTags(ctx, arn)
 	if err != nil {
@@ -157,6 +176,7 @@ func (r *realDBSubnetGroupAPI) UpdateTags(ctx context.Context, arn string, tags 
 	return err
 }
 
+// listTags returns all non-praxis tags on the resource.
 func (r *realDBSubnetGroupAPI) listTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -176,6 +196,7 @@ func (r *realDBSubnetGroupAPI) listTags(ctx context.Context, arn string) (map[st
 	return tags, nil
 }
 
+// toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
 func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	filtered := filterPraxisTags(tags)
 	if len(filtered) == 0 {
@@ -191,18 +212,22 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 	return out
 }
 
+// IsNotFound returns true if the DB subnet group does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "DBSubnetGroupNotFoundFault")
 }
 
+// IsAlreadyExists returns true if a subnet group with the same name exists.
 func IsAlreadyExists(err error) bool {
 	return awserr.HasCode(err, "DBSubnetGroupAlreadyExistsFault")
 }
 
+// IsInvalidState returns true if the subnet group is in a state preventing the operation.
 func IsInvalidState(err error) bool {
 	return awserr.HasCode(err, "InvalidDBSubnetGroupStateFault")
 }
 
+// IsInvalidParam returns true if the error indicates invalid parameters (e.g. bad subnets).
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidSubnet", "DBSubnetGroupDoesNotCoverEnoughAZs", "SubnetAlreadyInUse", "InvalidParameterValue", "InvalidParameterCombination")
 }

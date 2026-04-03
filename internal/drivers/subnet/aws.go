@@ -17,22 +17,27 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// SubnetAPI abstracts the AWS EC2 SDK operations for Subnets.
+// Creation is asynchronous; WaitUntilAvailable polls until the subnet
+// transitions from "pending" to "available".
 type SubnetAPI interface {
-	CreateSubnet(ctx context.Context, spec SubnetSpec) (string, error)
-	DescribeSubnet(ctx context.Context, subnetId string) (ObservedState, error)
-	DeleteSubnet(ctx context.Context, subnetId string) error
-	WaitUntilAvailable(ctx context.Context, subnetId string) error
-	ModifyMapPublicIp(ctx context.Context, subnetId string, enabled bool) error
-	UpdateTags(ctx context.Context, subnetId string, tags map[string]string) error
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
-	FindByTags(ctx context.Context, tags map[string]string) (string, error)
+	CreateSubnet(ctx context.Context, spec SubnetSpec) (string, error)             // Creates a subnet with managed-key tag; returns subnet-xxxx.
+	DescribeSubnet(ctx context.Context, subnetId string) (ObservedState, error)    // Fetches live state.
+	DeleteSubnet(ctx context.Context, subnetId string) error                       // Deletes the subnet; fails if instances still running.
+	WaitUntilAvailable(ctx context.Context, subnetId string) error                 // Polls until state=available (2min timeout).
+	ModifyMapPublicIp(ctx context.Context, subnetId string, enabled bool) error    // Toggles auto-assign public IPv4 via ModifySubnetAttribute.
+	UpdateTags(ctx context.Context, subnetId string, tags map[string]string) error // Replaces all user tags (preserves praxis: tags).
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)       // Finds subnet by praxis:managed-key tag.
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)        // Finds subnet by arbitrary tag match.
 }
 
+// realSubnetAPI implements SubnetAPI using the actual AWS SDK v2 EC2 client.
 type realSubnetAPI struct {
 	client  *ec2sdk.Client
-	limiter *ratelimit.Limiter
+	limiter *ratelimit.Limiter // Token-bucket: 20 burst, 10/s refill.
 }
 
+// NewSubnetAPI creates a new SubnetAPI backed by the given EC2 SDK client.
 func NewSubnetAPI(client *ec2sdk.Client) SubnetAPI {
 	return &realSubnetAPI{
 		client:  client,
@@ -231,14 +236,21 @@ func (r *realSubnetAPI) FindByTags(ctx context.Context, tags map[string]string) 
 	}
 }
 
+// Error classifiers — used by the driver to decide between retryable
+// errors, terminal errors, and idempotent success paths.
+
+// IsNotFound returns true when the subnet does not exist in AWS.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidSubnetID.NotFound", "InvalidSubnetID.Malformed")
 }
 
+// IsDependencyViolation returns true when the subnet cannot be deleted
+// because instances or ENIs are still attached.
 func IsDependencyViolation(err error) bool {
 	return awserr.HasCode(err, "DependencyViolation")
 }
 
+// IsInvalidParam returns true for various invalid parameter errors (terminal).
 func IsInvalidParam(err error) bool {
 	if err == nil {
 		return false
@@ -253,6 +265,8 @@ func IsInvalidParam(err error) bool {
 	return false
 }
 
+// IsCidrConflict returns true when the requested CIDR overlaps with an
+// existing subnet in the VPC (terminal).
 func IsCidrConflict(err error) bool {
 	return awserr.HasCode(err, "InvalidSubnet.Conflict")
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// IAMUserDriver is the Restate virtual object that manages the lifecycle of a single IAM user.
 type IAMUserDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) IAMUserAPI
@@ -39,6 +40,9 @@ func (d *IAMUserDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for IAM users.
+// Creates the user if not found, then converges all mutable fields: path, permissions
+// boundary, inline policies, managed policies, group memberships, and tags.
 func (d *IAMUserDriver) Provision(ctx restate.ObjectContext, spec IAMUserSpec) (IAMUserOutputs, error) {
 	ctx.Log().Info("provisioning iam user", "key", restate.Key(ctx), "userName", spec.UserName)
 	api, err := d.apiForAccount(ctx, spec.Account)
@@ -205,6 +209,8 @@ func (d *IAMUserDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (
 	return outputs, nil
 }
 
+// Delete removes an IAM user and all associated resources: group memberships, managed policies,
+// inline policies, permissions boundary, login profile, and access keys—then the user itself.
 func (d *IAMUserDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting iam user", "key", restate.Key(ctx))
 	state, err := restate.Get[IAMUserState](ctx, drivers.StateKey)
@@ -413,6 +419,8 @@ func (d *IAMUserDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMUserOutp
 	return state.Outputs, nil
 }
 
+// correctDrift converges all mutable IAM user fields from observed toward desired state.
+// Updates path, permissions boundary, inline policies, managed policies, group memberships, and tags.
 func (d *IAMUserDriver) correctDrift(ctx restate.ObjectContext, api IAMUserAPI, userName string, desired IAMUserSpec, observed ObservedState) error {
 	if desired.Path != observed.Path {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

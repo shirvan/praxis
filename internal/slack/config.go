@@ -7,11 +7,25 @@ import (
 )
 
 // SlackGatewayConfig is a Restate Virtual Object keyed by "global".
+// It stores the Slack connection configuration (tokens, bot user ID, allowed
+// users) and exposes Configure/Get/SetAllowedUsers/AddAllowedUser/RemoveAllowedUser
+// handlers over Restate RPC.
+//
+// Token storage: tokens can be provided as literal values (for dev/test) or as
+// SSM parameter references. When a literal token is set, the corresponding Ref
+// field is cleared and vice versa, ensuring exactly one source of truth.
+//
+// Versioning: every mutation bumps a monotonic Version counter. The external
+// Gateway process polls this counter to detect config changes and reconnect
+// the Socket Mode WebSocket client without a process restart.
 type SlackGatewayConfig struct{}
 
 func (SlackGatewayConfig) ServiceName() string { return SlackGatewayConfigServiceName }
 
 // Configure sets or updates Slack connection credentials and gateway settings.
+// Uses a merge-patch strategy: only non-zero fields in the request are applied.
+// When a literal token is set, the corresponding Ref is cleared (and vice versa)
+// to ensure a single source of truth for each token type.
 func (SlackGatewayConfig) Configure(ctx restate.ObjectContext, req SlackConfigRequest) error {
 	existing, err := restate.Get[*SlackGatewayConfiguration](ctx, "config")
 	if err != nil {
@@ -61,6 +75,8 @@ func (SlackGatewayConfig) Configure(ctx restate.ObjectContext, req SlackConfigRe
 }
 
 // Get returns the current configuration with secrets redacted.
+// This is a shared handler (ObjectSharedContext) so it can run concurrently
+// with Configure without blocking, since it only reads state.
 func (SlackGatewayConfig) Get(ctx restate.ObjectSharedContext) (SlackGatewayConfiguration, error) {
 	cfgPtr, err := restate.Get[*SlackGatewayConfiguration](ctx, "config")
 	if err != nil {

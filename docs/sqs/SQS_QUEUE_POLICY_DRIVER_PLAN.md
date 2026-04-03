@@ -1,12 +1,4 @@
-# SQS Queue Policy Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages SQS Queue Policies, providing
-> full lifecycle management including creation, import, deletion, drift detection,
-> and drift correction for the resource-based access policy attached to an SQS queue.
->
-> Key scope: `KeyScopeRegion` — key format is `region~queueName`, permanent and
-> immutable for the lifetime of the Virtual Object. The queue URL is resolved from
-> the queue name and stored in state.
+# SQS Queue Policy Driver — Implementation Spec
 
 ---
 
@@ -506,15 +498,15 @@ func ComputeFieldDiffs(desired SQSQueuePolicySpec, observed ObservedState) []typ
 
 ```go
 type SQSQueuePolicyDriver struct {
-    accounts   *auth.Registry
+    auth authservice.AuthClient
     apiFactory func(aws.Config) PolicyAPI
 }
 
-func NewSQSQueuePolicyDriver(accounts *auth.Registry) *SQSQueuePolicyDriver {
+func NewSQSQueuePolicyDriver(auth authservice.AuthClient) *SQSQueuePolicyDriver {
     return &SQSQueuePolicyDriver{accounts: accounts}
 }
 
-func NewSQSQueuePolicyDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) PolicyAPI) *SQSQueuePolicyDriver {
+func NewSQSQueuePolicyDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) PolicyAPI) *SQSQueuePolicyDriver {
     return &SQSQueuePolicyDriver{accounts: accounts, apiFactory: factory}
 }
 
@@ -787,10 +779,10 @@ Follow the standard pattern (identical to all other drivers).
 
 ```go
 type SQSQueuePolicyAdapter struct {
-    accounts *auth.Registry
+    auth authservice.AuthClient
 }
 
-func NewSQSQueuePolicyAdapterWithRegistry(accounts *auth.Registry) *SQSQueuePolicyAdapter {
+func NewSQSQueuePolicyAdapterWithAuth(auth authservice.AuthClient) *SQSQueuePolicyAdapter {
     return &SQSQueuePolicyAdapter{accounts: accounts}
 }
 
@@ -880,7 +872,7 @@ func (a *SQSQueuePolicyAdapter) DecodeSpec(doc json.RawMessage) (any, error) {
 
 **File**: `internal/core/provider/registry.go` — **MODIFY**
 
-Add `NewSQSQueuePolicyAdapterWithRegistry(accounts)` to `NewRegistry()`.
+Add `NewSQSQueuePolicyAdapterWithAuth(auth)` to `NewRegistry()`.
 
 ---
 
@@ -891,7 +883,7 @@ Add `NewSQSQueuePolicyAdapterWithRegistry(accounts)` to `NewRegistry()`.
 ```go
 import "github.com/shirvan/praxis/internal/drivers/sqspolicy"
 
-Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(cfg.Auth())))
+Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth)))
 ```
 
 ---

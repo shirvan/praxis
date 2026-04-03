@@ -15,17 +15,26 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// EC2InstanceDriver implements the Praxis driver interface for AWS EC2 instances.
+// It is a Restate Virtual Object with exclusive (keyed) access per instance.
+//
+// The driver holds:
+//   - auth: client for resolving AWS credentials from a Praxis account alias
+//   - apiFactory: factory function to create an EC2API from an aws.Config (enables testing)
 type EC2InstanceDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) EC2API
 }
 
+// NewEC2InstanceDriver creates a production driver using the default AWS EC2 client factory.
 func NewEC2InstanceDriver(auth authservice.AuthClient) *EC2InstanceDriver {
 	return NewEC2InstanceDriverWithFactory(auth, func(cfg aws.Config) EC2API {
 		return NewEC2API(awsclient.NewEC2Client(cfg))
 	})
 }
 
+// NewEC2InstanceDriverWithFactory creates a driver with a custom EC2API factory.
+// Used in tests to inject a mock API implementation. Falls back to the default factory if nil.
 func NewEC2InstanceDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) EC2API) *EC2InstanceDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) EC2API {
@@ -35,10 +44,30 @@ func NewEC2InstanceDriverWithFactory(auth authservice.AuthClient, factory func(a
 	return &EC2InstanceDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name for registration.
 func (d *EC2InstanceDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision implements the idempotent create-or-converge pattern for EC2 instances.
+//
+// Flow:
+//  1. Validate required fields (imageId, instanceType, subnetId, region) — terminal errors on failure.
+//  2. Load existing state from Restate K/V store. Increment generation counter.
+//  3. If an instance ID exists in state, verify it still exists in AWS (DescribeInstance).
+//     If terminated or not found, clear the instance ID to trigger re-creation.
+//  4. If no instance ID but managedKey is set, search for an existing instance by tag
+//     (FindByManagedKey) to recover from interrupted provisioning. Fail terminally on
+//     ownership corruption (multiple instances with same managed key).
+//  5. If no instance exists: create via RunInstance, wait until running.
+//  6. If instance exists: converge mutable fields (instance type, security groups,
+//     monitoring, tags) by comparing desired vs observed and applying changes.
+//  7. Final DescribeInstance to capture outputs. Set status=Ready, persist state.
+//  8. Schedule the next reconcile loop via a delayed Restate message.
+//
+// All AWS API calls are wrapped in restate.Run() for durable journaling — each call
+// executes at most once even if the handler is replayed after a crash.
+// Errors are classified: terminal (400/409/503) for permanent failures, retryable for transient.
 func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2InstanceSpec) (EC2InstanceOutputs, error) {
 	ctx.Log().Info("provisioning EC2 instance", "name", spec.Tags["Name"], "key", restate.Key(ctx))
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -237,6 +266,18 @@ func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2Instanc
 	return outputs, nil
 }
 
+// Import adopts an existing AWS EC2 instance into Praxis management.
+//
+// Flow:
+//  1. Resolve AWS credentials for the account.
+//  2. DescribeInstance to fetch the current live state — terminal 404 if not found.
+//  3. Reject terminated/shutting-down instances.
+//  4. Build a spec from the observed state (specFromObserved) to capture the current config.
+//  5. Set mode to Observed (default) or Managed based on the import ref.
+//  6. Persist state and schedule reconciliation.
+//
+// In Observed mode, drift is detected but not corrected.
+// In Managed mode, drift is detected and corrected on subsequent reconciles.
 func (d *EC2InstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (EC2InstanceOutputs, error) {
 	ctx.Log().Info("importing EC2 instance", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -298,6 +339,14 @@ func (d *EC2InstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	return outputs, nil
 }
 
+// Delete terminates the EC2 instance and marks the resource as deleted.
+//
+// Guards:
+//   - Observed-mode resources cannot be deleted (terminal 409). Re-import as managed first.
+//   - If no instance ID is stored, immediately mark as deleted (nothing to terminate).
+//
+// The TerminateInstance call is idempotent — NotFound errors are suppressed.
+// On success, state is reset to a minimal {Status: Deleted} struct.
 func (d *EC2InstanceDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting EC2 instance", "key", restate.Key(ctx))
 
@@ -344,6 +393,20 @@ func (d *EC2InstanceDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection and correction loop.
+// It is invoked as a delayed Restate message (typically every 5 minutes via drivers.ReconcileInterval).
+//
+// Flow:
+//  1. Load state; skip if not in Ready or Error status, or if no instance ID.
+//  2. Capture current timestamp via restate.Run (deterministic for replay).
+//  3. DescribeInstance — detect external deletion → Error + drift event.
+//  4. Compare desired vs observed for drift.
+//  5. If drifted + Managed mode → correct each mutable field, emit DriftCorrected event.
+//  6. If drifted + Observed mode → report drift without correcting.
+//  7. Re-schedule the next reconcile.
+//
+// Reconcile never returns an error to Restate (which would cause retry). Instead,
+// errors are captured in the ReconcileResult and state.Error for observability.
 func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[EC2InstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -454,6 +517,9 @@ func (d *EC2InstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	return types.ReconcileResult{}, nil
 }
 
+// correctDrift applies in-place updates to bring the live instance back to the desired spec.
+// Called by Reconcile when drift is detected in Managed mode. Each field is independently
+// corrected via its own restate.Run block for partial-failure resilience.
 func (d *EC2InstanceDriver) correctDrift(ctx restate.ObjectContext, api EC2API, instanceId string, desired EC2InstanceSpec, observed ObservedState) error {
 	if desired.InstanceType != observed.InstanceType {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -494,6 +560,8 @@ func (d *EC2InstanceDriver) correctDrift(ctx restate.ObjectContext, api EC2API, 
 	return nil
 }
 
+// GetStatus is a shared (concurrent) handler that returns the current lifecycle status.
+// Safe to call in parallel with other shared handlers; does not acquire exclusive access.
 func (d *EC2InstanceDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[EC2InstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -507,6 +575,8 @@ func (d *EC2InstanceDriver) GetStatus(ctx restate.ObjectSharedContext) (types.St
 	}, nil
 }
 
+// GetOutputs is a shared (concurrent) handler that returns the provisioned outputs.
+// Returns the last persisted EC2InstanceOutputs (instance ID, IPs, DNS name, etc.).
 func (d *EC2InstanceDriver) GetOutputs(ctx restate.ObjectSharedContext) (EC2InstanceOutputs, error) {
 	state, err := restate.Get[EC2InstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -515,6 +585,9 @@ func (d *EC2InstanceDriver) GetOutputs(ctx restate.ObjectSharedContext) (EC2Inst
 	return state.Outputs, nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message via Restate's durable timer.
+// The ReconcileScheduled flag prevents duplicate timers from stacking up.
+// The delay is drivers.ReconcileInterval (typically 5 minutes).
 func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *EC2InstanceState) {
 	if state.ReconcileScheduled {
 		return
@@ -525,6 +598,8 @@ func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials for the given account alias and constructs an EC2API.
+// Returns the API client, the resolved AWS region, and any error from credential resolution.
 func (d *EC2InstanceDriver) apiForAccount(ctx restate.ObjectContext, account string) (EC2API, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("EC2InstanceDriver is not configured with an auth registry")
@@ -536,6 +611,9 @@ func (d *EC2InstanceDriver) apiForAccount(ctx restate.ObjectContext, account str
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// specFromObserved reconstructs an EC2InstanceSpec from observed AWS state.
+// Used during Import to seed the desired state from the live instance configuration.
+// Only user tags (non-praxis: prefixed) are included.
 func specFromObserved(obs ObservedState) EC2InstanceSpec {
 	return EC2InstanceSpec{
 		ImageId:            obs.ImageId,
@@ -549,6 +627,7 @@ func specFromObserved(obs ObservedState) EC2InstanceSpec {
 	}
 }
 
+// defaultEC2ImportMode returns the default import mode (Observed) if none is specified.
 func defaultEC2ImportMode(m types.Mode) types.Mode {
 	if m == "" {
 		return types.ModeObserved

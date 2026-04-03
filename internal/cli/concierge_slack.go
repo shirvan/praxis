@@ -1,3 +1,10 @@
+// concierge_slack.go implements the `praxis concierge slack` command group.
+//
+// The Slack gateway allows users to interact with the Praxis Concierge from
+// Slack channels. Configuration, allowed-user management, and event watch
+// rules are all stored in Restate Virtual Objects:
+//   - SlackGatewayConfig (key="global") — bot/app tokens, event channel, allowed users
+//   - SlackWatchConfig   (key="global") — per-channel event watch/filter rules
 package cli
 
 import (
@@ -10,6 +17,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newConciergeSlackCmd builds the `praxis concierge slack` parent command.
+// Subcommands: configure, get-config, allowed-users, watch.
 func newConciergeSlackCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "slack",
@@ -30,6 +39,9 @@ func newConciergeSlackCmd(flags *rootFlags) *cobra.Command {
 // slack configure
 // --------------------------------------------------------------------------
 
+// newSlackConfigureCmd builds `praxis concierge slack configure`.
+// Sends bot token, app token, event channel, and allowed-user settings to
+// SlackGatewayConfig.Configure via the ingress client.
 func newSlackConfigureCmd(flags *rootFlags) *cobra.Command {
 	var (
 		botToken     string
@@ -79,6 +91,8 @@ func newSlackConfigureCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newSlackGetConfigCmd builds `praxis concierge slack get-config`.
+// Returns the current gateway configuration (tokens are redacted server-side).
 func newSlackGetConfigCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get-config",
@@ -102,6 +116,8 @@ func newSlackGetConfigCmd(flags *rootFlags) *cobra.Command {
 // slack allowed-users
 // --------------------------------------------------------------------------
 
+// newSlackAllowedUsersCmd builds the `praxis concierge slack allowed-users`
+// parent command. Subcommands: set, add, remove, list.
 func newSlackAllowedUsersCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "allowed-users",
@@ -118,6 +134,9 @@ func newSlackAllowedUsersCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newSlackAllowedUsersSetCmd builds `praxis concierge slack allowed-users set`.
+// Replaces the entire allowed-user list. Pass an empty string to clear the list
+// (which permits all users).
 func newSlackAllowedUsersSetCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <user-ids>",
@@ -144,6 +163,8 @@ func newSlackAllowedUsersSetCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newSlackAllowedUsersAddCmd builds `praxis concierge slack allowed-users add`.
+// Adds a single Slack user ID to the allowed list.
 func newSlackAllowedUsersAddCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "add <user-id>",
@@ -165,6 +186,8 @@ func newSlackAllowedUsersAddCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newSlackAllowedUsersRemoveCmd builds `praxis concierge slack allowed-users remove`.
+// Removes a single Slack user ID from the allowed list.
 func newSlackAllowedUsersRemoveCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <user-id>",
@@ -186,6 +209,8 @@ func newSlackAllowedUsersRemoveCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newSlackAllowedUsersListCmd builds `praxis concierge slack allowed-users list`.
+// Fetches the gateway config and prints allowed user IDs.
 func newSlackAllowedUsersListCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -219,6 +244,9 @@ func newSlackAllowedUsersListCmd(flags *rootFlags) *cobra.Command {
 // slack watch
 // --------------------------------------------------------------------------
 
+// newSlackWatchCmd builds the `praxis concierge slack watch` parent command.
+// Watch rules route deployment events to specific Slack channels based on
+// type/category/severity/workspace/deployment filters.
 func newSlackWatchCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "watch",
@@ -235,6 +263,8 @@ func newSlackWatchCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newSlackWatchAddCmd builds `praxis concierge slack watch add`. Creates a
+// new event watch rule with the given filters and target channel.
 func newSlackWatchAddCmd(flags *rootFlags) *cobra.Command {
 	var (
 		name        string
@@ -286,6 +316,8 @@ func newSlackWatchAddCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newSlackWatchListCmd builds `praxis concierge slack watch list`. Returns
+// all configured watch rules with name, ID, enabled status, and channel.
 func newSlackWatchListCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -319,6 +351,8 @@ func newSlackWatchListCmd(flags *rootFlags) *cobra.Command {
 	}
 }
 
+// newSlackWatchRemoveCmd builds `praxis concierge slack watch remove`.
+// Deletes a watch rule by its ID.
 func newSlackWatchRemoveCmd(flags *rootFlags) *cobra.Command {
 	var id string
 
@@ -348,6 +382,8 @@ func newSlackWatchRemoveCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// newSlackWatchUpdateCmd builds `praxis concierge slack watch update`.
+// Modifies an existing watch rule's name or enabled state.
 func newSlackWatchUpdateCmd(flags *rootFlags) *cobra.Command {
 	var (
 		id      string
@@ -394,6 +430,7 @@ func newSlackWatchUpdateCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
+// buildWatchFilter assembles a slackWatchFilter from comma-separated flag strings.
 func buildWatchFilter(types, categories, severities, workspaces, deployments string) slackWatchFilter {
 	var f slackWatchFilter
 	if types != "" {

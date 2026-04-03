@@ -1,14 +1,4 @@
-# IAM User Driver — Implementation Plan
-
-> ✅ Implemented
-> Target: A Restate Virtual Object driver that manages IAM Users, providing full
-> lifecycle management including creation, import, deletion, drift detection, and
-> drift correction for user properties, inline policies, managed policy attachments,
-> group memberships, and tags.
->
-> Key scope: `KeyScopeGlobal` — key format is `userName`, permanent and immutable
-> for the lifetime of the Virtual Object. IAM user names are unique within an AWS
-> account (IAM is a global service with no region scoping).
+# IAM User Driver — Implementation Spec
 
 ---
 
@@ -259,7 +249,7 @@ type IAMUserState struct {
 ```go
 type IAMUserAPI interface {
     // CreateUser creates a new IAM user.
-    CreateUser(ctx context.Context, spec IAMUserSpec) (arn, userId string, err error)
+    CreateUser(ctx context.Context, spec IAMUserSpec) (arn, userID string, err error)
 
     // DescribeUser returns the observed state of a user by name.
     DescribeUser(ctx context.Context, userName string) (ObservedState, error)
@@ -267,26 +257,20 @@ type IAMUserAPI interface {
     // DeleteUser deletes a user (must have no attached resources).
     DeleteUser(ctx context.Context, userName string) error
 
-    // UpdateUser updates the user's path.
-    UpdateUser(ctx context.Context, userName, newPath string) error
+    // UpdateUserPath updates the user's path.
+    UpdateUserPath(ctx context.Context, userName, newPath string) error
 
-    // PutPermissionsBoundary sets or updates the permissions boundary.
-    PutPermissionsBoundary(ctx context.Context, userName, policyArn string) error
+    // PutUserPermissionsBoundary sets or updates the permissions boundary.
+    PutUserPermissionsBoundary(ctx context.Context, userName, policyArn string) error
 
-    // DeletePermissionsBoundary removes the permissions boundary.
-    DeletePermissionsBoundary(ctx context.Context, userName string) error
+    // DeleteUserPermissionsBoundary removes the permissions boundary.
+    DeleteUserPermissionsBoundary(ctx context.Context, userName string) error
 
     // PutInlinePolicy creates or updates an inline policy on the user.
-    PutInlinePolicy(ctx context.Context, userName, policyName, policyDocument string) error
+    PutInlinePolicy(ctx context.Context, userName, policyName, document string) error
 
     // DeleteInlinePolicy removes an inline policy from the user.
     DeleteInlinePolicy(ctx context.Context, userName, policyName string) error
-
-    // ListInlinePolicies returns the names of all inline policies on the user.
-    ListInlinePolicies(ctx context.Context, userName string) ([]string, error)
-
-    // GetInlinePolicy returns the policy document for an inline policy.
-    GetInlinePolicy(ctx context.Context, userName, policyName string) (string, error)
 
     // AttachManagedPolicy attaches a managed policy to the user.
     AttachManagedPolicy(ctx context.Context, userName, policyArn string) error
@@ -294,20 +278,20 @@ type IAMUserAPI interface {
     // DetachManagedPolicy detaches a managed policy from the user.
     DetachManagedPolicy(ctx context.Context, userName, policyArn string) error
 
-    // ListAttachedPolicies returns the ARNs of all managed policies attached.
-    ListAttachedPolicies(ctx context.Context, userName string) ([]string, error)
+    // AddUserToGroup adds the user to an IAM group.
+    AddUserToGroup(ctx context.Context, userName, groupName string) error
 
-    // AddToGroup adds the user to an IAM group.
-    AddToGroup(ctx context.Context, userName, groupName string) error
-
-    // RemoveFromGroup removes the user from an IAM group.
-    RemoveFromGroup(ctx context.Context, userName, groupName string) error
-
-    // ListGroups returns the group names the user belongs to.
-    ListGroups(ctx context.Context, userName string) ([]string, error)
+    // RemoveUserFromGroup removes the user from an IAM group.
+    RemoveUserFromGroup(ctx context.Context, userName, groupName string) error
 
     // UpdateTags replaces all user tags on the IAM user.
     UpdateTags(ctx context.Context, userName string, tags map[string]string) error
+
+    // DeleteLoginProfile removes the user's console login profile.
+    DeleteLoginProfile(ctx context.Context, userName string) error
+
+    // DeleteAllAccessKeys removes all access keys for the user.
+    DeleteAllAccessKeys(ctx context.Context, userName string) error
 }
 ```
 
@@ -519,8 +503,8 @@ const ServiceName = "IAMUser"
 ### Constructor Pattern
 
 ```go
-func NewIAMUserDriver(accounts *auth.Registry) *IAMUserDriver
-func NewIAMUserDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMUserAPI) *IAMUserDriver
+func NewIAMUserDriver(auth authservice.AuthClient) *IAMUserDriver
+func NewIAMUserDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMUserAPI) *IAMUserDriver
 ```
 
 ### Provision Handler
@@ -791,25 +775,25 @@ This prevents a window where the user lacks required permissions during converge
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/iam/user.cue` created
-- [ ] **Types**: `internal/drivers/iamuser/types.go` created
-- [ ] **AWS API**: `internal/drivers/iamuser/aws.go` created
-- [ ] **Drift**: `internal/drivers/iamuser/drift.go` created
-- [ ] **Driver**: `internal/drivers/iamuser/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/iamuser_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: IAMUser driver bound in `cmd/praxis-identity/main.go`
-- [ ] **Unit tests (drift)**: `internal/drivers/iamuser/drift_test.go`
-- [ ] **Unit tests (aws)**: `internal/drivers/iamuser/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/iamuser/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/iamuser_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/iamuser_driver_test.go`
-- [ ] **Composite describe**: GetUser + ListPolicies + GetPolicy + ListAttached + ListGroups
-- [ ] **Pre-deletion cleanup**: Groups, policies, login profile, access keys
-- [ ] **Group convergence**: Add-before-remove
-- [ ] **Path update**: Mutable via UpdateUser
-- [ ] **Import default mode**: `ModeObserved`
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/iamuser/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMUser -tags=integration`
+- [x] **Schema**: `schemas/aws/iam/user.cue` created
+- [x] **Types**: `internal/drivers/iamuser/types.go` created
+- [x] **AWS API**: `internal/drivers/iamuser/aws.go` created
+- [x] **Drift**: `internal/drivers/iamuser/drift.go` created
+- [x] **Driver**: `internal/drivers/iamuser/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/iamuser_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: IAMUser driver bound in `cmd/praxis-identity/main.go`
+- [x] **Unit tests (drift)**: `internal/drivers/iamuser/drift_test.go`
+- [x] **Unit tests (aws)**: `internal/drivers/iamuser/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/iamuser/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/iamuser_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/iamuser_driver_test.go`
+- [x] **Composite describe**: GetUser + ListPolicies + GetPolicy + ListAttached + ListGroups
+- [x] **Pre-deletion cleanup**: Groups, policies, login profile, access keys
+- [x] **Group convergence**: Add-before-remove
+- [x] **Path update**: Mutable via UpdateUserPath
+- [x] **Import default mode**: `ModeObserved`
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/iamuser/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMUser -tags=integration`

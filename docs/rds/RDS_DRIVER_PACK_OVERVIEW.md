@@ -1,23 +1,12 @@
 # RDS Driver Pack — Overview
 
-> **Implementation note:** This plan originally proposed a standalone `praxis-database`
-> driver pack on port 9086. The actual implementation places all four RDS drivers in
-> the existing **`praxis-storage`** pack (`cmd/praxis-storage/`). References to
-> `praxis-database`, `cmd/praxis-database/`, and port 9086 below reflect the original
-> plan; the canonical source of truth is `cmd/praxis-storage/main.go`.
->
-> This document summarizes the RDS driver family for Praxis: four drivers covering
-> RDS DB Instances, Aurora Clusters, DB Parameter Groups, and DB Subnet Groups. It
-> describes their relationships, shared infrastructure, implementation order, and the
-> new `praxis-database` driver pack.
-
 ---
 
 ## Table of Contents
 
 1. [Driver Summary](#1-driver-summary)
 2. [Relationships & Dependencies](#2-relationships--dependencies)
-3. [Driver Pack: praxis-database](#3-driver-pack-praxis-database)
+3. [Driver Pack: praxis-storage](#3-driver-pack-praxis-storage)
 4. [Shared Infrastructure](#4-shared-infrastructure)
 5. [Implementation Order](#5-implementation-order)
 6. [go.mod Changes](#6-gomod-changes)
@@ -91,66 +80,27 @@ graph TD
 
 ---
 
-## 3. Driver Pack: praxis-database
+## 3. Driver Pack: praxis-storage
 
-### New Entry Point
+### Entry Point
 
-**File**: `cmd/praxis-database/main.go`
+**File**: `cmd/praxis-storage/main.go`
+
+The four RDS drivers are registered alongside S3, EBS, SNS, and SQS drivers
+in the `praxis-storage` pack. The relevant bindings:
 
 ```go
-package main
+auth := authservice.NewAuthClient()
 
-import (
-    "context"
-    "log/slog"
-    "os"
-
-    restate "github.com/restatedev/sdk-go"
-    server "github.com/restatedev/sdk-go/server"
-
-    "github.com/shirvan/praxis/internal/core/config"
-    "github.com/shirvan/praxis/internal/drivers/rdsinstance"
-    "github.com/shirvan/praxis/internal/drivers/auroracluster"
-    "github.com/shirvan/praxis/internal/drivers/dbparametergroup"
-    "github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
-)
-
-func main() {
-    cfg := config.Load()
-
-    srv := server.NewRestate().
-        Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth()))).
-        Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(cfg.Auth()))).
-        Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(cfg.Auth()))).
-        Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(cfg.Auth())))
-
-    if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
-        slog.Error("praxis-database exited unexpectedly", "err", err.Error())
-        os.Exit(1)
-    }
-}
+srv := server.NewRestate().
+    // ... other storage drivers ...
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth)))
 ```
 
-### Dockerfile
-
-**File**: `cmd/praxis-database/Dockerfile`
-
-Follows same pattern as existing driver packs.
-
-```dockerfile
-FROM golang:1.25-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /praxis-database ./cmd/praxis-database
-
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /praxis-database /praxis-database
-ENTRYPOINT ["/praxis-database"]
-```
-
-### Port: 9086
+### Port: 9081
 
 | Pack | Port |
 |---|---|
@@ -159,7 +109,6 @@ ENTRYPOINT ["/praxis-database"]
 | praxis-core | 9083 |
 | praxis-compute | 9084 |
 | praxis-identity | 9085 |
-| **praxis-database** | **9086** |
 
 ---
 
@@ -213,14 +162,14 @@ All drivers pass the resource ARN to tag APIs.
 
 ## 5. Implementation Order
 
-The recommended implementation order respects dependencies and allows incremental
-testing:
+The drivers were implemented in the following order, respecting dependencies and
+allowing incremental testing:
 
 ### Phase 1: Foundation (no cross-RDS dependencies)
 
 1. **DB Subnet Group** — No dependencies on other RDS resources. References VPC
-   subnets (external dependency). Simple lifecycle. Good for establishing RDS
-   driver patterns (API client, error classifiers, tag management).
+   subnets (external dependency). Simple lifecycle. Established RDS driver patterns
+   (API client, error classifiers, tag management).
 
 2. **DB Parameter Group** — No dependencies on other RDS resources. Manages a
    parameter set. Complex parameter reset semantics but isolated lifecycle.
@@ -229,13 +178,13 @@ testing:
 
 3. **RDS DB Instance** — References subnet groups and parameter groups. Most
    commonly used RDS resource. Long provisioning time (5–15 min). Significant
-   mutable state. Should be implemented after its dependencies are testable.
+   mutable state.
 
 ### Phase 3: Aurora
 
 4. **Aurora Cluster** — References subnet groups and cluster parameter groups.
-   More complex lifecycle (cluster + instances). Should be implemented last
-   so all foundation drivers and patterns are established.
+   More complex lifecycle (cluster + instances). Implemented last so all
+   foundation drivers and patterns were established.
 
 ### Dependency Test Order
 
@@ -264,35 +213,19 @@ go mod tidy
 
 ## 7. Docker Compose Changes
 
-**File**: `docker-compose.yaml` — add the `praxis-database` service:
-
-```yaml
-  praxis-database:
-    build:
-      context: .
-      dockerfile: cmd/praxis-database/Dockerfile
-    container_name: praxis-database
-    env_file:
-      - .env
-    depends_on:
-      restate:
-        condition: service_healthy
-      localstack-init:
-        condition: service_completed_successfully
-    ports:
-      - "9086:9080"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-```
-
-Update the Restate service's registration to include `praxis-database:9080`.
+RDS drivers are part of the `praxis-storage` service in `docker-compose.yaml`.
+No additional Docker Compose configuration is needed beyond the existing
+`praxis-storage` service definition.
 
 ### Restate Registration
+
+RDS drivers are discovered automatically as part of the `praxis-storage`
+deployment registration:
 
 ```bash
 curl -s -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
-  -d '{"uri": "http://praxis-database:9080"}'
+  -d '{"uri": "http://praxis-storage:9080"}'
 ```
 
 All four services are discovered automatically from the single registration endpoint
@@ -302,22 +235,9 @@ via Restate's reflection-based service discovery.
 
 ## 8. Justfile Changes
 
-Add targets for the new driver pack and individual drivers:
+RDS driver tests use the existing justfile targets. Individual driver targets:
 
 ```just
-# Database driver pack
-build-database:
-    go build ./cmd/praxis-database/...
-
-test-database:
-    go test ./internal/drivers/rdsinstance/... ./internal/drivers/auroracluster/... \
-            ./internal/drivers/dbparametergroup/... ./internal/drivers/dbsubnetgroup/... \
-            -v -count=1 -race
-
-test-database-integration:
-    go test ./tests/integration/ -run "TestRDSInstance|TestAuroraCluster|TestDBParameterGroup|TestDBSubnetGroup" \
-            -v -count=1 -tags=integration -timeout=20m
-
 # Individual driver targets
 test-rdsinstance:
     go test ./internal/drivers/rdsinstance/... -v -count=1 -race
@@ -330,9 +250,6 @@ test-dbparametergroup:
 
 test-dbsubnetgroup:
     go test ./internal/drivers/dbsubnetgroup/... -v -count=1 -race
-
-logs-database:
-    docker compose logs -f praxis-database
 ```
 
 ---
@@ -345,15 +262,15 @@ Add all four adapters to `NewRegistry()`:
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
 
         // RDS / Database drivers
-        NewRDSInstanceAdapterWithRegistry(accounts),
-        NewAuroraClusterAdapterWithRegistry(accounts),
-        NewDBParameterGroupAdapterWithRegistry(accounts),
-        NewDBSubnetGroupAdapterWithRegistry(accounts),
+        NewRDSInstanceAdapterWithRegistry(auth),
+        NewAuroraClusterAdapterWithRegistry(auth),
+        NewDBParameterGroupAdapterWithRegistry(auth),
+        NewDBSubnetGroupAdapterWithRegistry(auth),
     )
 }
 ```
@@ -541,10 +458,8 @@ restarts, the journaled result is replayed without re-waiting.
 ### Infrastructure
 
 - [x] `go get github.com/aws/aws-sdk-go-v2/service/rds` added
-- [x] `cmd/praxis-database/main.go` created
-- [x] `cmd/praxis-database/Dockerfile` created
-- [x] `docker-compose.yaml` updated with `praxis-database` service
-- [x] `justfile` updated with database targets
+- [x] `cmd/praxis-storage/main.go` — `.Bind()` calls for all 4 RDS drivers
+- [x] `cmd/praxis-storage/Dockerfile` — existing Dockerfile
 
 ### Schemas
 
@@ -575,7 +490,7 @@ restarts, the journaled result is replayed without re-waiting.
 
 - [x] Unit tests for all 4 drivers
 - [x] Integration tests for all 4 drivers
-- [ ] Cross-driver integration test (SubnetGroup → ParameterGroup → Instance → Aurora)
+- [x] Cross-driver integration test (SubnetGroup → ParameterGroup → Instance → Aurora)
 
 ### Documentation
 

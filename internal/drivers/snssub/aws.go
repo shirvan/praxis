@@ -1,3 +1,9 @@
+// Package snssub – aws.go
+//
+// This file contains the AWS API abstraction layer for AWS SNS Subscription.
+// It defines the SNSSubscriptionAPI interface (used for testing with mocks)
+// and the real implementation that calls Amazon Simple Notification Service (SNS) through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
 package snssub
 
 import (
@@ -85,6 +91,7 @@ func (r *realSubscriptionAPI) Subscribe(ctx context.Context, spec SNSSubscriptio
 	return aws.ToString(out.SubscriptionArn), nil
 }
 
+// GetSubscriptionAttributes reads the current state of the AWS SNS Subscription from Amazon Simple Notification Service (SNS).
 func (r *realSubscriptionAPI) GetSubscriptionAttributes(ctx context.Context, subscriptionArn string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -136,6 +143,7 @@ func (r *realSubscriptionAPI) GetSubscriptionAttributes(ctx context.Context, sub
 	return obs, nil
 }
 
+// SetSubscriptionAttribute updates mutable properties of the AWS SNS Subscription via Amazon Simple Notification Service (SNS).
 func (r *realSubscriptionAPI) SetSubscriptionAttribute(ctx context.Context, subscriptionArn, attrName, attrValue string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -158,6 +166,7 @@ func (r *realSubscriptionAPI) Unsubscribe(ctx context.Context, subscriptionArn s
 	return err
 }
 
+// FindByTopicProtocolEndpoint searches for the AWS SNS Subscription using alternative identifiers.
 func (r *realSubscriptionAPI) FindByTopicProtocolEndpoint(ctx context.Context, topicArn, protocol, endpoint string) (string, error) {
 	subs, err := r.listSubscriptionsByTopic(ctx, topicArn)
 	if err != nil {

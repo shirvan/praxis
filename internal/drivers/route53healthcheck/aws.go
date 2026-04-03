@@ -13,6 +13,8 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// HealthCheckAPI defines the interface for all Route53 health check operations.
+// Includes creation, describe, update (with version-based optimistic concurrency), tag management, and deletion.
 type HealthCheckAPI interface {
 	CreateHealthCheck(ctx context.Context, spec HealthCheckSpec) (string, error)
 	DescribeHealthCheck(ctx context.Context, healthCheckID string) (ObservedState, error)
@@ -26,6 +28,7 @@ type realHealthCheckAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+// NewHealthCheckAPI constructs a production HealthCheckAPI with Route53 rate limiting.
 func NewHealthCheckAPI(client *route53sdk.Client) HealthCheckAPI {
 	return &realHealthCheckAPI{client: client, limiter: ratelimit.New("route53", 5, 3)}
 }
@@ -72,6 +75,8 @@ func (r *realHealthCheckAPI) DescribeHealthCheck(ctx context.Context, healthChec
 	return normalizeObservedState(observed), nil
 }
 
+// UpdateHealthCheck calls the Route53 UpdateHealthCheck API using version-based optimistic
+// concurrency (observed.Version). Computes resetElements to clear fields no longer set.
 func (r *realHealthCheckAPI) UpdateHealthCheck(ctx context.Context, healthCheckID string, observed ObservedState, desired HealthCheckSpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err

@@ -1,12 +1,4 @@
-# Lambda Function Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages AWS Lambda functions, following
-> the exact patterns established by the S3, Security Group, EC2, VPC, EBS, Elastic IP,
-> Key Pair, and AMI drivers.
->
-> Key scope: `KeyScopeRegion` — key format is `region~functionName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned function ARN
-> lives only in state/outputs.
+# Lambda Function Driver — Implementation Spec
 
 ---
 
@@ -37,7 +29,7 @@
 The Lambda Function driver manages the lifecycle of **Lambda functions** only.
 Permissions (resource-based policies), event source mappings, aliases, provisioned
 concurrency, and function URLs are separate drivers or future extensions. This
-document focuses exclusively on function creation, code deployment, configuration
+document covers function creation, code deployment, configuration
 updates, import, deletion, and drift reconciliation.
 
 The driver follows the established Virtual Object contract:
@@ -76,12 +68,12 @@ The driver follows the established Virtual Object contract:
 ### Dual Update Path
 
 Lambda functions have a critical design constraint: **code updates and configuration
-updates are separate API calls**. The driver must:
+updates are separate API calls**. The driver:
 
-1. Call `UpdateFunctionCode` if code source has changed.
-2. Wait for `LastUpdateStatus` to become `Successful`.
-3. Call `UpdateFunctionConfiguration` if configuration has changed.
-4. Wait for `LastUpdateStatus` to become `Successful`.
+1. Calls `UpdateFunctionCode` if code source has changed.
+2. Waits for `LastUpdateStatus` to become `Successful` via `WaitForFunctionStable`.
+3. Calls `UpdateFunctionConfiguration` if configuration has changed.
+4. Waits for `LastUpdateStatus` to become `Successful`.
 
 Calling both simultaneously causes `ResourceConflictException`. The driver handles
 this sequentially within a single `Provision` call, using `restate.Run()` for each
@@ -155,7 +147,7 @@ semantics.
 
 ## 3. File Inventory
 
-Create or modify these files (✦ = new file, ✎ = modify existing):
+The following files comprise the Lambda Function driver:
 
 ```text
 ✦ internal/drivers/lambda/types.go                — Spec, Outputs, ObservedState, State structs
@@ -328,32 +320,33 @@ const ServiceName = "LambdaFunction"
 
 // LambdaFunctionSpec is the desired state for a Lambda function.
 type LambdaFunctionSpec struct {
-    Account          string            `json:"account,omitempty"`
-    Region           string            `json:"region"`
-    FunctionName     string            `json:"functionName"`
-    Role             string            `json:"role"`
-    Runtime          string            `json:"runtime"`
-    Handler          string            `json:"handler,omitempty"`
-    Description      string            `json:"description,omitempty"`
-    Code             CodeSpec          `json:"code"`
-    MemorySize       int32             `json:"memorySize"`
-    Timeout          int32             `json:"timeout"`
-    Environment      map[string]string `json:"environment,omitempty"`
-    Layers           []string          `json:"layers,omitempty"`
-    VpcConfig        *VpcConfigSpec    `json:"vpcConfig,omitempty"`
-    DeadLetterConfig *DLQSpec          `json:"deadLetterConfig,omitempty"`
-    TracingConfig    *TracingSpec      `json:"tracingConfig,omitempty"`
-    Architectures    []string          `json:"architectures,omitempty"`
-    EphemeralStorage *EphemeralSpec    `json:"ephemeralStorage,omitempty"`
-    Tags             map[string]string `json:"tags,omitempty"`
-    ManagedKey       string            `json:"managedKey,omitempty"`
+    Account          string                `json:"account,omitempty"`
+    Region           string                `json:"region"`
+    FunctionName     string                `json:"functionName"`
+    Role             string                `json:"role"`
+    PackageType      string                `json:"packageType,omitempty"`
+    Runtime          string                `json:"runtime,omitempty"`
+    Handler          string                `json:"handler,omitempty"`
+    Description      string                `json:"description,omitempty"`
+    Code             CodeSpec              `json:"code"`
+    MemorySize       int32                 `json:"memorySize,omitempty"`
+    Timeout          int32                 `json:"timeout,omitempty"`
+    Environment      map[string]string     `json:"environment,omitempty"`
+    Layers           []string              `json:"layers,omitempty"`
+    VPCConfig        *VPCConfigSpec        `json:"vpcConfig,omitempty"`
+    DeadLetterConfig *DeadLetterConfigSpec `json:"deadLetterConfig,omitempty"`
+    TracingConfig    *TracingConfigSpec    `json:"tracingConfig,omitempty"`
+    Architectures    []string              `json:"architectures,omitempty"`
+    EphemeralStorage *EphemeralStorageSpec `json:"ephemeralStorage,omitempty"`
+    Tags             map[string]string     `json:"tags,omitempty"`
+    ManagedKey       string                `json:"managedKey,omitempty"`
 }
 
 // CodeSpec defines where the function code comes from.
 type CodeSpec struct {
     S3       *S3CodeSpec `json:"s3,omitempty"`
-    ZipFile  []byte      `json:"zipFile,omitempty"`
-    ImageUri string      `json:"imageUri,omitempty"`
+    ZipFile  string      `json:"zipFile,omitempty"`
+    ImageURI string      `json:"imageUri,omitempty"`
 }
 
 // S3CodeSpec references function code stored in S3.
@@ -363,37 +356,36 @@ type S3CodeSpec struct {
     ObjectVersion string `json:"objectVersion,omitempty"`
 }
 
-// VpcConfigSpec connects the function to a VPC.
-type VpcConfigSpec struct {
-    SubnetIds        []string `json:"subnetIds"`
-    SecurityGroupIds []string `json:"securityGroupIds"`
+// VPCConfigSpec connects the function to a VPC.
+type VPCConfigSpec struct {
+    SubnetIds        []string `json:"subnetIds,omitempty"`
+    SecurityGroupIds []string `json:"securityGroupIds,omitempty"`
 }
 
-// DLQSpec specifies a dead letter queue for failed async invocations.
-type DLQSpec struct {
+// DeadLetterConfigSpec specifies a dead letter queue for failed async invocations.
+type DeadLetterConfigSpec struct {
     TargetArn string `json:"targetArn"`
 }
 
-// TracingSpec controls X-Ray tracing.
-type TracingSpec struct {
-    Mode string `json:"mode"`
+// TracingConfigSpec controls X-Ray tracing.
+type TracingConfigSpec struct {
+    Mode string `json:"mode,omitempty"`
 }
 
-// EphemeralSpec configures /tmp storage size.
-type EphemeralSpec struct {
+// EphemeralStorageSpec configures /tmp storage size.
+type EphemeralStorageSpec struct {
     Size int32 `json:"size"`
 }
 
 // LambdaFunctionOutputs is produced after provisioning and stored in Restate K/V.
 type LambdaFunctionOutputs struct {
-    FunctionArn  string `json:"functionArn"`
-    FunctionName string `json:"functionName"`
-    Version      string `json:"version"`
-    CodeHash     string `json:"codeHash"`
-    CodeSize     int64  `json:"codeSizeBytes"`
-    LastModified string `json:"lastModified"`
-    State        string `json:"state"`
-    VpcId        string `json:"vpcId,omitempty"`
+    FunctionArn      string `json:"functionArn"`
+    FunctionName     string `json:"functionName"`
+    Version          string `json:"version,omitempty"`
+    State            string `json:"state,omitempty"`
+    LastModified     string `json:"lastModified,omitempty"`
+    LastUpdateStatus string `json:"lastUpdateStatus,omitempty"`
+    CodeSha256       string `json:"codeSha256,omitempty"`
 }
 
 // ObservedState captures the actual configuration of a function from AWS.
@@ -401,25 +393,26 @@ type ObservedState struct {
     FunctionArn      string            `json:"functionArn"`
     FunctionName     string            `json:"functionName"`
     Role             string            `json:"role"`
-    Runtime          string            `json:"runtime"`
-    Handler          string            `json:"handler"`
-    Description      string            `json:"description"`
-    MemorySize       int32             `json:"memorySize"`
-    Timeout          int32             `json:"timeout"`
-    Environment      map[string]string `json:"environment"`
-    Layers           []string          `json:"layers"`
-    SubnetIds        []string          `json:"subnetIds,omitempty"`
-    SecurityGroupIds []string          `json:"securityGroupIds,omitempty"`
-    VpcId            string            `json:"vpcId,omitempty"`
-    DeadLetterArn    string            `json:"deadLetterArn,omitempty"`
-    TracingMode      string            `json:"tracingMode"`
-    Architectures    []string          `json:"architectures"`
-    EphemeralSize    int32             `json:"ephemeralSize"`
-    CodeHash         string            `json:"codeHash"`
-    CodeSize         int64             `json:"codeSize"`
-    State            string            `json:"state"`
-    LastUpdateStatus string            `json:"lastUpdateStatus"`
-    Tags             map[string]string `json:"tags"`
+    PackageType      string            `json:"packageType,omitempty"`
+    Runtime          string            `json:"runtime,omitempty"`
+    Handler          string            `json:"handler,omitempty"`
+    Description      string            `json:"description,omitempty"`
+    MemorySize       int32             `json:"memorySize,omitempty"`
+    Timeout          int32             `json:"timeout,omitempty"`
+    Environment      map[string]string `json:"environment,omitempty"`
+    Layers           []string          `json:"layers,omitempty"`
+    VpcConfig        VPCConfigSpec     `json:"vpcConfig,omitzero"`
+    DeadLetterTarget string            `json:"deadLetterTarget,omitempty"`
+    TracingMode      string            `json:"tracingMode,omitempty"`
+    Architectures    []string          `json:"architectures,omitempty"`
+    EphemeralSize    int32             `json:"ephemeralSize,omitempty"`
+    Tags             map[string]string `json:"tags,omitempty"`
+    ImageURI         string            `json:"imageUri,omitempty"`
+    Version          string            `json:"version,omitempty"`
+    State            string            `json:"state,omitempty"`
+    LastModified     string            `json:"lastModified,omitempty"`
+    LastUpdateStatus string            `json:"lastUpdateStatus,omitempty"`
+    CodeSha256       string            `json:"codeSha256,omitempty"`
 }
 
 // LambdaFunctionState is the single atomic state object stored under drivers.StateKey.
@@ -438,12 +431,15 @@ type LambdaFunctionState struct {
 
 ### Types Design Notes
 
-- **`CodeSpec.ZipFile` is `[]byte`**: The SDK expects raw bytes for inline code.
-  The CUE schema accepts base64; the adapter decodes it before dispatch.
+- **`CodeSpec.ZipFile` is `string`**: The driver accepts base64-encoded ZIP content
+  as a string. The CUE schema accepts base64; the adapter passes it through.
+- **`PackageType`**: Supports `Zip` (default) or `Image` for container-based functions.
+  When `Image` is used, `Runtime` and `Handler` are not required.
 - **`ObservedState.Layers` stores ARNs**: The describe call returns layer ARNs
   with version numbers. These are compared directly against the desired `Layers` list.
 - **`ObservedState.LastUpdateStatus`**: Critical for the dual-update flow. The driver
-  must poll until this becomes `Successful` before issuing the next update.
+  polls via `WaitForFunctionStable` until this becomes `Successful` before issuing the
+  next update.
 
 ---
 
@@ -455,34 +451,27 @@ type LambdaFunctionState struct {
 
 ```go
 type LambdaAPI interface {
-    // CreateFunction creates a new Lambda function.
-    CreateFunction(ctx context.Context, spec LambdaFunctionSpec) (LambdaFunctionOutputs, error)
-
-    // GetFunction returns the current configuration and code metadata.
-    GetFunction(ctx context.Context, functionName string) (ObservedState, error)
+    // CreateFunction creates a new Lambda function. Returns the function ARN.
+    CreateFunction(ctx context.Context, spec LambdaFunctionSpec) (string, error)
 
     // UpdateFunctionCode updates the function's deployment package.
-    // Returns the new code SHA256 hash.
-    UpdateFunctionCode(ctx context.Context, functionName string, code CodeSpec) (string, error)
+    UpdateFunctionCode(ctx context.Context, spec LambdaFunctionSpec) error
 
     // UpdateFunctionConfiguration updates the function's runtime configuration.
-    UpdateFunctionConfiguration(ctx context.Context, functionName string, spec LambdaFunctionSpec) error
+    UpdateFunctionConfiguration(ctx context.Context, spec LambdaFunctionSpec, observed ObservedState) error
 
-    // WaitForUpdateComplete polls until LastUpdateStatus is Successful.
-    // Returns an error if the update fails or times out.
-    WaitForUpdateComplete(ctx context.Context, functionName string) error
+    // DescribeFunction returns the current configuration and code metadata.
+    DescribeFunction(ctx context.Context, functionName string) (ObservedState, error)
 
     // DeleteFunction deletes the function and all its versions/aliases.
     DeleteFunction(ctx context.Context, functionName string) error
 
-    // TagFunction replaces all tags on the function.
-    TagFunction(ctx context.Context, functionArn string, tags map[string]string) error
+    // UpdateTags replaces all tags on the function.
+    UpdateTags(ctx context.Context, functionArn string, tags map[string]string) error
 
-    // UntagFunction removes specific tag keys from the function.
-    UntagFunction(ctx context.Context, functionArn string, keys []string) error
-
-    // ListTags returns all tags on the function.
-    ListTags(ctx context.Context, functionArn string) (map[string]string, error)
+    // WaitForFunctionStable polls until LastUpdateStatus is Successful.
+    // Returns an error if the update fails or times out.
+    WaitForFunctionStable(ctx context.Context, functionName string, timeout time.Duration) error
 }
 ```
 
@@ -494,8 +483,8 @@ type realLambdaAPI struct {
     limiter ratelimit.Limiter
 }
 
-func newRealLambdaAPI(client *lambda.Client, limiter ratelimit.Limiter) LambdaAPI {
-    return &realLambdaAPI{client: client, limiter: limiter}
+func NewLambdaAPI(client *lambdasdk.Client) LambdaAPI {
+    return &realLambdaAPI{client: client, limiter: ratelimit.New("lambda-function", 15, 10)}
 }
 ```
 
@@ -682,14 +671,26 @@ func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []typ
 
 ```go
 type LambdaFunctionDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
+    apiFactory func(aws.Config) LambdaAPI
 }
 
-func NewLambdaFunctionDriver(accounts *auth.Registry) *LambdaFunctionDriver {
-    return &LambdaFunctionDriver{accounts: accounts}
+func NewLambdaFunctionDriver(auth authservice.AuthClient) *LambdaFunctionDriver {
+    return NewLambdaFunctionDriverWithFactory(auth, func(cfg aws.Config) LambdaAPI {
+        return NewLambdaAPI(awsclient.NewLambdaClient(cfg))
+    })
 }
 
-func (LambdaFunctionDriver) ServiceName() string { return ServiceName }
+func NewLambdaFunctionDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LambdaAPI) *LambdaFunctionDriver {
+    if factory == nil {
+        factory = func(cfg aws.Config) LambdaAPI { return NewLambdaAPI(awsclient.NewLambdaClient(cfg)) }
+    }
+    return &LambdaFunctionDriver{auth: auth, apiFactory: factory}
+}
+
+func (d *LambdaFunctionDriver) ServiceName() string {
+    return ServiceName
+}
 ```
 
 ### Provision

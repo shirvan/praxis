@@ -14,15 +14,27 @@ import (
 	"github.com/shirvan/praxis/internal/core/template"
 )
 
+// ssmBatchSize is the maximum number of SSM parameter names per GetParameters
+// API call. AWS limits this to 10.
 const ssmBatchSize = 10
 
 // SSMClient abstracts the AWS SSM SDK operations needed for parameter resolution.
+// This interface exists to allow unit testing with a mock SSM backend.
 type SSMClient interface {
 	GetParameters(ctx context.Context, params *ssm.GetParametersInput, optFns ...func(*ssm.Options)) (*ssm.GetParametersOutput, error)
 }
 
 // SSMResolver resolves ssm:/// URI references in JSON specs by fetching
 // parameter values from AWS Systems Manager Parameter Store.
+//
+// Templates can reference SSM parameters using the URI format:
+//
+//	ssm:///path/to/parameter              → resolved normally
+//	ssm:///path/to/secret?sensitive=true   → resolved + marked for masking in CLI output
+//
+// The resolver scans all resource specs for ssm:/// strings, deduplicates
+// the parameter paths, batch-fetches them from AWS, and replaces the URIs
+// with the resolved values in the JSON documents.
 type SSMResolver struct {
 	client SSMClient
 }
@@ -33,17 +45,21 @@ type SSMResolver struct {
 // The values themselves are still resolved normally because durable execution
 // needs the real data. This structure exists only to help downstream display
 // logic know which JSON paths should be replaced with "***".
+//
+// A parameter is marked sensitive when the template author appends
+// ?sensitive=true to the ssm:/// URI.
 type SensitiveParams struct {
 	// Paths is a set keyed by "resourceName.json.path".
 	Paths map[string]bool `json:"paths"`
 }
 
-// NewSensitiveParams creates an empty sensitivity set.
+// NewSensitiveParams creates an empty sensitivity tracking set.
 func NewSensitiveParams() *SensitiveParams {
 	return &SensitiveParams{Paths: make(map[string]bool)}
 }
 
-// Add marks a resource-local JSON path as sensitive.
+// Add marks a resource-local JSON path as sensitive. The key format is
+// "resourceName.json.path" (e.g. "my-db.spec.password").
 func (s *SensitiveParams) Add(resourceName, jsonPath string) {
 	if s == nil {
 		return
@@ -54,7 +70,8 @@ func (s *SensitiveParams) Add(resourceName, jsonPath string) {
 	s.Paths[resourceName+"."+jsonPath] = true
 }
 
-// Contains reports whether a resource-local JSON path should be masked.
+// Contains reports whether a resource-local JSON path should be masked
+// in user-facing output.
 func (s *SensitiveParams) Contains(resourceName, jsonPath string) bool {
 	if s == nil || s.Paths == nil {
 		return false
@@ -62,16 +79,20 @@ func (s *SensitiveParams) Contains(resourceName, jsonPath string) bool {
 	return s.Paths[resourceName+"."+jsonPath]
 }
 
+// ssmReference is a parsed ssm:/// URI with its path and sensitivity flag.
 type ssmReference struct {
-	Raw       string
-	Path      string
-	Sensitive bool
+	Raw       string // Original URI string from the template
+	Path      string // SSM parameter path (e.g. "/prod/db/password")
+	Sensitive bool   // Whether to mask the resolved value in output
 }
 
+// ssmReferenceOccurrence records where an SSM URI was found in the resource
+// specs, allowing the resolver to replace the value at the correct JSON path
+// after batch fetching.
 type ssmReferenceOccurrence struct {
-	ResourceName string
-	JSONPath     string
-	Ref          ssmReference
+	ResourceName string       // Name of the resource containing the reference
+	JSONPath     string       // Dot-separated path within the resource's JSON
+	Ref          ssmReference // The parsed SSM URI
 }
 
 // NewSSMResolver creates a resolver backed by the given SSM client.
@@ -81,6 +102,7 @@ func NewSSMResolver(client SSMClient) *SSMResolver {
 
 // Resolve scans rawSpecs for ssm:/// strings, batch-fetches all unique paths,
 // and returns a new map with all ssm:/// strings replaced by their values.
+// This is the non-Restate entry point used for local CLI evaluation.
 // All resolution errors are collected before returning.
 func (r *SSMResolver) Resolve(ctx context.Context, rawSpecs map[string]json.RawMessage) (map[string]json.RawMessage, error) {
 	resolved, _, err := resolveSSMReferences(rawSpecs, func(paths []string) (map[string]string, error) {
@@ -92,6 +114,17 @@ func (r *SSMResolver) Resolve(ctx context.Context, rawSpecs map[string]json.RawM
 	return resolved, nil
 }
 
+// resolveSSMReferences is the shared resolution core. It accepts a pluggable
+// fetch function so that the Restate-journaled resolver can inject
+// restate.Run-wrapped fetching while reusing all the scanning and
+// replacement logic.
+//
+// Steps:
+//  1. Unmarshal each resource spec and walk the JSON tree for ssm:/// strings.
+//  2. Parse each URI into path + sensitivity flag.
+//  3. Deduplicate paths and call the fetch function once.
+//  4. Replace each occurrence with the resolved value using jsonpath.Set.
+//  5. Track sensitive paths for downstream masking.
 func resolveSSMReferences(
 	rawSpecs map[string]json.RawMessage,
 	fetch func(paths []string) (map[string]string, error),
@@ -205,6 +238,8 @@ func resolveSSMReferences(
 	return result, sensitive, nil
 }
 
+// parseSSMReference parses an ssm:/// URI string into its path and sensitivity
+// flag. The URI format is: ssm:///path/to/param[?sensitive=true]
 func parseSSMReference(raw string) (ssmReference, error) {
 	uri, err := url.Parse(raw)
 	if err != nil {
@@ -223,6 +258,10 @@ func parseSSMReference(raw string) (ssmReference, error) {
 	}, nil
 }
 
+// walkJSON recursively visits every node in a generic JSON value tree.
+// The visitor callback receives the dot-separated path and the value at
+// each node (including intermediate maps and slices). Map keys are sorted
+// for deterministic traversal order.
 func walkJSON(value any, path string, visit func(path string, value any)) {
 	visit(path, value)
 
@@ -243,6 +282,7 @@ func walkJSON(value any, path string, visit func(path string, value any)) {
 	}
 }
 
+// appendJSONPath concatenates two path segments with a dot separator.
 func appendJSONPath(path, part string) string {
 	if path == "" {
 		return part
@@ -258,7 +298,9 @@ func (r *SSMResolver) batchFetchMap(ctx context.Context, paths []string) (map[st
 	return resolved, nil
 }
 
-// batchFetch retrieves parameters in batches of ssmBatchSize.
+// batchFetch retrieves parameters in batches of ssmBatchSize (10) to respect
+// the AWS GetParameters API limit. Invalid (not found) parameters are reported
+// as template errors with actionable suggestions.
 func (r *SSMResolver) batchFetch(ctx context.Context, paths []string) (map[string]string, template.TemplateErrors) {
 	resolved := make(map[string]string, len(paths))
 	var errs template.TemplateErrors

@@ -9,6 +9,10 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// registerExplainTools adds tools that help the LLM explain Praxis concepts,
+// errors, and resource types. These are read-only and do not require approval.
+// They provide structured knowledge that the LLM combines with its own reasoning
+// to produce helpful explanations for the user.
 func (r *ToolRegistry) registerExplainTools() {
 	r.Register(&ToolDef{
 		Name:        "explainError",
@@ -50,6 +54,9 @@ func (r *ToolRegistry) registerExplainTools() {
 	})
 }
 
+// toolExplainError provides known error code explanations. For recognized Praxis
+// error codes, it returns a structured explanation. For unknown errors, it returns
+// the raw message and lets the LLM interpret it using its general knowledge.
 func toolExplainError(_ restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		Error string `json:"error"`
@@ -83,6 +90,9 @@ func toolExplainError(_ restate.Context, argsJSON string, _ SessionState) (strin
 	return fmt.Sprintf("Error message: %s\n\nThis is not a known Praxis error code. The error may be from an AWS API call or a runtime issue. Check the deployment events for more context.", args.Error), nil
 }
 
+// toolExplainResource returns a structured description of a Praxis resource kind,
+// including its purpose and spec fields. This helps the LLM guide users in
+// constructing valid CUE templates.
 func toolExplainResource(_ restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		Kind string `json:"kind"`
@@ -112,6 +122,8 @@ func toolExplainResource(_ restate.Context, argsJSON string, _ SessionState) (st
 	return fmt.Sprintf("Resource kind %q is recognized by Praxis but detailed spec documentation is not available in this tool. Use 'describeTemplate' on a template that uses this kind to see its schema.", args.Kind), nil
 }
 
+// toolSuggestFix analyzes a failed deployment by fetching its details and building
+// a structured error summary. The LLM uses this summary to suggest remediation steps.
 func toolSuggestFix(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
 	var args struct {
 		DeploymentKey string `json:"deploymentKey"`

@@ -9,10 +9,16 @@ import (
 )
 
 // ThreadTracker is a read-through cache backed by SlackThreadState Virtual Objects.
+// It lives in the Gateway process (not in Restate) to avoid an RPC round-trip on
+// every incoming message. When a thread is not found in the local cache, it falls
+// back to a Restate RPC lookup and caches the result for subsequent messages.
+//
+// Thread-safety: all cache access is protected by a sync.RWMutex since the
+// Gateway's event loop and the config-version watcher run in separate goroutines.
 type ThreadTracker struct {
-	mu            sync.RWMutex
-	threads       map[string]ThreadRecord
-	restateClient *ingress.Client
+	mu            sync.RWMutex            // protects the threads map
+	threads       map[string]ThreadRecord // key: "channelID:threadTS"
+	restateClient *ingress.Client         // for fallback RPC lookups
 }
 
 // NewThreadTracker creates a new ThreadTracker backed by the given Restate ingress client.
@@ -24,7 +30,10 @@ func NewThreadTracker(rc *ingress.Client) *ThreadTracker {
 }
 
 // IsWatchThread checks the in-memory cache first, then falls back to a
-// Restate RPC lookup on a cache miss.
+// Restate RPC lookup on a cache miss. This is called for every incoming
+// threaded message to determine whether the thread is a Praxis-managed
+// watch thread (and thus should be routed to the concierge session).
+// Returns false for regular user threads that Praxis did not create.
 func (t *ThreadTracker) IsWatchThread(ctx context.Context, channelID, threadTS string) bool {
 	key := channelID + ":" + threadTS
 

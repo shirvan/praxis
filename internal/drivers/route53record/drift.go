@@ -6,18 +6,23 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry describes a single field-level difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any mutable field differs between the desired spec and observed state.
+// Normalises both sides before comparison.
 func HasDrift(desired RecordSpec, observed ObservedState) bool {
 	desired, _ = normalizeRecordSpec(desired)
 	observed = normalizeObservedState(observed)
 	return len(ComputeFieldDiffs(desired, observed)) > 0
 }
 
+// ComputeFieldDiffs returns a per-field list of differences. Reports name, type, hostedZoneId,
+// and setIdentifier as informational immutable diffs; checks all other fields for actionable drift.
 func ComputeFieldDiffs(desired RecordSpec, observed ObservedState) []FieldDiffEntry {
 	desired, _ = normalizeRecordSpec(desired)
 	observed = normalizeObservedState(observed)

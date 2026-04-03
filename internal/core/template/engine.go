@@ -15,18 +15,37 @@ import (
 )
 
 // PolicySource pairs a policy's CUE source with its name for diagnostics.
+// During evaluation, each policy is compiled and unified with the template
+// value; errors introduced by the unification are attributed to the policy
+// by name so the user knows which constraint failed.
 type PolicySource struct {
 	Name   string
 	Source []byte
 }
 
+// compiledPolicy is a CUE value that has been compiled from a PolicySource.
+// Kept internal — the Engine pre-compiles all policies once, then unifies
+// them with the template value for constraint checking.
 type compiledPolicy struct {
 	name  string
 	value cue.Value
 }
 
-// Engine loads CUE schemas and evaluates templates against them.
+// Engine is the CUE evaluation pipeline for Praxis templates.
+//
+// It is responsible for:
+//  1. Loading CUE template source (from file path or raw bytes).
+//  2. Injecting template variables into the CUE value tree.
+//  3. Loading provider schemas from schemaDir and unifying them with resources
+//     to enforce field types and constraints.
+//  4. Optionally applying policy CUE constraints and attributing violations.
+//  5. Extracting data source specifications and per-resource JSON specs.
+//
+// Thread safety: Engine is safe for concurrent use once constructed because
+// it only reads its schemaDir and pre-compiled lifecycleExt.
 type Engine struct {
+	// schemaDir is the filesystem path to the directory containing CUE schema
+	// definitions for all supported resource kinds (e.g. #S3Bucket, #EC2Instance).
 	schemaDir string
 	ctx       *cue.Context
 
@@ -38,6 +57,9 @@ type Engine struct {
 }
 
 // lifecycleCUE defines the optional lifecycle block accepted on all resource types.
+// This CUE fragment is compiled once at Engine construction and unified with
+// each resource during validation so that lifecycle directives (preventDestroy,
+// ignoreChanges) are always permitted regardless of the provider schema.
 const lifecycleCUE = `{
 	lifecycle?: {
 		preventDestroy?: bool
@@ -46,6 +68,8 @@ const lifecycleCUE = `{
 }`
 
 // NewEngine creates an engine that loads provider schemas from schemaDir.
+// The CUE context and lifecycle extension are compiled once and reused for
+// all subsequent evaluations.
 func NewEngine(schemaDir string) *Engine {
 	ctx := cuecontext.New()
 	return &Engine{
@@ -57,7 +81,7 @@ func NewEngine(schemaDir string) *Engine {
 
 // Evaluate loads the CUE template at templatePath, unifies it against provider
 // schemas, validates constraints, and returns per-resource raw JSON specs keyed
-// by resource name. All errors are collected in a single call.
+// by resource name. This is the file-based entry point used by the CLI.
 func (e *Engine) Evaluate(templatePath string, vars map[string]any) (map[string]json.RawMessage, error) {
 	templateDir := filepath.Dir(templatePath)
 	cfg := &load.Config{
@@ -74,7 +98,9 @@ func (e *Engine) Evaluate(templatePath string, vars map[string]any) (map[string]
 // EvaluateBytes evaluates a CUE template from raw bytes instead of a file path.
 //
 // The command service uses this entry point because templates arrive as request
-// payloads over Restate rather than as files on local disk.
+// payloads over Restate rather than as files on local disk. A virtual overlay
+// file is created so that the CUE loader can process the source without
+// touching the filesystem.
 func (e *Engine) EvaluateBytes(content []byte, vars map[string]any) (map[string]json.RawMessage, error) {
 	result, err := e.EvaluateBytesWithPolicies(content, nil, vars)
 	if err != nil {
@@ -85,6 +111,14 @@ func (e *Engine) EvaluateBytes(content []byte, vars map[string]any) (map[string]
 
 // EvaluateBytesWithPolicies evaluates raw template bytes and applies policies
 // before resource validation and JSON extraction.
+//
+// Policy evaluation strategy:
+//  1. Evaluate the template without policies to get a "baseline" error set.
+//  2. Unify each policy individually with the template to identify which new
+//     errors each policy introduces.
+//  3. Unify all policies together with the template for the final evaluation.
+//  4. Any error that was not in the baseline is classified as a PolicyViolation
+//     and annotated with the responsible policy name(s).
 func (e *Engine) EvaluateBytesWithPolicies(content []byte, policies []PolicySource, vars map[string]any) (*EvaluationResult, error) {
 	virtualDir := os.TempDir()
 	if trimmed := strings.TrimSpace(e.schemaDir); trimmed != "" {
@@ -101,6 +135,9 @@ func (e *Engine) EvaluateBytesWithPolicies(content []byte, policies []PolicySour
 	return e.evaluateWithLoadConfig([]string{filepath.Base(virtualPath)}, cfg, virtualPath, vars, policies)
 }
 
+// evaluateWithLoadConfig is the shared evaluation core used by all public
+// entry points. It handles the full pipeline: CUE loading → variable injection
+// → data source extraction → schema unification → policy enforcement → JSON export.
 func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, templatePath string, vars map[string]any, policies []PolicySource) (*EvaluationResult, error) {
 	instances := load.Instances(patterns, cfg)
 	if len(instances) == 0 {
@@ -122,7 +159,9 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 		return nil, e.convertLoadErrors(val.Err(), templatePath)
 	}
 
-	// Load schemas for unification.
+	// Load schemas for unification. Provider schemas define closed CUE
+	// definitions (#S3Bucket, #EC2Instance, etc.) that constrain valid field
+	// names and types for each resource kind.
 	schemaVal, schemaErr := e.loadSchemas()
 	if schemaErr != nil {
 		return nil, schemaErr
@@ -234,6 +273,9 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 	return nil, combined
 }
 
+// evaluateDataSources extracts data source declarations from the template's
+// top-level "data" block. Each entry is validated to have a kind and at least
+// one filter field. Returns nil if the template has no data block.
 func (e *Engine) evaluateDataSources(val cue.Value) (map[string]DataSourceSpec, TemplateErrors) {
 	dataVal := val.LookupPath(cue.ParsePath("data"))
 	if !dataVal.Exists() {
@@ -306,6 +348,10 @@ func validateDataSourceSpec(spec DataSourceSpec) error {
 	return nil
 }
 
+// evaluateResources iterates the template's "resources" block, unifies each
+// resource with its provider schema, validates concreteness, and exports JSON.
+// Lifecycle blocks are stripped before schema validation (since they are Praxis-
+// level, not schema-level) and spliced back into the final JSON output.
 func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[string]json.RawMessage, TemplateErrors) {
 	resourcesVal := val.LookupPath(cue.ParsePath("resources"))
 	if !resourcesVal.Exists() {
@@ -453,6 +499,9 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 	return results, nil
 }
 
+// loadSchemas loads all CUE packages under schemaDir and unifies them into
+// a single CUE value. This combined value contains named definitions (e.g.
+// #S3Bucket) that evaluateResources looks up per resource kind.
 func (e *Engine) loadSchemas() (*cue.Value, error) {
 	cfg := &load.Config{
 		Dir: e.schemaDir,
@@ -483,6 +532,8 @@ func (e *Engine) loadSchemas() (*cue.Value, error) {
 	return combined, nil
 }
 
+// convertLoadErrors translates CUE loader errors into TemplateErrors with
+// source position information extracted from CUE's error positions.
 func (e *Engine) convertLoadErrors(err error, templatePath string) TemplateErrors {
 	var errs TemplateErrors
 	for _, cerr := range errors.Errors(err) {
@@ -510,6 +561,8 @@ func (e *Engine) convertLoadErrors(err error, templatePath string) TemplateError
 	return errs
 }
 
+// formatCUEPath extracts the dot-separated path from a CUE error for use in
+// TemplateError.Path (e.g. "spec.tags.Environment").
 func formatCUEPath(err errors.Error) string {
 	path := err.Path()
 	if len(path) == 0 {
@@ -518,10 +571,14 @@ func formatCUEPath(err errors.Error) string {
 	return strings.Join(path, ".")
 }
 
+// templateErrorSignature generates a stable key from Path+Message used to
+// de-duplicate errors between baseline and policy evaluations.
 func templateErrorSignature(item TemplateError) string {
 	return item.Path + "|" + item.Message
 }
 
+// appendUniqueString appends candidate to items only if it is not already
+// present. Used to track which policy names contributed to a given error.
 func appendUniqueString(items []string, candidate string) []string {
 	if slices.Contains(items, candidate) {
 		return items

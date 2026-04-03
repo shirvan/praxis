@@ -1,12 +1,4 @@
-# Security Group Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages EC2 Security Groups, providing
-> full lifecycle management including creation, import, deletion, drift detection, and
-> drift correction with add-before-remove rule application.
->
-> Key scope: `KeyScopeCustom` — key format is `vpcId~groupName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned group ID lives
-> only in state/outputs.
+# Security Group Driver — Implementation Specification
 
 ---
 
@@ -467,8 +459,8 @@ instance is keyed by `vpcId~groupName`.
 ### Constructor Pattern
 
 ```go
-func NewSecurityGroupDriver(accounts *auth.Registry) *SecurityGroupDriver
-func NewSecurityGroupDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) SGAPI) *SecurityGroupDriver
+func NewSecurityGroupDriver(auth authservice.AuthClient) *SecurityGroupDriver
+func NewSecurityGroupDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) SGAPI) *SecurityGroupDriver
 ```
 
 - `NewSecurityGroupDriver`: Production constructor. Creates an `SGAPI` from
@@ -476,8 +468,7 @@ func NewSecurityGroupDriverWithFactory(accounts *auth.Registry, factory func(aws
 - `NewSecurityGroupDriverWithFactory`: Test constructor. Accepts a custom factory
   for injecting mock SGAPI implementations.
 
-Both constructors fall back to `auth.LoadFromEnv()` if the provided `auth.Registry`
-is nil, and to the default factory if factory is nil.
+Both constructors fall back to the default factory if factory is nil.
 
 ### Provision Handler
 
@@ -623,7 +614,7 @@ the strongly-typed SG driver.
 
 ```go
 type SecurityGroupAdapter struct {
-    auth              *auth.Registry
+    auth              authservice.AuthClient
     staticPlanningAPI sg.SGAPI        // injected in tests
     apiFactory        func(aws.Config) sg.SGAPI
 }
@@ -631,8 +622,7 @@ type SecurityGroupAdapter struct {
 
 ### Constructors
 
-- `NewSecurityGroupAdapter()`: Production, loads auth from env.
-- `NewSecurityGroupAdapterWithRegistry(accounts)`: Production, explicit auth.
+- `NewSecurityGroupAdapterWithAuth(auth)`: Production, explicit auth.
 - `NewSecurityGroupAdapterWithAPI(api)`: Test-only, injects a fixed planning API.
 
 ### Methods
@@ -693,7 +683,7 @@ Restate from retrying a not-found response, which is a normal planning outcome.
 The `NewRegistry()` function registers the SG adapter:
 
 ```go
-NewSecurityGroupAdapterWithRegistry(accounts),
+NewSecurityGroupAdapterWithAuth(auth),
 ```
 
 No other changes were needed — the registry's adapter interface is generic enough to
@@ -707,14 +697,15 @@ handle all driver types.
 
 **File**: `cmd/praxis-network/main.go`
 
-The SecurityGroup driver is added to the **network** driver pack. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so the network pack hosts all networking-related drivers (SG, and in the future VPC, ELB, Route 53, CloudFront, API Gateway).
+The SecurityGroup driver is bound in the **network** driver pack. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so the network pack hosts all networking-related drivers.
 
 ```go
 func main() {
     cfg := config.Load()
+    auth := authservice.NewAuthClient()
 
     srv := server.NewRestate().
-        Bind(restate.Reflect(sg.NewSecurityGroupDriver(cfg.Auth())))
+        Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth)))
 
     slog.Info("starting network driver pack", "addr", cfg.ListenAddr)
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
@@ -1009,7 +1000,7 @@ to self-heal when the transient error resolves (e.g., the AWS API recovers).
   - [x] `NormalizeOutputs()`
   - [x] `decodeSpec()` with groupName validation
   - [x] `planningAPI()` with static override for tests
-- [x] Registry integration — `NewSecurityGroupAdapterWithRegistry` in `NewRegistry()`
+- [x] Registry integration — `NewSecurityGroupAdapterWithAuth` in `NewRegistry()`
 - [x] Binary entry point in `cmd/praxis-network/main.go`
 - [x] Dockerfile at `cmd/praxis-network/Dockerfile`
 - [x] Docker Compose service (port 9082)

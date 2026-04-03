@@ -1,10 +1,5 @@
 # SQS Driver Pack — Overview
 
-> This document summarizes the SQS driver family for Praxis: two drivers covering
-> SQS Queues and SQS Queue Policies. It describes their relationships, shared
-> infrastructure, implementation order, and integration into the existing
-> `praxis-storage` driver pack.
-
 ---
 
 ## Table of Contents
@@ -26,7 +21,7 @@
 
 ## 1. Driver Summary
 
-| Driver | Kind | Key | Key Scope | Mutable | Tags | Plan Doc |
+| Driver | Kind | Key | Key Scope | Mutable | Tags | Spec Doc |
 |---|---|---|---|---|---|---|
 | SQS Queue | `SQSQueue` | `region~queueName` | `KeyScopeRegion` | visibilityTimeout, messageRetentionPeriod, maximumMessageSize, delaySeconds, receiveMessageWaitTimeSeconds, redrivePolicy, sqsManagedSseEnabled, kmsMasterKeyId, kmsDataKeyReusePeriodSeconds, fifoThroughputLimit, deduplicationScope, tags | Yes | [SQS_QUEUE_DRIVER_PLAN.md](SQS_QUEUE_DRIVER_PLAN.md) |
 | SQS Queue Policy | `SQSQueuePolicy` | `region~queueName` | `KeyScopeRegion` | policy document | No | [SQS_QUEUE_POLICY_DRIVER_PLAN.md](SQS_QUEUE_POLICY_DRIVER_PLAN.md) |
@@ -91,15 +86,15 @@ that lists SQS under praxis-storage.
 ```go
 // cmd/praxis-storage/main.go
 srv := server.NewRestate().
-    Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth()))).
-    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(cfg.Auth()))).
-    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(cfg.Auth()))).
-    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(cfg.Auth()))).
+    Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth))).
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth))).
     // SQS drivers
-    Bind(restate.Reflect(sqs.NewSQSQueueDriver(cfg.Auth()))).
-    Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(cfg.Auth())))
+    Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth))).
+    Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth)))
 ```
 
 ---
@@ -268,13 +263,13 @@ Add both adapters to `NewRegistry()`:
 
 ```go
 func NewRegistry() *Registry {
-    accounts := auth.LoadFromEnv()
+    auth := authservice.NewAuthClient()
     return NewRegistryWithAdapters(
         // ... existing adapters ...
 
         // SQS drivers
-        NewSQSQueueAdapterWithRegistry(accounts),
-        NewSQSQueuePolicyAdapterWithRegistry(accounts),
+        NewSQSQueueAdapterWithAuth(auth),
+        NewSQSQueuePolicyAdapterWithAuth(auth),
     )
 }
 ```
@@ -499,39 +494,39 @@ when `fifoQueue: true` is set, preventing invalid queue creation attempts.
 
 ### Schemas
 
-- [ ] `schemas/aws/sqs/queue.cue`
-- [ ] `schemas/aws/sqs/queue_policy.cue`
+- [x] `schemas/aws/sqs/queue.cue`
+- [x] `schemas/aws/sqs/queue_policy.cue`
 
 ### Drivers (per driver: types + aws + drift + driver)
 
-- [ ] `internal/drivers/sqs/`
-- [ ] `internal/drivers/sqspolicy/`
+- [x] `internal/drivers/sqs/`
+- [x] `internal/drivers/sqspolicy/`
 
 ### Adapters
 
-- [ ] `internal/core/provider/sqs_adapter.go`
-- [ ] `internal/core/provider/sqspolicy_adapter.go`
+- [x] `internal/core/provider/sqs_adapter.go`
+- [x] `internal/core/provider/sqspolicy_adapter.go`
 
 ### Registry
 
-- [ ] Both adapters registered in `NewRegistry()`
+- [x] Both adapters registered in `NewRegistry()`
 
 ### Tests
 
-- [ ] Unit tests for both drivers
-- [ ] Integration tests for both drivers
-- [ ] Cross-driver integration test (SQS Queue → SQS Queue Policy)
+- [x] Unit tests for both drivers
+- [x] Integration tests for both drivers
+- [x] Cross-driver integration test (SQS Queue → SQS Queue Policy)
 
 ### Infrastructure
 
-- [ ] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
-- [ ] `cmd/praxis-storage/main.go` — Bind both SQS drivers
-- [ ] `docker-compose.yaml` — No changes needed (praxis-storage already exposed)
-- [ ] `justfile` — Add SQS test targets
-- [ ] `go get github.com/aws/aws-sdk-go-v2/service/sqs`
+- [x] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
+- [x] `cmd/praxis-storage/main.go` — Bind both SQS drivers
+- [x] `docker-compose.yaml` — No changes needed (praxis-storage already exposed)
+- [x] `justfile` — Add SQS test targets
+- [x] `go get github.com/aws/aws-sdk-go-v2/service/sqs`
 
 ### Documentation
 
-- [ ] [SQS_QUEUE_DRIVER_PLAN.md](SQS_QUEUE_DRIVER_PLAN.md)
-- [ ] [SQS_QUEUE_POLICY_DRIVER_PLAN.md](SQS_QUEUE_POLICY_DRIVER_PLAN.md)
+- [x] [SQS_QUEUE_DRIVER_PLAN.md](SQS_QUEUE_DRIVER_PLAN.md)
+- [x] [SQS_QUEUE_POLICY_DRIVER_PLAN.md](SQS_QUEUE_POLICY_DRIVER_PLAN.md)
 - [x] This overview document

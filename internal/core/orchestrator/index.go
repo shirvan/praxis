@@ -1,3 +1,9 @@
+// index.go implements the DeploymentIndex Restate Virtual Object.
+//
+// Restate virtual objects are key-addressed, but the framework does not provide
+// a built-in way to enumerate all keys. The DeploymentIndex solves this by
+// storing all deployment summaries under a single well-known key ("global"),
+// enabling list/filter operations from the CLI and API.
 package orchestrator
 
 import (
@@ -10,9 +16,14 @@ import (
 
 // DeploymentIndex stores lightweight deployment summaries behind a fixed,
 // globally known key. Restate virtual objects cannot enumerate keys, so list
-// semantics need one aggregate object rather than one object per deployment.
+// semantics require one aggregate object rather than one object per deployment.
+//
+// The index is eventually consistent with DeploymentStateObj: the workflow
+// calls Upsert after each status transition, and Remove when a deployment is
+// fully deleted.
 type DeploymentIndex struct{}
 
+// ServiceName returns the stable Restate service name for the index object.
 func (DeploymentIndex) ServiceName() string {
 	return DeploymentIndexServiceName
 }

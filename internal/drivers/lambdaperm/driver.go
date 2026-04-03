@@ -16,17 +16,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LambdaPermissionDriver implements the Praxis driver for Lambda resource-based permissions.
 type LambdaPermissionDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) PermissionAPI
 }
 
+// NewLambdaPermissionDriver creates a production driver with default Lambda client factory.
 func NewLambdaPermissionDriver(auth authservice.AuthClient) *LambdaPermissionDriver {
 	return NewLambdaPermissionDriverWithFactory(auth, func(cfg aws.Config) PermissionAPI {
 		return NewPermissionAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
+// NewLambdaPermissionDriverWithFactory creates a driver with a custom PermissionAPI factory (for testing).
 func NewLambdaPermissionDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) PermissionAPI) *LambdaPermissionDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) PermissionAPI { return NewPermissionAPI(awsclient.NewLambdaClient(cfg)) }
@@ -36,6 +39,9 @@ func NewLambdaPermissionDriverWithFactory(auth authservice.AuthClient, factory f
 
 func (d *LambdaPermissionDriver) ServiceName() string { return ServiceName }
 
+// Provision creates or updates a Lambda permission statement.
+// Uses a remove-then-add pattern since individual statements cannot be modified.
+// If no spec fields changed, the operation is a no-op.
 func (d *LambdaPermissionDriver) Provision(ctx restate.ObjectContext, spec LambdaPermissionSpec) (LambdaPermissionOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, spec.Account)
 	if err != nil {
@@ -106,6 +112,8 @@ func (d *LambdaPermissionDriver) Provision(ctx restate.ObjectContext, spec Lambd
 	return state.Outputs, nil
 }
 
+// Import adopts an existing Lambda permission into Praxis management.
+// ResourceID format: "functionName~statementId" (split on ~).
 func (d *LambdaPermissionDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LambdaPermissionOutputs, error) {
 	api, region, err := d.apiForAccount(ctx, ref.Account)
 	if err != nil {
@@ -154,6 +162,7 @@ func (d *LambdaPermissionDriver) Import(ctx restate.ObjectContext, ref types.Imp
 	return state.Outputs, nil
 }
 
+// Delete removes the permission statement. Observed-mode resources cannot be deleted (409).
 func (d *LambdaPermissionDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[LambdaPermissionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -193,6 +202,9 @@ func (d *LambdaPermissionDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection loop.
+// Detects external deletion and field drift. No auto-correction is performed
+// since permissions are replace-only (would require remove + re-add).
 func (d *LambdaPermissionDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[LambdaPermissionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -244,6 +256,7 @@ func (d *LambdaPermissionDriver) Reconcile(ctx restate.ObjectContext) (types.Rec
 	return types.ReconcileResult{Drift: drift}, nil
 }
 
+// GetStatus returns the current lifecycle status (shared/concurrent handler).
 func (d *LambdaPermissionDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[LambdaPermissionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -252,6 +265,7 @@ func (d *LambdaPermissionDriver) GetStatus(ctx restate.ObjectSharedContext) (typ
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs returns the provisioned outputs (shared/concurrent handler).
 func (d *LambdaPermissionDriver) GetOutputs(ctx restate.ObjectSharedContext) (LambdaPermissionOutputs, error) {
 	state, err := restate.Get[LambdaPermissionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -260,6 +274,7 @@ func (d *LambdaPermissionDriver) GetOutputs(ctx restate.ObjectSharedContext) (La
 	return state.Outputs, nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *LambdaPermissionDriver) scheduleReconcile(ctx restate.ObjectContext, state *LambdaPermissionState) {
 	if state.ReconcileScheduled {
 		return
@@ -269,6 +284,7 @@ func (d *LambdaPermissionDriver) scheduleReconcile(ctx restate.ObjectContext, st
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates a PermissionAPI for the given Praxis account.
 func (d *LambdaPermissionDriver) apiForAccount(ctx restate.ObjectContext, account string) (PermissionAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("LambdaPermissionDriver is not configured with an auth registry")
@@ -280,6 +296,7 @@ func (d *LambdaPermissionDriver) apiForAccount(ctx restate.ObjectContext, accoun
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// applyDefaults sets Action to "lambda:InvokeFunction" if empty.
 func applyDefaults(spec LambdaPermissionSpec) LambdaPermissionSpec {
 	if strings.TrimSpace(spec.Action) == "" {
 		spec.Action = "lambda:InvokeFunction"
@@ -287,6 +304,7 @@ func applyDefaults(spec LambdaPermissionSpec) LambdaPermissionSpec {
 	return spec
 }
 
+// validateProvisionSpec checks that region, functionName, statementId, and principal are set.
 func validateProvisionSpec(spec LambdaPermissionSpec) error {
 	if strings.TrimSpace(spec.Region) == "" {
 		return fmt.Errorf("region is required")
@@ -303,6 +321,7 @@ func validateProvisionSpec(spec LambdaPermissionSpec) error {
 	return nil
 }
 
+// specChanged returns true if any spec field differs between old and new.
 func specChanged(oldSpec, newSpec LambdaPermissionSpec) bool {
 	return oldSpec.FunctionName != newSpec.FunctionName ||
 		oldSpec.StatementId != newSpec.StatementId ||
@@ -314,10 +333,12 @@ func specChanged(oldSpec, newSpec LambdaPermissionSpec) bool {
 		oldSpec.Qualifier != newSpec.Qualifier
 }
 
+// specFromObserved reconstructs a LambdaPermissionSpec from observed state for Import.
 func specFromObserved(observed ObservedState) LambdaPermissionSpec {
 	return applyDefaults(LambdaPermissionSpec{FunctionName: observed.FunctionName, StatementId: observed.StatementId, Action: observed.Action, Principal: observed.Principal, SourceArn: observed.SourceArn, SourceAccount: observed.SourceAccount, EventSourceToken: observed.EventSourceToken})
 }
 
+// defaultImportMode returns Observed if no mode was explicitly specified.
 func defaultImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved
@@ -325,6 +346,7 @@ func defaultImportMode(mode types.Mode) types.Mode {
 	return mode
 }
 
+// splitImportResourceID parses "functionName~statementId" format.
 func splitImportResourceID(resourceID string) (string, string, error) {
 	parts := strings.SplitN(resourceID, "~", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {

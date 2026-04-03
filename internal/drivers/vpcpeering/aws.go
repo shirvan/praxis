@@ -14,21 +14,27 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// VPCPeeringAPI abstracts the AWS EC2 SDK operations for VPC Peering Connections.
+// Peering creation returns immediately, but the connection starts in
+// "pending-acceptance" state until the peer accepts. ModifyPeeringOptions
+// can only be called once the peering is active.
 type VPCPeeringAPI interface {
-	CreateVPCPeeringConnection(ctx context.Context, spec VPCPeeringSpec) (string, error)
-	AcceptVPCPeeringConnection(ctx context.Context, peeringID string) error
-	DescribeVPCPeeringConnection(ctx context.Context, peeringID string) (ObservedState, error)
-	DeleteVPCPeeringConnection(ctx context.Context, peeringID string) error
-	ModifyPeeringOptions(ctx context.Context, peeringID string, requester *PeeringOptions, accepter *PeeringOptions) error
-	UpdateTags(ctx context.Context, peeringID string, tags map[string]string) error
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	CreateVPCPeeringConnection(ctx context.Context, spec VPCPeeringSpec) (string, error)                                   // Creates peering request; returns pcx-xxxx.
+	AcceptVPCPeeringConnection(ctx context.Context, peeringID string) error                                                // Accepts a pending peering (same-account only).
+	DescribeVPCPeeringConnection(ctx context.Context, peeringID string) (ObservedState, error)                             // Fetches live state including CIDRs and options.
+	DeleteVPCPeeringConnection(ctx context.Context, peeringID string) error                                                // Deletes/rejects the peering.
+	ModifyPeeringOptions(ctx context.Context, peeringID string, requester *PeeringOptions, accepter *PeeringOptions) error // Sets DNS resolution options.
+	UpdateTags(ctx context.Context, peeringID string, tags map[string]string) error                                        // Replaces user tags.
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)                                               // Finds by managed-key; filters terminal statuses.
 }
 
+// realVPCPeeringAPI implements VPCPeeringAPI using the actual AWS SDK v2 EC2 client.
 type realVPCPeeringAPI struct {
 	client  *ec2sdk.Client
-	limiter *ratelimit.Limiter
+	limiter *ratelimit.Limiter // Token-bucket: 20 burst, 10/s refill.
 }
 
+// NewVPCPeeringAPI creates a new VPCPeeringAPI backed by the given EC2 SDK client.
 func NewVPCPeeringAPI(client *ec2sdk.Client) VPCPeeringAPI {
 	return &realVPCPeeringAPI{
 		client:  client,
@@ -283,26 +289,37 @@ func firstCIDR(info *ec2types.VpcPeeringConnectionVpcInfo) string {
 	return ""
 }
 
+// Error classifiers — used by the driver to decide between retryable
+// errors, terminal errors, and idempotent success paths.
+
+// IsNotFound returns true when the peering connection does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidVpcPeeringConnectionID.NotFound", "InvalidVpcPeeringConnectionId.NotFound")
 }
 
+// IsVpcNotFound returns true when one of the VPCs in the peering request
+// does not exist (terminal).
 func IsVpcNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidVpcID.NotFound", "InvalidVpcID.Malformed")
 }
 
+// IsAlreadyExists returns true when a peering between the same VPC pair
+// already exists.
 func IsAlreadyExists(err error) bool {
 	return awserr.HasCode(err, "VpcPeeringConnectionAlreadyExists", "InvalidVpcPeeringConnection.Duplicate")
 }
 
+// IsCidrOverlap returns true when the two VPCs' CIDR blocks overlap (terminal).
 func IsCidrOverlap(err error) bool {
 	return awserr.HasCode(err, "OverlappingCidrBlock")
 }
 
+// IsPeeringLimitExceeded returns true when the account's peering limit is reached (terminal).
 func IsPeeringLimitExceeded(err error) bool {
 	return awserr.HasCode(err, "VpcPeeringConnectionLimitExceeded", "VpcLimitExceeded")
 }
 
+// IsInvalidParam returns true for invalid parameter errors (terminal).
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

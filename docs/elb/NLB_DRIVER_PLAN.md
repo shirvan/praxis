@@ -1,13 +1,4 @@
-# NLB Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages Network Load Balancers
-> (NLBs), providing full lifecycle management including creation, import, deletion,
-> drift detection, and drift correction for load balancer attributes, subnet
-> mappings, cross-zone load balancing, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~nlbName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned load balancer
-> ARN lives only in state/outputs.
+# NLB Driver — Implementation Spec
 
 ---
 
@@ -333,10 +324,10 @@ Immutable fields (`name`, `scheme`) are not compared for drift.
 
 ```go
 type NLBDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewNLBDriver(accounts *auth.Registry) *NLBDriver {
+func NewNLBDriver(auth       authservice.AuthClient) *NLBDriver {
     return &NLBDriver{accounts: accounts}
 }
 
@@ -375,10 +366,10 @@ When the spec changes on an existing NLB:
 
 ```go
 type NLBAdapter struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewNLBAdapterWithRegistry(accounts *auth.Registry) *NLBAdapter {
+func NewNLBAdapterWithAuth(auth       authservice.AuthClient) *NLBAdapter {
     return &NLBAdapter{accounts: accounts}
 }
 
@@ -391,7 +382,7 @@ func (a *NLBAdapter) Scope() KeyScope          { return KeyScopeRegion }
 
 ## Step 7 — Registry Integration
 
-Add `NewNLBAdapterWithRegistry` to `internal/core/provider/registry.go`.
+Add `NewNLBAdapterWithAuth` to `internal/core/provider/registry.go`.
 
 ---
 

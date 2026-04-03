@@ -1,12 +1,4 @@
-# Listener Rule Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages ELBv2 Listener Rules,
-> providing full lifecycle management including creation, import, deletion, drift
-> detection, and drift correction for priority, conditions, actions, and tags.
->
-> Key scope: `KeyScopeRegion` — key format is `region~ruleName`, permanent and
-> immutable for the lifetime of the Virtual Object. The AWS-assigned rule ARN
-> lives only in state/outputs.
+# Listener Rule Driver — Implementation Spec
 
 ---
 
@@ -536,10 +528,10 @@ Actions are normalized by:
 
 ```go
 type ListenerRuleDriver struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewListenerRuleDriver(accounts *auth.Registry) *ListenerRuleDriver {
+func NewListenerRuleDriver(auth       authservice.AuthClient) *ListenerRuleDriver {
     return &ListenerRuleDriver{accounts: accounts}
 }
 
@@ -591,10 +583,10 @@ Listener driver's `defaultActions` field.
 
 ```go
 type ListenerRuleAdapter struct {
-    accounts *auth.Registry
+    auth       authservice.AuthClient
 }
 
-func NewListenerRuleAdapterWithRegistry(accounts *auth.Registry) *ListenerRuleAdapter {
+func NewListenerRuleAdapterWithAuth(auth       authservice.AuthClient) *ListenerRuleAdapter {
     return &ListenerRuleAdapter{accounts: accounts}
 }
 
@@ -614,7 +606,7 @@ The Plan method checks:
 
 ## Step 7 — Registry Integration
 
-Add `NewListenerRuleAdapterWithRegistry` to `internal/core/provider/registry.go`.
+Add `NewListenerRuleAdapterWithAuth` to `internal/core/provider/registry.go`.
 
 ---
 

@@ -38,6 +38,7 @@ type CallerIdentity struct {
 	UserID  string
 }
 
+// realSTSAPI is the production STS implementation that wraps the AWS STS SDK client.
 type realSTSAPI struct {
 	client *sts.Client
 }
@@ -47,6 +48,10 @@ func NewSTSAPI(cfg aws.Config) STSAPI {
 	return &realSTSAPI{client: sts.NewFromConfig(cfg)}
 }
 
+// AssumeRole calls STS AssumeRole to obtain temporary credentials for the
+// specified IAM role. The session name is auto-generated with a timestamp
+// prefix if not provided in opts. ExternalID and DurationSeconds are only
+// set when non-empty/non-zero, as STS rejects empty ExternalID strings.
 func (s *realSTSAPI) AssumeRole(ctx context.Context, roleARN string, opts AssumeRoleOpts) (*Credentials, error) {
 	sessionName := opts.SessionName
 	if sessionName == "" {
@@ -77,6 +82,9 @@ func (s *realSTSAPI) AssumeRole(ctx context.Context, roleARN string, opts Assume
 	}, nil
 }
 
+// GetCallerIdentity calls STS GetCallerIdentity to validate that the current
+// credentials are working. Used by the "default" credential source to verify
+// the default chain credentials on first resolution.
 func (s *realSTSAPI) GetCallerIdentity(ctx context.Context) (*CallerIdentity, error) {
 	result, err := s.client.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {

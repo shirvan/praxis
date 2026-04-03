@@ -1,11 +1,4 @@
-# S3 Bucket Driver — Implementation Plan
-
-> Target: A Restate Virtual Object driver that manages S3 buckets, providing full
-> lifecycle management including creation, configuration (versioning, encryption,
-> tags), import, deletion, drift detection, and drift correction.
->
-> Key scope: `KeyScopeGlobal` — key format is the bucket name itself, which is
-> globally unique across all AWS accounts. No region or VPC prefix is needed.
+# S3 Bucket Driver — Implementation Spec
 
 ---
 
@@ -454,8 +447,8 @@ instance is keyed by the bucket name.
 ### Constructor Pattern
 
 ```go
-func NewS3BucketDriver(accounts *auth.Registry) *S3BucketDriver
-func NewS3BucketDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) S3API) *S3BucketDriver
+func NewS3BucketDriver(auth authservice.AuthClient) *S3BucketDriver
+func NewS3BucketDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) S3API) *S3BucketDriver
 ```
 
 Same pattern as all drivers. `NewS3BucketDriver` for production,
@@ -573,7 +566,7 @@ ARN synthesis — S3 ARNs don't contain a region).
 
 ```go
 type S3Adapter struct {
-    auth              *auth.Registry
+    auth              authservice.AuthClient
     staticPlanningAPI s3.S3API
     apiFactory        func(aws.Config) s3.S3API
 }
@@ -654,14 +647,16 @@ Registered alongside all other adapters in `NewRegistry()`.
 
 **File**: `cmd/praxis-storage/main.go`
 
-The S3 driver is added to the **storage** driver pack. The Restate SDK supports binding multiple Virtual Objects to one server via chained `.Bind()` calls, so the storage pack hosts all storage-related drivers (S3, and in the future RDS, DynamoDB, SQS, SNS).
+The S3 driver is registered in the **storage** driver pack alongside EBS, RDS, SNS, and SQS drivers.
 
 ```go
 func main() {
     cfg := config.Load()
+    auth := authservice.NewAuthClient()
 
     srv := server.NewRestate().
-        Bind(restate.Reflect(s3.NewS3BucketDriver(cfg.Auth())))
+        Bind(restate.Reflect(s3.NewS3BucketDriver(auth)))
+        // ... other storage drivers ...
 
     slog.Info("starting storage driver pack", "addr", cfg.ListenAddr)
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

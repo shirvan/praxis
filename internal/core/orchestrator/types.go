@@ -1,3 +1,40 @@
+// Package orchestrator implements the Praxis deployment orchestration engine.
+//
+// The orchestrator coordinates multi-resource deployments using Restate's durable
+// execution framework. It provides three core workflows:
+//
+//   - DeploymentWorkflow (apply): dispatches resources in DAG dependency order,
+//     hydrating cross-resource expressions at dispatch time and tracking each
+//     resource through its provisioning lifecycle.
+//   - DeploymentDeleteWorkflow: tears down resources in reverse topological
+//     order, respecting lifecycle.preventDestroy policies.
+//   - DeploymentRollbackWorkflow: selectively deletes only resources that were
+//     successfully provisioned (determined from the event store), leaving
+//     previously-stable resources untouched.
+//
+// Durable state is split between Restate Workflows (run-once, keyed by
+// invocation) and Virtual Objects (persistent, keyed by deployment). The
+// DeploymentState virtual object is the authoritative lifecycle record;
+// workflows are transient execution vehicles that read and write it.
+//
+// All state transitions emit structured CloudEvents through an EventBus →
+// EventStore → EventIndex pipeline. Notification sinks (webhooks, structured
+// logs, CloudEvents HTTP, Restate RPC) subscribe to these events with per-sink
+// filtering and a built-in circuit breaker.
+//
+// Key subsystems:
+//
+//   - DAG Scheduler: the dispatch loop consults dag.Schedule to find resources
+//     whose dependencies are satisfied, dispatches them in parallel via provider
+//     adapters, and awaits completions using Restate's WaitFirst.
+//   - Expression Hydrator: resolves "resources.<name>.outputs.<field>" references
+//     just before dispatch, writing typed values back into the resource spec.
+//   - Event Pipeline: CloudEvents flow through EventBus (validation + sequencing),
+//     EventStore (chunked per-deployment persistence), EventIndex (cross-deployment
+//     queries), and SinkRouter (fan-out delivery with retries and circuit breaker).
+//   - Retention: workspace-scoped GC prunes old events from stores and the index
+//     on a configurable schedule, optionally shipping events to a drain sink
+//     before deletion.
 package orchestrator
 
 import (
@@ -207,23 +244,37 @@ type DeleteRequest struct {
 	DeploymentKey string `json:"deploymentKey"`
 }
 
+// RollbackResource identifies a single resource that was successfully provisioned
+// (according to the event store) and should be torn down during rollback.
+// The Sequence field records the event store sequence number of the last
+// resource.ready event, used to sort resources by most-recently-provisioned-first.
 type RollbackResource struct {
 	Sequence int64  `json:"sequence"`
 	Name     string `json:"name"`
 	Kind     string `json:"kind"`
 }
 
+// RollbackPlan lists the resources eligible for rollback deletion, ordered by
+// reverse provisioning sequence. The event store builds this by scanning
+// resource.ready events and selecting the latest per resource name.
 type RollbackPlan struct {
 	DeploymentKey string             `json:"deploymentKey"`
 	Resources     []RollbackResource `json:"resources,omitempty"`
 }
 
+// EventSequenceRange identifies a contiguous range of event sequences within
+// one deployment's event store. Used by retention to communicate which chunks
+// were deleted so the EventIndex can prune its corresponding entries.
 type EventSequenceRange struct {
 	DeploymentKey string `json:"deploymentKey"`
 	StartSequence int64  `json:"startSequence"`
 	EndSequence   int64  `json:"endSequence"`
 }
 
+// EventStorePruneRequest controls per-deployment event pruning during retention
+// sweeps. Events older than Before or exceeding MaxEvents are pruned. When
+// ShipBeforeDelete is true, pruned events are first delivered to DrainSink in
+// batches before being removed from the store.
 type EventStorePruneRequest struct {
 	Before           time.Time `json:"before,omitzero"`
 	MaxEvents        int       `json:"maxEvents,omitempty"`
@@ -232,6 +283,9 @@ type EventStorePruneRequest struct {
 	BatchSize        int       `json:"batchSize,omitempty"`
 }
 
+// EventStorePruneResult reports the outcome of a single deployment's event
+// store prune operation, including how many events and chunks were removed
+// and the sequence ranges that were deleted (fed to EventIndex.Prune).
 type EventStorePruneResult struct {
 	DeploymentKey   string               `json:"deploymentKey"`
 	PrunedEvents    int                  `json:"prunedEvents"`
@@ -241,6 +295,9 @@ type EventStorePruneResult struct {
 	RemovedRanges   []EventSequenceRange `json:"removedRanges,omitempty"`
 }
 
+// EventIndexPruneRequest controls the global event index pruning. It removes
+// entries that match the workspace and are older than Before, belong to pruned
+// store ranges, or exceed MaxEntries (oldest-first after other filters).
 type EventIndexPruneRequest struct {
 	Workspace     string               `json:"workspace,omitempty"`
 	Before        time.Time            `json:"before,omitzero"`
@@ -248,20 +305,29 @@ type EventIndexPruneRequest struct {
 	RemovedRanges []EventSequenceRange `json:"removedRanges,omitempty"`
 }
 
+// EventIndexPruneResult reports how many entries the global index removed and
+// how many remain after pruning.
 type EventIndexPruneResult struct {
 	Removed   int `json:"removed"`
 	Remaining int `json:"remaining"`
 }
 
+// DrainBatchRequest sends a batch of events to a specific notification sink.
+// Used by the retention system to ship events to a drain sink before deleting
+// them from the event store.
 type DrainBatchRequest struct {
 	SinkName string                `json:"sinkName"`
 	Records  []SequencedCloudEvent `json:"records"`
 }
 
+// RetentionSweepRequest triggers a workspace-scoped retention sweep. The sweep
+// iterates all deployments in the workspace, prunes their event stores according
+// to the workspace's retention policy, and then prunes the global event index.
 type RetentionSweepRequest struct {
 	Workspace string `json:"workspace"`
 }
 
+// RetentionSweepResult summarises one complete retention sweep across a workspace.
 type RetentionSweepResult struct {
 	Workspace          string   `json:"workspace"`
 	DeploymentsScanned int      `json:"deploymentsScanned"`

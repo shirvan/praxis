@@ -1,17 +1,25 @@
+// Drift detection for Lambda Event Source Mappings.
+// Compares all mutable configuration fields between desired spec and observed state.
+// Immutable fields (eventSourceArn, startingPosition) are not checked here.
 package esm
 
 import "slices"
 
+// FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if any mutable field differs between desired and observed.
 func HasDrift(desired EventSourceMappingSpec, observed ObservedState) bool {
 	return len(ComputeFieldDiffs(desired, observed)) > 0
 }
 
+// ComputeFieldDiffs returns per-field diffs.
+// Checks: enabled state, batchSize, batchingWindow, filterCriteria, bisect,
+// retryAttempts, recordAge, parallelization, tumblingWindow, destination, scaling, responseTypes.
 func ComputeFieldDiffs(desired EventSourceMappingSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 	if desired.Enabled && observed.State == "Disabled" {
@@ -56,6 +64,7 @@ func ComputeFieldDiffs(desired EventSourceMappingSpec, observed ObservedState) [
 	return diffs
 }
 
+// int32PtrMatch compares two *int32 values (nil-safe).
 func int32PtrMatch(a, b *int32) bool {
 	if a == nil && b == nil {
 		return true
@@ -66,6 +75,7 @@ func int32PtrMatch(a, b *int32) bool {
 	return *a == *b
 }
 
+// filterCriteriaMatch compares two filter criteria specs (nil-safe, ordered).
 func filterCriteriaMatch(a, b *FilterCriteriaSpec) bool {
 	if a == nil && b == nil {
 		return true
@@ -81,6 +91,7 @@ func filterCriteriaMatch(a, b *FilterCriteriaSpec) bool {
 	return true
 }
 
+// destinationMatch compares two destination specs by OnFailure ARN.
 func destinationMatch(a, b *DestinationSpec) bool {
 	if a == nil && b == nil {
 		return true
@@ -91,6 +102,7 @@ func destinationMatch(a, b *DestinationSpec) bool {
 	return a.OnFailure.DestinationArn == b.OnFailure.DestinationArn
 }
 
+// scalingMatch compares two scaling specs by MaximumConcurrency.
 func scalingMatch(a, b *ScalingSpec) bool {
 	if a == nil && b == nil {
 		return true

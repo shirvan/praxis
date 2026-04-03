@@ -13,22 +13,30 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// PermissionAPI abstracts Lambda permission (resource policy) operations for testability.
 type PermissionAPI interface {
+	// AddPermission adds a statement to the function's resource-based policy.
 	AddPermission(ctx context.Context, spec LambdaPermissionSpec) (string, error)
+	// RemovePermission removes a statement by ID from the function's policy.
 	RemovePermission(ctx context.Context, functionName, statementID string) error
+	// GetPolicy returns the raw JSON policy for the function.
 	GetPolicy(ctx context.Context, functionName string) (string, error)
+	// GetPermission finds and parses a specific statement from the function's policy.
 	GetPermission(ctx context.Context, functionName, statementID string) (ObservedState, error)
 }
 
+// realPermissionAPI is the production implementation backed by the Lambda SDK client.
 type realPermissionAPI struct {
 	client  *lambdasdk.Client
 	limiter *ratelimit.Limiter
 }
 
+// NewPermissionAPI creates a production PermissionAPI with rate limiting (20 tokens/s, burst 10).
 func NewPermissionAPI(client *lambdasdk.Client) PermissionAPI {
 	return &realPermissionAPI{client: client, limiter: ratelimit.New("lambda-permission", 20, 10)}
 }
 
+// AddPermission calls Lambda AddPermission to add a policy statement.
 func (r *realPermissionAPI) AddPermission(ctx context.Context, spec LambdaPermissionSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -58,6 +66,7 @@ func (r *realPermissionAPI) AddPermission(ctx context.Context, spec LambdaPermis
 	return aws.ToString(out.Statement), nil
 }
 
+// RemovePermission removes a policy statement by ID.
 func (r *realPermissionAPI) RemovePermission(ctx context.Context, functionName, statementID string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -66,6 +75,7 @@ func (r *realPermissionAPI) RemovePermission(ctx context.Context, functionName, 
 	return err
 }
 
+// GetPolicy returns the raw JSON resource-based policy for the function.
 func (r *realPermissionAPI) GetPolicy(ctx context.Context, functionName string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -77,6 +87,7 @@ func (r *realPermissionAPI) GetPolicy(ctx context.Context, functionName string) 
 	return aws.ToString(out.Policy), nil
 }
 
+// GetPermission finds a specific statement in the function's policy and parses it to ObservedState.
 func (r *realPermissionAPI) GetPermission(ctx context.Context, functionName, statementID string) (ObservedState, error) {
 	policyJSON, err := r.GetPolicy(ctx, functionName)
 	if err != nil {
@@ -96,6 +107,7 @@ type policyStatement struct {
 	Condition any    `json:"Condition,omitempty"`
 }
 
+// permissionStatementFromPolicy finds a statement by Sid in the parsed policy JSON.
 func permissionStatementFromPolicy(policyJSON string, statementID string) (policyStatement, error) {
 	var policy struct {
 		Statement []policyStatement `json:"Statement"`
@@ -111,6 +123,8 @@ func permissionStatementFromPolicy(policyJSON string, statementID string) (polic
 	return policyStatement{}, fmt.Errorf("statement %s not found", statementID)
 }
 
+// observedFromStatement converts a parsed IAM policy statement to ObservedState.
+// Extracts principal, action, and condition values (SourceArn, SourceAccount, EventSourceToken).
 func observedFromStatement(functionName string, stmt policyStatement) ObservedState {
 	observed := ObservedState{StatementId: stmt.Sid, FunctionName: functionName, Action: stringValue(stmt.Action), Principal: principalValue(stmt.Principal)}
 	if stmt.Condition != nil {
@@ -153,6 +167,7 @@ func principalValue(value any) string {
 	return ""
 }
 
+// extractConditionValue searches the nested condition map for a specific key.
 func extractConditionValue(condition any, key string) string {
 	conditionMap, ok := condition.(map[string]any)
 	if !ok {
@@ -170,18 +185,22 @@ func extractConditionValue(condition any, key string) string {
 	return ""
 }
 
+// IsNotFound returns true if the function or policy does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ResourceNotFoundException")
 }
 
+// IsConflict returns true if the statement already exists.
 func IsConflict(err error) bool {
 	return awserr.HasCode(err, "ResourceConflictException")
 }
 
+// IsPreconditionFailed returns true if the function version doesn't exist.
 func IsPreconditionFailed(err error) bool {
 	return awserr.HasCode(err, "PreconditionFailedException")
 }
 
+// IsThrottled returns true if the request was rate-limited by AWS.
 func IsThrottled(err error) bool {
 	return awserr.HasCode(err, "TooManyRequestsException")
 }

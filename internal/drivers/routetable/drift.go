@@ -6,12 +6,22 @@ import (
 	"strings"
 )
 
+// FieldDiffEntry represents a single field difference between desired and observed state.
 type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
 }
 
+// HasDrift returns true if the desired spec and observed state differ.
+//
+// Route table drift rules:
+//   - Routes are compared by destination CIDR, checking that each desired
+//     route exists with the correct target. Routes with Origin=CreateRouteTable
+//     (the implicit VPC local route) and EnableVgwRoutePropagation (VPN
+//     propagated routes) are excluded from comparison since they are AWS-managed.
+//   - Subnet associations are compared as sets (excluding main associations).
+//   - Tags are compared (excluding praxis:-prefixed tags).
 func HasDrift(desired RouteTableSpec, observed ObservedState) bool {
 	if !routesMatch(desired.Routes, observed.Routes) {
 		return true
@@ -25,6 +35,8 @@ func HasDrift(desired RouteTableSpec, observed ObservedState) bool {
 	return false
 }
 
+// ComputeFieldDiffs returns a human-readable list of differences for drift
+// event reporting, including route target changes and association differences.
 func ComputeFieldDiffs(desired RouteTableSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 

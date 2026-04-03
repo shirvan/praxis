@@ -14,21 +14,27 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
+// IGWAPI abstracts the AWS EC2 SDK operations for Internet Gateways.
+// The real implementation (realIGWAPI) wraps the SDK client with a
+// token-bucket rate limiter. The driver calls these methods inside
+// restate.Run() to journal results for deterministic replay.
 type IGWAPI interface {
-	CreateInternetGateway(ctx context.Context, spec IGWSpec) (string, error)
-	DescribeInternetGateway(ctx context.Context, internetGatewayID string) (ObservedState, error)
-	DeleteInternetGateway(ctx context.Context, internetGatewayID string) error
-	AttachToVpc(ctx context.Context, internetGatewayID string, vpcID string) error
-	DetachFromVpc(ctx context.Context, internetGatewayID string, vpcID string) error
-	UpdateTags(ctx context.Context, internetGatewayID string, tags map[string]string) error
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	CreateInternetGateway(ctx context.Context, spec IGWSpec) (string, error)                      // Creates an IGW with managed-key tag, returns igw-xxxx.
+	DescribeInternetGateway(ctx context.Context, internetGatewayID string) (ObservedState, error) // Fetches live state including VPC attachment.
+	DeleteInternetGateway(ctx context.Context, internetGatewayID string) error                    // Deletes the IGW; fails if still attached.
+	AttachToVpc(ctx context.Context, internetGatewayID string, vpcID string) error                // Attaches IGW to a VPC.
+	DetachFromVpc(ctx context.Context, internetGatewayID string, vpcID string) error              // Detaches IGW from a VPC.
+	UpdateTags(ctx context.Context, internetGatewayID string, tags map[string]string) error       // Replaces all user tags (preserves praxis: tags).
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)                      // Finds IGW by praxis:managed-key tag; detects ownership corruption.
 }
 
+// realIGWAPI implements IGWAPI using the actual AWS SDK v2 EC2 client.
 type realIGWAPI struct {
 	client  *ec2sdk.Client
-	limiter *ratelimit.Limiter
+	limiter *ratelimit.Limiter // Token-bucket: 20 burst, 10/s refill.
 }
 
+// NewIGWAPI creates a new IGWAPI backed by the given EC2 SDK client.
 func NewIGWAPI(client *ec2sdk.Client) IGWAPI {
 	return &realIGWAPI{
 		client:  client,
@@ -36,6 +42,9 @@ func NewIGWAPI(client *ec2sdk.Client) IGWAPI {
 	}
 }
 
+// CreateInternetGateway creates an IGW with the praxis:managed-key tag
+// and any user-specified tags applied atomically via TagSpecifications.
+// Returns the AWS-assigned igw-xxxx ID.
 func (r *realIGWAPI) CreateInternetGateway(ctx context.Context, spec IGWSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -64,6 +73,9 @@ func (r *realIGWAPI) CreateInternetGateway(ctx context.Context, spec IGWSpec) (s
 	return aws.ToString(out.InternetGateway.InternetGatewayId), nil
 }
 
+// DescribeInternetGateway fetches the live state of an IGW.
+// It extracts the attached VPC ID from the Attachments array, preferring
+// attachments in "available" state over other states.
 func (r *realIGWAPI) DescribeInternetGateway(ctx context.Context, internetGatewayID string) (ObservedState, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -100,6 +112,8 @@ func (r *realIGWAPI) DescribeInternetGateway(ctx context.Context, internetGatewa
 	return observed, nil
 }
 
+// DeleteInternetGateway deletes an IGW. The IGW must be detached first;
+// otherwise AWS returns DependencyViolation.
 func (r *realIGWAPI) DeleteInternetGateway(ctx context.Context, internetGatewayID string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
@@ -223,22 +237,33 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 	}
 }
 
+// Error classifiers — used by the driver to decide between retryable
+// errors, terminal errors, and idempotent success paths.
+
+// IsNotFound returns true when the IGW does not exist in AWS.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "InvalidInternetGatewayID.NotFound")
 }
 
+// IsDependencyViolation returns true when the IGW cannot be deleted
+// because it is still attached or referenced by route tables.
 func IsDependencyViolation(err error) bool {
 	return awserr.HasCode(err, "DependencyViolation")
 }
 
+// IsAlreadyAttached returns true when the IGW is already attached to a VPC.
+// Used for idempotent attach during Provision.
 func IsAlreadyAttached(err error) bool {
 	return awserr.HasCode(err, "Resource.AlreadyAssociated")
 }
 
+// IsNotAttached returns true when trying to detach an IGW that is not
+// currently attached. Treated as a no-op.
 func IsNotAttached(err error) bool {
 	return awserr.HasCode(err, "Gateway.NotAttached")
 }
 
+// IsInvalidParam returns true for invalid parameter errors (terminal).
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterValue", "InvalidParameterCombination")
 }

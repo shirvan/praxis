@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-// MigrationInventory summarizes the source files for the LLM.
+// MigrationInventory summarizes the source IaC content for the LLM. Built by
+// regex scanning the source content the identify resource types. The inventory
+// tells the LLM what resources exist, which have Praxis equivalents (MappedKinds),
+// and which have no mapping (UnmappedTypes) and need manual handling.
 type MigrationInventory struct {
 	Format         string            `json:"format"`
 	Files          []FileEntry       `json:"files"`
@@ -36,6 +39,9 @@ var (
 )
 
 // BuildInventory scans source content and produces a migration inventory.
+// Uses format-specific regexes to extract resource type names (e.g.,
+// "aws_s3_bucket" from Terraform, "AWS::S3::Bucket" from CloudFormation).
+// Each extracted type is looked up in the resourceTypeMap to find its Praxis kind.
 func BuildInventory(format, source string) MigrationInventory {
 	inv := MigrationInventory{
 		Format:      format,
@@ -80,7 +86,8 @@ func BuildInventory(format, source string) MigrationInventory {
 	return inv
 }
 
-// DetectFormat guesses the IaC format from content.
+// DetectFormat guesses the IaC format from content using regex heuristics.
+// Used when the format is not explicitly specified by the user.
 func DetectFormat(source string) string {
 	if tfResourceRe.MatchString(source) {
 		return "terraform"

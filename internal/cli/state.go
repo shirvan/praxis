@@ -1,3 +1,11 @@
+// state.go implements the `praxis state` command group.
+//
+// State commands mutate the durable deployment record stored in the
+// DeploymentStateObj Restate Virtual Object without touching actual cloud
+// resources. This is useful after template refactoring (rename a resource)
+// or to reorganise resources across deployments.
+//
+// Currently supported: `praxis state mv` (rename or relocate resources).
 package cli
 
 import (

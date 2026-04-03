@@ -1,14 +1,4 @@
-# IAM Role Driver — Implementation Plan
-
-> ✅ Implemented
-> Target: A Restate Virtual Object driver that manages IAM Roles, providing full
-> lifecycle management including creation, import, deletion, drift detection, and
-> drift correction for role properties, assume-role policy documents, inline policies,
-> managed policy attachments, and tags.
->
-> Key scope: `KeyScopeGlobal` — key format is `roleName`, permanent and immutable
-> for the lifetime of the Virtual Object. IAM role names are globally unique within
-> an AWS account (IAM is a global service with no region scoping).
+# IAM Role Driver — Implementation Spec
 
 ---
 
@@ -333,10 +323,13 @@ comparison.
 ```go
 type IAMRoleAPI interface {
     // CreateRole creates a new IAM role.
-    CreateRole(ctx context.Context, spec IAMRoleSpec) (arn, roleId string, err error)
+    CreateRole(ctx context.Context, spec IAMRoleSpec) (arn, roleID string, err error)
 
     // DescribeRole returns the observed state of a role by name.
     DescribeRole(ctx context.Context, roleName string) (ObservedState, error)
+
+    // FindByTags finds a role by ownership tags.
+    FindByTags(ctx context.Context, tags map[string]string) (string, error)
 
     // DeleteRole deletes a role (must have no attached policies or instance profiles).
     DeleteRole(ctx context.Context, roleName string) error
@@ -359,23 +352,20 @@ type IAMRoleAPI interface {
     // DeleteInlinePolicy removes an inline policy from the role.
     DeleteInlinePolicy(ctx context.Context, roleName, policyName string) error
 
-    // ListInlinePolicies returns the names of all inline policies on the role.
-    ListInlinePolicies(ctx context.Context, roleName string) ([]string, error)
-
-    // GetInlinePolicy returns the policy document for an inline policy.
-    GetInlinePolicy(ctx context.Context, roleName, policyName string) (string, error)
-
     // AttachManagedPolicy attaches a managed policy to the role.
     AttachManagedPolicy(ctx context.Context, roleName, policyArn string) error
 
     // DetachManagedPolicy detaches a managed policy from the role.
     DetachManagedPolicy(ctx context.Context, roleName, policyArn string) error
 
-    // ListAttachedPolicies returns the ARNs of all managed policies attached to the role.
-    ListAttachedPolicies(ctx context.Context, roleName string) ([]string, error)
-
     // UpdateTags replaces all user tags on the role.
     UpdateTags(ctx context.Context, roleName string, tags map[string]string) error
+
+    // ListInstanceProfilesForRole returns instance profile names associated with the role.
+    ListInstanceProfilesForRole(ctx context.Context, roleName string) ([]string, error)
+
+    // RemoveRoleFromInstanceProfile disassociates the role from an instance profile.
+    RemoveRoleFromInstanceProfile(ctx context.Context, roleName, profileName string) error
 }
 ```
 
@@ -772,8 +762,8 @@ const ServiceName = "IAMRole"
 ### Constructor Pattern
 
 ```go
-func NewIAMRoleDriver(accounts *auth.Registry) *IAMRoleDriver
-func NewIAMRoleDriverWithFactory(accounts *auth.Registry, factory func(aws.Config) IAMRoleAPI) *IAMRoleDriver
+func NewIAMRoleDriver(auth authservice.AuthClient) *IAMRoleDriver
+func NewIAMRoleDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) IAMRoleAPI) *IAMRoleDriver
 ```
 
 - `NewIAMRoleDriver`: Production constructor. Creates `IAMRoleAPI` from
@@ -1227,29 +1217,29 @@ than bolting IAM drivers onto an existing domain pack (e.g., compute), a dedicat
 
 ## Checklist
 
-- [ ] **Schema**: `schemas/aws/iam/role.cue` created
-- [ ] **Types**: `internal/drivers/iamrole/types.go` created
-- [ ] **AWS client**: `internal/infra/awsclient/client.go` updated with `NewIAMClient`
-- [ ] **AWS API**: `internal/drivers/iamrole/aws.go` created
-- [ ] **Drift**: `internal/drivers/iamrole/drift.go` created
-- [ ] **Driver**: `internal/drivers/iamrole/driver.go` created with all 6 handlers
-- [ ] **Adapter**: `internal/core/provider/iamrole_adapter.go` created
-- [ ] **Registry**: `internal/core/provider/registry.go` updated
-- [ ] **Entry point**: `cmd/praxis-identity/main.go` created
-- [ ] **Dockerfile**: `cmd/praxis-identity/Dockerfile` created
-- [ ] **Docker Compose**: `docker-compose.yaml` updated with praxis-identity service
-- [ ] **Justfile**: Updated with IAM targets
-- [ ] **Unit tests (drift)**: `internal/drivers/iamrole/drift_test.go`
-- [ ] **Unit tests (aws helpers)**: `internal/drivers/iamrole/aws_test.go`
-- [ ] **Unit tests (driver)**: `internal/drivers/iamrole/driver_test.go`
-- [ ] **Unit tests (adapter)**: `internal/core/provider/iamrole_adapter_test.go`
-- [ ] **Integration tests**: `tests/integration/iamrole_driver_test.go`
-- [ ] **Policy canonicalization**: URL-decode + JSON normalize for drift comparison
-- [ ] **Pre-deletion cleanup**: Detach managed, delete inline, remove from profiles
-- [ ] **Composite describe**: GetRole + ListRolePolicies + GetRolePolicy + ListAttached
-- [ ] **Import default mode**: `ModeObserved` (high-value resource)
-- [ ] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
-- [ ] **go.mod**: `github.com/aws/aws-sdk-go-v2/service/iam` added
-- [ ] **Build passes**: `go build ./...` succeeds
-- [ ] **Unit tests pass**: `go test ./internal/drivers/iamrole/... -race`
-- [ ] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMRole -tags=integration`
+- [x] **Schema**: `schemas/aws/iam/role.cue` created
+- [x] **Types**: `internal/drivers/iamrole/types.go` created
+- [x] **AWS client**: `internal/infra/awsclient/client.go` updated with `NewIAMClient`
+- [x] **AWS API**: `internal/drivers/iamrole/aws.go` created
+- [x] **Drift**: `internal/drivers/iamrole/drift.go` created
+- [x] **Driver**: `internal/drivers/iamrole/driver.go` created with all 6 handlers
+- [x] **Adapter**: `internal/core/provider/iamrole_adapter.go` created
+- [x] **Registry**: `internal/core/provider/registry.go` updated
+- [x] **Entry point**: `cmd/praxis-identity/main.go` created
+- [x] **Dockerfile**: `cmd/praxis-identity/Dockerfile` created
+- [x] **Docker Compose**: `docker-compose.yaml` updated with praxis-identity service
+- [x] **Justfile**: Updated with IAM targets
+- [x] **Unit tests (drift)**: `internal/drivers/iamrole/drift_test.go`
+- [x] **Unit tests (aws helpers)**: `internal/drivers/iamrole/aws_test.go`
+- [x] **Unit tests (driver)**: `internal/drivers/iamrole/driver_test.go`
+- [x] **Unit tests (adapter)**: `internal/core/provider/iamrole_adapter_test.go`
+- [x] **Integration tests**: `tests/integration/iamrole_driver_test.go`
+- [x] **Policy canonicalization**: URL-decode + JSON normalize for drift comparison
+- [x] **Pre-deletion cleanup**: Detach managed, delete inline, remove from profiles
+- [x] **Composite describe**: GetRole + ListRolePolicies + GetRolePolicy + ListAttached
+- [x] **Import default mode**: `ModeObserved` (high-value resource)
+- [x] **Delete mode guard**: Delete handler blocks for ModeObserved (409)
+- [x] **go.mod**: `github.com/aws/aws-sdk-go-v2/service/iam` added
+- [x] **Build passes**: `go build ./...` succeeds
+- [x] **Unit tests pass**: `go test ./internal/drivers/iamrole/... -race`
+- [x] **Integration tests pass**: `go test ./tests/integration/ -run TestIAMRole -tags=integration`

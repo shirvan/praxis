@@ -14,17 +14,20 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// LambdaFunctionDriver implements the Praxis driver for AWS Lambda Functions.
 type LambdaFunctionDriver struct {
 	auth       authservice.AuthClient
 	apiFactory func(aws.Config) LambdaAPI
 }
 
+// NewLambdaFunctionDriver creates a production driver with default Lambda client factory.
 func NewLambdaFunctionDriver(auth authservice.AuthClient) *LambdaFunctionDriver {
 	return NewLambdaFunctionDriverWithFactory(auth, func(cfg aws.Config) LambdaAPI {
 		return NewLambdaAPI(awsclient.NewLambdaClient(cfg))
 	})
 }
 
+// NewLambdaFunctionDriverWithFactory creates a driver with a custom LambdaAPI factory (for testing).
 func NewLambdaFunctionDriverWithFactory(auth authservice.AuthClient, factory func(aws.Config) LambdaAPI) *LambdaFunctionDriver {
 	if factory == nil {
 		factory = func(cfg aws.Config) LambdaAPI { return NewLambdaAPI(awsclient.NewLambdaClient(cfg)) }
@@ -32,10 +35,22 @@ func NewLambdaFunctionDriverWithFactory(auth authservice.AuthClient, factory fun
 	return &LambdaFunctionDriver{auth: auth, apiFactory: factory}
 }
 
+// ServiceName returns the Restate Virtual Object name.
 func (d *LambdaFunctionDriver) ServiceName() string {
 	return ServiceName
 }
 
+// Provision creates or converges a Lambda function.
+//
+// Flow:
+//  1. Validate required fields, apply defaults (memorySize, timeout, packageType, architectures).
+//  2. Load state, increment generation, set status=Provisioning.
+//  3. DescribeFunction to check if the function already exists.
+//  4. If not found: CreateFunction, then wait for stable state.
+//  5. If found: check for immutable field violations (packageType),
+//     then update code (if changed), update config (if drifted), update tags (if drifted).
+//     Each update step waits for function stability before proceeding.
+//  6. Final DescribeFunction to capture outputs. Set status=Ready, schedule reconcile.
 func (d *LambdaFunctionDriver) Provision(ctx restate.ObjectContext, spec LambdaFunctionSpec) (LambdaFunctionOutputs, error) {
 	ctx.Log().Info("provisioning lambda function", "key", restate.Key(ctx), "functionName", spec.FunctionName)
 	api, region, err := d.apiForAccount(ctx, spec.Account)
@@ -200,6 +215,7 @@ func (d *LambdaFunctionDriver) Provision(ctx restate.ObjectContext, spec LambdaF
 	return outputs, nil
 }
 
+// Import adopts an existing Lambda function into Praxis management.
 func (d *LambdaFunctionDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (LambdaFunctionOutputs, error) {
 	ctx.Log().Info("importing lambda function", "resourceId", ref.ResourceID, "mode", ref.Mode)
 	api, region, err := d.apiForAccount(ctx, ref.Account)
@@ -239,6 +255,8 @@ func (d *LambdaFunctionDriver) Import(ctx restate.ObjectContext, ref types.Impor
 	return outputs, nil
 }
 
+// Delete removes the Lambda function. Observed-mode resources cannot be deleted (409).
+// DeleteFunction is idempotent — NotFound is suppressed.
 func (d *LambdaFunctionDriver) Delete(ctx restate.ObjectContext) error {
 	ctx.Log().Info("deleting lambda function", "key", restate.Key(ctx))
 	state, err := restate.Get[LambdaFunctionState](ctx, drivers.StateKey)
@@ -286,6 +304,9 @@ func (d *LambdaFunctionDriver) Delete(ctx restate.ObjectContext) error {
 	return nil
 }
 
+// Reconcile is the periodic drift-detection and correction loop.
+// Detects external deletion, configuration drift, and tag drift.
+// In Managed mode, corrects by updating configuration and tags.
 func (d *LambdaFunctionDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
 	state, err := restate.Get[LambdaFunctionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -366,6 +387,7 @@ func (d *LambdaFunctionDriver) Reconcile(ctx restate.ObjectContext) (types.Recon
 	return types.ReconcileResult{}, nil
 }
 
+// GetStatus returns the current lifecycle status (shared/concurrent handler).
 func (d *LambdaFunctionDriver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
 	state, err := restate.Get[LambdaFunctionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -374,6 +396,7 @@ func (d *LambdaFunctionDriver) GetStatus(ctx restate.ObjectSharedContext) (types
 	return types.StatusResponse{Status: state.Status, Mode: state.Mode, Generation: state.Generation, Error: state.Error}, nil
 }
 
+// GetOutputs returns the provisioned outputs (shared/concurrent handler).
 func (d *LambdaFunctionDriver) GetOutputs(ctx restate.ObjectSharedContext) (LambdaFunctionOutputs, error) {
 	state, err := restate.Get[LambdaFunctionState](ctx, drivers.StateKey)
 	if err != nil {
@@ -382,6 +405,7 @@ func (d *LambdaFunctionDriver) GetOutputs(ctx restate.ObjectSharedContext) (Lamb
 	return state.Outputs, nil
 }
 
+// correctDrift updates configuration and tags to bring the function back to desired state.
 func (d *LambdaFunctionDriver) correctDrift(ctx restate.ObjectContext, api LambdaAPI, desired LambdaFunctionSpec, observed ObservedState) error {
 	if HasDrift(desired, observed) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -413,6 +437,7 @@ func (d *LambdaFunctionDriver) correctDrift(ctx restate.ObjectContext, api Lambd
 	return nil
 }
 
+// scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *LambdaFunctionDriver) scheduleReconcile(ctx restate.ObjectContext, state *LambdaFunctionState) {
 	if state.ReconcileScheduled {
 		return
@@ -422,6 +447,7 @@ func (d *LambdaFunctionDriver) scheduleReconcile(ctx restate.ObjectContext, stat
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
 }
 
+// apiForAccount resolves AWS credentials and creates a LambdaAPI for the given Praxis account.
 func (d *LambdaFunctionDriver) apiForAccount(ctx restate.ObjectContext, account string) (LambdaAPI, string, error) {
 	if d == nil || d.auth == nil || d.apiFactory == nil {
 		return nil, "", fmt.Errorf("LambdaFunctionDriver is not configured with an auth registry")
@@ -433,6 +459,7 @@ func (d *LambdaFunctionDriver) apiForAccount(ctx restate.ObjectContext, account 
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
 }
 
+// waitStable wraps WaitForFunctionStable in a durable restate.Run journal entry.
 func (d *LambdaFunctionDriver) waitStable(ctx restate.ObjectContext, api LambdaAPI, functionName string) error {
 	_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		if runErr := api.WaitForFunctionStable(rc, functionName, 2*time.Minute); runErr != nil {
@@ -443,6 +470,7 @@ func (d *LambdaFunctionDriver) waitStable(ctx restate.ObjectContext, api LambdaA
 	return err
 }
 
+// describeExisting checks if a function exists; returns (observed, found, err).
 func (d *LambdaFunctionDriver) describeExisting(ctx restate.ObjectContext, api LambdaAPI, functionName string) (ObservedState, bool, error) {
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 		obs, runErr := api.DescribeFunction(rc, functionName)
@@ -460,10 +488,12 @@ func (d *LambdaFunctionDriver) describeExisting(ctx restate.ObjectContext, api L
 	return observed, observed.FunctionArn != "", nil
 }
 
+// outputsFromObserved maps ObservedState to user-facing LambdaFunctionOutputs.
 func outputsFromObserved(observed ObservedState) LambdaFunctionOutputs {
 	return LambdaFunctionOutputs{FunctionArn: observed.FunctionArn, FunctionName: observed.FunctionName, Version: observed.Version, State: observed.State, LastModified: observed.LastModified, LastUpdateStatus: observed.LastUpdateStatus, CodeSha256: observed.CodeSha256}
 }
 
+// specFromObserved reconstructs a LambdaFunctionSpec from observed AWS state for Import.
 func specFromObserved(observed ObservedState) LambdaFunctionSpec {
 	spec := applyDefaults(LambdaFunctionSpec{FunctionName: observed.FunctionName, Role: observed.Role, PackageType: observed.PackageType, Runtime: observed.Runtime, Handler: observed.Handler, Description: observed.Description, MemorySize: observed.MemorySize, Timeout: observed.Timeout, Environment: observed.Environment, Layers: append([]string(nil), observed.Layers...), Tags: filterPraxisTags(observed.Tags)})
 	if len(observed.VpcConfig.SubnetIds) > 0 || len(observed.VpcConfig.SecurityGroupIds) > 0 {
@@ -487,6 +517,8 @@ func specFromObserved(observed ObservedState) LambdaFunctionSpec {
 	return spec
 }
 
+// applyDefaults fills zero-value fields with sensible defaults.
+// MemorySize=128, Timeout=3, PackageType=Zip/Image, Architectures=[x86_64].
 func applyDefaults(spec LambdaFunctionSpec) LambdaFunctionSpec {
 	if spec.MemorySize == 0 {
 		spec.MemorySize = 128
@@ -510,6 +542,7 @@ func applyDefaults(spec LambdaFunctionSpec) LambdaFunctionSpec {
 	return spec
 }
 
+// validateProvisionSpec checks that all mandatory fields are set.
 func validateProvisionSpec(spec LambdaFunctionSpec) error {
 	if spec.Region == "" {
 		return fmt.Errorf("region is required")
@@ -531,6 +564,7 @@ func validateProvisionSpec(spec LambdaFunctionSpec) error {
 	return validateCode(spec.Code)
 }
 
+// defaultLambdaImportMode returns Observed if no mode was explicitly specified.
 func defaultLambdaImportMode(mode types.Mode) types.Mode {
 	if mode == "" {
 		return types.ModeObserved
