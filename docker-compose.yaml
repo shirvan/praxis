@@ -110,7 +110,8 @@ services:
   praxis-storage:
     build:
       context: .
-      dockerfile: cmd/praxis-storage/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-storage
     container_name: praxis-storage
     env_file:
       - .env
@@ -129,7 +130,8 @@ services:
   praxis-compute:
     build:
       context: .
-      dockerfile: cmd/praxis-compute/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-compute
     container_name: praxis-compute
     env_file:
       - .env
@@ -146,7 +148,8 @@ services:
   praxis-identity:
     build:
       context: .
-      dockerfile: cmd/praxis-identity/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-identity
     container_name: praxis-identity
     env_file:
       - .env
@@ -163,7 +166,8 @@ services:
   praxis-network:
     build:
       context: .
-      dockerfile: cmd/praxis-network/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-network
     container_name: praxis-network
     env_file:
       - .env
@@ -180,7 +184,8 @@ services:
   praxis-core:
     build:
       context: .
-      dockerfile: cmd/praxis-core/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-core
     container_name: praxis-core
     env_file:
       - .env
@@ -210,7 +215,8 @@ services:
   praxis-monitoring:
     build:
       context: .
-      dockerfile: cmd/praxis-monitoring/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-monitoring
     container_name: praxis-monitoring
     env_file:
       - .env
@@ -227,7 +233,8 @@ services:
   praxis-notifications:
     build:
       context: .
-      dockerfile: cmd/praxis-notifications/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-notifications
     container_name: praxis-notifications
     depends_on:
       restate:
@@ -241,7 +248,8 @@ services:
   praxis-concierge:
     build:
       context: .
-      dockerfile: cmd/praxis-concierge/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-concierge
     container_name: praxis-concierge
     env_file:
       - .env
@@ -262,7 +270,8 @@ services:
   praxis-slack:
     build:
       context: .
-      dockerfile: cmd/praxis-slack/Dockerfile
+      dockerfile: Dockerfile
+      target: praxis-slack
     container_name: praxis-slack
     env_file:
       - .env
