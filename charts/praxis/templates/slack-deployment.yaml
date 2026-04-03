@@ -1,0 +1,41 @@
+{{- if .Values.slack.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "praxis.fullname" . }}-slack
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "praxis.labels" . | nindent 4 }}
+    {{- include "praxis.selectorLabels" (dict "root" . "component" "slack") | nindent 4 }}
+    app.kubernetes.io/component: slack
+spec:
+  replicas: {{ .Values.slack.replicas }}
+  selector:
+    matchLabels:
+      {{- include "praxis.selectorLabels" (dict "root" . "component" "slack") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "praxis.labels" . | nindent 8 }}
+        {{- include "praxis.selectorLabels" (dict "root" . "component" "slack") | nindent 8 }}
+        app.kubernetes.io/component: slack
+    spec:
+      {{- include "praxis.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: praxis-slack
+          image: {{ include "praxis.image" (dict "component" "slack" "image" .Values.slack.image "global" .Values.global) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: {{ include "praxis.fullname" . }}-config
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.slack.resources | nindent 12 }}
+{{- end }}

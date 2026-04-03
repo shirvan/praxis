@@ -1,0 +1,65 @@
+{{- if .Values.registration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "praxis.fullname" . }}-register
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "praxis.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: "{{ .Values.registration.image.repository }}:{{ .Values.registration.image.tag }}"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              ADMIN_URL="{{ include "praxis.restateAdminUrl" . }}"
+              NS="{{ .Release.Namespace }}"
+              FN="{{ include "praxis.fullname" . }}"
+
+              echo "Waiting for Restate admin at ${ADMIN_URL}..."
+              until curl -sf "${ADMIN_URL}/health" > /dev/null 2>&1; do
+                echo "  Restate not ready, retrying in 3s..."
+                sleep 3
+              done
+              echo "Restate is ready."
+
+              register() {
+                local name=$1
+                local url=$2
+                echo "Registering ${name} at ${url}..."
+                curl -sf -X POST "${ADMIN_URL}/deployments" \
+                  -H 'content-type: application/json' \
+                  -d "{\"uri\": \"${url}\", \"force\": true}" \
+                  && echo "  OK: ${name}" \
+                  || echo "  WARN: ${name} registration returned an error (may already be registered)"
+              }
+
+              register "core" "http://${FN}-core.${NS}:9080"
+              {{- range $name, $cfg := .Values.drivers }}
+              {{- if $cfg.enabled }}
+              register "{{ $name }}" "http://${FN}-{{ $name }}.${NS}:9080"
+              {{- end }}
+              {{- end }}
+              {{- if .Values.notifications.enabled }}
+              register "notifications" "http://${FN}-notifications.${NS}:9080"
+              {{- end }}
+              {{- if .Values.concierge.enabled }}
+              register "concierge" "http://${FN}-concierge.${NS}:9080"
+              {{- end }}
+              {{- if .Values.slack.enabled }}
+              register "slack" "http://${FN}-slack.${NS}:9080"
+              {{- end }}
+
+              echo "Registration complete."
+{{- end }}

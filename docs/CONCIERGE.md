@@ -206,7 +206,7 @@ type ConciergeConfiguration struct {
     BaseURL        string `json:"baseUrl,omitempty"`        // override for OpenAI-compatible (e.g. Ollama, Together)
     APIKey         string `json:"apiKey,omitempty"`         // direct API key (dev convenience)
     APIKeyRef      string `json:"apiKeyRef,omitempty"`      // ssm:///path/to/key (production)
-    Temperature    float64 `json:"temperature"`             // default: 0.2
+    Temperature    float64 `json:"temperature"`             // default: 0.1
     MaxTurns       int    `json:"maxTurns"`                 // max tool loop iterations (default: 20)
     SessionTTL     string `json:"sessionTTL"`               // session expiry duration (default: "24h")
     ApprovalTTL    string `json:"approvalTTL"`              // how long to wait for approval (default: "5m")

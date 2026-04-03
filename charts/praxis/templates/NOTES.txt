@@ -1,0 +1,31 @@
+Praxis has been deployed to namespace {{ .Release.Namespace }}.
+{{ if .Values.restate.enabled }}
+Bundled Restate is running. Forward the ingress to your local machine:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "praxis.fullname" . }}-restate 8080:8080
+{{ else }}
+Using external Restate:
+  Ingress: {{ .Values.restate.external.ingressUrl }}
+  Admin:   {{ .Values.restate.external.adminUrl }}
+{{ end }}
+Point the CLI at the ingress endpoint:
+
+  export PRAXIS_RESTATE_ENDPOINT={{ include "praxis.restateIngressUrl" . }}
+  praxis deploy webapp --account {{ .Values.account.name }} --var env=staging --key my-webapp --wait
+
+Services deployed:
+  - {{ include "praxis.fullname" . }}-core
+{{- range $name, $config := .Values.drivers }}
+{{- if $config.enabled }}
+  - {{ include "praxis.fullname" $ }}-{{ $name }}
+{{- end }}
+{{- end }}
+{{- if .Values.notifications.enabled }}
+  - {{ include "praxis.fullname" . }}-notifications
+{{- end }}
+{{- if .Values.concierge.enabled }}
+  - {{ include "praxis.fullname" . }}-concierge
+{{- end }}
+{{- if .Values.slack.enabled }}
+  - {{ include "praxis.fullname" . }}-slack
+{{- end }}

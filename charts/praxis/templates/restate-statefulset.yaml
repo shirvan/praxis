@@ -1,0 +1,66 @@
+{{- if .Values.restate.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "praxis.fullname" . }}-restate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "praxis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime
+spec:
+  serviceName: {{ include "praxis.fullname" . }}-restate
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "praxis.selectorLabels" (dict "root" . "component" "restate") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "praxis.labels" . | nindent 8 }}
+        {{- include "praxis.selectorLabels" (dict "root" . "component" "restate") | nindent 8 }}
+        app.kubernetes.io/component: runtime
+    spec:
+      {{- include "praxis.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: restate
+          image: "{{ .Values.restate.image.repository }}:{{ .Values.restate.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: ingress
+              containerPort: 8080
+            - name: admin
+              containerPort: 9070
+            - name: metrics
+              containerPort: 9071
+          env:
+            - name: RESTATE_OBSERVABILITY__LOG__FILTER
+              value: "restate=info"
+          volumeMounts:
+            - name: restate-data
+              mountPath: /target/restate
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.restate.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: restate-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.restate.storage.storageClass }}
+        storageClassName: {{ .Values.restate.storage.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.restate.storage.size }}
+{{- end }}

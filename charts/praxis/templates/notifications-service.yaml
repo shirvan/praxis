@@ -1,0 +1,17 @@
+{{- if .Values.notifications.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "praxis.fullname" . }}-notifications
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "praxis.labels" . | nindent 4 }}
+    {{- include "praxis.selectorLabels" (dict "root" . "component" "notifications") | nindent 4 }}
+spec:
+  selector:
+    {{- include "praxis.selectorLabels" (dict "root" . "component" "notifications") | nindent 4 }}
+  ports:
+    - name: restate
+      port: 9080
+      targetPort: restate
+{{- end }}

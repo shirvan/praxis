@@ -610,16 +610,16 @@ type conciergeMessage struct {
 
 // conciergeConfigureRequest is the payload sent to ConciergeConfig.Configure.
 type conciergeConfigureRequest struct {
-	Provider    string  `json:"provider"`
-	Model       string  `json:"model"`
-	APIKey      string  `json:"apiKey,omitempty"`
-	APIKeyRef   string  `json:"apiKeyRef,omitempty"`
-	BaseURL     string  `json:"baseURL,omitempty"`
-	MaxTurns    int     `json:"maxTurns,omitempty"`
-	MaxMessages int     `json:"maxMessages,omitempty"`
-	Temperature float64 `json:"temperature,omitempty"`
-	SessionTTL  string  `json:"sessionTTL,omitempty"`
-	ApprovalTTL string  `json:"approvalTTL,omitempty"`
+	Provider    string   `json:"provider"`
+	Model       string   `json:"model"`
+	APIKey      string   `json:"apiKey,omitempty"`
+	APIKeyRef   string   `json:"apiKeyRef,omitempty"`
+	BaseURL     string   `json:"baseURL,omitempty"`
+	MaxTurns    int      `json:"maxTurns,omitempty"`
+	MaxMessages int      `json:"maxMessages,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	SessionTTL  string   `json:"sessionTTL,omitempty"`
+	ApprovalTTL string   `json:"approvalTTL,omitempty"`
 }
 
 // conciergeConfiguration is the redacted config returned by ConciergeConfig.Get.

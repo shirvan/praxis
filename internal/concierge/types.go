@@ -171,16 +171,16 @@ type ConciergeConfiguration struct {
 // ConciergeConfigRequest is the input to ConciergeConfig.Configure. Only provider
 // and model are required — all other fields fall back to existing config or defaults.
 type ConciergeConfigRequest struct {
-	Provider    string  `json:"provider"`
-	Model       string  `json:"model"`
-	APIKey      string  `json:"apiKey,omitempty"`
-	APIKeyRef   string  `json:"apiKeyRef,omitempty"`
-	BaseURL     string  `json:"baseURL,omitempty"`
-	MaxTurns    int     `json:"maxTurns,omitempty"`
-	MaxMessages int     `json:"maxMessages,omitempty"`
-	Temperature float64 `json:"temperature,omitempty"`
-	SessionTTL  string  `json:"sessionTTL,omitempty"`
-	ApprovalTTL string  `json:"approvalTTL,omitempty"`
+	Provider    string   `json:"provider"`
+	Model       string   `json:"model"`
+	APIKey      string   `json:"apiKey,omitempty"`
+	APIKeyRef   string   `json:"apiKeyRef,omitempty"`
+	BaseURL     string   `json:"baseURL,omitempty"`
+	MaxTurns    int      `json:"maxTurns,omitempty"`
+	MaxMessages int      `json:"maxMessages,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	SessionTTL  string   `json:"sessionTTL,omitempty"`
+	ApprovalTTL string   `json:"approvalTTL,omitempty"`
 }
 
 // Defaults returns a copy with zero-value fields filled in with sensible defaults.

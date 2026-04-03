@@ -1,0 +1,267 @@
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+# -- Global image settings
+global:
+  # -- Container image registry for all Praxis images
+  imageRegistry: ghcr.io/shirvan
+  # -- Default image tag for all Praxis images
+  imageTag: latest
+  # -- Image pull policy
+  imagePullPolicy: IfNotPresent
+  # -- Image pull secrets (if using a private registry)
+  imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# Restate — durable execution runtime
+# ---------------------------------------------------------------------------
+
+restate:
+  # -- Deploy a bundled Restate instance. Set to false to use Restate Cloud
+  # or an existing external Restate instance.
+  enabled: true
+  image:
+    repository: docker.restate.dev/restatedev/restate
+    tag: "1.3"
+  # -- Persistent storage for Restate journal
+  storage:
+    size: 10Gi
+    # -- StorageClass name. Leave empty for the cluster default.
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  # -- External Restate endpoint configuration (used when restate.enabled=false).
+  external:
+    # -- Restate ingress URL (e.g. https://<env>.dev.restate.cloud:8080)
+    ingressUrl: ""
+    # -- Restate admin URL (e.g. https://<env>.dev.restate.cloud:9070)
+    adminUrl: ""
+
+# ---------------------------------------------------------------------------
+# AWS configuration
+# ---------------------------------------------------------------------------
+
+aws:
+  # -- Default AWS region
+  region: us-east-1
+  # -- AWS endpoint override (e.g. http://localstack:4566 for local development)
+  endpointUrl: ""
+
+# ---------------------------------------------------------------------------
+# Praxis account
+# ---------------------------------------------------------------------------
+
+account:
+  # -- Account name (users reference this with --account)
+  name: production
+  # -- Account region (defaults to aws.region if empty)
+  region: ""
+  # -- Credential source: "static", "role", or "default"
+  credentialSource: default
+  # -- Access key for static credentials (pass via --set at install time)
+  accessKeyId: ""
+  # -- Secret key for static credentials (pass via --set at install time)
+  secretAccessKey: ""
+  # -- Role ARN for role-based credentials
+  roleArn: ""
+  # -- External ID for role assumption
+  externalId: ""
+
+# ---------------------------------------------------------------------------
+# Praxis Core — command service, orchestrator, template engine
+# ---------------------------------------------------------------------------
+
+core:
+  replicas: 1
+  image:
+    # -- Override image repository (default: <global.imageRegistry>/praxis-core)
+    repository: ""
+    # -- Override image tag (default: global.imageTag)
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Driver packs — domain-grouped resource drivers
+# ---------------------------------------------------------------------------
+
+drivers:
+  storage:
+    enabled: true
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilization: 70
+
+  compute:
+    enabled: true
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 6
+      targetCPUUtilization: 65
+
+  network:
+    enabled: true
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 8
+      targetCPUUtilization: 60
+
+  identity:
+    enabled: true
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilization: 70
+
+  monitoring:
+    enabled: true
+    replicas: 1
+    image:
+      repository: ""
+      tag: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilization: 70
+
+# ---------------------------------------------------------------------------
+# Notifications service
+# ---------------------------------------------------------------------------
+
+notifications:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Concierge — AI-powered natural language assistant (optional)
+# ---------------------------------------------------------------------------
+
+concierge:
+  enabled: false
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # -- LLM provider configuration
+  llm:
+    # -- Provider: "openai" or "claude"
+    provider: ""
+    # -- Model name (e.g. gpt-4o, claude-sonnet-4-20250514)
+    model: ""
+    # -- API key for the LLM provider (pass via --set at install time)
+    apiKey: ""
+
+# ---------------------------------------------------------------------------
+# Slack Gateway (optional)
+# ---------------------------------------------------------------------------
+
+slack:
+  enabled: false
+  replicas: 1
+  image:
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Service registration — registers all Praxis services with Restate
+# ---------------------------------------------------------------------------
+
+registration:
+  # -- Run a post-install/post-upgrade Job to register services with Restate
+  enabled: true
+  image:
+    repository: curlimages/curl
+    tag: "8.12.1"

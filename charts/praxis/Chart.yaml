@@ -1,0 +1,17 @@
+apiVersion: v2
+name: praxis
+description: Declarative infrastructure automation — without the cluster
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/shirvan/praxis
+sources:
+  - https://github.com/shirvan/praxis
+maintainers:
+  - name: shirvan
+keywords:
+  - infrastructure
+  - automation
+  - aws
+  - restate
+  - declarative

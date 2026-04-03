@@ -50,12 +50,37 @@ jobs:
       - name: Build release artifacts
         run: just release-build ${{ steps.version.outputs.version }}
 
+      - name: Detect prerelease
+        id: prerelease
+        run: |
+          if echo "${GITHUB_REF_NAME}" | grep -qE '\-(alpha|beta|rc)'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from tag
+        id: notes
+        run: |
+          # Get tag message body (skip the first "title" line)
+          BODY=$(git tag -l --format='%(contents:body)' "${GITHUB_REF_NAME}")
+          SUBJECT=$(git tag -l --format='%(contents:subject)' "${GITHUB_REF_NAME}")
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            echo "${SUBJECT}"
+            echo ""
+            echo "${BODY}"
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
           draft: true
-          generate_release_notes: true
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
+          body: ${{ steps.notes.outputs.body }}
           files: |
             dist/${{ steps.version.outputs.version }}/praxis_darwin_arm64.tar.gz
             dist/${{ steps.version.outputs.version }}/praxis_darwin_amd64.tar.gz

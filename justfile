@@ -67,7 +67,7 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge
+    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge praxis-slack
     just wait-stack
     just register
 
@@ -106,6 +106,9 @@ logs-notifications:
 # Follow logs for the concierge AI assistant service.
 logs-concierge:
     docker compose logs -f praxis-concierge
+
+logs-slack:
+    docker compose logs -f praxis-slack
 
 # Follow logs for all driver packs together.
 logs-drivers:
@@ -161,6 +164,11 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-concierge:9080"}' | jq .
     @echo "✓ Praxis concierge services registered"
+    @echo "Registering Praxis Slack (gateway)..."
+    @curl -s -X POST http://localhost:9070/deployments \
+        -H 'content-type: application/json' \
+        -d '{"uri": "http://praxis-slack:9080"}' | jq .
+    @echo "✓ Praxis slack services registered"
 
 # ─── Build ──────────────────────────────────────────────────
 
@@ -175,6 +183,7 @@ build:
     go build -o bin/praxis-identity ./cmd/praxis-identity
     go build -o bin/praxis-monitoring ./cmd/praxis-monitoring
     go build -o bin/praxis-concierge ./cmd/praxis-concierge
+    go build -o bin/praxis-slack ./cmd/praxis-slack
 
 # Build CLI binary only
 build-cli:
@@ -958,8 +967,18 @@ release VERSION: (_validate-version VERSION)
     fi
 
     echo "Creating release tag {{VERSION}}..."
-    git tag -a "{{VERSION}}" -m "Release {{VERSION}}"
+    echo "Your editor will open — write the release notes as the tag message."
+    echo "First line = title, blank line, then the body."
+    git tag -a "{{VERSION}}"
     echo "✓ Tag created"
+
+    # Verify the tag message isn't empty
+    msg=$(git tag -l --format='%(contents)' "{{VERSION}}")
+    if [ -z "$msg" ]; then
+        echo "ERROR: tag message is empty — aborting"
+        git tag -d "{{VERSION}}"
+        exit 1
+    fi
 
     echo "Pushing tag to origin..."
     git push origin "{{VERSION}}"
@@ -967,8 +986,8 @@ release VERSION: (_validate-version VERSION)
     echo ""
     echo "Next steps:"
     echo "  1. Go to https://github.com/shirvan/praxis/actions to monitor the build"
-    echo "  2. Once complete, edit the release at https://github.com/shirvan/praxis/releases/tag/{{VERSION}}"
-    echo "     to add release notes describing what changed."
+    echo "  2. Once complete, review the draft release at https://github.com/shirvan/praxis/releases/tag/{{VERSION}}"
+    echo "     and publish it."
 
 # ─── Per-Service Release ────────────────────────────────────
 

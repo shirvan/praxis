@@ -1,0 +1,23 @@
+{{- if .Values.restate.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "praxis.fullname" . }}-restate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "praxis.labels" . | nindent 4 }}
+    {{- include "praxis.selectorLabels" (dict "root" . "component" "restate") | nindent 4 }}
+spec:
+  selector:
+    {{- include "praxis.selectorLabels" (dict "root" . "component" "restate") | nindent 4 }}
+  ports:
+    - name: ingress
+      port: 8080
+      targetPort: ingress
+    - name: admin
+      port: 9070
+      targetPort: admin
+    - name: metrics
+      port: 9071
+      targetPort: metrics
+{{- end }}

@@ -60,8 +60,9 @@ func (ConciergeConfig) Configure(ctx restate.ObjectContext, req ConciergeConfigR
 	if cfg.MaxMessages == 0 && existing != nil {
 		cfg.MaxMessages = existing.MaxMessages
 	}
-	cfg.Temperature = req.Temperature
-	if cfg.Temperature == 0 && existing != nil {
+	if req.Temperature != nil {
+		cfg.Temperature = *req.Temperature
+	} else if existing != nil {
 		cfg.Temperature = existing.Temperature
 	}
 	cfg.SessionTTL = req.SessionTTL
@@ -75,6 +76,12 @@ func (ConciergeConfig) Configure(ctx restate.ObjectContext, req ConciergeConfigR
 
 	// Apply defaults for any remaining zero values.
 	cfg = cfg.Defaults()
+
+	// Re-apply explicit temperature after Defaults() — temperature=0 is
+	// valid (deterministic LLM output) and must not be overridden to 0.1.
+	if req.Temperature != nil {
+		cfg.Temperature = *req.Temperature
+	}
 
 	restate.Set(ctx, "config", cfg)
 	return nil

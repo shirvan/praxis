@@ -141,13 +141,11 @@ The `data` field carries a JSON object with event-type-specific details. Payload
     "message": "S3Bucket provisioned successfully",
     "resourceName": "webBucket",
     "resourceKind": "S3Bucket",
-    "resourceKey": "web-assets-bucket",
     "status": "Ready",
     "outputs": {
       "arn": "arn:aws:s3:::web-assets-bucket",
       "bucketName": "web-assets-bucket"
-    },
-    "durationMs": 2340
+    }
   }
 }
 ```
@@ -204,11 +202,10 @@ Emitted when user actions enter the system via the command service.
 
 ### Policy Events (category: `policy`)
 
-Emitted during template evaluation and deployment validation.
+Emitted during deployment validation when lifecycle policies block destructive operations. Policy violations during template evaluation are returned as template errors, not CloudEvents.
 
 | Type | Severity | Subject | Description |
 |------|----------|---------|-------------|
-| `dev.praxis.policy.violation` | error | `<resourceName>` | Resource violates a policy constraint |
 | `dev.praxis.policy.prevented_destroy` | warn | `<resourceName>` | Destroy blocked by `lifecycle.preventDestroy` |
 
 ### System Events (category: `system`)
@@ -258,12 +255,12 @@ Typed constructors in `event_builders.go` enforce consistency across all emissio
 ```go
 // internal/core/orchestrator/event_builders.go
 
-func NewDeploymentStartedEvent(deploymentKey, workspace string, generation int64, now time.Time) (cloudevents.Event, error) {
+func NewDeploymentStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
     // Sets type, source, extensions, and typed data payload
     // Returns a fully populated CloudEvent ready for Emit
 }
 
-func NewResourceReadyEvent(deploymentKey, workspace string, generation int64, now time.Time, resourceName, resourceKind, resourceKey string, outputs map[string]any, durationMs int64) (cloudevents.Event, error) {
+func NewResourceReadyEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, outputs map[string]any) (cloudevents.Event, error) {
     // ...
 }
 
@@ -651,9 +648,9 @@ praxis events query \
   --workspace production \
   --since 7d
 
-# All policy violations in the last 24 hours
+# All policy events (prevented destroys) in the last 24 hours
 praxis events query \
-  --type "dev.praxis.policy.violation" \
+  --type "dev.praxis.policy.prevented_destroy" \
   --since 24h
 
 # Full timeline for a specific deployment
@@ -681,17 +678,15 @@ Each event type has a CUE schema defining its `data` payload structure. The same
 
 #DeploymentCompletedData: {
     message:       string
-    resourceCount: int & >=0
-    durationMs:    int & >=0
+    status:        string
 }
 
 #ResourceReadyData: {
     message:      string
     resourceName: string
     resourceKind: string
-    resourceKey:  string
+    status:       string
     outputs:      {[string]: _}
-    durationMs:   int & >=0
 }
 
 // schemas/events/drift.cue
@@ -699,8 +694,7 @@ Each event type has a CUE schema defining its `data` payload structure. The same
     message:      string
     resourceName: string
     resourceKind: string
-    resourceKey:  string
-    diffs:        [...#FieldDiff]
+    error?:       string
 }
 ```
 
@@ -712,7 +706,7 @@ CUE has built-in JSON Schema export. A build step generates JSON Schema files fr
 just generate-event-schemas
 ```
 
-The generated files are committed under `schemas/events/gen/` and published alongside the event type catalog. External consumers reference them to validate incoming CloudEvents payloads without needing CUE tooling. The generated schemas cover all 32 event types: lifecycle (16), drift (3), command (4), policy (2), system (7).
+The generated files are committed under `schemas/events/gen/` and published alongside the event type catalog. External consumers reference them to validate incoming CloudEvents payloads without needing CUE tooling. The generated schemas cover all 31 event types: lifecycle (16), drift (3), command (4), policy (1), system (7).
 
 ---
 

@@ -105,12 +105,12 @@ func HydrateExprs(
 // against the collected outputs map.
 func resolveExpr(expr string, outputs map[string]map[string]any) (any, error) {
 	parts := strings.Split(expr, ".")
-	// Expected form: resources.<name>.outputs.<field>
+	// Expected form: resources.<name>.outputs.<field>[.<nested>...]
 	if len(parts) < 4 || parts[0] != "resources" || parts[2] != "outputs" {
 		return nil, fmt.Errorf("unsupported expression format: %q", expr)
 	}
 	resourceName := parts[1]
-	fieldName := parts[3]
+	fieldName := strings.Join(parts[3:], ".")
 
 	outputMap, ok := outputs[resourceName]
 	if !ok {

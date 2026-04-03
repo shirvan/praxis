@@ -1,0 +1,52 @@
+{{- range $name, $config := .Values.drivers }}
+{{- if $config.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "praxis.fullname" $ }}-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "praxis.labels" $ | nindent 4 }}
+    {{- include "praxis.selectorLabels" (dict "root" $ "component" $name) | nindent 4 }}
+    app.kubernetes.io/component: drivers
+    praxis.io/driver-pack: {{ $name }}
+spec:
+  {{- if not $config.autoscaling.enabled }}
+  replicas: {{ $config.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "praxis.selectorLabels" (dict "root" $ "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "praxis.labels" $ | nindent 8 }}
+        {{- include "praxis.selectorLabels" (dict "root" $ "component" $name) | nindent 8 }}
+        app.kubernetes.io/component: drivers
+        praxis.io/driver-pack: {{ $name }}
+    spec:
+      {{- include "praxis.imagePullSecrets" $ | nindent 6 }}
+      containers:
+        - name: praxis-{{ $name }}
+          image: {{ include "praxis.image" (dict "component" $name "image" $config.image "global" $.Values.global) }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          ports:
+            - name: restate
+              containerPort: 9080
+          envFrom:
+            - configMapRef:
+                name: {{ include "praxis.fullname" $ }}-config
+            {{- if and (eq $.Values.account.credentialSource "static") $.Values.account.accessKeyId }}
+            - secretRef:
+                name: {{ include "praxis.fullname" $ }}-credentials
+            {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: restate
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml $config.resources | nindent 12 }}
+{{- end }}
+{{- end }}

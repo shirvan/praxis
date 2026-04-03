@@ -85,21 +85,66 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 | Notifications     | 9080          | 9086      | Restate endpoint     |
 | Monitoring Pack   | 9080          | 9087      | Restate endpoint     |
 | Concierge         | 9080          | 9088      | Restate endpoint     |
+| Slack Gateway     | 9080          | 9089      | Restate endpoint     |
 | LocalStack        | 4566          | 4566      | Mock AWS (local dev) |
 
-### Kubernetes Example
+### Kubernetes Deployment (Helm)
 
-In production, each Praxis service runs as a separate Kubernetes Deployment behind an Ingress (or directly reachable by Restate via cluster DNS). Restate itself can be Restate Cloud or a self-hosted StatefulSet.
+The recommended way to deploy Praxis on Kubernetes is via the included Helm chart. The chart deploys Praxis Core, all driver packs, and optionally a bundled Restate instance — or points to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
 
-Ready-to-use manifests live in [`examples/ops/k8s/`](../examples/ops/k8s/):
+```bash
+# Deploy with bundled Restate
+helm install praxis charts/praxis \
+  --namespace praxis-system --create-namespace \
+  --set aws.region=us-east-1 \
+  --set account.credentialSource=default
+
+# Deploy with Restate Cloud (no bundled Restate)
+helm install praxis charts/praxis \
+  --namespace praxis-system --create-namespace \
+  --set restate.enabled=false \
+  --set restate.external.ingressUrl=https://<env>.dev.restate.cloud:8080 \
+  --set restate.external.adminUrl=https://<env>.dev.restate.cloud:9070
+
+# Wait for readiness
+kubectl -n praxis-system wait --for=condition=ready pod \
+  -l app.kubernetes.io/part-of=praxis --timeout=120s
+
+# Enable autoscaling for driver packs
+helm upgrade praxis charts/praxis \
+  --namespace praxis-system \
+  --set drivers.network.autoscaling.enabled=true \
+  --set drivers.compute.autoscaling.enabled=true
+```
+
+The Helm chart handles service registration with Restate automatically via a post-install Job.
+
+Key Helm values:
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `restate.enabled` | `true` | Deploy a bundled Restate StatefulSet |
+| `restate.external.ingressUrl` | `""` | Restate ingress URL (required when `restate.enabled=false`) |
+| `restate.external.adminUrl` | `""` | Restate admin URL (required when `restate.enabled=false`) |
+| `aws.region` | `us-east-1` | Default AWS region |
+| `account.credentialSource` | `default` | `static`, `role`, or `default` |
+| `concierge.enabled` | `false` | Deploy the AI assistant |
+| `slack.enabled` | `false` | Deploy the Slack gateway |
+| `drivers.<name>.autoscaling.enabled` | `false` | Enable HPA for a driver pack |
+
+See [`charts/praxis/values.yaml`](../charts/praxis/values.yaml) for the full set of configurable values.
+
+### Raw Manifests (Without Helm)
+
+For environments where Helm is not available, raw Kubernetes manifests are provided in [`examples/ops/k8s/`](../examples/ops/k8s/). These do **not** include Restate — you must configure the `PRAXIS_RESTATE_ENDPOINT` ConfigMap entry to point at your Restate instance.
 
 | Manifest | Description |
 |----------|-------------|
-| [`praxis-full.yaml`](../examples/ops/k8s/praxis-full.yaml) | Full stack — Namespace, ConfigMap, Restate StatefulSet (PVC-backed), Praxis Core + all four driver packs as Deployments + Services |
-| [`praxis-autoscaling.yaml`](../examples/ops/k8s/praxis-autoscaling.yaml) | HorizontalPodAutoscalers that scale driver packs based on CPU demand (network 1–8, compute 1–6, storage 1–4, iam 1–3) |
+| [`praxis-full.yaml`](../examples/ops/k8s/praxis-full.yaml) | Namespace, ConfigMap, Praxis Core + all driver packs as Deployments + Services |
+| [`praxis-autoscaling.yaml`](../examples/ops/k8s/praxis-autoscaling.yaml) | HorizontalPodAutoscalers that scale driver packs based on CPU demand |
 
 ```bash
-# Deploy the full stack
+# Edit the ConfigMap in praxis-full.yaml with your Restate endpoint and AWS credentials
 kubectl apply -f examples/ops/k8s/praxis-full.yaml
 
 # Wait for readiness
@@ -107,27 +152,16 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # Register each service with Restate
-for svc in praxis-core praxis-storage praxis-compute praxis-network praxis-identity praxis-monitoring praxis-concierge; do
-  kubectl -n praxis-system exec deploy/restate -- \
-    curl -s -X POST http://localhost:9070/deployments \
-      -H 'content-type: application/json' \
-      -d "{\"uri\": \"http://${svc}.praxis-system:9080\"}"
+for svc in praxis-core praxis-storage praxis-compute praxis-network \
+           praxis-identity praxis-monitoring praxis-notifications; do
+  curl -X POST http://<RESTATE_ADMIN>:9070/deployments \
+    -H 'content-type: application/json' \
+    -d "{\"uri\": \"http://${svc}.praxis-system:9080\", \"force\": true}"
 done
 
 # (Optional) Enable autoscaling
 kubectl apply -f examples/ops/k8s/praxis-autoscaling.yaml
 ```
-
-For **Restate Cloud**, replace the in-cluster Restate StatefulSet with the cloud-provided endpoints and register each service's Ingress URL instead:
-
-```bash
-curl -X POST https://<restate-cloud-admin>/deployments \
-  -H 'content-type: application/json' \
-  -H 'Authorization: Bearer <api-token>' \
-  -d '{"uri": "https://praxis-storage.example.com"}'
-```
-
-Each driver pack and Praxis Core gets its own Deployment, Service, and (optionally) Ingress — fully independent scaling and rollout.
 
 ## Quick Start (Local Development)
 
@@ -282,6 +316,11 @@ curl -X POST http://localhost:9070/deployments \
 curl -X POST http://localhost:9070/deployments \
   -H 'content-type: application/json' \
   -d '{"uri": "http://praxis-concierge:9080"}'
+
+# Register Praxis Slack gateway (optional)
+curl -X POST http://localhost:9070/deployments \
+  -H 'content-type: application/json' \
+  -d '{"uri": "http://praxis-slack:9080"}'
 ```
 
 ### Verify Registration

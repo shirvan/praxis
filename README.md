@@ -2,23 +2,25 @@
 
 **Declarative infrastructure automation — without the cluster.**
 
-[Why Praxis](#why-praxis) · [Quickstart](#quickstart) · [Docs](#documentation) · [Future](FUTURE.md)
+[Why Praxis](#why-praxis) · [Get Started](#get-started) · [Docs](#documentation) · [Future](docs/FUTURE.md)
 
 ---
 
 ## >>> Praxis is in alpha, things will change quickly and may break stuff. <<<
 
-Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers — continuous reconciliation, drift correction, dependency-aware orchestration — but **without requiring a Kubernetes cluster to run it**.
+Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers continuous reconciliation, drift correction, dependency-aware orchestration but without the overhead of a Kubernetes cluster to run it. Praxis itself can be run on Kubernetes if you already use it.
 
 Powered by [Restate](https://restate.dev) for durable execution, Praxis models every cloud resource as a stateful Virtual Object with exactly-once lifecycle guarantees. Define what you want in [CUE](https://cuelang.org/) templates, and Praxis converges reality to match.
 
+For a more detailed explanation of the idea and reasons behind Praxis see the [Praxis Architecture](docs/PRAXIS_ARCHITECTURE.md) document.
+
 ```mermaid
 graph TD
-    CLI["Praxis CLI"] --> Core["Praxis Core<br/>commands, workflows, templates"]
-    CLI --> Concierge["Praxis Concierge<br/>AI assistant (optional)"]
-    Concierge --> Core
-    Core --> Restate["Restate<br/>durable execution engine"]
-    Restate --> Drivers
+    CLI["Praxis CLI / API"] --> Restate["Restate<br/>durable execution engine"]
+    Restate --> Core["Praxis Core<br/>commands, workflows, templates"]
+    Restate --> Concierge["Praxis Concierge<br/>AI assistant (optional)"]
+    Concierge -->|"Restate RPC"| Core
+    Core -->|"Restate RPC"| Drivers
 
     subgraph Drivers["Driver Packs"]
         Storage
@@ -86,15 +88,21 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 ---
 
-## Quickstart
+## Get Started
 
-### Prerequisites
+Praxis runs anywhere Restate runs — a single Docker Compose stack on your laptop, a Kubernetes cluster, or fully managed on Restate Cloud. Pick the path that fits your situation.
+
+### Local Development
+
+The fastest way to try Praxis. Docker Compose brings up LocalStack (mock AWS), Restate, Praxis Core, and all driver packs.
+
+#### Prerequisites
 
 - [Docker](https://www.docker.com/) + Docker Compose
 - [just](https://github.com/casey/just) (task runner)
 - [Go](https://go.dev/) >= 1.25 (for building from source)
 
-### Start the Stack
+#### Start the Stack
 
 ```bash
 git clone https://github.com/shirvan/praxis.git
@@ -107,7 +115,7 @@ cp .env.example .env
 just up
 ```
 
-### Use the CLI
+#### Use the CLI
 
 ```bash
 # Build the CLI
@@ -129,25 +137,100 @@ praxis deploy webapp --account local --var env=dev --key my-webapp --wait
 praxis deploy webapp --account local -f vars.json --key my-webapp --wait
 
 # --- Common operations ---
-# Check deployment status
-praxis get Deployment/my-webapp
-
-# List all deployments
-praxis list deployments
-
-# Follow deployment events
-praxis observe Deployment/my-webapp
-
-# Import an existing S3 bucket
-praxis import S3Bucket --account local --id my-existing-bucket --region us-east-1
-
-# Delete a deployment
+praxis get Deployment/my-webapp          # Check deployment status
+praxis list deployments                  # List all deployments
+praxis observe Deployment/my-webapp      # Follow deployment events
 praxis delete Deployment/my-webapp --yes --wait
 
 # --- Operator: inline CUE (development/testing) ---
 praxis plan webapp.cue --account local --var env=dev
 praxis apply webapp.cue --account local --var env=dev --key my-webapp --wait
 ```
+
+### Centralized Deployment (Kubernetes)
+
+For team and production use, deploy Praxis on Kubernetes with the included Helm chart. The chart deploys all Praxis components and optionally bundles a Restate instance — or you can point to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
+
+```bash
+# Deploy with bundled Restate
+helm install praxis charts/praxis \
+  --namespace praxis-system --create-namespace
+
+# Or deploy against Restate Cloud (no bundled Restate)
+helm install praxis charts/praxis \
+  --namespace praxis-system --create-namespace \
+  --set restate.enabled=false \
+  --set restate.external.ingressUrl=https://<env>.dev.restate.cloud:8080 \
+  --set restate.external.adminUrl=https://<env>.dev.restate.cloud:9070
+
+# Wait for readiness
+kubectl -n praxis-system wait --for=condition=ready pod \
+  -l app.kubernetes.io/part-of=praxis --timeout=120s
+
+# (Optional) Enable autoscaling for driver packs
+helm upgrade praxis charts/praxis \
+  --namespace praxis-system \
+  --set drivers.network.autoscaling.enabled=true \
+  --set drivers.compute.autoscaling.enabled=true
+```
+
+Service registration with Restate is handled automatically by a post-install hook. Raw YAML manifests (without Helm) are available in [`examples/ops/k8s/`](examples/ops/k8s/) for environments where Helm is not an option.
+
+#### Production Readiness
+
+Restate is built for production workloads:
+
+- **State & log backups** — Self-hosted Restate stores its log and state snapshots in S3 (or S3-compatible storage) for durable backup and recovery.
+- **High availability** — Multi-node Restate clusters with replicated log storage for fault tolerance.
+- **Restate Cloud** — Fully managed HA with zero infrastructure overhead.
+
+See the [Operator Guide](docs/OPERATORS.md) for Praxis-specific deployment, configuration, and monitoring details. See the [Restate documentation](https://docs.restate.dev/category/restate-server) for Restate server configuration, HA setup, and backup strategies.
+
+### Talk to Praxis
+
+Praxis offers three ways to interact — pick what fits your workflow.
+
+#### CLI
+
+The `praxis` binary is the primary interface. Every command goes through the Restate ingress endpoint.
+
+```bash
+praxis deploy webapp --account prod --var env=staging --key my-webapp --wait
+praxis get Deployment/my-webapp
+praxis plan webapp.cue --account prod --var env=prod
+```
+
+See the [CLI Reference](docs/CLI.md) for the full command set.
+
+#### API
+
+Everything the CLI does is an HTTP call to the Restate ingress. Integrate Praxis into CI/CD pipelines, scripts, or internal tools directly:
+
+```bash
+curl -X POST http://localhost:8080/PraxisCommandService/Apply \
+  -H 'content-type: application/json' \
+  -d '{"template": "webapp", "account": "prod", "variables": {"env": "staging"}}'
+```
+
+#### Concierge (AI Assistant)
+
+The Concierge is an optional AI-powered interface that understands Praxis concepts. Ask questions in natural language, trigger deployments, debug failures, or migrate Terraform/CloudFormation/Crossplane templates to CUE — all through conversation.
+
+```bash
+# Natural language on the root command
+praxis "why did my deploy fail?"
+praxis "convert this terraform to praxis" --file main.tf
+praxis "deploy the orders API to staging"
+
+# Or explicitly
+praxis concierge ask "show me what would change if I update the VPC CIDR"
+```
+
+The Concierge runs as a separate container (`praxis-concierge`). Bring your own LLM — it supports OpenAI-compatible APIs (OpenAI, Ollama, Together, Groq, Azure OpenAI) and Anthropic Claude. Destructive actions require explicit human approval before executing.
+
+For Slack teams, the [Slack Gateway](docs/SLACK_GATEWAY.md) connects the Concierge as a bot user — DM conversations, event-watch threads with AI-powered analysis, and approval buttons.
+
+See the [Concierge documentation](docs/CONCIERGE.md) for setup and capabilities.
 
 ### Plan Output
 
@@ -165,21 +248,25 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 
 ---
 
-## Current Scope
+## AWS Coverage
 
-- **Cloud:** AWS
-- **Drivers (45):**
-  - *Network (18):* VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule, ACM Certificate
-  - *Compute (9):* EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy
-  - *Storage (10):* S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster, SNS Topic, SNS Subscription, SQS Queue, SQS Queue Policy
-  - *Identity (5):* IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile
-  - *Monitoring (3):* Log Group, Metric Alarm, Dashboard
-- **Accounts:** One operator-defined account per deployed stack
-- **Deployment:** Docker Compose reference stack (LocalStack for local dev)
-- **Templates:** CUE schemas with output expressions, template registry with variable schema extraction, policy enforcement
-- **CLI:** `deploy`, `template`, `apply`, `plan`, `get`, `list`, `observe`, `import`, `delete`, `workspace`, `state`, `concierge`, `fmt`, `version`
+45 drivers across five domains:
 
-See [FUTURE.md](FUTURE.md) for future direction and [`examples/`](examples/) for ready-to-use templates.
+| Domain | Resources |
+|--------|-----------|
+| **Network** (18) | VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule, ACM Certificate |
+| **Compute** (9) | EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy |
+| **Storage** (10) | S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster, SNS Topic, SNS Subscription, SQS Queue, SQS Queue Policy |
+| **Identity** (5) | IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile |
+| **Monitoring** (3) | Log Group, Metric Alarm, Dashboard |
+
+### Limitations
+
+- **AWS only.** No GCP, Azure, or other cloud providers yet.
+- **No cross-stack references.** One deployment cannot reference the outputs of another deployment yet.
+- **No automatic rollback.** Failed deployments stop and report — they don't automatically revert completed resources.
+
+See [FUTURE.md](docs/FUTURE.md) for what's coming next and [`examples/`](examples/) for ready-to-use templates.
 
 ---
 
@@ -195,6 +282,7 @@ See [FUTURE.md](FUTURE.md) for future direction and [`examples/`](examples/) for
 | [CLI Reference](docs/CLI.md) | Users | All commands, output formats, styled terminal output, timeouts |
 | [Operator Guide](docs/OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
 | [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
+| [Events](docs/EVENTS.md) | Contributors | CloudEvents event bus, event types, sinks, event store |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
 | [Concierge](docs/CONCIERGE.md) | Contributors | AI assistant — LLM integration, tool framework, migration, approval flow |
 | [Slack Gateway](docs/SLACK_GATEWAY.md) | Contributors | Slack integration — DM conversations, event-watch threads, approval buttons |
@@ -205,7 +293,9 @@ See [FUTURE.md](FUTURE.md) for future direction and [`examples/`](examples/) for
 
 Praxis is Apache 2.0 licensed. See [LICENSE](LICENSE).
 
-See [docs/DEVELOPERS.md](docs/DEVELOPERS.md) for building, testing, and contributing.
+If you are interested in becoming a contributor, contact me via email.
+
+See [docs/DEVELOPERS.md](docs/DEVELOPERS.md) for building, testing.
 
 ## License
 

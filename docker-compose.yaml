@@ -6,11 +6,13 @@
 # - Restate is the public ingress and durable execution runtime.
 # - praxis-core hosts the command service, workflows, and read models.
 # - Driver packs group related drivers by AWS domain:
-#   - praxis-storage: S3, EBS, RDS, Aurora (future: DynamoDB, SQS, SNS)
+#   - praxis-storage: S3, EBS, RDS, Aurora, SNS, SQS (future: DynamoDB)
 #   - praxis-network: SG, VPC, EIP, IGW, Route 53, ALB, NLB, TargetGroup, Listener, ListenerRule (future: CloudFront, API GW)
 #   - praxis-compute: AMI, EC2, ECR, Lambda (future: Auto Scaling, ECS, EKS)
 #   - praxis-identity: IAM Role, Policy, User, Group, Instance Profile
 #   - praxis-monitoring: CloudWatch Log Groups, Metric Alarms, Dashboards
+#   - praxis-concierge: AI assistant (LLM-powered operations)
+#   - praxis-slack: Slack gateway (Socket Mode, event routing)
 #
 # The stack is intentionally explicit rather than clever. The goal is that a
 # human operator or an AI agent can read this file and understand the topology,
@@ -254,6 +256,25 @@ services:
       # - CONCIERGE_LLM_PROVIDER=openai
       # - CONCIERGE_LLM_MODEL=gpt-4o
       # - CONCIERGE_API_KEY=sk-...
+
+  praxis-slack:
+    build:
+      context: .
+      dockerfile: cmd/praxis-slack/Dockerfile
+    container_name: praxis-slack
+    env_file:
+      - .env
+    depends_on:
+      restate:
+        condition: service_healthy
+    ports:
+      - "9089:9080"
+    environment:
+      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
+      - RESTATE_URI=http://restate:8080
+      # Slack credentials — set in .env or override here.
+      # - SLACK_BOT_TOKEN=xoxb-...
+      # - SLACK_APP_TOKEN=xapp-...
 
 volumes:
   # Keep infra data in named volumes so operators can opt into clean slates via
