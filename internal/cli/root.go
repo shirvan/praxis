@@ -126,6 +126,13 @@ When the concierge is running, you can also talk to Praxis directly:
 			return cmd.Help()
 		}
 
+		// Only treat as concierge shorthand when the input is explicitly
+		// quoted (first arg starts with `"`).  Otherwise it's likely a
+		// mistyped subcommand — show a helpful error instead.
+		if !strings.HasPrefix(args[0], "\"") {
+			return fmt.Errorf("unknown command %q for \"praxis\"\nRun 'praxis --help' for usage", args[0])
+		}
+
 		// Arguments present but no subcommand matched → treat as concierge prompt.
 		prompt := strings.Join(args, " ")
 
