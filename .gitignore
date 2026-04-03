@@ -16,7 +16,7 @@ dist/
 /praxis-notifications
 /praxis-monitoring
 /praxis-concierge
-/praxis-slack-gateway
+/praxis-slack
 
 # Test binary
 *.test

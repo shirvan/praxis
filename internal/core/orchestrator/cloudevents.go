@@ -67,6 +67,7 @@ const (
 	SinkTypeWebhook         = "webhook"
 	SinkTypeStructuredLog   = "structured_log"
 	SinkTypeCloudEventsHTTP = "cloudevents_http"
+	SinkTypeRestateRPC      = "restate_rpc"
 )
 
 type SequencedCloudEvent struct {
@@ -131,6 +132,8 @@ type NotificationSink struct {
 	Name                string            `json:"name"`
 	Type                string            `json:"type"`
 	URL                 string            `json:"url,omitempty"`
+	Target              string            `json:"target,omitempty"`
+	Handler             string            `json:"handler,omitempty"`
 	Filter              SinkFilter        `json:"filter,omitzero"`
 	Headers             map[string]string `json:"headers,omitempty"`
 	Retry               RetryPolicy       `json:"retry,omitzero"`

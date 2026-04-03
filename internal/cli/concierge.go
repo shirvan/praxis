@@ -33,6 +33,7 @@ LLM provider. See 'praxis concierge configure --help' for setup.`,
 		newConciergeHistoryCmd(flags),
 		newConciergeResetCmd(flags),
 		newConciergeApproveCmd(flags),
+		newConciergeSlackCmd(flags),
 	)
 
 	return cmd

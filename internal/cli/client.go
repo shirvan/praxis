@@ -609,3 +609,165 @@ type conciergeApprovalRequest struct {
 	Reason      string `json:"reason,omitempty"`
 	Actor       string `json:"actor,omitempty"`
 }
+
+// --------------------------------------------------------------------------
+// Slack Gateway calls
+// --------------------------------------------------------------------------
+
+const (
+	slackGatewayConfigServiceName = "SlackGatewayConfig"
+	slackWatchConfigServiceName   = "SlackWatchConfig"
+	slackConfigGlobalKey          = "global"
+)
+
+// SlackConfigure sets the Slack gateway configuration.
+func (c *Client) SlackConfigure(ctx context.Context, req slackConfigRequest) error {
+	_, err := ingress.Object[slackConfigRequest, restate.Void](
+		c.rc, slackGatewayConfigServiceName, slackConfigGlobalKey, "Configure",
+	).Request(ctx, req)
+	return err
+}
+
+// SlackGetConfig returns the current Slack gateway configuration (redacted).
+func (c *Client) SlackGetConfig(ctx context.Context) (*slackConfiguration, error) {
+	resp, err := ingress.Object[restate.Void, slackConfiguration](
+		c.rc, slackGatewayConfigServiceName, slackConfigGlobalKey, "Get",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SlackSetAllowedUsers replaces the allowed-user list.
+func (c *Client) SlackSetAllowedUsers(ctx context.Context, req slackSetAllowedUsersRequest) error {
+	_, err := ingress.Object[slackSetAllowedUsersRequest, restate.Void](
+		c.rc, slackGatewayConfigServiceName, slackConfigGlobalKey, "SetAllowedUsers",
+	).Request(ctx, req)
+	return err
+}
+
+// SlackAddAllowedUser adds a single user to the allowed list.
+func (c *Client) SlackAddAllowedUser(ctx context.Context, userID string) error {
+	_, err := ingress.Object[string, restate.Void](
+		c.rc, slackGatewayConfigServiceName, slackConfigGlobalKey, "AddAllowedUser",
+	).Request(ctx, userID)
+	return err
+}
+
+// SlackRemoveAllowedUser removes a user from the allowed list.
+func (c *Client) SlackRemoveAllowedUser(ctx context.Context, userID string) error {
+	_, err := ingress.Object[string, restate.Void](
+		c.rc, slackGatewayConfigServiceName, slackConfigGlobalKey, "RemoveAllowedUser",
+	).Request(ctx, userID)
+	return err
+}
+
+// SlackAddWatch adds a new event watch rule.
+func (c *Client) SlackAddWatch(ctx context.Context, req slackAddWatchRequest) (*slackWatchRule, error) {
+	resp, err := ingress.Object[slackAddWatchRequest, slackWatchRule](
+		c.rc, slackWatchConfigServiceName, slackConfigGlobalKey, "AddWatch",
+	).Request(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SlackRemoveWatch removes an event watch rule.
+func (c *Client) SlackRemoveWatch(ctx context.Context, req slackRemoveWatchRequest) error {
+	_, err := ingress.Object[slackRemoveWatchRequest, restate.Void](
+		c.rc, slackWatchConfigServiceName, slackConfigGlobalKey, "RemoveWatch",
+	).Request(ctx, req)
+	return err
+}
+
+// SlackUpdateWatch updates an existing event watch rule.
+func (c *Client) SlackUpdateWatch(ctx context.Context, req slackUpdateWatchRequest) (*slackWatchRule, error) {
+	resp, err := ingress.Object[slackUpdateWatchRequest, slackWatchRule](
+		c.rc, slackWatchConfigServiceName, slackConfigGlobalKey, "UpdateWatch",
+	).Request(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SlackListWatches returns all configured watch rules.
+func (c *Client) SlackListWatches(ctx context.Context) ([]slackWatchRule, error) {
+	resp, err := ingress.Object[restate.Void, []slackWatchRule](
+		c.rc, slackWatchConfigServiceName, slackConfigGlobalKey, "ListWatches",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// Slack request/response types
+
+type slackConfigRequest struct {
+	BotToken     string   `json:"botToken,omitempty"`
+	BotTokenRef  string   `json:"botTokenRef,omitempty"`
+	AppToken     string   `json:"appToken,omitempty"`
+	AppTokenRef  string   `json:"appTokenRef,omitempty"`
+	TeamID       string   `json:"teamId,omitempty"`
+	BotUserID    string   `json:"botUserId,omitempty"`
+	EventChannel string   `json:"eventChannel,omitempty"`
+	Workspace    string   `json:"workspace,omitempty"`
+	AllowedUsers []string `json:"allowedUsers,omitempty"`
+}
+
+type slackConfiguration struct {
+	BotToken     string   `json:"botToken,omitempty"`
+	BotTokenRef  string   `json:"botTokenRef,omitempty"`
+	AppToken     string   `json:"appToken,omitempty"`
+	AppTokenRef  string   `json:"appTokenRef,omitempty"`
+	TeamID       string   `json:"teamId"`
+	BotUserID    string   `json:"botUserId"`
+	EventChannel string   `json:"eventChannel"`
+	Workspace    string   `json:"workspace,omitempty"`
+	AllowedUsers []string `json:"allowedUsers"`
+	Version      int      `json:"version"`
+}
+
+type slackSetAllowedUsersRequest struct {
+	UserIDs []string `json:"userIds"`
+}
+
+type slackWatchRule struct {
+	ID        string           `json:"id"`
+	Name      string           `json:"name"`
+	Channel   string           `json:"channel"`
+	Filter    slackWatchFilter `json:"filter"`
+	CreatedBy string           `json:"createdBy"`
+	CreatedAt string           `json:"createdAt"`
+	Enabled   bool             `json:"enabled"`
+}
+
+type slackWatchFilter struct {
+	Types       []string `json:"types,omitempty"`
+	Categories  []string `json:"categories,omitempty"`
+	Severities  []string `json:"severities,omitempty"`
+	Workspaces  []string `json:"workspaces,omitempty"`
+	Deployments []string `json:"deployments,omitempty"`
+}
+
+type slackAddWatchRequest struct {
+	Name      string           `json:"name"`
+	Channel   string           `json:"channel,omitempty"`
+	Filter    slackWatchFilter `json:"filter"`
+	CreatedBy string           `json:"createdBy,omitempty"`
+}
+
+type slackRemoveWatchRequest struct {
+	ID string `json:"id"`
+}
+
+type slackUpdateWatchRequest struct {
+	ID      string            `json:"id"`
+	Name    *string           `json:"name,omitempty"`
+	Channel *string           `json:"channel,omitempty"`
+	Filter  *slackWatchFilter `json:"filter,omitempty"`
+	Enabled *bool             `json:"enabled,omitempty"`
+}

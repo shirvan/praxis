@@ -35,4 +35,12 @@
     retry:       #RetryPolicy | *{maxAttempts: 3, backoffMs: 1000}
 }
 
-#NotificationSink: #WebhookSink | #StructuredLogSink | #CloudEventsHTTPSink
+#RestateRPCSink: {
+    name:    string & =~"^[a-zA-Z0-9_-]{1,64}$"
+    type:    "restate_rpc"
+    target:  string & =~"^[a-zA-Z0-9_-]+$"
+    handler: string & =~"^[a-zA-Z0-9_-]+$"
+    filter:  #SinkFilter | *{}
+}
+
+#NotificationSink: #WebhookSink | #StructuredLogSink | #CloudEventsHTTPSink | #RestateRPCSink

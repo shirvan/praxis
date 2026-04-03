@@ -93,6 +93,12 @@ func sinkValidationInput(sink NotificationSink) map[string]any {
 	if strings.TrimSpace(sink.URL) != "" {
 		input["url"] = sink.URL
 	}
+	if strings.TrimSpace(sink.Target) != "" {
+		input["target"] = sink.Target
+	}
+	if strings.TrimSpace(sink.Handler) != "" {
+		input["handler"] = sink.Handler
+	}
 	if len(sink.Headers) > 0 {
 		input["headers"] = sink.Headers
 	}
@@ -314,6 +320,19 @@ func (SinkRouter) Test(ctx restate.Context, sinkName string) error {
 }
 
 func deliverToSink(ctx restate.Context, sink NotificationSink, record SequencedCloudEvent) error {
+	// restate_rpc sinks deliver via Restate service call instead of HTTP
+	if sink.Type == SinkTypeRestateRPC && sink.Target != "" && sink.Handler != "" {
+		restate.ServiceSend(ctx, sink.Target, sink.Handler).Send(record)
+		now, nowErr := currentTime(ctx)
+		if nowErr == nil {
+			_ = recordSinkDeliveryState(ctx, SinkDeliveryUpdate{
+				Name:       sink.Name,
+				Succeeded:  true,
+				OccurredAt: now.UTC().Format(time.RFC3339),
+			})
+		}
+		return nil
+	}
 	err := deliverWithRetry(ctx, sink, record)
 	now, nowErr := currentTime(ctx)
 	if err == nil {
