@@ -56,13 +56,15 @@ func NewRoute53HealthCheckAdapterWithAPI(api route53healthcheck.HealthCheckAPI) 
 
 // Kind returns the resource kind string "Route53HealthCheck" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *Route53HealthCheckAdapter) Kind() string        { return route53healthcheck.ServiceName }
+func (a *Route53HealthCheckAdapter) Kind() string { return route53healthcheck.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // Route53HealthCheck driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *Route53HealthCheckAdapter) ServiceName() string { return route53healthcheck.ServiceName }
+
 // Scope returns the key-scope strategy for Route53HealthCheck resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *Route53HealthCheckAdapter) Scope() KeyScope     { return KeyScopeGlobal }
+func (a *Route53HealthCheckAdapter) Scope() KeyScope { return KeyScopeGlobal }
 
 // BuildKey derives the canonical Restate object key for a Route53HealthCheck resource
 // from the raw JSON resource document. The key is composed of region + health check name,

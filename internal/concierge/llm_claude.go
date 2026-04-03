@@ -122,11 +122,11 @@ func (c *ClaudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (L
 	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := c.client().Do(httpReq)
+	resp, err := c.client().Do(httpReq) //nolint:gosec // G704 URL is from configured API endpoint
 	if err != nil {
 		return LLMResponse{}, fmt.Errorf("claude request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

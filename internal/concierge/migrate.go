@@ -3,6 +3,7 @@ package concierge
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	restate "github.com/restatedev/sdk-go"
 )
@@ -79,7 +80,7 @@ func (m *TemplateMigrator) Migrate(
 	var lastCUE string
 	const maxRetries = 3
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		messages := []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: prompt},
@@ -114,15 +115,16 @@ func (m *TemplateMigrator) Migrate(
 		}
 
 		if verification.ParseOK && verification.SchemaOK && verification.PlanOK {
-			result := fmt.Sprintf("Migration successful!\n\n```cue\n%s\n```\n\n%s", lastCUE, FormatVerificationResult(verification))
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "Migration successful!\n\n```cue\n%s\n```\n\n%s", lastCUE, FormatVerificationResult(verification))
 			if len(inv.UnmappedTypes) > 0 {
-				result += "\n\nWarning: The following source resource types have no Praxis equivalent and were skipped or approximated:\n"
+				sb.WriteString("\n\nWarning: The following source resource types have no Praxis equivalent and were skipped or approximated:\n")
 				for _, t := range inv.UnmappedTypes {
-					result += fmt.Sprintf("  - %s\n", t)
+					fmt.Fprintf(&sb, "  - %s\n", t)
 				}
 			}
-			result += "\n\nReview the generated template before applying."
-			return result, nil
+			sb.WriteString("\n\nReview the generated template before applying.")
+			return sb.String(), nil
 		}
 
 		// Feed errors back for retry
@@ -139,7 +141,6 @@ func (m *TemplateMigrator) Migrate(
 func extractCUEBlock(content string) string {
 	// Look for ```cue ... ``` blocks.
 	start := -1
-	end := -1
 	markers := []string{"```cue\n", "```cue\r\n", "```\n"}
 	for _, marker := range markers {
 		idx := indexOf(content, marker)
@@ -152,7 +153,7 @@ func extractCUEBlock(content string) string {
 		return ""
 	}
 	rest := content[start:]
-	end = indexOf(rest, "```")
+	end := indexOf(rest, "```")
 	if end < 0 {
 		return rest
 	}

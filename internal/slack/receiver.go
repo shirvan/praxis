@@ -57,7 +57,8 @@ func (s SlackEventReceiver) Receive(ctx restate.Context, event CloudEventEnvelop
 		return nil
 	}
 
-	for _, rule := range matched {
+	for i := range matched {
+		rule := &matched[i]
 		channel := rule.Channel
 		if channel == "" {
 			channel = config.EventChannel

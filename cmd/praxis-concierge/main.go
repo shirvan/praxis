@@ -22,9 +22,9 @@ func main() {
 		Bind(restate.Reflect(concierge.ConciergeConfig{})).
 		Bind(restate.Reflect(concierge.ApprovalRelay{}))
 
-	slog.Info("starting Praxis concierge runtime", "addr", addr)
+	slog.Info("starting Praxis concierge runtime", "addr", addr) //nolint:gosec // G706 addr is from env var, not user input
 	if err := srv.Start(context.Background(), addr); err != nil {
-		slog.Error("praxis-concierge exited", "err", err.Error())
+		slog.Error("praxis-concierge exited", "err", err.Error()) //nolint:gosec // G706 error message is safe
 		os.Exit(1)
 	}
 }

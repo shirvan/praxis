@@ -56,13 +56,15 @@ func NewSQSAdapterWithAPI(api sqs.QueueAPI) *SQSAdapter {
 
 // Kind returns the resource kind string "SQSQueue" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *SQSAdapter) Kind() string        { return sqs.ServiceName }
+func (a *SQSAdapter) Kind() string { return sqs.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // SQSQueue driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *SQSAdapter) ServiceName() string { return sqs.ServiceName }
+
 // Scope returns the key-scope strategy for SQSQueue resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *SQSAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *SQSAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a SQSQueue resource
 // from the raw JSON resource document. The key is composed of region + queue name,

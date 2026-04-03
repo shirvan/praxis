@@ -339,7 +339,8 @@ func newSlackWatchListCmd(flags *rootFlags) *cobra.Command {
 				fmt.Println("No watch rules configured")
 				return nil
 			}
-			for _, r := range rules {
+			for i := range rules {
+				r := &rules[i]
 				status := "enabled"
 				if !r.Enabled {
 					status = "disabled"

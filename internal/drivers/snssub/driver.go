@@ -84,7 +84,7 @@ func (d *SNSSubscriptionDriver) Provision(ctx restate.ObjectContext, spec SNSSub
 			o, runErr := api.GetSubscriptionAttributes(rc, existingArn)
 			if runErr != nil {
 				if IsNotFound(runErr) {
-					return ObservedState{}, nil // gone; resubscribe
+					return ObservedState{}, nil // deleted, need resubscribe
 				}
 				return ObservedState{}, runErr
 			}

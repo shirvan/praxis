@@ -189,7 +189,7 @@ type UpdateWatchRequest struct {
 type ThreadRecord struct {
 	ChannelID   string `json:"channelId"`
 	ThreadTS    string `json:"threadTs"`
-	SessionKey  string `json:"sessionKey"`
+	SessionKey  string `json:"sessionKey"` //nolint:gosec // G117 not a credential, session identifier
 	WatchRuleID string `json:"watchRuleId"`
 	EventID     string `json:"eventId"`
 	EventType   string `json:"eventType"`
@@ -213,7 +213,7 @@ type CloudEventEnvelope struct {
 // AnalyzeAndReplyRequest contains everything needed to ask the concierge
 // and post the analysis as a thread reply.
 type AnalyzeAndReplyRequest struct {
-	SessionKey string `json:"sessionKey"`
+	SessionKey string `json:"sessionKey"` //nolint:gosec // G117 not a credential, session identifier
 	Prompt     string `json:"prompt"`
 	Workspace  string `json:"workspace"`
 	ChannelID  string `json:"channelId"`

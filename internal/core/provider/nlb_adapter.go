@@ -56,13 +56,15 @@ func NewNLBAdapterWithAPI(api nlb.NLBAPI) *NLBAdapter {
 
 // Kind returns the resource kind string "NLB" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *NLBAdapter) Kind() string        { return nlb.ServiceName }
+func (a *NLBAdapter) Kind() string { return nlb.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // NLB driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *NLBAdapter) ServiceName() string { return nlb.ServiceName }
+
 // Scope returns the key-scope strategy for NLB resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *NLBAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *NLBAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a NLB resource
 // from the raw JSON resource document. The key is composed of region + NLB name,

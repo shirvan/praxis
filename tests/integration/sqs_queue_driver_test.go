@@ -62,13 +62,13 @@ func TestSQSQueueProvision_CreatesFIFOQueue(t *testing.T) {
 	outputs, err := ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
 		client, sqs.ServiceName, key, "Provision",
 	).Request(t.Context(), sqs.SQSQueueSpec{
-		Account:                    integrationAccountName,
-		Region:                     "us-east-1",
-		QueueName:                  queueName,
-		FifoQueue:                  true,
-		ContentBasedDeduplication:  true,
-		DeduplicationScope:         "messageGroup",
-		FifoThroughputLimit:        "perMessageGroupId",
+		Account:                   integrationAccountName,
+		Region:                    "us-east-1",
+		QueueName:                 queueName,
+		FifoQueue:                 true,
+		ContentBasedDeduplication: true,
+		DeduplicationScope:        "messageGroup",
+		FifoThroughputLimit:       "perMessageGroupId",
 	})
 	require.NoError(t, err)
 
@@ -137,7 +137,7 @@ func TestSQSQueueDelete_RemovesQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
-		QueueUrl: aws.String(outputs.QueueUrl),
+		QueueUrl:       aws.String(outputs.QueueUrl),
 		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameQueueArn},
 	})
 	require.Error(t, err)

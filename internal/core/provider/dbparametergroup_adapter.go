@@ -56,13 +56,15 @@ func NewDBParameterGroupAdapterWithAPI(api dbparametergroup.DBParameterGroupAPI)
 
 // Kind returns the resource kind string "DBParameterGroup" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *DBParameterGroupAdapter) Kind() string        { return dbparametergroup.ServiceName }
+func (a *DBParameterGroupAdapter) Kind() string { return dbparametergroup.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // DBParameterGroup driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *DBParameterGroupAdapter) ServiceName() string { return dbparametergroup.ServiceName }
+
 // Scope returns the key-scope strategy for DBParameterGroup resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *DBParameterGroupAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *DBParameterGroupAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a DBParameterGroup resource
 // from the raw JSON resource document. The key is composed of region + parameter group name,

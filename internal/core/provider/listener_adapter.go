@@ -56,13 +56,15 @@ func NewListenerAdapterWithAPI(api listener.ListenerAPI) *ListenerAdapter {
 
 // Kind returns the resource kind string "Listener" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *ListenerAdapter) Kind() string        { return listener.ServiceName }
+func (a *ListenerAdapter) Kind() string { return listener.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // Listener driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *ListenerAdapter) ServiceName() string { return listener.ServiceName }
+
 // Scope returns the key-scope strategy for Listener resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *ListenerAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *ListenerAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a Listener resource
 // from the raw JSON resource document. The key is composed of load balancer ARN + port,

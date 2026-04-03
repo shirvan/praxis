@@ -56,13 +56,15 @@ func NewDBSubnetGroupAdapterWithAPI(api dbsubnetgroup.DBSubnetGroupAPI) *DBSubne
 
 // Kind returns the resource kind string "DBSubnetGroup" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *DBSubnetGroupAdapter) Kind() string        { return dbsubnetgroup.ServiceName }
+func (a *DBSubnetGroupAdapter) Kind() string { return dbsubnetgroup.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // DBSubnetGroup driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *DBSubnetGroupAdapter) ServiceName() string { return dbsubnetgroup.ServiceName }
+
 // Scope returns the key-scope strategy for DBSubnetGroup resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *DBSubnetGroupAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *DBSubnetGroupAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a DBSubnetGroup resource
 // from the raw JSON resource document. The key is composed of region + subnet group name,

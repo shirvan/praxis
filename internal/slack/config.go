@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"slices"
 
 	restate "github.com/restatedev/sdk-go"
 )
@@ -112,10 +113,8 @@ func (SlackGatewayConfig) AddAllowedUser(ctx restate.ObjectContext, userID strin
 	if cfgPtr == nil {
 		return restate.TerminalError(fmt.Errorf("slack gateway not configured"), 400)
 	}
-	for _, id := range cfgPtr.AllowedUsers {
-		if id == userID {
-			return nil
-		}
+	if slices.Contains(cfgPtr.AllowedUsers, userID) {
+		return nil
 	}
 	cfgPtr.AllowedUsers = append(cfgPtr.AllowedUsers, userID)
 	cfgPtr.Version++

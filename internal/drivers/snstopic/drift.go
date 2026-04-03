@@ -8,7 +8,9 @@
 package snstopic
 
 import (
+	"bytes"
 	"encoding/json"
+	"maps"
 	"strings"
 )
 
@@ -101,7 +103,7 @@ func policiesEqual(a, b string) bool {
 	if a == "" || b == "" {
 		return false
 	}
-	var aObj, bObj interface{}
+	var aObj, bObj any
 	if json.Unmarshal([]byte(a), &aObj) != nil {
 		return a == b
 	}
@@ -110,7 +112,7 @@ func policiesEqual(a, b string) bool {
 	}
 	aNorm, _ := json.Marshal(aObj)
 	bNorm, _ := json.Marshal(bObj)
-	return string(aNorm) == string(bNorm)
+	return bytes.Equal(aNorm, bNorm)
 }
 
 func tagsMatch(a, b map[string]string) bool {
@@ -142,11 +144,7 @@ func filterPraxisTags(m map[string]string) map[string]string {
 
 func mergeTags(user, system map[string]string) map[string]string {
 	merged := make(map[string]string, len(user)+len(system))
-	for k, v := range user {
-		merged[k] = v
-	}
-	for k, v := range system {
-		merged[k] = v
-	}
+	maps.Copy(merged, user)
+	maps.Copy(merged, system)
 	return merged
 }

@@ -39,18 +39,22 @@ type ECRRepositoryAdapter struct {
 // The apiFactory closure creates a real AWS API client from the resolved
 // aws.Config, ensuring each Plan/Provision call targets the correct account.
 func NewECRRepositoryAdapterWithAuth(auth authservice.AuthClient) *ECRRepositoryAdapter {
-	return &ECRRepositoryAdapter{auth: auth, apiFactory: func(cfg aws.Config) ecrrepo.RepositoryAPI { return ecrrepo.NewRepositoryAPI(awsclient.NewECRClient(cfg)) }}
+	return &ECRRepositoryAdapter{auth: auth, apiFactory: func(cfg aws.Config) ecrrepo.RepositoryAPI {
+		return ecrrepo.NewRepositoryAPI(awsclient.NewECRClient(cfg))
+	}}
 }
 
 // Kind returns the resource kind string "ECRRepository" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *ECRRepositoryAdapter) Kind() string        { return ecrrepo.ServiceName }
+func (a *ECRRepositoryAdapter) Kind() string { return ecrrepo.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // ECRRepository driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *ECRRepositoryAdapter) ServiceName() string { return ecrrepo.ServiceName }
+
 // Scope returns the key-scope strategy for ECRRepository resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *ECRRepositoryAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *ECRRepositoryAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a ECRRepository resource
 // from the raw JSON resource document. The key is composed of region + repository name,

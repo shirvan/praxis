@@ -44,13 +44,15 @@ func NewESMAdapterWithAuth(auth authservice.AuthClient) *ESMAdapter {
 
 // Kind returns the resource kind string "EventSourceMapping" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *ESMAdapter) Kind() string        { return esm.ServiceName }
+func (a *ESMAdapter) Kind() string { return esm.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // EventSourceMapping driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *ESMAdapter) ServiceName() string { return esm.ServiceName }
+
 // Scope returns the key-scope strategy for EventSourceMapping resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *ESMAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *ESMAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a EventSourceMapping resource
 // from the raw JSON resource document. The key is composed of region + function name + encoded event source key,

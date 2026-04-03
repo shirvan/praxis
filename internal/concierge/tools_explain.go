@@ -3,6 +3,7 @@ package concierge
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -147,12 +148,13 @@ func toolSuggestFix(ctx restate.Context, argsJSON string, _ SessionState) (strin
 	}
 
 	// Build a structured error summary for the LLM to suggest fixes.
-	summary := fmt.Sprintf("Deployment %q failed.\nError: %s\nError Code: %s\n", args.DeploymentKey, detail.Error, detail.ErrorCode)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Deployment %q failed.\nError: %s\nError Code: %s\n", args.DeploymentKey, detail.Error, detail.ErrorCode)
 
 	if len(detail.ResourceErrors) > 0 {
-		summary += "\nResource errors:\n"
+		sb.WriteString("\nResource errors:\n")
 		for name, errMsg := range detail.ResourceErrors {
-			summary += fmt.Sprintf("  - %s: %s\n", name, errMsg)
+			fmt.Fprintf(&sb, "  - %s: %s\n", name, errMsg)
 		}
 	}
 
@@ -160,13 +162,13 @@ func toolSuggestFix(ctx restate.Context, argsJSON string, _ SessionState) (strin
 	for _, r := range detail.Resources {
 		if r.Status == types.DeploymentResourceError {
 			failedResources++
-			summary += fmt.Sprintf("\nFailed resource: %s (%s)\n  Key: %s\n  Error: %s\n", r.Name, r.Kind, r.Key, r.Error)
+			fmt.Fprintf(&sb, "\nFailed resource: %s (%s)\n  Key: %s\n  Error: %s\n", r.Name, r.Kind, r.Key, r.Error)
 		}
 	}
 
 	if failedResources == 0 && detail.Error == "" {
-		summary += "\nNo specific resource errors found. The failure may be in template evaluation or dependency resolution."
+		sb.WriteString("\nNo specific resource errors found. The failure may be in template evaluation or dependency resolution.")
 	}
 
-	return summary, nil
+	return sb.String(), nil
 }

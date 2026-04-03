@@ -36,9 +36,6 @@ const (
 
 	// maxSessionDuration is the AWS STS maximum session duration (12 hours).
 	maxSessionDuration = 12 * time.Hour
-
-	// defaultSessionDuration is used when no session duration is specified.
-	defaultSessionDuration = 1 * time.Hour
 )
 
 // aliasRegex validates account alias format: lowercase alphanumeric with

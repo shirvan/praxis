@@ -1,5 +1,7 @@
 package concierge
 
+import "strings"
+
 // resourceTypeMap maps source format resource types to Praxis resource kinds.
 // This is the canonical mapping used during migration to translate external IaC
 // resource types to their Praxis equivalents. The map covers three source formats:
@@ -104,10 +106,13 @@ func LookupPraxisKind(sourceType string) (string, bool) {
 // FormatMappingTable returns a human-readable mapping table included in the
 // migration prompt so the LLM knows which source types map to which Praxis kinds.
 func FormatMappingTable() string {
-	var s string
-	s += "Source Type → Praxis Kind\n"
+	var sb strings.Builder
+	sb.WriteString("Source Type → Praxis Kind\n")
 	for src, kind := range resourceTypeMap {
-		s += src + " → " + kind + "\n"
+		sb.WriteString(src)
+		sb.WriteString(" → ")
+		sb.WriteString(kind)
+		sb.WriteString("\n")
 	}
-	return s
+	return sb.String()
 }

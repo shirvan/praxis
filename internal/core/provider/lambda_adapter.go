@@ -51,13 +51,15 @@ func NewLambdaAdapterWithAPI(api lambda.LambdaAPI) *LambdaAdapter {
 
 // Kind returns the resource kind string "LambdaFunction" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *LambdaAdapter) Kind() string        { return lambda.ServiceName }
+func (a *LambdaAdapter) Kind() string { return lambda.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // LambdaFunction driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *LambdaAdapter) ServiceName() string { return lambda.ServiceName }
+
 // Scope returns the key-scope strategy for LambdaFunction resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *LambdaAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *LambdaAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a LambdaFunction resource
 // from the raw JSON resource document. The key is composed of region + function name,

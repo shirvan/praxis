@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	restate "github.com/restatedev/sdk-go"
@@ -68,12 +69,13 @@ func (SlackWatchConfig) RemoveWatch(ctx restate.ObjectContext, req RemoveWatchRe
 
 	found := false
 	filtered := state.Rules[:0]
-	for _, r := range state.Rules {
+	for i := range state.Rules {
+		r := &state.Rules[i]
 		if r.ID == req.ID {
 			found = true
 			continue
 		}
-		filtered = append(filtered, r)
+		filtered = append(filtered, *r)
 	}
 	if !found {
 		return restate.TerminalError(fmt.Errorf("watch %q not found", req.ID), 404)
@@ -100,8 +102,8 @@ func (SlackWatchConfig) UpdateWatch(ctx restate.ObjectContext, req UpdateWatchRe
 	}
 
 	idx := -1
-	for i, r := range state.Rules {
-		if r.ID == req.ID {
+	for i := range state.Rules {
+		if state.Rules[i].ID == req.ID {
 			idx = i
 			break
 		}
@@ -147,9 +149,9 @@ func (SlackWatchConfig) GetWatch(ctx restate.ObjectSharedContext, id string) (*W
 	if err != nil {
 		return nil, err
 	}
-	for _, r := range state.Rules {
-		if r.ID == id {
-			return &r, nil
+	for i := range state.Rules {
+		if state.Rules[i].ID == id {
+			return &state.Rules[i], nil
 		}
 	}
 	return nil, nil
@@ -229,23 +231,23 @@ func MergeFilters(rules []WatchRule) SinkFilter {
 		make(map[string]bool), make(map[string]bool),
 	}
 
-	for _, r := range rules {
-		if !r.Enabled {
+	for i := range rules {
+		if !rules[i].Enabled {
 			continue
 		}
-		for _, v := range r.Filter.Types {
+		for _, v := range rules[i].Filter.Types {
 			seen.types[v] = true
 		}
-		for _, v := range r.Filter.Categories {
+		for _, v := range rules[i].Filter.Categories {
 			seen.categories[v] = true
 		}
-		for _, v := range r.Filter.Severities {
+		for _, v := range rules[i].Filter.Severities {
 			seen.severities[v] = true
 		}
-		for _, v := range r.Filter.Workspaces {
+		for _, v := range rules[i].Filter.Workspaces {
 			seen.workspaces[v] = true
 		}
-		for _, v := range r.Filter.Deployments {
+		for _, v := range rules[i].Filter.Deployments {
 			seen.deployments[v] = true
 		}
 	}
@@ -303,9 +305,9 @@ func matchesRule(rule WatchRule, event CloudEventEnvelope) bool {
 // matchAllRules returns all rules that match the event.
 func matchAllRules(rules []WatchRule, event CloudEventEnvelope) []WatchRule {
 	var matched []WatchRule
-	for _, r := range rules {
-		if matchesRule(r, event) {
-			matched = append(matched, r)
+	for i := range rules {
+		if matchesRule(rules[i], event) {
+			matched = append(matched, rules[i])
 		}
 	}
 	return matched
@@ -313,12 +315,7 @@ func matchAllRules(rules []WatchRule, event CloudEventEnvelope) []WatchRule {
 
 // contains checks for exact string membership in a slice.
 func contains(haystack []string, needle string) bool {
-	for _, v := range haystack {
-		if v == needle {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(haystack, needle)
 }
 
 // containsPrefix returns true if the value starts with any of the given prefixes.
@@ -350,8 +347,8 @@ func containsGlob(patterns []string, value string) bool {
 
 // AllDisabled returns true if all rules are disabled.
 func AllDisabled(rules []WatchRule) bool {
-	for _, r := range rules {
-		if r.Enabled {
+	for i := range rules {
+		if rules[i].Enabled {
 			return false
 		}
 	}

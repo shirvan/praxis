@@ -101,7 +101,7 @@ func TestKeyPairProvision_ImportPublicKey(t *testing.T) {
 	client, _ := setupKeyPairDriver(t)
 	name := uniqueKeyPairName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
-	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9nKdNEhyWj7L6VR/80+65OlrVc8W+gyhKhMSKRO4L7bQd4MumLregNNjb1elO6CMoCtvblJ207O5L3KlQQZ72srMnk40GvPrT/vTBRl9u+kMG3IGotwcrd184NPaCF3PsftHNWciGUUPnYoPkhZEt/ekQaZ0K29W4nhhyTO2boucCIQYC9uZPOmjr7e6bmxkdPpCIrpNARSOYolMyrbVx3XOl1CFShdsnDJIKzAAM2z7gLDbmlVJcS6gvTGq6C3jN9fOhppavy2x+UmCvanRTi4NHS7bIOAv76vqtarYXDYIaSrhSPhCNObnl+1jiUUPnrJKE/EvRjQf6SWJd3qwv shirvan@Shirvans-Mac-mini.local"
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9nKdNEhyWj7L6VR/80+65OlrVc8W+gyhKhMSKRO4L7bQd4MumLregNNjb1elO6CMoCtvblJ207O5L3KlQQZ72srMnk40GvPrT/vTBRl9u+kMG3IGotwcrd184NPaCF3PsftHNWciGUUPnYoPkhZEt/ekQaZ0K29W4nhhyTO2boucCIQYC9uZPOmjr7e6bmxkdPpCIrpNARSOYolMyrbVx3XOl1CFShdsnDJIKzAAM2z7gLDbmlVJcS6gvTGq6C3jN9fOhppavy2x+UmCvanRTi4NHS7bIOAv76vqtarYXDYIaSrhSPhCNObnl+1jiUUPnrJKE/EvRjQf6SWJd3qwv test@localhost"
 
 	outputs, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), keypair.KeyPairSpec{
 		Account:           integrationAccountName,

@@ -56,13 +56,15 @@ func NewALBAdapterWithAPI(api alb.ALBAPI) *ALBAdapter {
 
 // Kind returns the resource kind string "ALB" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *ALBAdapter) Kind() string        { return alb.ServiceName }
+func (a *ALBAdapter) Kind() string { return alb.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // ALB driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *ALBAdapter) ServiceName() string { return alb.ServiceName }
+
 // Scope returns the key-scope strategy for ALB resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *ALBAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *ALBAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a ALB resource
 // from the raw JSON resource document. The key is composed of region + ALB name,

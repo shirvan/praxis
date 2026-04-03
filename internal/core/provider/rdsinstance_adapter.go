@@ -53,13 +53,15 @@ func NewRDSInstanceAdapterWithAPI(api rdsinstance.RDSInstanceAPI) *RDSInstanceAd
 
 // Kind returns the resource kind string "RDSInstance" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *RDSInstanceAdapter) Kind() string        { return rdsinstance.ServiceName }
+func (a *RDSInstanceAdapter) Kind() string { return rdsinstance.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // RDSInstance driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *RDSInstanceAdapter) ServiceName() string { return rdsinstance.ServiceName }
+
 // Scope returns the key-scope strategy for RDSInstance resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *RDSInstanceAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *RDSInstanceAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a RDSInstance resource
 // from the raw JSON resource document. The key is composed of region + DB instance identifier,

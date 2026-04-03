@@ -36,7 +36,7 @@ func TestSQSQueuePolicyProvision_SetsPolicy(t *testing.T) {
 	require.NoError(t, err)
 
 	attrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
-		QueueUrl: created.QueueUrl,
+		QueueUrl:       created.QueueUrl,
 		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameQueueArn},
 	})
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestSQSQueuePolicyProvision_SetsPolicy(t *testing.T) {
 	assert.Equal(t, aws.ToString(created.QueueUrl), outputs.QueueUrl)
 
 	policyAttrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
-		QueueUrl: created.QueueUrl,
+		QueueUrl:       created.QueueUrl,
 		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNamePolicy},
 	})
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestSQSQueuePolicyImport_ExistingPolicy(t *testing.T) {
 	require.NoError(t, err)
 
 	attrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
-		QueueUrl: created.QueueUrl,
+		QueueUrl:       created.QueueUrl,
 		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameQueueArn},
 	})
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestSQSQueuePolicyDelete_RemovesPolicy(t *testing.T) {
 	require.NoError(t, err)
 
 	attrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
-		QueueUrl: created.QueueUrl,
+		QueueUrl:       created.QueueUrl,
 		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameQueueArn},
 	})
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestSQSQueuePolicyDelete_RemovesPolicy(t *testing.T) {
 	require.NoError(t, err)
 
 	policyAttrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
-		QueueUrl: created.QueueUrl,
+		QueueUrl:       created.QueueUrl,
 		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNamePolicy},
 	})
 	require.NoError(t, err)

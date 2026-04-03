@@ -212,7 +212,7 @@ func (g *Gateway) handleMessage(ctx context.Context, evt socketmode.Event) {
 	// Once the response arrives, cancel the approval-polling goroutine
 	// and post the formatted response back to Slack.
 	go func() {
-		resp, err := ingress.AttachInvocation[AskResponse](
+		resp, err := ingress.InvocationById[AskResponse](
 			g.restateClient, invocationID,
 		).Attach(ctx)
 		pollCancel()

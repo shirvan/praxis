@@ -122,11 +122,11 @@ func (o *OpenAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (L
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
 
-	resp, err := o.client().Do(httpReq)
+	resp, err := o.client().Do(httpReq) //nolint:gosec // G704 URL is from configured API endpoint
 	if err != nil {
 		return LLMResponse{}, fmt.Errorf("openai request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -202,12 +202,8 @@ func toOpenAITools(tools []ToolSchema) []openAITool {
 	out := make([]openAITool, 0, len(tools))
 	for _, t := range tools {
 		out = append(out, openAITool{
-			Type: "function",
-			Function: openAIFunction{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.Parameters,
-			},
+			Type:     "function",
+			Function: openAIFunction(t),
 		})
 	}
 	return out

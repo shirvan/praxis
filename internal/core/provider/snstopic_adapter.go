@@ -56,13 +56,15 @@ func NewSNSTopicAdapterWithAPI(api snstopic.TopicAPI) *SNSTopicAdapter {
 
 // Kind returns the resource kind string "SNSTopic" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *SNSTopicAdapter) Kind() string        { return snstopic.ServiceName }
+func (a *SNSTopicAdapter) Kind() string { return snstopic.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // SNSTopic driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *SNSTopicAdapter) ServiceName() string { return snstopic.ServiceName }
+
 // Scope returns the key-scope strategy for SNSTopic resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *SNSTopicAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *SNSTopicAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a SNSTopic resource
 // from the raw JSON resource document. The key is composed of region + topic name,

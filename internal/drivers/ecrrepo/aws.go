@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -164,9 +165,7 @@ func (r *realRepositoryAPI) UpdateTags(ctx context.Context, arn string, tags map
 		return err
 	}
 	desired := make(map[string]string, len(tags))
-	for key, value := range tags {
-		desired[key] = value
-	}
+	maps.Copy(desired, tags)
 	if managedKey := current["praxis:managed-key"]; managedKey != "" {
 		desired["praxis:managed-key"] = managedKey
 	}
@@ -271,9 +270,7 @@ func awsTags(tags map[string]string) []ecrtypes.Tag {
 
 func tagsForApply(tags map[string]string, managedKey string) map[string]string {
 	out := make(map[string]string, len(tags)+1)
-	for key, value := range tags {
-		out[key] = value
-	}
+	maps.Copy(out, tags)
 	if managedKey != "" {
 		out["praxis:managed-key"] = managedKey
 	}

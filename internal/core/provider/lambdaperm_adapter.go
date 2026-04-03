@@ -46,13 +46,15 @@ func NewLambdaPermissionAdapterWithAuth(auth authservice.AuthClient) *LambdaPerm
 
 // Kind returns the resource kind string "LambdaPermission" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *LambdaPermissionAdapter) Kind() string        { return lambdaperm.ServiceName }
+func (a *LambdaPermissionAdapter) Kind() string { return lambdaperm.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // LambdaPermission driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *LambdaPermissionAdapter) ServiceName() string { return lambdaperm.ServiceName }
+
 // Scope returns the key-scope strategy for LambdaPermission resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *LambdaPermissionAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *LambdaPermissionAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a LambdaPermission resource
 // from the raw JSON resource document. The key is composed of region + function name + statement ID,

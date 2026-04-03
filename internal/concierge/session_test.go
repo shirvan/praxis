@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 
 	restate "github.com/restatedev/sdk-go"
@@ -23,34 +22,6 @@ func newMockLLMServer(t *testing.T, content string) *httptest.Server {
 				Message: openAIMessage{Role: "assistant", Content: content},
 			}},
 			Usage: openAIUsage{TotalTokens: 10},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-}
-
-// newMockLLMServerWithToolCalls returns a server that first responds with tool calls,
-// then on the next call returns a final text response.
-func newMockLLMServerWithToolCalls(t *testing.T, toolCalls []openAIToolCall, finalContent string) *httptest.Server {
-	t.Helper()
-	var callCount atomic.Int32
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := callCount.Add(1)
-		var resp openAIResponse
-		if n == 1 {
-			resp = openAIResponse{
-				Choices: []openAIChoice{{
-					Message: openAIMessage{Role: "assistant", ToolCalls: toolCalls},
-				}},
-				Usage: openAIUsage{TotalTokens: 10},
-			}
-		} else {
-			resp = openAIResponse{
-				Choices: []openAIChoice{{
-					Message: openAIMessage{Role: "assistant", Content: finalContent},
-				}},
-				Usage: openAIUsage{TotalTokens: 10},
-			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)

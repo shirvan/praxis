@@ -612,7 +612,7 @@ type conciergeMessage struct {
 type conciergeConfigureRequest struct {
 	Provider    string   `json:"provider"`
 	Model       string   `json:"model"`
-	APIKey      string   `json:"apiKey,omitempty"`
+	APIKey      string   `json:"apiKey,omitempty"` //nolint:gosec // G117 not a credential, just a field name
 	APIKeyRef   string   `json:"apiKeyRef,omitempty"`
 	BaseURL     string   `json:"baseURL,omitempty"`
 	MaxTurns    int      `json:"maxTurns,omitempty"`
@@ -626,7 +626,7 @@ type conciergeConfigureRequest struct {
 type conciergeConfiguration struct {
 	Provider    string  `json:"provider"`
 	Model       string  `json:"model"`
-	APIKey      string  `json:"apiKey,omitempty"`
+	APIKey      string  `json:"apiKey,omitempty"` //nolint:gosec // G117 not a credential, config field name
 	MaxTurns    int     `json:"maxTurns"`
 	MaxMessages int     `json:"maxMessages"`
 	Temperature float64 `json:"temperature"`

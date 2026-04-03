@@ -56,13 +56,15 @@ func NewTargetGroupAdapterWithAPI(api targetgroup.TargetGroupAPI) *TargetGroupAd
 
 // Kind returns the resource kind string "TargetGroup" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *TargetGroupAdapter) Kind() string        { return targetgroup.ServiceName }
+func (a *TargetGroupAdapter) Kind() string { return targetgroup.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // TargetGroup driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *TargetGroupAdapter) ServiceName() string { return targetgroup.ServiceName }
+
 // Scope returns the key-scope strategy for TargetGroup resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *TargetGroupAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *TargetGroupAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a TargetGroup resource
 // from the raw JSON resource document. The key is composed of region + target group name,

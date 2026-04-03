@@ -168,7 +168,7 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	provider := a.llm.ForConfig(cfg, resolvedKey)
 	tools := a.tools.Definitions()
 
-	for turn := 0; turn < cfg.MaxTurns; turn++ {
+	for range cfg.MaxTurns {
 		state.TurnCount++
 
 		// Call LLM inside restate.Run() to make it durable. The LLM response

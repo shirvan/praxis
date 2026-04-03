@@ -6,7 +6,7 @@
 
 ---
 
-## >>> Praxis is in alpha, things will change quickly and may break stuff. <<<
+> Praxis is in alpha, with limited real world testing.
 
 Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers continuous reconciliation, drift correction, dependency-aware orchestration but without the overhead of a Kubernetes cluster to run it. Praxis itself can be run on Kubernetes if you already use it.
 
@@ -276,7 +276,7 @@ See [FUTURE.md](docs/FUTURE.md) for what's coming next and [`examples/`](example
 
 | Document | Audience | Description |
 | ---------- | ---------- | ------------- |
-| [Architecture](docs/ARCHITECTURE.md) | Everyone | How Praxis works — Restate-powered core, modular drivers, design tradeoffs |
+| [Architecture](docs/PRAXIS_ARCHITECTURE.md) | Everyone | How Praxis works — Restate-powered core, modular drivers, design tradeoffs |
 | [Drivers](docs/DRIVERS.md) | Contributors | Driver model, contract, state management, reconciliation, building new drivers |
 | [Orchestrator](docs/ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete flow |
 | [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE template system, expression evaluation, registry, policy enforcement, data sources |

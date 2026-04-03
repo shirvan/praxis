@@ -53,13 +53,15 @@ func NewAuroraClusterAdapterWithAPI(api auroracluster.AuroraClusterAPI) *AuroraC
 
 // Kind returns the resource kind string "AuroraCluster" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *AuroraClusterAdapter) Kind() string        { return auroracluster.ServiceName }
+func (a *AuroraClusterAdapter) Kind() string { return auroracluster.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // AuroraCluster driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *AuroraClusterAdapter) ServiceName() string { return auroracluster.ServiceName }
+
 // Scope returns the key-scope strategy for AuroraCluster resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *AuroraClusterAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *AuroraClusterAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a AuroraCluster resource
 // from the raw JSON resource document. The key is composed of region + cluster identifier,

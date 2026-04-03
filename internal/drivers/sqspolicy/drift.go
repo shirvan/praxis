@@ -7,7 +7,10 @@
 // Immutable fields (those that require resource replacement) are annotated.
 package sqspolicy
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // FieldDiffEntry represents a single field-level difference between the desired
 // spec and the observed state. Path uses dot notation (e.g. "spec.name");
@@ -52,5 +55,5 @@ func policiesEqual(a, b string) bool {
 	}
 	aNorm, _ := json.Marshal(aObj)
 	bNorm, _ := json.Marshal(bObj)
-	return string(aNorm) == string(bNorm)
+	return bytes.Equal(aNorm, bNorm)
 }

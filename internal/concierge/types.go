@@ -158,7 +158,7 @@ type ApprovalRelayRequest struct {
 type ConciergeConfiguration struct {
 	Provider    string  `json:"provider"`
 	Model       string  `json:"model"`
-	APIKey      string  `json:"apiKey,omitempty"`
+	APIKey      string  `json:"apiKey,omitempty"` //nolint:gosec // G117 not a credential, config field name
 	APIKeyRef   string  `json:"apiKeyRef,omitempty"`
 	BaseURL     string  `json:"baseURL,omitempty"`
 	MaxTurns    int     `json:"maxTurns"`
@@ -173,7 +173,7 @@ type ConciergeConfiguration struct {
 type ConciergeConfigRequest struct {
 	Provider    string   `json:"provider"`
 	Model       string   `json:"model"`
-	APIKey      string   `json:"apiKey,omitempty"`
+	APIKey      string   `json:"apiKey,omitempty"` //nolint:gosec // G117 not a credential, config field name
 	APIKeyRef   string   `json:"apiKeyRef,omitempty"`
 	BaseURL     string   `json:"baseURL,omitempty"`
 	MaxTurns    int      `json:"maxTurns,omitempty"`

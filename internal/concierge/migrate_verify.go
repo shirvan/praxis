@@ -3,6 +3,7 @@ package concierge
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -55,26 +56,32 @@ func VerifyMigrationOutput(ctx restate.Context, cueSource string) (*Verification
 // FormatVerificationErrors returns a human-readable string of verification errors,
 // categorized by type (parse, schema, plan). Fed back to the LLM during retry loops.
 func FormatVerificationErrors(v *VerificationResult) string {
-	var s string
+	var sb strings.Builder
 	if len(v.ParseErrors) > 0 {
-		s += "Parse errors:\n"
+		sb.WriteString("Parse errors:\n")
 		for _, e := range v.ParseErrors {
-			s += "  - " + e + "\n"
+			sb.WriteString("  - ")
+			sb.WriteString(e)
+			sb.WriteString("\n")
 		}
 	}
 	if len(v.SchemaErrors) > 0 {
-		s += "Schema errors:\n"
+		sb.WriteString("Schema errors:\n")
 		for _, e := range v.SchemaErrors {
-			s += "  - " + e + "\n"
+			sb.WriteString("  - ")
+			sb.WriteString(e)
+			sb.WriteString("\n")
 		}
 	}
 	if len(v.PlanErrors) > 0 {
-		s += "Plan errors:\n"
+		sb.WriteString("Plan errors:\n")
 		for _, e := range v.PlanErrors {
-			s += "  - " + e + "\n"
+			sb.WriteString("  - ")
+			sb.WriteString(e)
+			sb.WriteString("\n")
 		}
 	}
-	return s
+	return sb.String()
 }
 
 // FormatVerificationResult returns a summary of a successful verification,

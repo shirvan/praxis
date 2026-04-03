@@ -56,13 +56,15 @@ func NewSNSSubscriptionAdapterWithAPI(api snssub.SubscriptionAPI) *SNSSubscripti
 
 // Kind returns the resource kind string "SNSSubscription" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *SNSSubscriptionAdapter) Kind() string        { return snssub.ServiceName }
+func (a *SNSSubscriptionAdapter) Kind() string { return snssub.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // SNSSubscription driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *SNSSubscriptionAdapter) ServiceName() string { return snssub.ServiceName }
+
 // Scope returns the key-scope strategy for SNSSubscription resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *SNSSubscriptionAdapter) Scope() KeyScope     { return KeyScopeCustom }
+func (a *SNSSubscriptionAdapter) Scope() KeyScope { return KeyScopeCustom }
 
 // BuildKey returns a key of the form region~topicArn~protocol~endpoint.
 func (a *SNSSubscriptionAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {

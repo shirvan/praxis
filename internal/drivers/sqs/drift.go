@@ -9,6 +9,7 @@ package sqs
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -159,12 +160,8 @@ func filterPraxisTags(m map[string]string) map[string]string {
 
 func mergeTags(user, system map[string]string) map[string]string {
 	merged := make(map[string]string, len(user)+len(system))
-	for key, value := range user {
-		merged[key] = value
-	}
-	for key, value := range system {
-		merged[key] = value
-	}
+	maps.Copy(merged, user)
+	maps.Copy(merged, system)
 	return merged
 }
 

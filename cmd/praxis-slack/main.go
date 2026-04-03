@@ -46,7 +46,7 @@ func main() {
 
 	// Verify Slack config exists
 	if _, err := loadSlackConfig(rc); err != nil {
-		slog.Error("slack gateway not configured", "err", err.Error())
+		slog.Error("slack gateway not configured", "err", err.Error()) //nolint:gosec // G706 error message is safe
 		slog.Info("configure with: praxis concierge slack configure --bot-token xoxb-... --app-token xapp-...")
 		os.Exit(1)
 	}
@@ -73,8 +73,9 @@ func main() {
 	}()
 
 	if err := gateway.Run(ctx); err != nil && ctx.Err() == nil {
-		slog.Error("slack gateway exited", "err", err.Error())
-		os.Exit(1)
+		slog.Error("slack gateway exited", "err", err.Error()) //nolint:gosec // G706 error message is safe
+		cancel()
+		os.Exit(1) //nolint:gocritic // exitAfterDefer is intentional at end of main
 	}
 }
 
@@ -127,7 +128,7 @@ func syncSinkOnStartup(rc *ingress.Client) error {
 		return fmt.Errorf("register sink: %w", err)
 	}
 
-	slog.Info("notification sink synced on startup",
+	slog.Info("notification sink synced on startup", //nolint:gosec // G706 not user input
 		"rules", len(watches), "channel", config.EventChannel)
 	return nil
 }

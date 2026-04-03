@@ -135,13 +135,16 @@ When the concierge is running, you can also talk to Praxis directly:
 			if err != nil {
 				return fmt.Errorf("resolve %q: %w", conciergeFile, err)
 			}
+			var sb strings.Builder
+			sb.WriteString(prompt)
 			for _, f := range files {
-				content, err := os.ReadFile(f)
+				content, err := os.ReadFile(f) //nolint:gosec // G304 file path from CLI flag is intentional
 				if err != nil {
 					return fmt.Errorf("read file %q: %w", f, err)
 				}
-				prompt += fmt.Sprintf("\n\n--- %s ---\n```\n%s\n```", f, string(content))
+				fmt.Fprintf(&sb, "\n\n--- %s ---\n```\n%s\n```", f, string(content))
 			}
+			prompt = sb.String()
 		}
 
 		if conciergeSession == "" {

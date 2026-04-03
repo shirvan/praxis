@@ -56,13 +56,15 @@ func NewRoute53RecordAdapterWithAPI(api route53record.RecordAPI) *Route53RecordA
 
 // Kind returns the resource kind string "Route53Record" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *Route53RecordAdapter) Kind() string        { return route53record.ServiceName }
+func (a *Route53RecordAdapter) Kind() string { return route53record.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // Route53Record driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *Route53RecordAdapter) ServiceName() string { return route53record.ServiceName }
+
 // Scope returns the key-scope strategy for Route53Record resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *Route53RecordAdapter) Scope() KeyScope     { return KeyScopeCustom }
+func (a *Route53RecordAdapter) Scope() KeyScope { return KeyScopeCustom }
 
 // BuildKey derives the canonical Restate object key for a Route53Record resource
 // from the raw JSON resource document. The key is composed of zone ID + record name + record type,

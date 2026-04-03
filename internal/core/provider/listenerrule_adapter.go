@@ -56,13 +56,15 @@ func NewListenerRuleAdapterWithAPI(api listenerrule.ListenerRuleAPI) *ListenerRu
 
 // Kind returns the resource kind string "ListenerRule" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *ListenerRuleAdapter) Kind() string        { return listenerrule.ServiceName }
+func (a *ListenerRuleAdapter) Kind() string { return listenerrule.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // ListenerRule driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *ListenerRuleAdapter) ServiceName() string { return listenerrule.ServiceName }
+
 // Scope returns the key-scope strategy for ListenerRule resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *ListenerRuleAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *ListenerRuleAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a ListenerRule resource
 // from the raw JSON resource document. The key is composed of listener ARN + rule priority,

@@ -53,13 +53,15 @@ func NewLambdaLayerAdapterWithAPI(api lambdalayer.LayerAPI) *LambdaLayerAdapter 
 
 // Kind returns the resource kind string "LambdaLayer" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *LambdaLayerAdapter) Kind() string        { return lambdalayer.ServiceName }
+func (a *LambdaLayerAdapter) Kind() string { return lambdalayer.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // LambdaLayer driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *LambdaLayerAdapter) ServiceName() string { return lambdalayer.ServiceName }
+
 // Scope returns the key-scope strategy for LambdaLayer resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *LambdaLayerAdapter) Scope() KeyScope     { return KeyScopeRegion }
+func (a *LambdaLayerAdapter) Scope() KeyScope { return KeyScopeRegion }
 
 // BuildKey derives the canonical Restate object key for a LambdaLayer resource
 // from the raw JSON resource document. The key is composed of region + layer name,

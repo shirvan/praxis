@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	slackpkg "github.com/slack-go/slack"
@@ -173,12 +174,7 @@ func isUserAllowed(userID string, allowedUsers []string) bool {
 	if len(allowedUsers) == 0 {
 		return true
 	}
-	for _, id := range allowedUsers {
-		if id == userID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allowedUsers, userID)
 }
 
 const notAllowedMessage = "Sorry, you don't have access to Praxis. " +

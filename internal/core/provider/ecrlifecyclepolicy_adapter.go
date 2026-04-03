@@ -46,13 +46,15 @@ func NewECRLifecyclePolicyAdapterWithAuth(auth authservice.AuthClient) *ECRLifec
 
 // Kind returns the resource kind string "ECRLifecyclePolicy" that maps template
 // resource documents to this adapter in the provider registry.
-func (a *ECRLifecyclePolicyAdapter) Kind() string        { return ecrpolicy.ServiceName }
+func (a *ECRLifecyclePolicyAdapter) Kind() string { return ecrpolicy.ServiceName }
+
 // ServiceName returns the Restate Virtual Object service name for the
 // ECRLifecyclePolicy driver. The orchestrator uses this to dispatch durable RPCs.
 func (a *ECRLifecyclePolicyAdapter) ServiceName() string { return ecrpolicy.ServiceName }
+
 // Scope returns the key-scope strategy for ECRLifecyclePolicy resources,
 // which controls how BuildKey assembles the canonical object key.
-func (a *ECRLifecyclePolicyAdapter) Scope() KeyScope     { return KeyScopeCustom }
+func (a *ECRLifecyclePolicyAdapter) Scope() KeyScope { return KeyScopeCustom }
 
 // BuildKey derives the canonical Restate object key for a ECRLifecyclePolicy resource
 // from the raw JSON resource document. The key is composed of region + repository name,
