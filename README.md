@@ -62,7 +62,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 | **Crash recovery** | Manual intervention | Controller restart + re-reconcile | Automatic journal replay |
 | **Dependency resolution** | Provider-determined | Composition functions | DAG from output expressions |
 | **Template language** | HCL | YAML + Compositions | CUE |
-| **Extension model** | Go providers (complex SDK) | Go controllers (complex SDK) | Restate Virtual Objects (simple handler interface) |
+| **Extension model** | Go providers (complex SDK) | Go controllers (complex SDK) | Restate Virtual Objects (any language, no fork) |
 
 ### Key Capabilities
 
@@ -85,6 +85,8 @@ None of them let you declare infrastructure, have it continuously converged, and
 **Lifecycle Protection.** Mark resources with `preventDestroy` to block accidental deletion, or `ignoreChanges` to let external systems co-manage specific fields without Praxis fighting for control.
 
 **Lightweight Operations.** The entire stack runs in Docker Compose. No etcd, no API server, no cluster to maintain. Drivers are grouped by AWS domain into independent driver packs that register with Restate.
+
+**Extensible Without Forking.** Praxis runs on [Restate](https://restate.dev), and Restate doesn't distinguish between built-in and external services. Write a custom driver in Python, TypeScript, Go, Java, Kotlin, or Rust from your own repository, register it with the same Restate instance, and it participates in DAG orchestration, output expression hydration, state tracking, and event streaming alongside built-in drivers. No plugin SDK, no fork, no code changes to Praxis. See the [Extending Guide](docs/EXTENDING.md).
 
 ---
 
@@ -286,6 +288,7 @@ See [FUTURE.md](docs/FUTURE.md) for what's coming next and [`examples/`](example
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
 | [Concierge](docs/CONCIERGE.md) | Contributors | AI assistant — LLM integration, tool framework, migration, approval flow |
 | [Slack Gateway](docs/SLACK_GATEWAY.md) | Contributors | Slack integration — DM conversations, event-watch threads, approval buttons |
+| [Extending Praxis](docs/EXTENDING.md) | Contributors | Build custom drivers in any language without forking — extension contract, Python example, deployment patterns |
 
 ---
 

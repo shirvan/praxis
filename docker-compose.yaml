@@ -250,6 +250,8 @@ services:
         condition: service_healthy
     ports:
       - "9088:9080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
       # LLM provider configuration — set in .env or override here.
