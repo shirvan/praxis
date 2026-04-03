@@ -105,6 +105,8 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 		state = *statePtr
 	} else {
 		state = initSession(req, cfg.SessionTTL, now)
+		state.Provider = cfg.Provider
+		state.Model = cfg.Model
 
 		// Schedule proactive session expiry using a delayed self-message.
 		// This is a Restate durable timer — it survives process restarts.
@@ -365,7 +367,18 @@ func (a *ConciergeSession) GetStatus(ctx restate.ObjectSharedContext) (SessionSt
 		return SessionStatus{}, err
 	}
 	if statePtr == nil {
-		return SessionStatus{}, nil
+		// No session yet — fall back to global config so the user can see
+		// the configured provider/model even before the first ask.
+		cfg, err := restate.Object[ConciergeConfiguration](
+			ctx, ConciergeConfigServiceName, "global", "Get",
+		).Request(restate.Void{})
+		if err != nil {
+			return SessionStatus{}, nil
+		}
+		return SessionStatus{
+			Provider: cfg.Provider,
+			Model:    cfg.Model,
+		}, nil
 	}
 	return SessionStatus{
 		Provider:        statePtr.Provider,
