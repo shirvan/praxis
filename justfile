@@ -937,10 +937,19 @@ release-build VERSION: (_validate-version VERSION)
     cd "${DIST}" && shasum -a 256 *.tar.gz > checksums.txt
 
     echo ""
+    echo "Stamping Helm chart version..."
+    CHART_VERSION=$(echo "${VERSION}" | sed 's/^v//')
+    sed -i.bak "s/^version:.*/version: ${CHART_VERSION}/" charts/praxis/Chart.yaml
+    sed -i.bak "s/^appVersion:.*/appVersion: \"${CHART_VERSION}\"/" charts/praxis/Chart.yaml
+    rm -f charts/praxis/Chart.yaml.bak
+    echo "  charts/praxis/Chart.yaml → ${CHART_VERSION}"
+
+    echo ""
     echo "Release ${VERSION} built successfully:"
     echo "  CLI tarballs:  ${DIST}/praxis_*.tar.gz"
     echo "  Services:      ${DIST}/linux_amd64/"
     echo "  Checksums:     ${DIST}/checksums.txt"
+    echo "  Helm chart:    charts/praxis/Chart.yaml (${CHART_VERSION})"
 
 # Tag the release and push to GitHub — triggers the release workflow
 release VERSION: (_validate-version VERSION)

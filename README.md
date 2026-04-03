@@ -149,15 +149,15 @@ praxis apply webapp.cue --account local --var env=dev --key my-webapp --wait
 
 ### Centralized Deployment (Kubernetes)
 
-For team and production use, deploy Praxis on Kubernetes with the included Helm chart. The chart deploys all Praxis components and optionally bundles a Restate instance — or you can point to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
+For team and production use, deploy Praxis on Kubernetes with the Helm chart published to GitHub Container Registry. The chart deploys all Praxis components and optionally bundles a Restate instance — or you can point to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
 
 ```bash
 # Deploy with bundled Restate
-helm install praxis charts/praxis \
+helm install praxis oci://ghcr.io/shirvan/charts/praxis \
   --namespace praxis-system --create-namespace
 
 # Or deploy against Restate Cloud (no bundled Restate)
-helm install praxis charts/praxis \
+helm install praxis oci://ghcr.io/shirvan/charts/praxis \
   --namespace praxis-system --create-namespace \
   --set restate.enabled=false \
   --set restate.external.ingressUrl=https://<env>.dev.restate.cloud:8080 \
@@ -168,7 +168,7 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # (Optional) Enable autoscaling for driver packs
-helm upgrade praxis charts/praxis \
+helm upgrade praxis oci://ghcr.io/shirvan/charts/praxis \
   --namespace praxis-system \
   --set drivers.network.autoscaling.enabled=true \
   --set drivers.compute.autoscaling.enabled=true

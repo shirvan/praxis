@@ -90,17 +90,17 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 
 ### Kubernetes Deployment (Helm)
 
-The recommended way to deploy Praxis on Kubernetes is via the included Helm chart. The chart deploys Praxis Core, all driver packs, and optionally a bundled Restate instance — or points to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
+The recommended way to deploy Praxis on Kubernetes is via the Helm chart published to GitHub Container Registry. The chart deploys Praxis Core, all driver packs, and optionally a bundled Restate instance — or points to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
 
 ```bash
 # Deploy with bundled Restate
-helm install praxis charts/praxis \
+helm install praxis oci://ghcr.io/shirvan/charts/praxis \
   --namespace praxis-system --create-namespace \
   --set aws.region=us-east-1 \
   --set account.credentialSource=default
 
 # Deploy with Restate Cloud (no bundled Restate)
-helm install praxis charts/praxis \
+helm install praxis oci://ghcr.io/shirvan/charts/praxis \
   --namespace praxis-system --create-namespace \
   --set restate.enabled=false \
   --set restate.external.ingressUrl=https://<env>.dev.restate.cloud:8080 \
@@ -111,7 +111,7 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # Enable autoscaling for driver packs
-helm upgrade praxis charts/praxis \
+helm upgrade praxis oci://ghcr.io/shirvan/charts/praxis \
   --namespace praxis-system \
   --set drivers.network.autoscaling.enabled=true \
   --set drivers.compute.autoscaling.enabled=true
