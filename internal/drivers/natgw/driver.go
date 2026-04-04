@@ -512,6 +512,15 @@ func (d *NATGatewayDriver) GetOutputs(ctx restate.ObjectSharedContext) (NATGatew
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *NATGatewayDriver) GetInputs(ctx restate.ObjectSharedContext) (NATGatewaySpec, error) {
+	state, err := restate.Get[NATGatewayState](ctx, drivers.StateKey)
+	if err != nil {
+		return NATGatewaySpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *NATGatewayDriver) correctDrift(ctx restate.ObjectContext, api NATGatewayAPI, natGatewayID string, desired NATGatewaySpec, observed ObservedState) error {
 	if !tagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

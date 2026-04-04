@@ -384,6 +384,15 @@ func (d *ACMCertificateDriver) GetOutputs(ctx restate.ObjectSharedContext) (ACMC
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ACMCertificateDriver) GetInputs(ctx restate.ObjectSharedContext) (ACMCertificateSpec, error) {
+	state, err := restate.Get[ACMCertificateState](ctx, drivers.StateKey)
+	if err != nil {
+		return ACMCertificateSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *ACMCertificateDriver) correctDrift(ctx restate.ObjectContext, api CertificateAPI, certificateArn string, desired ACMCertificateSpec, observed ObservedState) error {
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

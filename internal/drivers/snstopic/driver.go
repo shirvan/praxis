@@ -460,6 +460,15 @@ func (d *SNSTopicDriver) GetOutputs(ctx restate.ObjectSharedContext) (SNSTopicOu
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *SNSTopicDriver) GetInputs(ctx restate.ObjectSharedContext) (SNSTopicSpec, error) {
+	state, err := restate.Get[SNSTopicState](ctx, drivers.StateKey)
+	if err != nil {
+		return SNSTopicSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *SNSTopicDriver) scheduleReconcile(ctx restate.ObjectContext, state *SNSTopicState) {
 	if state.ReconcileScheduled {
 		return

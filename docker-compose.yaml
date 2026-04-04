@@ -81,7 +81,7 @@ services:
     restart: "no"
 
   restate:
-    image: docker.restate.dev/restatedev/restate:1.3
+    image: docker.restate.dev/restatedev/restate:1.6
     container_name: praxis-restate
     ports:
       - "8080:8080"   # ingress used by the CLI and by any external callers

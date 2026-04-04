@@ -84,12 +84,26 @@ func printTable(r *Renderer, headers []string, rows [][]string) {
 // --------------------------------------------------------------------------
 
 // printDeploymentDetail renders a full deployment record with per-resource
-// breakdown and outputs. This is the main display for `praxis get Deployment/<key>`.
-func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail) {
+// breakdown, inputs, and outputs. This is the main display for
+// `praxis get Deployment/<key>`. The optional resourceInputs map holds the
+// desired input spec per resource name, fetched from each driver.
+func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, resourceInputs ...map[string]map[string]any) {
+	// Merge the variadic inputs into a single map for easy lookup.
+	var inputs map[string]map[string]any
+	if len(resourceInputs) > 0 {
+		inputs = resourceInputs[0]
+	}
+
 	r.writeLabelValue("Deployment", 11, d.Key)
 	r.writeLabelStyledValue("Status", 11, r.renderStatus(string(d.Status)))
 	if d.TemplatePath != "" {
 		r.writeLabelValue("Template", 11, d.TemplatePath)
+	}
+	if d.Workspace != "" {
+		r.writeLabelValue("Workspace", 11, d.Workspace)
+	}
+	if d.ErrorCode != "" {
+		r.writeLabelValue("ErrorCode", 11, string(d.ErrorCode))
 	}
 	if d.Error != "" {
 		r.writeLabelValue("Error", 11, d.Error)
@@ -99,7 +113,7 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail) {
 	_, _ = fmt.Fprintln(r.out)
 
 	if len(d.Resources) > 0 {
-		headers := []string{"RESOURCE", "KIND", "STATUS", "ERROR"}
+		headers := []string{"RESOURCE", "KIND", "KEY", "STATUS", "ERROR"}
 		rows := make([][]string, 0, len(d.Resources))
 		for _, resource := range d.Resources {
 			errMsg := "-"
@@ -109,11 +123,50 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail) {
 			rows = append(rows, []string{
 				resource.Name,
 				resource.Kind,
+				resource.Key,
 				renderResourceStatus(r, resource.Status),
 				errMsg,
 			})
 		}
 		printTable(r, headers, rows)
+
+		// Print dependency graph info for resources that have dependencies.
+		hasDeps := false
+		for _, res := range d.Resources {
+			if len(res.DependsOn) > 0 {
+				hasDeps = true
+				break
+			}
+		}
+		if hasDeps {
+			_, _ = fmt.Fprintln(r.out)
+			_, _ = fmt.Fprintln(r.out, r.renderSection("Dependencies:"))
+			for _, resource := range d.Resources {
+				if len(resource.DependsOn) > 0 {
+					_, _ = fmt.Fprintf(r.out, "  %s → %s\n", resource.Name, strings.Join(resource.DependsOn, ", "))
+				}
+			}
+		}
+
+		// Print inputs section if available.
+		if len(inputs) > 0 {
+			_, _ = fmt.Fprintln(r.out)
+			_, _ = fmt.Fprintln(r.out, r.renderSection("Inputs:"))
+			for _, resource := range d.Resources {
+				resInputs, ok := inputs[resource.Name]
+				if !ok || len(resInputs) == 0 {
+					continue
+				}
+				keys := make([]string, 0, len(resInputs))
+				for key := range resInputs {
+					keys = append(keys, key)
+				}
+				sort.Strings(keys)
+				for _, key := range keys {
+					_, _ = fmt.Fprintf(r.out, "  %s.%s = %v\n", resource.Name, key, resInputs[key])
+				}
+			}
+		}
 
 		// Print outputs section for resources that have them.
 		hasOutputs := false

@@ -379,6 +379,15 @@ func (d *SQSQueuePolicyDriver) GetOutputs(ctx restate.ObjectSharedContext) (SQSQ
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *SQSQueuePolicyDriver) GetInputs(ctx restate.ObjectSharedContext) (SQSQueuePolicySpec, error) {
+	state, err := restate.Get[SQSQueuePolicyState](ctx, shared.StateKey)
+	if err != nil {
+		return SQSQueuePolicySpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *SQSQueuePolicyDriver) scheduleReconcile(ctx restate.ObjectContext, state *SQSQueuePolicyState) {
 	if state.ReconcileScheduled {
 		return

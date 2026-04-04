@@ -474,6 +474,15 @@ func (d *RouteTableDriver) GetOutputs(ctx restate.ObjectSharedContext) (RouteTab
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *RouteTableDriver) GetInputs(ctx restate.ObjectSharedContext) (RouteTableSpec, error) {
+	state, err := restate.Get[RouteTableState](ctx, drivers.StateKey)
+	if err != nil {
+		return RouteTableSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile sends a delayed self-invocation after ReconcileInterval.
 func (d *RouteTableDriver) scheduleReconcile(ctx restate.ObjectContext, state *RouteTableState) {
 	if state.ReconcileScheduled {

@@ -393,6 +393,15 @@ func (d *SecurityGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (Secur
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *SecurityGroupDriver) GetInputs(ctx restate.ObjectSharedContext) (SecurityGroupSpec, error) {
+	state, err := restate.Get[SecurityGroupState](ctx, drivers.StateKey)
+	if err != nil {
+		return SecurityGroupSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile sends a delayed self-invocation to trigger Reconcile.
 func (d *SecurityGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state *SecurityGroupState) {
 	if state.ReconcileScheduled {

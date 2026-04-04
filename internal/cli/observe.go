@@ -118,14 +118,13 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 		}
 		for i := range events {
 			if isTerminalCloudEvent(events[i]) {
-				detail, detailErr := client.GetDeployment(ctx, key)
-				if detailErr != nil {
-					return fmt.Errorf("observe: fetch final state: %w", detailErr)
-				}
-				if detail != nil && format != OutputJSON {
-					_, _ = fmt.Fprintln(renderer.out)
-					printDeploymentDetail(renderer, detail)
-				}
+				status := cloudEventStatus(events[i].Event)
+				_, _ = fmt.Fprintln(renderer.out)
+				_, _ = fmt.Fprintf(renderer.out, "%s %s\n",
+					renderer.renderSection("Deployment reached terminal state:"),
+					renderer.renderStatus(status))
+				_, _ = fmt.Fprintf(renderer.out, "%s\n",
+					renderer.renderMuted("Run 'praxis get Deployment/"+key+"' for full details."))
 				return nil
 			}
 		}

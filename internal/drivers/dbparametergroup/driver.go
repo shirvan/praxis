@@ -335,6 +335,15 @@ func (d *DBParameterGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (DB
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *DBParameterGroupDriver) GetInputs(ctx restate.ObjectSharedContext) (DBParameterGroupSpec, error) {
+	state, err := restate.Get[DBParameterGroupState](ctx, drivers.StateKey)
+	if err != nil {
+		return DBParameterGroupSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift applies UpdateParameters and/or UpdateTags to converge.
 func (d *DBParameterGroupDriver) correctDrift(ctx restate.ObjectContext, api DBParameterGroupAPI, desired DBParameterGroupSpec, observed ObservedState) error {
 	if HasDrift(desired, observed) {

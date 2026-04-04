@@ -305,6 +305,26 @@ func (c *Client) GetResourceOutputs(ctx context.Context, kind, key string) (map[
 	return outputs, nil
 }
 
+// GetResourceInputs reads a resource's desired input spec as raw JSON from its
+// driver. The inputs are returned as a generic map since different drivers
+// define different typed spec structs.
+func (c *Client) GetResourceInputs(ctx context.Context, kind, key string) (map[string]any, error) {
+	resp, err := ingress.Object[restate.Void, json.RawMessage](
+		c.rc, kind, key, "GetInputs",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, fmt.Errorf("get resource inputs %s/%s: %w", kind, key, err)
+	}
+	if len(resp) == 0 || string(resp) == "null" {
+		return nil, nil
+	}
+	var inputs map[string]any
+	if err := json.Unmarshal(resp, &inputs); err != nil {
+		return nil, fmt.Errorf("decode resource inputs: %w", err)
+	}
+	return inputs, nil
+}
+
 // --------------------------------------------------------------------------
 // Deploy service calls (template-first user API)
 // --------------------------------------------------------------------------

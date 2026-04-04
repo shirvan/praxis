@@ -17,6 +17,7 @@
 //
 //	GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error)
 //	GetOutputs(ctx restate.ObjectSharedContext) (OutputsT, error)
+//	GetInputs(ctx restate.ObjectSharedContext) (SpecT, error)
 //
 // The distinction between exclusive and shared handlers is critical:
 //   - Exclusive handlers (ObjectContext) run one-at-a-time per object key,

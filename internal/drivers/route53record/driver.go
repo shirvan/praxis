@@ -323,6 +323,15 @@ func (d *RecordDriver) GetOutputs(ctx restate.ObjectSharedContext) (RecordOutput
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *RecordDriver) GetInputs(ctx restate.ObjectSharedContext) (RecordSpec, error) {
+	state, err := restate.Get[RecordState](ctx, drivers.StateKey)
+	if err != nil {
+		return RecordSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *RecordDriver) scheduleReconcile(ctx restate.ObjectContext, state *RecordState) {
 	if state.ReconcileScheduled {
 		return

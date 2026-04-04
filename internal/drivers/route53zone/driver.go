@@ -350,6 +350,15 @@ func (d *HostedZoneDriver) GetOutputs(ctx restate.ObjectSharedContext) (HostedZo
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *HostedZoneDriver) GetInputs(ctx restate.ObjectSharedContext) (HostedZoneSpec, error) {
+	state, err := restate.Get[HostedZoneState](ctx, drivers.StateKey)
+	if err != nil {
+		return HostedZoneSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift converges comment, VPC associations, and tags from observed toward desired state.
 func (d *HostedZoneDriver) correctDrift(ctx restate.ObjectContext, api HostedZoneAPI, hostedZoneID string, desired HostedZoneSpec, observed ObservedState) error {
 	if observed.HostedZoneId == "" {

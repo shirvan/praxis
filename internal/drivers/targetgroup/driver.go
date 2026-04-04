@@ -370,6 +370,15 @@ func (d *TargetGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (TargetG
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *TargetGroupDriver) GetInputs(ctx restate.ObjectSharedContext) (TargetGroupSpec, error) {
+	state, err := restate.Get[TargetGroupState](ctx, drivers.StateKey)
+	if err != nil {
+		return TargetGroupSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *TargetGroupDriver) correctDrift(ctx restate.ObjectContext, api TargetGroupAPI, arn string, desired TargetGroupSpec, observed ObservedState) error {
 	if desired.HealthCheck != observed.HealthCheck {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

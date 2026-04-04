@@ -341,6 +341,15 @@ func (d *LogGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (LogGroupOu
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *LogGroupDriver) GetInputs(ctx restate.ObjectSharedContext) (LogGroupSpec, error) {
+	state, err := restate.Get[LogGroupState](ctx, drivers.StateKey)
+	if err != nil {
+		return LogGroupSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *LogGroupDriver) correctDrift(ctx restate.ObjectContext, api LogGroupAPI, desired LogGroupSpec, observed ObservedState) error {
 	if desired.LogGroupClass != "" && observed.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
 		return fmt.Errorf("logGroupClass is immutable for %s: current=%s desired=%s", desired.LogGroupName, observed.LogGroupClass, desired.LogGroupClass)

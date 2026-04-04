@@ -450,6 +450,15 @@ func (d *VPCPeeringDriver) GetOutputs(ctx restate.ObjectSharedContext) (VPCPeeri
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *VPCPeeringDriver) GetInputs(ctx restate.ObjectSharedContext) (VPCPeeringSpec, error) {
+	state, err := restate.Get[VPCPeeringState](ctx, drivers.StateKey)
+	if err != nil {
+		return VPCPeeringSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift delegates to applyMutableSettings for tag and option fixes.
 func (d *VPCPeeringDriver) correctDrift(ctx restate.ObjectContext, api VPCPeeringAPI, peeringID string, desired VPCPeeringSpec, observed ObservedState) error {
 	return d.applyMutableSettings(ctx, api, peeringID, desired, observed)

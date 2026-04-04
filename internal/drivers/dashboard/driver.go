@@ -363,6 +363,15 @@ func (d *DashboardDriver) GetOutputs(ctx restate.ObjectSharedContext) (Dashboard
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *DashboardDriver) GetInputs(ctx restate.ObjectSharedContext) (DashboardSpec, error) {
+	state, err := restate.Get[DashboardState](ctx, drivers.StateKey)
+	if err != nil {
+		return DashboardSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *DashboardDriver) scheduleReconcile(ctx restate.ObjectContext, state *DashboardState) {
 	if state.ReconcileScheduled {
 		return

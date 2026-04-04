@@ -512,6 +512,15 @@ func (d *AMIDriver) GetOutputs(ctx restate.ObjectSharedContext) (AMIOutputs, err
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *AMIDriver) GetInputs(ctx restate.ObjectSharedContext) (AMISpec, error) {
+	state, err := restate.Get[AMIState](ctx, drivers.StateKey)
+	if err != nil {
+		return AMISpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // updateTags applies the full desired tag set (user + praxis:managed-key) to the AMI.
 func (d *AMIDriver) updateTags(ctx restate.ObjectContext, api AMIAPI, imageID string, spec AMISpec, state *AMIState) error {
 	allTags := desiredTags(spec)

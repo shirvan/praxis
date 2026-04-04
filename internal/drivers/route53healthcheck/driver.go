@@ -322,6 +322,15 @@ func (d *HealthCheckDriver) GetOutputs(ctx restate.ObjectSharedContext) (HealthC
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *HealthCheckDriver) GetInputs(ctx restate.ObjectSharedContext) (HealthCheckSpec, error) {
+	state, err := restate.Get[HealthCheckState](ctx, drivers.StateKey)
+	if err != nil {
+		return HealthCheckSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift converges health check configuration and tags from observed toward desired state.
 // Uses version-based optimistic concurrency via UpdateHealthCheck, then updates tags separately.
 func (d *HealthCheckDriver) correctDrift(ctx restate.ObjectContext, api HealthCheckAPI, healthCheckID string, desired HealthCheckSpec, observed ObservedState) error {

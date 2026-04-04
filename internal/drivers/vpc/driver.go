@@ -598,6 +598,15 @@ func (d *VPCDriver) GetOutputs(ctx restate.ObjectSharedContext) (VPCOutputs, err
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *VPCDriver) GetInputs(ctx restate.ObjectSharedContext) (VPCSpec, error) {
+	state, err := restate.Get[VPCState](ctx, drivers.StateKey)
+	if err != nil {
+		return VPCSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *VPCDriver) reportDriftEvent(ctx restate.ObjectContext, eventType, errorMessage string) {
 	restate.ServiceSend(ctx, eventing.ResourceEventBridgeServiceName, "ReportDrift").Send(eventing.DriftReportRequest{
 		ResourceKey:  restate.Key(ctx),

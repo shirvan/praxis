@@ -290,6 +290,15 @@ func (d *ECRLifecyclePolicyDriver) GetOutputs(ctx restate.ObjectSharedContext) (
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ECRLifecyclePolicyDriver) GetInputs(ctx restate.ObjectSharedContext) (ECRLifecyclePolicySpec, error) {
+	state, err := restate.Get[ECRLifecyclePolicyState](ctx, drivers.StateKey)
+	if err != nil {
+		return ECRLifecyclePolicySpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *ECRLifecyclePolicyDriver) scheduleReconcile(ctx restate.ObjectContext, state *ECRLifecyclePolicyState) {
 	if state.ReconcileScheduled {
 		return

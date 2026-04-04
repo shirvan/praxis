@@ -585,6 +585,15 @@ func (d *EC2InstanceDriver) GetOutputs(ctx restate.ObjectSharedContext) (EC2Inst
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *EC2InstanceDriver) GetInputs(ctx restate.ObjectSharedContext) (EC2InstanceSpec, error) {
+	state, err := restate.Get[EC2InstanceState](ctx, drivers.StateKey)
+	if err != nil {
+		return EC2InstanceSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile enqueues a delayed Reconcile message via Restate's durable timer.
 // The ReconcileScheduled flag prevents duplicate timers from stacking up.
 // The delay is drivers.ReconcileInterval (typically 5 minutes).

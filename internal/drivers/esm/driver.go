@@ -286,6 +286,15 @@ func (d *EventSourceMappingDriver) GetOutputs(ctx restate.ObjectSharedContext) (
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *EventSourceMappingDriver) GetInputs(ctx restate.ObjectSharedContext) (EventSourceMappingSpec, error) {
+	state, err := restate.Get[EventSourceMappingState](ctx, drivers.StateKey)
+	if err != nil {
+		return EventSourceMappingSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *EventSourceMappingDriver) scheduleReconcile(ctx restate.ObjectContext, state *EventSourceMappingState) {
 	if state.ReconcileScheduled {

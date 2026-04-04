@@ -424,6 +424,15 @@ func (d *SQSQueueDriver) GetOutputs(ctx restate.ObjectSharedContext) (SQSQueueOu
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *SQSQueueDriver) GetInputs(ctx restate.ObjectSharedContext) (SQSQueueSpec, error) {
+	state, err := restate.Get[SQSQueueState](ctx, shared.StateKey)
+	if err != nil {
+		return SQSQueueSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *SQSQueueDriver) convergeQueue(ctx restate.ObjectContext, api QueueAPI, queueURL string, desired SQSQueueSpec, observed ObservedState) error {
 	attrs := map[string]string{
 		"VisibilityTimeout":             fmt.Sprintf("%d", desired.VisibilityTimeout),

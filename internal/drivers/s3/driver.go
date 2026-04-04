@@ -438,6 +438,15 @@ func (d *S3BucketDriver) GetOutputs(ctx restate.ObjectSharedContext) (S3BucketOu
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *S3BucketDriver) GetInputs(ctx restate.ObjectSharedContext) (S3BucketSpec, error) {
+	state, err := restate.Get[S3BucketState](ctx, drivers.StateKey)
+	if err != nil {
+		return S3BucketSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile sends a delayed self-invocation to trigger Reconcile.
 // This is a durable timer — it survives Restate and service restarts.
 //

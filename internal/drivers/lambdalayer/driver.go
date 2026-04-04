@@ -294,6 +294,15 @@ func (d *LambdaLayerDriver) GetOutputs(ctx restate.ObjectSharedContext) (LambdaL
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *LambdaLayerDriver) GetInputs(ctx restate.ObjectSharedContext) (LambdaLayerSpec, error) {
+	state, err := restate.Get[LambdaLayerState](ctx, drivers.StateKey)
+	if err != nil {
+		return LambdaLayerSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *LambdaLayerDriver) scheduleReconcile(ctx restate.ObjectContext, state *LambdaLayerState) {
 	if state.ReconcileScheduled {

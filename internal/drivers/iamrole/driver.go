@@ -457,6 +457,15 @@ func (d *IAMRoleDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMRoleOutp
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *IAMRoleDriver) GetInputs(ctx restate.ObjectSharedContext) (IAMRoleSpec, error) {
+	state, err := restate.Get[IAMRoleState](ctx, drivers.StateKey)
+	if err != nil {
+		return IAMRoleSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift converges all mutable IAM role fields from observed toward desired state.
 // Each field update is wrapped in restate.Run for durable journaling. The sequence:
 // 1. Path change is rejected as terminal (immutable field).

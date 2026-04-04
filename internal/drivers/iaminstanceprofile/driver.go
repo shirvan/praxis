@@ -396,6 +396,15 @@ func (d *IAMInstanceProfileDriver) GetOutputs(ctx restate.ObjectSharedContext) (
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *IAMInstanceProfileDriver) GetInputs(ctx restate.ObjectSharedContext) (IAMInstanceProfileSpec, error) {
+	state, err := restate.Get[IAMInstanceProfileState](ctx, drivers.StateKey)
+	if err != nil {
+		return IAMInstanceProfileSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift converges role association and tags from observed toward desired state.
 // Returns a terminal error if path differs (immutable field).
 func (d *IAMInstanceProfileDriver) correctDrift(ctx restate.ObjectContext, api IAMInstanceProfileAPI, name string, desired IAMInstanceProfileSpec, observed ObservedState) error {

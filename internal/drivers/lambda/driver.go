@@ -405,6 +405,15 @@ func (d *LambdaFunctionDriver) GetOutputs(ctx restate.ObjectSharedContext) (Lamb
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *LambdaFunctionDriver) GetInputs(ctx restate.ObjectSharedContext) (LambdaFunctionSpec, error) {
+	state, err := restate.Get[LambdaFunctionState](ctx, drivers.StateKey)
+	if err != nil {
+		return LambdaFunctionSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift updates configuration and tags to bring the function back to desired state.
 func (d *LambdaFunctionDriver) correctDrift(ctx restate.ObjectContext, api LambdaAPI, desired LambdaFunctionSpec, observed ObservedState) error {
 	if HasDrift(desired, observed) {

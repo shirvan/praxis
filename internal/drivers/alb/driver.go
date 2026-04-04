@@ -375,6 +375,15 @@ func (d *ALBDriver) GetOutputs(ctx restate.ObjectSharedContext) (ALBOutputs, err
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ALBDriver) GetInputs(ctx restate.ObjectSharedContext) (ALBSpec, error) {
+	state, err := restate.Get[ALBState](ctx, drivers.StateKey)
+	if err != nil {
+		return ALBSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *ALBDriver) correctDrift(ctx restate.ObjectContext, api ALBAPI, arn string, desired ALBSpec, observed ObservedState) error {
 	desired = applyDefaults(desired)
 	if desired.IpAddressType != observed.IpAddressType {

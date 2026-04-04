@@ -361,6 +361,15 @@ func (d *AuroraClusterDriver) GetOutputs(ctx restate.ObjectSharedContext) (Auror
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *AuroraClusterDriver) GetInputs(ctx restate.ObjectSharedContext) (AuroraClusterSpec, error) {
+	state, err := restate.Get[AuroraClusterState](ctx, drivers.StateKey)
+	if err != nil {
+		return AuroraClusterSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift applies ModifyDBCluster and/or UpdateTags to converge the cluster.
 // Detects password rotation when MasterUserPassword differs from previousDesired.
 func (d *AuroraClusterDriver) correctDrift(ctx restate.ObjectContext, api AuroraClusterAPI, desired AuroraClusterSpec, observed ObservedState, previousDesired AuroraClusterSpec) error {

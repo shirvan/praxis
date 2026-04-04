@@ -429,6 +429,15 @@ func (d *KeyPairDriver) GetOutputs(ctx restate.ObjectSharedContext) (KeyPairOutp
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *KeyPairDriver) GetInputs(ctx restate.ObjectSharedContext) (KeyPairSpec, error) {
+	state, err := restate.Get[KeyPairState](ctx, drivers.StateKey)
+	if err != nil {
+		return KeyPairSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift applies in-place tag updates to bring the key pair back to desired state.
 func (d *KeyPairDriver) correctDrift(ctx restate.ObjectContext, api KeyPairAPI, keyPairID string, desired KeyPairSpec, observed ObservedState) error {
 	if !tagsMatch(desired.Tags, observed.Tags) {

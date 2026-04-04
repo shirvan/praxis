@@ -373,6 +373,15 @@ func (d *NLBDriver) GetOutputs(ctx restate.ObjectSharedContext) (NLBOutputs, err
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *NLBDriver) GetInputs(ctx restate.ObjectSharedContext) (NLBSpec, error) {
+	state, err := restate.Get[NLBState](ctx, drivers.StateKey)
+	if err != nil {
+		return NLBSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *NLBDriver) correctDrift(ctx restate.ObjectContext, api NLBAPI, arn string, desired NLBSpec, observed ObservedState) error {
 	desired = applyDefaults(desired)
 	if desired.IpAddressType != observed.IpAddressType {

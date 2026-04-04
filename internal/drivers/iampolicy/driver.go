@@ -388,6 +388,15 @@ func (d *IAMPolicyDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMPolicy
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *IAMPolicyDriver) GetInputs(ctx restate.ObjectSharedContext) (IAMPolicySpec, error) {
+	state, err := restate.Get[IAMPolicyState](ctx, drivers.StateKey)
+	if err != nil {
+		return IAMPolicySpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *IAMPolicyDriver) correctDrift(ctx restate.ObjectContext, api IAMPolicyAPI, policyArn string, desired IAMPolicySpec, observed ObservedState) error {
 	if !policyDocumentsEqual(desired.PolicyDocument, observed.PolicyDocument) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {

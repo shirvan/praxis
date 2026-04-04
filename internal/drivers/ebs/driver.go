@@ -469,6 +469,15 @@ func (d *EBSVolumeDriver) GetOutputs(ctx restate.ObjectSharedContext) (EBSVolume
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *EBSVolumeDriver) GetInputs(ctx restate.ObjectSharedContext) (EBSVolumeSpec, error) {
+	state, err := restate.Get[EBSVolumeState](ctx, drivers.StateKey)
+	if err != nil {
+		return EBSVolumeSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift applies modifications and tag updates to bring the volume
 // back into alignment with the desired spec.
 func (d *EBSVolumeDriver) correctDrift(ctx restate.ObjectContext, api EBSAPI, volumeID string, desired EBSVolumeSpec, observed ObservedState) error {

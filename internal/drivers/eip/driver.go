@@ -408,6 +408,15 @@ func (d *ElasticIPDriver) GetOutputs(ctx restate.ObjectSharedContext) (ElasticIP
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ElasticIPDriver) GetInputs(ctx restate.ObjectSharedContext) (ElasticIPSpec, error) {
+	state, err := restate.Get[ElasticIPState](ctx, drivers.StateKey)
+	if err != nil {
+		return ElasticIPSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift updates tags if they've drifted. EIPs have no other mutable fields.
 func (d *ElasticIPDriver) correctDrift(ctx restate.ObjectContext, api EIPAPI, allocationID string, desired ElasticIPSpec, observed ObservedState) error {
 	if !tagsMatch(desired.Tags, observed.Tags) {

@@ -462,6 +462,15 @@ func (d *NetworkACLDriver) GetOutputs(ctx restate.ObjectSharedContext) (NetworkA
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *NetworkACLDriver) GetInputs(ctx restate.ObjectSharedContext) (NetworkACLSpec, error) {
+	state, err := restate.Get[NetworkACLState](ctx, drivers.StateKey)
+	if err != nil {
+		return NetworkACLSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // applyDesiredState converges rules, associations, and tags to match the
 // desired spec. Delegates to applyRuleDiff for ingress/egress rules and
 // applyAssociationDiff for subnet associations.

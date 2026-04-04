@@ -401,6 +401,15 @@ func (d *IAMGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMGroupOu
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *IAMGroupDriver) GetInputs(ctx restate.ObjectSharedContext) (IAMGroupSpec, error) {
+	state, err := restate.Get[IAMGroupState](ctx, drivers.StateKey)
+	if err != nil {
+		return IAMGroupSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift converges all mutable IAM group fields from observed toward desired state:
 // path, inline policies (add/update/remove), and managed policy ARNs (attach/detach).
 func (d *IAMGroupDriver) correctDrift(ctx restate.ObjectContext, api IAMGroupAPI, groupName string, desired IAMGroupSpec, observed ObservedState) error {

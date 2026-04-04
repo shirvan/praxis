@@ -507,6 +507,15 @@ func (d *SubnetDriver) GetOutputs(ctx restate.ObjectSharedContext) (SubnetOutput
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *SubnetDriver) GetInputs(ctx restate.ObjectSharedContext) (SubnetSpec, error) {
+	state, err := restate.Get[SubnetState](ctx, drivers.StateKey)
+	if err != nil {
+		return SubnetSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile sends a delayed self-invocation after ReconcileInterval.
 func (d *SubnetDriver) scheduleReconcile(ctx restate.ObjectContext, state *SubnetState) {
 	if state.ReconcileScheduled {

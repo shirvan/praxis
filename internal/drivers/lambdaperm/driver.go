@@ -274,6 +274,15 @@ func (d *LambdaPermissionDriver) GetOutputs(ctx restate.ObjectSharedContext) (La
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *LambdaPermissionDriver) GetInputs(ctx restate.ObjectSharedContext) (LambdaPermissionSpec, error) {
+	state, err := restate.Get[LambdaPermissionState](ctx, drivers.StateKey)
+	if err != nil {
+		return LambdaPermissionSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // scheduleReconcile enqueues a delayed Reconcile message with dedup guard.
 func (d *LambdaPermissionDriver) scheduleReconcile(ctx restate.ObjectContext, state *LambdaPermissionState) {
 	if state.ReconcileScheduled {

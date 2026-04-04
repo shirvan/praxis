@@ -364,6 +364,15 @@ func (d *RDSInstanceDriver) GetOutputs(ctx restate.ObjectSharedContext) (RDSInst
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *RDSInstanceDriver) GetInputs(ctx restate.ObjectSharedContext) (RDSInstanceSpec, error) {
+	state, err := restate.Get[RDSInstanceState](ctx, drivers.StateKey)
+	if err != nil {
+		return RDSInstanceSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift applies Modify and tag updates to bring the instance into alignment.
 // Rejects storage shrink (unsupported by AWS). Detects password rotation.
 func (d *RDSInstanceDriver) correctDrift(ctx restate.ObjectContext, api RDSInstanceAPI, desired RDSInstanceSpec, observed ObservedState, previousDesired RDSInstanceSpec) error {

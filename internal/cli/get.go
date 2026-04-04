@@ -87,6 +87,8 @@ func parseKindKey(arg string) (kind, key string, err error) {
 // --------------------------------------------------------------------------
 
 // getDeployment retrieves and displays a full deployment detail record.
+// For each resource, it also fetches the desired input spec from the driver
+// to give operators full troubleshooting visibility.
 func getDeployment(ctx context.Context, client *Client, key string, format OutputFormat) error {
 	renderer := defaultRenderer()
 	detail, err := client.GetDeployment(ctx, key)
@@ -97,11 +99,25 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 		return fmt.Errorf("deployment %q not found", key)
 	}
 
-	if format == OutputJSON {
-		return printJSON(detail)
+	// Fetch inputs for each resource from drivers. These are best-effort;
+	// a resource that has never been provisioned may not have inputs yet.
+	resourceInputs := make(map[string]map[string]any, len(detail.Resources))
+	for _, r := range detail.Resources {
+		inputs, inputErr := client.GetResourceInputs(ctx, r.Kind, r.Key)
+		if inputErr == nil && inputs != nil {
+			resourceInputs[r.Name] = inputs
+		}
 	}
 
-	printDeploymentDetail(renderer, detail)
+	if format == OutputJSON {
+		result := map[string]any{
+			"deployment": detail,
+			"inputs":     resourceInputs,
+		}
+		return printJSON(result)
+	}
+
+	printDeploymentDetail(renderer, detail, resourceInputs)
 	return nil
 }
 
@@ -109,7 +125,8 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 // Resource get
 // --------------------------------------------------------------------------
 
-// getResource retrieves a single resource's status and outputs from its driver.
+// getResource retrieves a single resource's status, outputs, and desired input
+// spec from its driver.
 func getResource(ctx context.Context, client *Client, kind, key string, format OutputFormat) error {
 	renderer := defaultRenderer()
 	status, err := client.GetResourceStatus(ctx, kind, key)
@@ -123,6 +140,12 @@ func getResource(ctx context.Context, client *Client, kind, key string, format O
 		outputs = nil
 	}
 
+	inputs, err := client.GetResourceInputs(ctx, kind, key)
+	if err != nil {
+		// Non-fatal: inputs may not be available for new or deleted resources.
+		inputs = nil
+	}
+
 	// Build a combined view for display.
 	result := map[string]any{
 		"kind":       kind,
@@ -133,6 +156,9 @@ func getResource(ctx context.Context, client *Client, kind, key string, format O
 	}
 	if status.Error != "" {
 		result["error"] = status.Error
+	}
+	if inputs != nil {
+		result["inputs"] = inputs
 	}
 	if outputs != nil {
 		result["outputs"] = outputs
@@ -149,6 +175,17 @@ func getResource(ctx context.Context, client *Client, kind, key string, format O
 	renderer.writeLabelValue("Generation", 11, fmt.Sprintf("%d", status.Generation))
 	if status.Error != "" {
 		renderer.writeLabelValue("Error", 11, status.Error)
+	}
+	if len(inputs) > 0 {
+		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Inputs:"))
+		keys := make([]string, 0, len(inputs))
+		for k := range inputs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, inputKey := range keys {
+			_, _ = fmt.Fprintf(renderer.out, "  %s = %v\n", inputKey, inputs[inputKey])
+		}
 	}
 	if len(outputs) > 0 {
 		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Outputs:"))

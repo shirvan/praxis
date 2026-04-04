@@ -419,6 +419,15 @@ func (d *IAMUserDriver) GetOutputs(ctx restate.ObjectSharedContext) (IAMUserOutp
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *IAMUserDriver) GetInputs(ctx restate.ObjectSharedContext) (IAMUserSpec, error) {
+	state, err := restate.Get[IAMUserState](ctx, drivers.StateKey)
+	if err != nil {
+		return IAMUserSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift converges all mutable IAM user fields from observed toward desired state.
 // Updates path, permissions boundary, inline policies, managed policies, group memberships, and tags.
 func (d *IAMUserDriver) correctDrift(ctx restate.ObjectContext, api IAMUserAPI, userName string, desired IAMUserSpec, observed ObservedState) error {

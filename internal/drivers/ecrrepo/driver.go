@@ -325,6 +325,15 @@ func (d *ECRRepositoryDriver) GetOutputs(ctx restate.ObjectSharedContext) (ECRRe
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ECRRepositoryDriver) GetInputs(ctx restate.ObjectSharedContext) (ECRRepositorySpec, error) {
+	state, err := restate.Get[ECRRepositoryState](ctx, drivers.StateKey)
+	if err != nil {
+		return ECRRepositorySpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *ECRRepositoryDriver) describeExisting(ctx restate.ObjectContext, api RepositoryAPI, name string) (ObservedState, bool, error) {
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 		return api.DescribeRepository(rc, name)

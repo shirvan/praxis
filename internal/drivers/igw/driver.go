@@ -501,6 +501,15 @@ func (d *IGWDriver) GetOutputs(ctx restate.ObjectSharedContext) (IGWOutputs, err
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *IGWDriver) GetInputs(ctx restate.ObjectSharedContext) (IGWSpec, error) {
+	state, err := restate.Get[IGWState](ctx, drivers.StateKey)
+	if err != nil {
+		return IGWSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift re-attaches the IGW to the correct VPC if needed and
 // fixes tag drift.
 func (d *IGWDriver) correctDrift(ctx restate.ObjectContext, api IGWAPI, internetGatewayID string, desired IGWSpec, observed ObservedState) error {

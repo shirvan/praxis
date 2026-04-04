@@ -371,6 +371,15 @@ func (d *ListenerRuleDriver) GetOutputs(ctx restate.ObjectSharedContext) (Listen
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ListenerRuleDriver) GetInputs(ctx restate.ObjectSharedContext) (ListenerRuleSpec, error) {
+	state, err := restate.Get[ListenerRuleState](ctx, drivers.StateKey)
+	if err != nil {
+		return ListenerRuleSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *ListenerRuleDriver) correctDrift(ctx restate.ObjectContext, api ListenerRuleAPI, arn string, desired ListenerRuleSpec, observed ObservedState) error {
 	// Priority change uses a separate API call
 	if desired.Priority != observed.Priority {

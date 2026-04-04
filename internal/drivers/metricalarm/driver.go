@@ -328,6 +328,15 @@ func (d *MetricAlarmDriver) GetOutputs(ctx restate.ObjectSharedContext) (MetricA
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *MetricAlarmDriver) GetInputs(ctx restate.ObjectSharedContext) (MetricAlarmSpec, error) {
+	state, err := restate.Get[MetricAlarmState](ctx, drivers.StateKey)
+	if err != nil {
+		return MetricAlarmSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *MetricAlarmDriver) correctDrift(ctx restate.ObjectContext, api MetricAlarmAPI, desired MetricAlarmSpec, observed ObservedState) error {
 	_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		runErr := api.PutMetricAlarm(rc, desired)

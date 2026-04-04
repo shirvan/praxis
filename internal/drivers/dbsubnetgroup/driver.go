@@ -341,6 +341,15 @@ func (d *DBSubnetGroupDriver) GetOutputs(ctx restate.ObjectSharedContext) (DBSub
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *DBSubnetGroupDriver) GetInputs(ctx restate.ObjectSharedContext) (DBSubnetGroupSpec, error) {
+	state, err := restate.Get[DBSubnetGroupState](ctx, drivers.StateKey)
+	if err != nil {
+		return DBSubnetGroupSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 // correctDrift applies ModifyDBSubnetGroup and/or UpdateTags to converge.
 func (d *DBSubnetGroupDriver) correctDrift(ctx restate.ObjectContext, api DBSubnetGroupAPI, desired DBSubnetGroupSpec, observed ObservedState) error {
 	if desired.Description != observed.Description || !stringSliceEqual(desired.SubnetIds, observed.SubnetIds) {

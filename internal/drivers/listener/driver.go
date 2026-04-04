@@ -367,6 +367,15 @@ func (d *ListenerDriver) GetOutputs(ctx restate.ObjectSharedContext) (ListenerOu
 	return state.Outputs, nil
 }
 
+// GetInputs is a shared (read-only) handler that returns the desired input spec.
+func (d *ListenerDriver) GetInputs(ctx restate.ObjectSharedContext) (ListenerSpec, error) {
+	state, err := restate.Get[ListenerState](ctx, drivers.StateKey)
+	if err != nil {
+		return ListenerSpec{}, err
+	}
+	return state.Desired, nil
+}
+
 func (d *ListenerDriver) correctDrift(ctx restate.ObjectContext, api ListenerAPI, arn string, desired ListenerSpec, observed ObservedState) error {
 	needsModify := desired.Port != observed.Port ||
 		!strings.EqualFold(desired.Protocol, observed.Protocol) ||
