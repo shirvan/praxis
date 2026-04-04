@@ -122,8 +122,9 @@ func (s *PraxisCommandService) compileTemplate(
 	variables map[string]any,
 	accountName string,
 	targets []string,
+	templatePathHint string,
 ) (*compiledTemplate, error) {
-	source, templatePath, err := s.resolveTemplateSource(ctx, templateBody, ref)
+	source, templatePath, err := s.resolveTemplateSource(ctx, templateBody, ref, templatePathHint)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +160,7 @@ func (s *PraxisCommandService) compileTemplate(
 
 		dataSources, err = s.resolveDataSources(ctx, evalResult.DataSources, accountName)
 		if err != nil {
-			return nil, err
+			return nil, restate.TerminalError(err, 500)
 		}
 
 		// After successful data source resolution, substitute all
@@ -385,9 +386,12 @@ func (s *PraxisCommandService) submitDeployment(
 // resolveTemplateSource determines the CUE template source from either an
 // inline body or a registry reference. Exactly one must be provided.
 // Returns the raw CUE source string and a path string for audit purposes.
-func (s *PraxisCommandService) resolveTemplateSource(ctx restate.Context, templateBody string, ref *types.TemplateRef) (string, string, error) {
+func (s *PraxisCommandService) resolveTemplateSource(ctx restate.Context, templateBody string, ref *types.TemplateRef, templatePathHint string) (string, string, error) {
 	source := trimTemplate(templateBody)
 	templatePath := "inline://template.cue"
+	if templatePathHint != "" {
+		templatePath = templatePathHint
+	}
 	// Mutual exclusion: cannot provide both inline source and a registry ref.
 	if ref != nil && source != "" {
 		return "", "", restate.TerminalError(fmt.Errorf("provide either template or templateRef, not both"), 400)

@@ -28,7 +28,9 @@ import (
 func newPlanCmd(flags *rootFlags) *cobra.Command {
 	var (
 		vars         []string
+		varsFile     string
 		showRendered bool
+		showGraph    bool
 		account      string
 		targets      []string
 	)
@@ -43,9 +45,12 @@ or deleted — without actually making any changes.
 
 This is the Praxis equivalent of a dry-run preview.
 
-Template variables are passed with --var key=value:
+Template variables can be loaded from a JSON file with -f and/or passed
+individually with --var. Flag values override file values:
 
+    praxis plan webapp.cue -f variables.json
     praxis plan webapp.cue --var env=staging
+    praxis plan webapp.cue -f base.json --var env=prod
 
 Use --show-rendered to also display the fully-evaluated template JSON,
 which is useful for debugging variable resolution and output expressions.`,
@@ -60,8 +65,8 @@ which is useful for debugging variable resolution and output expressions.`,
 				return fmt.Errorf("read template %q: %w", templatePath, err)
 			}
 
-			// Parse --var key=value pairs into a map.
-			variables, err := parseVariables(vars)
+			// Merge -f JSON file with --var key=value overrides.
+			variables, err := mergeVariables(vars, varsFile)
 			if err != nil {
 				return err
 			}
@@ -71,11 +76,12 @@ which is useful for debugging variable resolution and output expressions.`,
 			cliCfg := LoadCLIConfig()
 
 			resp, err := client.Plan(ctx, types.PlanRequest{
-				Template:  string(content),
-				Variables: variables,
-				Account:   account,
-				Workspace: cliCfg.ActiveWorkspace,
-				Targets:   targets,
+				Template:     string(content),
+				Variables:    variables,
+				Account:      account,
+				Workspace:    cliCfg.ActiveWorkspace,
+				Targets:      targets,
+				TemplatePath: templatePath,
 			})
 			if err != nil {
 				return err
@@ -90,6 +96,14 @@ which is useful for debugging variable resolution and output expressions.`,
 			printDataSources(renderer, resp.DataSources)
 			printPlan(renderer, resp.Plan)
 
+			// Optionally show the resource dependency graph.
+			if showGraph && len(resp.Graph) > 0 {
+				_, _ = fmt.Fprintln(renderer.out)
+				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Dependency graph:"))
+				_, _ = fmt.Fprintln(renderer.out)
+				printGraph(renderer, resp.Graph)
+			}
+
 			// Optionally show the fully-resolved template JSON.
 			if showRendered && resp.Rendered != "" {
 				_, _ = fmt.Fprintln(renderer.out)
@@ -102,8 +116,10 @@ which is useful for debugging variable resolution and output expressions.`,
 	}
 
 	cmd.Flags().StringArrayVar(&vars, "var", nil, "Template variable in key=value format (repeatable)")
+	cmd.Flags().StringVarP(&varsFile, "file", "f", "", "JSON file containing template variables")
 	cmd.Flags().StringVar(&account, "account", account, "AWS account name to use (env: PRAXIS_ACCOUNT)")
 	cmd.Flags().BoolVar(&showRendered, "show-rendered", false, "Also display the fully-evaluated template JSON")
+	cmd.Flags().BoolVar(&showGraph, "graph", false, "Display the resource dependency graph")
 	cmd.Flags().StringArrayVar(&targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
 
 	return cmd

@@ -31,9 +31,7 @@ resources: {
 	vpc: {
 		apiVersion: "praxis.io/v1"
 		kind:       "VPC"
-		metadata: {
-			name: "\(variables.name)-\(variables.environment)-vpc"
-		}
+		metadata: name: "\(variables.name)-\(variables.environment)-vpc"
 		spec: {
 			region:             "us-east-1"
 			cidrBlock:          variables.cidrBlock
@@ -50,9 +48,7 @@ resources: {
 	webSG: {
 		apiVersion: "praxis.io/v1"
 		kind:       "SecurityGroup"
-		metadata: {
-			name: "\(variables.name)-\(variables.environment)-sg"
-		}
+		metadata: name: "\(variables.name)-\(variables.environment)-sg"
 		spec: {
 			groupName:   "\(variables.name)-\(variables.environment)-sg"
 			description: "Security group for \(variables.name) \(variables.environment)"
@@ -83,9 +79,7 @@ resources: {
 	server: {
 		apiVersion: "praxis.io/v1"
 		kind:       "EC2Instance"
-		metadata: {
-			name: "\(variables.name)-\(variables.environment)"
-		}
+		metadata: name: "\(variables.name)-\(variables.environment)"
 		spec: {
 			region:       "us-east-1"
 			imageId:      variables.imageId

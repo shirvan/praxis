@@ -1,10 +1,10 @@
 #CommandEventData: {
-	message:    string
-	action:     string
-	status?:    "Pending" | "Running" | "Complete" | "Failed" | "Deleting" | "Deleted" | "Cancelled"
-	account?:   string
+	message:     string
+	action:      string
+	status?:     "Pending" | "Running" | "Complete" | "Failed" | "Deleting" | "Deleted" | "Cancelled"
+	account?:    string
 	resourceId?: string
-	region?:    string
+	region?:     string
 	...
 }
 

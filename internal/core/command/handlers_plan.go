@@ -37,7 +37,7 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 		return PlanResponse{}, restate.TerminalError(err, 400)
 	}
 
-	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, mergedVars, account, req.Targets)
+	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, mergedVars, account, req.Targets, req.TemplatePath)
 	if err != nil {
 		return PlanResponse{}, err
 	}
@@ -49,6 +49,15 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 	plan := corediff.NewPlanResult()
 	for i := range compiled.PlanResources {
 		resource := &compiled.PlanResources[i]
+
+		// Resources with dispatch-time expressions (${resources.X.outputs.Y})
+		// contain unresolved placeholders, so their specs cannot be compared
+		// against cloud state. Treat them as OpCreate for the plan.
+		if len(resource.Expressions) > 0 {
+			corediff.Add(plan, resource.Kind, resource.Key, types.OpCreate, nil)
+			continue
+		}
+
 		adapter, err := s.providers.Get(resource.Kind)
 		if err != nil {
 			return PlanResponse{}, restate.TerminalError(err, 400)
@@ -82,10 +91,22 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 		corediff.Add(plan, resource.Kind, resource.Key, op, fields)
 	}
 
+	// Build a lightweight graph description for the response so the CLI
+	// can render the dependency DAG without reconstructing it.
+	graphNodes := make([]types.GraphNode, len(compiled.Nodes))
+	for i, node := range compiled.Nodes {
+		graphNodes[i] = types.GraphNode{
+			Name:         node.Name,
+			Kind:         node.Kind,
+			Dependencies: node.Dependencies,
+		}
+	}
+
 	return PlanResponse{
 		Plan:        plan,
 		Rendered:    compiled.Rendered,
 		DataSources: compiled.DataSources,
+		Graph:       graphNodes,
 	}, nil
 }
 

@@ -10,22 +10,22 @@ package rds
 	}
 
 	spec: {
-		region: string
-		engine: "aurora-postgresql" | "aurora-mysql"
-		engineVersion: string
-		masterUsername: string
-		masterUserPassword: string
-		databaseName?: string
-		port?: int & >=1150 & <=65535
-		dbSubnetGroupName?: string
+		region:                       string
+		engine:                       "aurora-postgresql" | "aurora-mysql"
+		engineVersion:                string
+		masterUsername:               string
+		masterUserPassword:           string
+		databaseName?:                string
+		port?:                        int & >=1150 & <=65535
+		dbSubnetGroupName?:           string
 		dbClusterParameterGroupName?: string
 		vpcSecurityGroupIds: [...string] | *[]
-		storageEncrypted: bool | *true
-		kmsKeyId?: string
-		backupRetentionPeriod: int & >=1 & <=35 | *7
-		preferredBackupWindow?: string
+		storageEncrypted:            bool | *true
+		kmsKeyId?:                   string
+		backupRetentionPeriod:       int & >=1 & <=35 | *7
+		preferredBackupWindow?:      string
 		preferredMaintenanceWindow?: string
-		deletionProtection: bool | *false
+		deletionProtection:          bool | *false
 		enabledCloudwatchLogsExports: [...string] | *[]
 		tags: [string]: string
 	}

@@ -82,15 +82,14 @@ resources: {
 		kind:       "Listener"
 		metadata: name: "\(variables.name)-\(variables.environment)-https"
 		spec: {
-			region:          "us-east-1"
 			loadBalancerArn: variables.albArn
 			port:            443
 			protocol:        "HTTPS"
 			certificateArn:  "${resources.cert.outputs.certificateArn}"
-			defaultAction: {
+			defaultActions: [{
 				type:           "forward"
 				targetGroupArn: variables.targetGroupArn
-			}
+			}]
 			tags: {
 				app: variables.name
 				env: variables.environment

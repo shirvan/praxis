@@ -78,9 +78,12 @@ func (a *ListenerAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	region := extractRegionFromLBArn(spec.LoadBalancerArn)
+	region := spec.Region
 	if region == "" {
-		return "", fmt.Errorf("cannot extract region from loadBalancerArn %q", spec.LoadBalancerArn)
+		region = extractRegionFromLBArn(spec.LoadBalancerArn)
+	}
+	if region == "" {
+		return "", fmt.Errorf("cannot determine region: set spec.region or provide a valid loadBalancerArn")
 	}
 	name := strings.TrimSpace(doc.Metadata.Name)
 	if err := ValidateKeyPart("listener name", name); err != nil {

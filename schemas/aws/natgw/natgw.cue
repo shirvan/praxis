@@ -10,10 +10,10 @@ package natgw
 	}
 
 	spec: {
-		region: string
-		subnetId: string
+		region:           string
+		subnetId:         string
 		connectivityType: "public" | "private" | *"public"
-		allocationId?: string
+		allocationId?:    string
 		tags: [string]: string
 	}
 

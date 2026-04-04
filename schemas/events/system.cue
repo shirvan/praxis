@@ -9,18 +9,18 @@
 	indexEntriesPruned?: int & >=0
 	deploymentsScanned?: int & >=0
 	deploymentsPruned?:  int & >=0
-	failedDeployments?:  [...string]
-	error?:              string
+	failedDeployments?: [...string]
+	error?: string
 	...
 }
 
 #SinkEventData: {
-	message:       string
-	sinkName:      string
-	sinkType?:     string
-	eventType?:    string
+	message:        string
+	sinkName:       string
+	sinkType?:      string
+	eventType?:     string
 	deploymentKey?: string
-	error?:        string
+	error?:         string
 	...
 }
 

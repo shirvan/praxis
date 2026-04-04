@@ -22,28 +22,26 @@ variables: {
 	allowDelete: bool | *false
 }
 
-resources: {
-	database: {
-		apiVersion: "praxis.io/v1"
-		kind:       "RDSInstance"
-		metadata: name: "\(variables.name)-\(variables.environment)-db"
-		spec: {
-			region:           "us-east-1"
-			allocatedStorage: 100
-			storageType:      "gp3"
-			engine:           "postgres"
-			engineVersion:    "15.3"
-			instanceClass:    "db.t3.small"
-			masterUsername:    "admin"
-			multiAz:          variables.environment == "prod"
-			tags: {
-				app: variables.name
-				env: variables.environment
-			}
+resources: database: {
+	apiVersion: "praxis.io/v1"
+	kind:       "RDSInstance"
+	metadata: name: "\(variables.name)-\(variables.environment)-db"
+	spec: {
+		region:           "us-east-1"
+		allocatedStorage: 100
+		storageType:      "gp3"
+		engine:           "postgres"
+		engineVersion:    "15.3"
+		instanceClass:    "db.t3.small"
+		masterUsername:   "admin"
+		multiAZ:          variables.environment == "prod"
+		tags: {
+			app: variables.name
+			env: variables.environment
 		}
-		// Block deletion unless explicitly unlocked via allowDelete.
-		lifecycle: {
-			preventDestroy: !variables.allowDelete
-		}
+	}
+	// Block deletion unless explicitly unlocked via allowDelete.
+	lifecycle: {
+		preventDestroy: !variables.allowDelete
 	}
 }

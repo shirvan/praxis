@@ -15,6 +15,7 @@ const ServiceName = "Listener"
 // Fields are validated before any AWS call and mapped to Elastic Load Balancing v2 API inputs.
 type ListenerSpec struct {
 	Account         string            `json:"account,omitempty"`
+	Region          string            `json:"region,omitempty"`
 	LoadBalancerArn string            `json:"loadBalancerArn"`
 	Port            int               `json:"port"`
 	Protocol        string            `json:"protocol"`

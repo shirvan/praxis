@@ -64,7 +64,7 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 
 	// Compile using a TemplateRef so the pipeline fetches the source from
 	// the registry rather than expecting an inline template body.
-	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, mergedVars, account, req.Targets)
+	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, mergedVars, account, req.Targets, "")
 	if err != nil {
 		return PlanDeployResponse{}, err
 	}
@@ -73,6 +73,15 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 	plan := corediff.NewPlanResult()
 	for i := range compiled.PlanResources {
 		resource := &compiled.PlanResources[i]
+
+		// Resources with dispatch-time expressions (${resources.X.outputs.Y})
+		// contain unresolved placeholders, so their specs cannot be compared
+		// against cloud state. Treat them as OpCreate for the plan.
+		if len(resource.Expressions) > 0 {
+			corediff.Add(plan, resource.Kind, resource.Key, types.OpCreate, nil)
+			continue
+		}
+
 		adapter, err := s.providers.Get(resource.Kind)
 		if err != nil {
 			return PlanDeployResponse{}, restate.TerminalError(err, 400)

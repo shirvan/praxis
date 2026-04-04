@@ -18,6 +18,7 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
+	"github.com/charmbracelet/glamour"
 
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -193,4 +194,217 @@ func (r *Renderer) printTable(headers []string, rows [][]string) {
 		})
 
 	_, _ = fmt.Fprintln(r.out, tbl.Render())
+}
+
+// renderMarkdown renders a markdown string with terminal-aware styling using
+// glamour. In plain mode (--plain, JSON, piped output) it writes the raw text.
+func (r *Renderer) renderMarkdown(md string) {
+	if !r.styles {
+		_, _ = fmt.Fprintln(r.out, md)
+		return
+	}
+
+	style := glamour.DarkStyleConfig
+	if !lipgloss.HasDarkBackground(os.Stdin, os.Stdout) {
+		style = glamour.LightStyleConfig
+	}
+
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithStyles(style),
+		glamour.WithWordWrap(100),
+	)
+	if err != nil {
+		_, _ = fmt.Fprintln(r.out, md)
+		return
+	}
+
+	rendered, err := renderer.Render(md)
+	if err != nil {
+		_, _ = fmt.Fprintln(r.out, md)
+		return
+	}
+
+	_, _ = fmt.Fprint(r.out, rendered)
+}
+
+// renderProgressEntry formats a single progress entry for live display
+// during Ask execution. Written to stderr via the spinner's PrintLine.
+func (r *Renderer) renderProgressEntry(entry conciergeProgressEntry) string {
+	switch entry.Status {
+	case "running":
+		if r.styles {
+			return fmt.Sprintf("  %s %s",
+				r.theme.Muted.Render("▸"),
+				r.theme.Muted.Render(entry.Name))
+		}
+		return fmt.Sprintf("  ... %s", entry.Name)
+	case "ok":
+		if r.styles {
+			return fmt.Sprintf("  %s %s",
+				r.theme.Success.Render("✓"),
+				r.theme.Value.Render(entry.Name))
+		}
+		return fmt.Sprintf("  OK  %s", entry.Name)
+	default: // "error"
+		if r.styles {
+			return fmt.Sprintf("  %s %s: %s",
+				r.theme.Error.Render("✗"),
+				r.theme.Value.Render(entry.Name),
+				r.theme.Muted.Render(entry.Error))
+		}
+		return fmt.Sprintf("  ERR %s: %s", entry.Name, entry.Error)
+	}
+}
+
+// renderToolLog prints the tool call log with styled indicators. Each tool
+// invocation is shown with a status icon (✓ for success, ✗ for error) and duration.
+func (r *Renderer) renderToolLog(tools []conciergeToolLog) {
+	if len(tools) == 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintln(r.out)
+	if r.styles {
+		_, _ = fmt.Fprintln(r.out, r.theme.Muted.Render("── Tool Calls ──"))
+	} else {
+		_, _ = fmt.Fprintln(r.out, "-- Tool Calls --")
+	}
+
+	for _, t := range tools {
+		dur := formatToolDuration(t.DurationMs)
+		if t.Status == "ok" {
+			if r.styles {
+				icon := r.theme.Success.Render("✓")
+				name := r.theme.Value.Render(t.Name)
+				if dur != "" {
+					_, _ = fmt.Fprintf(r.out, "  %s %s %s\n", icon, name, r.theme.Muted.Render(dur))
+				} else {
+					_, _ = fmt.Fprintf(r.out, "  %s %s\n", icon, name)
+				}
+			} else {
+				if dur != "" {
+					_, _ = fmt.Fprintf(r.out, "  OK  %s %s\n", t.Name, dur)
+				} else {
+					_, _ = fmt.Fprintf(r.out, "  OK  %s\n", t.Name)
+				}
+			}
+		} else {
+			if r.styles {
+				icon := r.theme.Error.Render("✗")
+				name := r.theme.Value.Render(t.Name)
+				errMsg := r.theme.Muted.Render(t.Error)
+				_, _ = fmt.Fprintf(r.out, "  %s %s: %s\n", icon, name, errMsg)
+			} else {
+				_, _ = fmt.Fprintf(r.out, "  ERR %s: %s\n", t.Name, t.Error)
+			}
+		}
+	}
+	_, _ = fmt.Fprintln(r.out)
+}
+
+// renderConciergeResponse renders the full concierge response: model header,
+// tool log, markdown-rendered response body, and a status footer with usage stats.
+// When toolsStreamed is true, the tool log section is skipped because the CLI
+// already rendered tool calls in real time via progress polling.
+func (r *Renderer) renderConciergeResponse(resp *conciergeAskResponse, toolsStreamed ...bool) {
+	streamed := len(toolsStreamed) > 0 && toolsStreamed[0]
+	// Header: model/provider info + session ID.
+	if resp.Provider != "" || resp.Model != "" {
+		label := resp.Model
+		if resp.Provider != "" && resp.Model != "" {
+			label = resp.Provider + "/" + resp.Model
+		} else if resp.Provider != "" {
+			label = resp.Provider
+		}
+		if resp.SessionID != "" {
+			label += " (session: " + resp.SessionID + ")"
+		}
+		if r.styles {
+			_, _ = fmt.Fprintf(r.out, "%s %s\n",
+				r.theme.Muted.Render("▸"),
+				r.theme.Muted.Render(label))
+		} else {
+			_, _ = fmt.Fprintf(r.out, "> %s\n", label)
+		}
+	}
+
+	// Tool call log (if any tools were invoked and not already streamed live).
+	if !streamed {
+		r.renderToolLog(resp.ToolLog)
+	}
+
+	// Response body with markdown rendering.
+	r.renderMarkdown(resp.Response)
+
+	// Footer: turn count, tool calls, tokens, and duration.
+	if resp.TurnCount > 0 || resp.Usage.TotalTokens > 0 || resp.DurationMs > 0 {
+		var parts []string
+
+		if resp.TurnCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d turns", resp.TurnCount))
+		}
+
+		toolCount := len(resp.ToolLog)
+		if toolCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d tool calls", toolCount))
+		}
+
+		if resp.Usage.TotalTokens > 0 {
+			parts = append(parts, fmt.Sprintf("%s tokens", formatTokenCount(resp.Usage.TotalTokens)))
+		}
+
+		if resp.DurationMs > 0 {
+			parts = append(parts, formatDurationMs(resp.DurationMs))
+		}
+
+		if len(parts) > 0 {
+			footer := joinParts(parts)
+			if r.styles {
+				_, _ = fmt.Fprintln(r.out, r.theme.Muted.Render(footer))
+			} else {
+				_, _ = fmt.Fprintln(r.out, footer)
+			}
+		}
+	}
+}
+
+// formatToolDuration returns a compact duration string for a tool call.
+// Returns empty string if duration is zero (not tracked).
+func formatToolDuration(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	switch {
+	case ms < 1000:
+		return fmt.Sprintf("(%dms)", ms)
+	default:
+		return fmt.Sprintf("(%.1fs)", float64(ms)/1000)
+	}
+}
+
+// formatTokenCount formats a token count with thousand separators.
+func formatTokenCount(n int) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
+}
+
+// formatDurationMs converts milliseconds to a compact duration string.
+func formatDurationMs(ms int64) string {
+	switch {
+	case ms < 1000:
+		return fmt.Sprintf("%dms", ms)
+	case ms < 60000:
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	default:
+		m := ms / 60000
+		s := (ms % 60000) / 1000
+		return fmt.Sprintf("%dm%ds", m, s)
+	}
+}
+
+// joinParts joins string parts with " · " separator.
+func joinParts(parts []string) string {
+	return strings.Join(parts, " \u00b7 ")
 }

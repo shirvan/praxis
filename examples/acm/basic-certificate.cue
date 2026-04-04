@@ -10,21 +10,19 @@ variables: {
 	domainName:  string & =~"^(\\*\\.)?(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,})$"
 }
 
-resources: {
-	cert: {
-		apiVersion: "praxis.io/v1"
-		kind:       "ACMCertificate"
-		metadata: name: "\(variables.name)-\(variables.environment)-cert"
-		spec: {
-			region:           "us-east-1"
-			domainName:       variables.domainName
-			validationMethod: "DNS"
-			keyAlgorithm:     "RSA_2048"
-			options: certificateTransparencyLoggingPreference: "ENABLED"
-			tags: {
-				app: variables.name
-				env: variables.environment
-			}
+resources: cert: {
+	apiVersion: "praxis.io/v1"
+	kind:       "ACMCertificate"
+	metadata: name: "\(variables.name)-\(variables.environment)-cert"
+	spec: {
+		region:           "us-east-1"
+		domainName:       variables.domainName
+		validationMethod: "DNS"
+		keyAlgorithm:     "RSA_2048"
+		options: certificateTransparencyLoggingPreference: "ENABLED"
+		tags: {
+			app: variables.name
+			env: variables.environment
 		}
 	}
 }

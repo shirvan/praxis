@@ -9,24 +9,22 @@ variables: {
 	environment: "dev" | "staging" | "prod"
 }
 
-resources: {
-	website: {
-		apiVersion: "praxis.io/v1"
-		kind:       "S3Bucket"
-		metadata: name: "\(variables.name)-\(variables.environment)-site"
-		spec: {
-			region:     "us-east-1"
-			versioning: true
-			acl:        "private"
-			encryption: {
-				enabled:   true
-				algorithm: "AES256"
-			}
-			tags: {
-				app:     variables.name
-				env:     variables.environment
-				purpose: "website"
-			}
+resources: website: {
+	apiVersion: "praxis.io/v1"
+	kind:       "S3Bucket"
+	metadata: name: "\(variables.name)-\(variables.environment)-site"
+	spec: {
+		region:     "us-east-1"
+		versioning: true
+		acl:        "private"
+		encryption: {
+			enabled:   true
+			algorithm: "AES256"
+		}
+		tags: {
+			app:     variables.name
+			env:     variables.environment
+			purpose: "website"
 		}
 	}
 }

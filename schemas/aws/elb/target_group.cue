@@ -10,27 +10,27 @@ package elb
 	}
 
 	spec: {
-		region: string
-		account?: string
-		protocol: "HTTP" | "HTTPS" | "TCP" | "UDP" | "TLS" | "TCP_UDP"
-		port: int & >=1 & <=65535
-		vpcId: string
-		targetType: "instance" | "ip" | "lambda" | *"instance"
+		region:           string
+		account?:         string
+		protocol:         "HTTP" | "HTTPS" | "TCP" | "UDP" | "TLS" | "TCP_UDP"
+		port:             int & >=1 & <=65535
+		vpcId:            string
+		targetType:       "instance" | "ip" | "lambda" | *"instance"
 		protocolVersion?: "HTTP1" | "HTTP2" | "gRPC"
 		healthCheck?: {
-			protocol: "HTTP" | "HTTPS" | "TCP" | "TLS" | *"HTTP"
-			path?: string
-			port: string | *"traffic-port"
-			healthyThreshold: int & >=2 & <=10 | *5
+			protocol:           "HTTP" | "HTTPS" | "TCP" | "TLS" | *"HTTP"
+			path?:              string
+			port:               string | *"traffic-port"
+			healthyThreshold:   int & >=2 & <=10 | *5
 			unhealthyThreshold: int & >=2 & <=10 | *2
-			interval: int & >=5 & <=300 | *30
-			timeout: int & >=2 & <=120 | *5
-			matcher?: string
+			interval:           int & >=5 & <=300 | *30
+			timeout:            int & >=2 & <=120 | *5
+			matcher?:           string
 		}
 		deregistrationDelay: int & >=0 & <=3600 | *300
 		stickiness?: {
-			enabled: bool | *false
-			type: "lb_cookie" | "app_cookie" | *"lb_cookie"
+			enabled:  bool | *false
+			type:     "lb_cookie" | "app_cookie" | *"lb_cookie"
 			duration: int & >=1 & <=604800 | *86400
 		}
 		targets: [...#Target] | *[]
@@ -38,13 +38,13 @@ package elb
 	}
 
 	outputs?: {
-		targetGroupArn: string
+		targetGroupArn:  string
 		targetGroupName: string
 	}
 }
 
 #Target: {
-	id: string
-	port?: int & >=1 & <=65535
+	id:                string
+	port?:             int & >=1 & <=65535
 	availabilityZone?: string
 }

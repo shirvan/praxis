@@ -10,10 +10,10 @@ package elb
 	}
 
 	spec: {
-		region:  string
-		account?: string
-		name:    string & =~"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$"
-		scheme:  "internet-facing" | "internal"
+		region:        string
+		account?:      string
+		name:          string & =~"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$"
+		scheme:        "internet-facing" | "internal"
 		ipAddressType: "ipv4" | "dualstack" | *"ipv4"
 		subnets?: [...string]
 		subnetMappings?: [...#SubnetMapping]
@@ -24,7 +24,7 @@ package elb
 			prefix?: string
 		}
 		deletionProtection: bool | *false
-		idleTimeout: int & >=1 & <=4000 | *60
+		idleTimeout:        int & >=1 & <=4000 | *60
 		tags: [string]: string
 	}
 
@@ -38,6 +38,6 @@ package elb
 }
 
 #SubnetMapping: {
-	subnetId:     string
+	subnetId:      string
 	allocationId?: string
 }

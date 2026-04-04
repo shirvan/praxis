@@ -10,10 +10,10 @@ package ec2
 	}
 
 	spec: {
-		region: string
-		domain: "vpc" | *"vpc"
+		region:              string
+		domain:              "vpc" | *"vpc"
 		networkBorderGroup?: string
-		publicIpv4Pool?: string
+		publicIpv4Pool?:     string
 		tags: [string]: string
 	}
 

@@ -29,7 +29,6 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -113,7 +112,7 @@ When the concierge is running, you can also talk to Praxis directly:
 		conciergeJSON        bool
 	)
 
-	root.Flags().StringVar(&conciergeSession, "session", "", "Session ID for conversation continuity (concierge mode)")
+	root.Flags().StringVar(&conciergeSession, "session", "", "Session ID for conversation continuity (env: PRAXIS_SESSION)")
 	root.Flags().StringVarP(&conciergeFile, "file", "f", "", "Attach file(s), directory, or glob to the prompt (concierge mode)")
 	root.Flags().StringVar(&conciergeAccount, "account", "", "Override account (concierge mode)")
 	root.Flags().StringVar(&conciergeWorkspace, "workspace", "", "Override workspace (concierge mode)")
@@ -126,15 +125,17 @@ When the concierge is running, you can also talk to Praxis directly:
 			return cmd.Help()
 		}
 
-		// Only treat as concierge shorthand when the input is explicitly
-		// quoted (first arg starts with `"`).  Otherwise it's likely a
-		// mistyped subcommand — show a helpful error instead.
-		if !strings.HasPrefix(args[0], "\"") {
-			return fmt.Errorf("unknown command %q for \"praxis\"\nRun 'praxis --help' for usage", args[0])
+		// Concierge shorthand requires the prompt to be a single quoted
+		// string (e.g. praxis "show my buckets").  The shell strips the
+		// quotes, so a quoted prompt arrives as one arg that contains
+		// spaces.  Multiple bare args (e.g. praxis praxis template list)
+		// indicate a mistyped subcommand.
+		if len(args) > 1 || !strings.Contains(args[0], " ") {
+			return fmt.Errorf("unknown command %q for \"praxis\"\nRun 'praxis --help' for usage\nTip: use quotes for concierge — praxis \"your question here\"", args[0])
 		}
 
-		// Arguments present but no subcommand matched → treat as concierge prompt.
-		prompt := strings.Join(args, " ")
+		// Single quoted argument → treat as concierge prompt.
+		prompt := args[0]
 
 		// Attach file content if --file provided.
 		if conciergeFile != "" {
@@ -154,11 +155,6 @@ When the concierge is running, you can also talk to Praxis directly:
 			prompt = sb.String()
 		}
 
-		if conciergeSession == "" {
-			conciergeSession = generateSessionID()
-			fmt.Fprintf(os.Stderr, "Session: %s\n", conciergeSession)
-		}
-
 		acct := conciergeAccount
 		if acct == "" {
 			acct = flags.account
@@ -166,15 +162,17 @@ When the concierge is running, you can also talk to Praxis directly:
 
 		client := flags.newClient()
 		ctx := context.Background()
+		r := flags.renderer()
 
-		req := conciergeAskRequest{
+		resp, err := runConciergeAsk(ctx, conciergeAskOpts{
+			Client:    client,
+			Renderer:  r,
+			Session:   conciergeSession,
 			Prompt:    prompt,
 			Account:   acct,
 			Workspace: conciergeWorkspace,
-			Source:    "cli",
-		}
-
-		resp, err := client.ConciergeAsk(ctx, conciergeSession, req)
+			JSON:      conciergeJSON,
+		})
 		if err != nil {
 			if isConciergeUnavailable(err) {
 				fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
@@ -188,7 +186,6 @@ When the concierge is running, you can also talk to Praxis directly:
 			enc.SetIndent("", "  ")
 			return enc.Encode(resp)
 		}
-		fmt.Println(resp.Response)
 		return nil
 	}
 
@@ -312,14 +309,6 @@ func resolveFilePaths(path string) ([]string, error) {
 		return nil, fmt.Errorf("no files found in %q", path)
 	}
 	return files, nil
-}
-
-// generateSessionID returns a random 16-byte hex string for use as a
-// concierge session identifier.
-func generateSessionID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return fmt.Sprintf("%x", b)
 }
 
 // ---------------------------------------------------------------------------

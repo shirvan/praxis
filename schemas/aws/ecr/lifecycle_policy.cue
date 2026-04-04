@@ -5,7 +5,7 @@ package ecr
 	kind:       "ECRLifecyclePolicy"
 
 	metadata: {
-		name:   string & =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
+		name: string & =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
 		labels: [string]: string
 	}
 

@@ -23,15 +23,15 @@ package routetable
 		vpcId:        string
 		ownerId:      string
 		routes: [...{
-			destinationCidrBlock: string
-			gatewayId?:           string
-			natGatewayId?:        string
+			destinationCidrBlock:    string
+			gatewayId?:              string
+			natGatewayId?:           string
 			vpcPeeringConnectionId?: string
-			transitGatewayId?:    string
-			networkInterfaceId?:  string
-			vpcEndpointId?:       string
-			state:                string
-			origin:               string
+			transitGatewayId?:       string
+			networkInterfaceId?:     string
+			vpcEndpointId?:          string
+			state:                   string
+			origin:                  string
 		}]
 		associations: [...{
 			associationId: string
@@ -52,6 +52,4 @@ package routetable
 	vpcEndpointId?:          string
 }
 
-#Association: {
-	subnetId: string
-}
+#Association: subnetId: string

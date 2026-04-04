@@ -10,11 +10,11 @@ package iam
 	}
 
 	spec: {
-		path: string | *"/"
+		path:                     string | *"/"
 		assumeRolePolicyDocument: string
-		description?: string
-		maxSessionDuration: int & >=3600 & <=43200 | *3600
-		permissionsBoundary?: string
+		description?:             string
+		maxSessionDuration:       int & >=3600 & <=43200 | *3600
+		permissionsBoundary?:     string
 		inlinePolicies: [string]: string
 		managedPolicyArns: [...string] | *[]
 		tags: [string]: string

@@ -46,7 +46,7 @@ func (s *PraxisCommandService) Apply(ctx restate.Context, req ApplyRequest) (App
 	// expensive synchronous work — CUE evaluation, data source lookups,
 	// SSM parameter resolution, and DAG construction. Any failure here
 	// is typically a TerminalError (bad template, missing resource, etc.).
-	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, mergedVars, account, req.Targets)
+	compiled, err := s.compileTemplate(ctx, req.Template, req.TemplateRef, mergedVars, account, req.Targets, req.TemplatePath)
 	if err != nil {
 		return ApplyResponse{}, err
 	}

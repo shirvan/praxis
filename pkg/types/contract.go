@@ -49,6 +49,11 @@ type ApplyRequest struct {
 	// This is useful when immutable fields have changed and an in-place
 	// update is not possible (e.g., VPC CIDR block change).
 	Replace []string `json:"replace,omitempty"`
+
+	// TemplatePath is the original source filename (e.g., "webapp.cue").
+	// When set, it replaces the default "inline://template.cue" in
+	// deployment audit records. Only meaningful for inline templates.
+	TemplatePath string `json:"templatePath,omitempty"`
 }
 
 // ApplyResponse is returned immediately after an apply request is accepted.
@@ -89,6 +94,10 @@ type PlanRequest struct {
 
 	// Targets limits the plan to a subset of resources plus dependencies.
 	Targets []string `json:"targets,omitempty"`
+
+	// TemplatePath is the original source filename (e.g., "webapp.cue").
+	// When set, it replaces the default "inline://template.cue" in plan output.
+	TemplatePath string `json:"templatePath,omitempty"`
 }
 
 // PlanResponse contains the machine-readable plan result and the rendered
@@ -106,6 +115,22 @@ type PlanResponse struct {
 	// Data sources are read-only lookups (e.g., "find the VPC with tag X")
 	// that the template can reference but Praxis does not manage.
 	DataSources map[string]DataSourceResult `json:"dataSources,omitempty"`
+
+	// Graph describes the resource dependency DAG for visualization.
+	// Each entry is a node with its dependencies. Populated when the
+	// plan pipeline successfully constructs the dependency graph.
+	Graph []GraphNode `json:"graph,omitempty"`
+}
+
+// GraphNode is a lightweight representation of a resource in the dependency
+// DAG, suitable for serialization in API responses and CLI rendering.
+type GraphNode struct {
+	// Name is the template-local resource identifier.
+	Name string `json:"name"`
+	// Kind is the resource type (e.g., "AWS::S3::Bucket").
+	Kind string `json:"kind"`
+	// Dependencies lists the names of resources this node depends on.
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 // DataSourceResult shows one resolved data source and its outputs.

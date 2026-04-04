@@ -18,28 +18,24 @@ variables: {
 	imageId:      string | *"ami-0885b1f6bd170450c" // Amazon Linux 2 (us-east-1)
 }
 
-resources: {
-	instance: {
-		apiVersion: "praxis.io/v1"
-		kind:       "EC2Instance"
-		metadata: {
-			name: "\(variables.name)-\(variables.environment)"
+resources: instance: {
+	apiVersion: "praxis.io/v1"
+	kind:       "EC2Instance"
+	metadata: name: "\(variables.name)-\(variables.environment)"
+	spec: {
+		region:       "us-east-1"
+		imageId:      variables.imageId
+		instanceType: variables.instanceType
+		subnetId:     variables.subnetId
+		monitoring:   variables.environment == "prod"
+		rootVolume: {
+			sizeGiB:    20
+			volumeType: "gp3"
+			encrypted:  true
 		}
-		spec: {
-			region:       "us-east-1"
-			imageId:      variables.imageId
-			instanceType: variables.instanceType
-			subnetId:     variables.subnetId
-			monitoring:   variables.environment == "prod"
-			rootVolume: {
-				sizeGiB:    20
-				volumeType: "gp3"
-				encrypted:  true
-			}
-			tags: {
-				app: variables.name
-				env: variables.environment
-			}
+		tags: {
+			app: variables.name
+			env: variables.environment
 		}
 	}
 }

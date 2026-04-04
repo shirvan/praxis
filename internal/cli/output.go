@@ -22,6 +22,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/shirvan/praxis/internal/core/dag"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -217,6 +218,50 @@ func printPlan(r *Renderer, plan *types.PlanResult) {
 	}
 
 	_, _ = fmt.Fprintln(r.out, r.renderSection(plan.Summary.String()))
+}
+
+// printGraph renders the resource dependency DAG from the plan response.
+// It reconstructs a dag.Graph from the GraphNode slice and renders it
+// using the ASCII box-drawing layout.
+func printGraph(r *Renderer, graphNodes []types.GraphNode) {
+	if len(graphNodes) == 0 {
+		return
+	}
+
+	// Reconstruct ResourceNodes so we can build a dag.Graph.
+	nodes := make([]*types.ResourceNode, len(graphNodes))
+	kindMap := make(map[string]string, len(graphNodes))
+	for i, gn := range graphNodes {
+		nodes[i] = &types.ResourceNode{
+			Name:         gn.Name,
+			Kind:         gn.Kind,
+			Key:          gn.Name,
+			Spec:         []byte(`{}`),
+			Dependencies: gn.Dependencies,
+		}
+		kindMap[gn.Name] = shortKind(gn.Kind)
+	}
+
+	g, err := dag.NewGraph(nodes)
+	if err != nil {
+		_, _ = fmt.Fprintf(r.out, "  (graph error: %v)\n", err)
+		return
+	}
+
+	output := dag.Render(g, func(name string) string {
+		return kindMap[name]
+	})
+	_, _ = fmt.Fprintln(r.out, output)
+}
+
+// shortKind strips common prefixes from resource kinds for compact display.
+// "AWS::S3::Bucket" → "S3Bucket", "AWS::EC2::Instance" → "EC2Instance".
+func shortKind(kind string) string {
+	// Strip "AWS::" prefix.
+	kind = strings.TrimPrefix(kind, "AWS::")
+	// Collapse remaining "::" separators.
+	kind = strings.ReplaceAll(kind, "::", "")
+	return kind
 }
 
 func printDataSources(r *Renderer, dataSources map[string]types.DataSourceResult) {

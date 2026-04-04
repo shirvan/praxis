@@ -445,9 +445,16 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 		}
 
 		if verr := resVal.Validate(cue.Concrete(true), cue.Final()); verr != nil {
+			resPrefix := "resources." + name + "."
 			for _, cerr := range errors.Errors(verr) {
 				path := fmt.Sprintf("resources.%s", name)
 				pathSuffix := formatCUEPath(cerr)
+				// CUE error paths may include the full path from the
+				// root when the value retains its position in the
+				// original tree (i.e., no lifecycle stripping). Strip
+				// the redundant "resources.<name>." prefix to avoid
+				// doubled paths like "resources.cert.resources.cert.spec.x".
+				pathSuffix = strings.TrimPrefix(pathSuffix, resPrefix)
 				if pathSuffix != "" {
 					path = path + "." + pathSuffix
 				}

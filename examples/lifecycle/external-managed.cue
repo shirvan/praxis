@@ -13,32 +13,30 @@ variables: {
 	environment: "dev" | "staging" | "prod"
 }
 
-resources: {
-	bucket: {
-		apiVersion: "praxis.io/v1"
-		kind:       "S3Bucket"
-		metadata: name: "\(variables.name)-\(variables.environment)-data"
-		spec: {
-			region:     "us-east-1"
-			versioning: true
-			acl:        "private"
-			encryption: {
-				enabled:   true
-				algorithm: "AES256"
-			}
-			tags: {
-				app:       variables.name
-				env:       variables.environment
-				managedBy: "praxis"
-			}
+resources: bucket: {
+	apiVersion: "praxis.io/v1"
+	kind:       "S3Bucket"
+	metadata: name: "\(variables.name)-\(variables.environment)-data"
+	spec: {
+		region:     "us-east-1"
+		versioning: true
+		acl:        "private"
+		encryption: {
+			enabled:   true
+			algorithm: "AES256"
 		}
-		// Allow external systems to manage these fields without conflicts.
-		lifecycle: {
-			ignoreChanges: [
-				"tags.CostCenter",   // managed by billing system
-				"tags.LastAudit",    // managed by compliance scanner
-				"tags.ManagedBy",    // may be overwritten by external tools
-			]
+		tags: {
+			app:       variables.name
+			env:       variables.environment
+			managedBy: "praxis"
 		}
+	}
+	// Allow external systems to manage these fields without conflicts.
+	lifecycle: {
+		ignoreChanges: [
+			"tags.CostCenter", // managed by billing system
+			"tags.LastAudit",  // managed by compliance scanner
+			"tags.ManagedBy",  // may be overwritten by external tools
+		]
 	}
 }

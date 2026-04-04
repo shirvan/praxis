@@ -13,26 +13,24 @@ variables: {
 	imageId:  string | *"ami-0885b1f6bd170450c"
 }
 
-resources: {
-	instance: {
-		apiVersion: "praxis.io/v1"
-		kind:       "EC2Instance"
-		metadata: name: "\(variables.name)-dev"
-		spec: {
-			region:       "us-east-1"
-			imageId:      variables.imageId
-			instanceType: "t3.micro"
-			subnetId:     variables.subnetId
-			monitoring:   false
-			rootVolume: {
-				sizeGiB:    20
-				volumeType: "gp3"
-				encrypted:  true
-			}
-			tags: {
-				app: variables.name
-				env: "dev"
-			}
+resources: instance: {
+	apiVersion: "praxis.io/v1"
+	kind:       "EC2Instance"
+	metadata: name: "\(variables.name)-dev"
+	spec: {
+		region:       "us-east-1"
+		imageId:      variables.imageId
+		instanceType: "t3.micro"
+		subnetId:     variables.subnetId
+		monitoring:   false
+		rootVolume: {
+			sizeGiB:    20
+			volumeType: "gp3"
+			encrypted:  true
+		}
+		tags: {
+			app: variables.name
+			env: "dev"
 		}
 	}
 }

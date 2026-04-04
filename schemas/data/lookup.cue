@@ -1,8 +1,8 @@
 package data
 
 #Lookup: {
-	kind:    string
-	region?: string
+	kind:     string
+	region?:  string
 	account?: string
 	filter: {
 		id?:   string

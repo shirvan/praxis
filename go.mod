@@ -24,6 +24,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.68.2
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.8
 	github.com/aws/smithy-go v1.24.2
+	github.com/charmbracelet/glamour v0.7.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/restatedev/sdk-go v0.23.0
 	github.com/slack-go/slack v0.20.0
@@ -38,6 +39,7 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
@@ -51,6 +53,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.16 // indirect
+	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -71,6 +75,7 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/docker v28.5.1+incompatible // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -82,6 +87,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -92,7 +98,9 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
@@ -106,6 +114,9 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
+	github.com/muesli/reflow v0.3.0 // indirect
+	github.com/muesli/termenv v0.16.0 // indirect
+	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
@@ -124,6 +135,8 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	github.com/yuin/goldmark v1.7.13 // indirect
+	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect

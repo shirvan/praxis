@@ -10,7 +10,7 @@ package iam
 	}
 
 	spec: {
-		path: string | *"/"
+		path:                 string | *"/"
 		permissionsBoundary?: string
 		inlinePolicies: [string]: string
 		managedPolicyArns: [...string] | *[]

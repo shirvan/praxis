@@ -5,7 +5,7 @@ package route53
 	kind:       "Route53HostedZone"
 
 	metadata: {
-		name:   string & =~"^[A-Za-z0-9][A-Za-z0-9.-]{0,253}[A-Za-z0-9]$"
+		name: string & =~"^[A-Za-z0-9][A-Za-z0-9.-]{0,253}[A-Za-z0-9]$"
 		labels: [string]: string
 	}
 
@@ -23,7 +23,7 @@ package route53
 		hostedZoneId: string
 		name:         string
 		nameServers?: [...string]
-		isPrivate:    bool
-		recordCount:  int
+		isPrivate:   bool
+		recordCount: int
 	}
 }

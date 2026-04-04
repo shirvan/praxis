@@ -936,3 +936,217 @@ resources: {
 	require.True(t, ok)
 	assert.Equal(t, true, lc["preventDestroy"])
 }
+
+// ── Example Template Tests ─────────────────────────
+
+// exampleCase pairs a template path (relative to the repo root) with
+// the variables needed for evaluation and the minimum expected resource
+// count. Every example template in examples/ should have an entry here
+// so we catch schema drift early.
+type exampleCase struct {
+	name         string
+	path         string
+	vars         map[string]any
+	minResources int
+}
+
+func exampleCases() []exampleCase {
+	return []exampleCase{
+		// ── ACM ──
+		{
+			name:         "acm/basic-certificate",
+			path:         "examples/acm/basic-certificate.cue",
+			vars:         map[string]any{"name": "api", "environment": "prod", "domainName": "api.example.com"},
+			minResources: 1,
+		},
+		{
+			name: "acm/https-stack",
+			path: "examples/acm/https-stack.cue",
+			vars: map[string]any{
+				"name": "api", "environment": "prod", "domainName": "api.example.com",
+				"hostedZoneId":   "Z0123456789ABCDEF",
+				"albArn":         "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/api-lb/1234567890abcdef",
+				"targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-targets/1234567890abcdef",
+			},
+			minResources: 3,
+		},
+		{
+			name:         "acm/wildcard-certificate",
+			path:         "examples/acm/wildcard-certificate.cue",
+			vars:         map[string]any{"name": "platform", "environment": "prod", "baseDomain": "example.com"},
+			minResources: 1,
+		},
+		// ── EC2 ──
+		{
+			name: "ec2/bastion-host",
+			path: "examples/ec2/bastion-host.cue",
+			vars: map[string]any{
+				"name": "ops", "environment": "dev",
+				"vpcId": "vpc-abc123", "subnetId": "subnet-abc123",
+				"allowedCidr": "203.0.113.0/24",
+			},
+			minResources: 3,
+		},
+		{
+			name:         "ec2/dev-instance",
+			path:         "examples/ec2/dev-instance.cue",
+			vars:         map[string]any{"name": "myapp", "subnetId": "subnet-abc123"},
+			minResources: 1,
+		},
+		{
+			name:         "ec2/ebs-data-tier",
+			path:         "examples/ec2/ebs-data-tier.cue",
+			vars:         map[string]any{"name": "warehouse", "environment": "prod", "az": "us-east-1a"},
+			minResources: 2,
+		},
+		{
+			name:         "ec2/ec2-instance",
+			path:         "examples/ec2/ec2-instance.cue",
+			vars:         map[string]any{"name": "my-app", "environment": "dev", "subnetId": "subnet-abc123"},
+			minResources: 1,
+		},
+		{
+			name: "ec2/web-fleet",
+			path: "examples/ec2/web-fleet.cue",
+			vars: map[string]any{
+				"name": "web", "environment": "prod",
+				"vpcId": "vpc-abc123", "subnetIdA": "subnet-aaa", "subnetIdB": "subnet-bbb",
+			},
+			minResources: 4,
+		},
+		// ── Lifecycle ──
+		{
+			name:         "lifecycle/external-managed",
+			path:         "examples/lifecycle/external-managed.cue",
+			vars:         map[string]any{"name": "analytics", "environment": "prod"},
+			minResources: 1,
+		},
+		{
+			name:         "lifecycle/protected-db",
+			path:         "examples/lifecycle/protected-db.cue",
+			vars:         map[string]any{"name": "orders", "environment": "prod"},
+			minResources: 1,
+		},
+		// ── S3 ──
+		{
+			name:         "s3/app-buckets",
+			path:         "examples/s3/app-buckets.cue",
+			vars:         map[string]any{"name": "myapp", "environment": "prod"},
+			minResources: 3,
+		},
+		{
+			name: "s3/dynamic-buckets",
+			path: "examples/s3/dynamic-buckets.cue",
+			vars: map[string]any{
+				"name": "orders-api", "environment": "prod",
+				"buckets":       []any{"assets", "uploads", "backups"},
+				"enableLogging": true,
+			},
+			minResources: 4,
+		},
+		{
+			name:         "s3/static-website",
+			path:         "examples/s3/static-website.cue",
+			vars:         map[string]any{"name": "docs", "environment": "prod"},
+			minResources: 1,
+		},
+		// ── Stacks ──
+		{
+			name: "stacks/data-source-multi",
+			path: "examples/stacks/data-source-multi.cue",
+			vars: map[string]any{
+				"name": "ci", "environment": "dev",
+				"bucketName": "my-bucket", "roleName": "my-role",
+			},
+			minResources: 1,
+		},
+		{
+			name:         "stacks/data-source-vpc",
+			path:         "examples/stacks/data-source-vpc.cue",
+			vars:         map[string]any{"name": "web", "environment": "dev", "vpcName": "main-vpc"},
+			minResources: 1,
+		},
+		{
+			name: "stacks/ec2-web-stack",
+			path: "examples/stacks/ec2-web-stack.cue",
+			vars: map[string]any{
+				"name": "web", "environment": "dev",
+				"cidrBlock": "10.0.0.0/16", "subnetId": "subnet-abc123",
+			},
+			minResources: 3,
+		},
+		{
+			name:         "stacks/network-locked-app",
+			path:         "examples/stacks/network-locked-app.cue",
+			vars:         map[string]any{"name": "secure", "environment": "prod"},
+			minResources: 5,
+		},
+		{
+			name:         "stacks/three-tier-app",
+			path:         "examples/stacks/three-tier-app.cue",
+			vars:         map[string]any{"name": "acme", "environment": "prod", "instanceType": "t3.medium"},
+			minResources: 10,
+		},
+		{
+			name: "stacks/saas-platform",
+			path: "examples/stacks/saas-platform.cue",
+			vars: map[string]any{
+				"name": "acme", "environment": "prod",
+				"domainName": "acme.example.com", "hostedZoneId": "Z0123456789ABCDEF",
+				"availabilityZones": []string{"us-east-1a", "us-east-1b"},
+				"storageBuckets":    []string{"assets", "uploads", "backups"},
+			},
+			minResources: 20,
+		},
+		// ── VPC ──
+		{
+			name:         "vpc/basic-vpc",
+			path:         "examples/vpc/basic-vpc.cue",
+			vars:         map[string]any{"name": "myapp", "environment": "dev", "cidrBlock": "10.0.0.0/16"},
+			minResources: 1,
+		},
+		{
+			name: "vpc/dynamic-subnets",
+			path: "examples/vpc/dynamic-subnets.cue",
+			vars: map[string]any{
+				"name": "platform", "environment": "prod", "region": "us-east-1", "vpcCidr": "10.0.0.0/16",
+				"subnets": []any{
+					map[string]any{"suffix": "public-a", "cidr": "10.0.1.0/24", "az": "us-east-1a", "public": true},
+					map[string]any{"suffix": "public-b", "cidr": "10.0.2.0/24", "az": "us-east-1b", "public": true},
+					map[string]any{"suffix": "private-a", "cidr": "10.0.10.0/24", "az": "us-east-1a"},
+					map[string]any{"suffix": "private-b", "cidr": "10.0.11.0/24", "az": "us-east-1b"},
+				},
+			},
+			minResources: 5,
+		},
+		{
+			name:         "vpc/multi-az-vpc",
+			path:         "examples/vpc/multi-az-vpc.cue",
+			vars:         map[string]any{"name": "platform", "environment": "prod"},
+			minResources: 10,
+		},
+		{
+			name:         "vpc/vpc-peering",
+			path:         "examples/vpc/vpc-peering.cue",
+			vars:         map[string]any{"name": "analytics", "environment": "dev"},
+			minResources: 7,
+		},
+	}
+}
+
+func TestEngine_Evaluate_AllExamples(t *testing.T) {
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas", "aws"))
+	require.NoError(t, err)
+	eng := NewEngine(absSchemaDir)
+
+	for _, tc := range exampleCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			tmplPath, err := filepath.Abs(filepath.Join("..", "..", "..", tc.path))
+			require.NoError(t, err)
+
+			specs, err := eng.Evaluate(tmplPath, tc.vars)
+			require.NoError(t, err, "%s should evaluate cleanly against schemas", tc.path)
+			assert.GreaterOrEqual(t, len(specs), tc.minResources, "%s should produce at least %d resources", tc.path, tc.minResources)
+		})
+	}
+}

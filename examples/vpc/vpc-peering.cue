@@ -56,10 +56,10 @@ resources: {
 		kind:       "VPCPeeringConnection"
 		metadata: name: "\(variables.name)-app-data-\(variables.environment)"
 		spec: {
-			region:          "us-east-1"
-			requesterVpcId:  "${resources.appVpc.outputs.vpcId}"
-			accepterVpcId:   "${resources.dataVpc.outputs.vpcId}"
-			autoAccept:      true
+			region:         "us-east-1"
+			requesterVpcId: "${resources.appVpc.outputs.vpcId}"
+			accepterVpcId:  "${resources.dataVpc.outputs.vpcId}"
+			autoAccept:     true
 			tags: {
 				app: variables.name
 				env: variables.environment
@@ -112,7 +112,7 @@ resources: {
 			region: "us-east-1"
 			vpcId:  "${resources.appVpc.outputs.vpcId}"
 			routes: [{
-				destinationCidrBlock:    "10.2.0.0/16"
+				destinationCidrBlock:   "10.2.0.0/16"
 				vpcPeeringConnectionId: "${resources.peering.outputs.vpcPeeringConnectionId}"
 			}]
 			associations: [
@@ -135,7 +135,7 @@ resources: {
 			region: "us-east-1"
 			vpcId:  "${resources.dataVpc.outputs.vpcId}"
 			routes: [{
-				destinationCidrBlock:    "10.1.0.0/16"
+				destinationCidrBlock:   "10.1.0.0/16"
 				vpcPeeringConnectionId: "${resources.peering.outputs.vpcPeeringConnectionId}"
 			}]
 			associations: [

@@ -10,9 +10,9 @@ package iam
 	}
 
 	spec: {
-		path: string | *"/"
+		path:           string | *"/"
 		policyDocument: string
-		description?: string
+		description?:   string
 		tags: [string]: string
 	}
 

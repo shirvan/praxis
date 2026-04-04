@@ -10,15 +10,15 @@ package elb
 	}
 
 	spec: {
-		region:  string
-		account?: string
-		name:    string & =~"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$"
-		scheme:  "internet-facing" | "internal"
+		region:        string
+		account?:      string
+		name:          string & =~"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,30}[a-zA-Z0-9])?$"
+		scheme:        "internet-facing" | "internal"
 		ipAddressType: "ipv4" | "dualstack" | *"ipv4"
 		subnets?: [...string]
 		subnetMappings?: [...#NLBSubnetMapping]
 		crossZoneLoadBalancing: bool | *false
-		deletionProtection: bool | *false
+		deletionProtection:     bool | *false
 		tags: [string]: string
 	}
 
@@ -32,6 +32,6 @@ package elb
 }
 
 #NLBSubnetMapping: {
-	subnetId:     string
+	subnetId:      string
 	allocationId?: string
 }

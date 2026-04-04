@@ -9,9 +9,9 @@
 //   praxis deploy dynamic-buckets --account local -f examples/s3/dynamic-buckets.vars.json --key myapp --wait
 
 variables: {
-	name:          string & =~"^[a-z][a-z0-9-]{2,40}$"
-	environment:   "dev" | "staging" | "prod"
-	buckets:       [...string]
+	name:        string & =~"^[a-z][a-z0-9-]{2,40}$"
+	environment: "dev" | "staging" | "prod"
+	buckets: [...string]
 	enableLogging: bool | *false
 }
 
@@ -25,6 +25,7 @@ _naming: {
 	app:       variables.name
 	env:       variables.environment
 	managedBy: "praxis"
+	...
 }
 
 resources: {

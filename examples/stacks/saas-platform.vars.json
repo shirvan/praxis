@@ -1,0 +1,13 @@
+{
+  "name": "acme",
+  "environment": "prod",
+  "instanceType": "t3.medium",
+  "domainName": "app.acme-saas.com",
+  "hostedZoneId": "WIAUF92T5Q2ODOLKYNX65E",
+  "dbInstanceClass": "db.r6g.large",
+  "dbEngineVersion": "15.3",
+  "enableLogging": true,
+  "enableMonitoring": true,
+  "storageBuckets": ["assets", "uploads", "backups", "exports"],
+  "availabilityZones": ["us-east-1a", "us-east-1b"]
+}

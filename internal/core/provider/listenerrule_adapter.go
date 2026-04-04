@@ -78,9 +78,12 @@ func (a *ListenerRuleAdapter) BuildKey(resourceDoc json.RawMessage) (string, err
 	if err != nil {
 		return "", err
 	}
-	region := extractRegionFromListenerArn(spec.ListenerArn)
+	region := spec.Region
 	if region == "" {
-		return "", fmt.Errorf("cannot extract region from listenerArn %q", spec.ListenerArn)
+		region = extractRegionFromListenerArn(spec.ListenerArn)
+	}
+	if region == "" {
+		return "", fmt.Errorf("cannot determine region: set spec.region or provide a valid listenerArn")
 	}
 	name := strings.TrimSpace(doc.Metadata.Name)
 	if err := ValidateKeyPart("listener rule name", name); err != nil {

@@ -15,6 +15,7 @@ const ServiceName = "ListenerRule"
 // Fields are validated before any AWS call and mapped to Elastic Load Balancing v2 API inputs.
 type ListenerRuleSpec struct {
 	Account     string            `json:"account,omitempty"`
+	Region      string            `json:"region,omitempty"`
 	ListenerArn string            `json:"listenerArn"`
 	Priority    int               `json:"priority"`
 	Conditions  []RuleCondition   `json:"conditions"`

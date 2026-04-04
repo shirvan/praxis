@@ -5,7 +5,7 @@ package ecr
 	kind:       "ECRRepository"
 
 	metadata: {
-		name:   string & =~"^[a-z0-9][a-z0-9/_.-]{1,255}$"
+		name: string & =~"^[a-z0-9][a-z0-9/_.-]{1,255}$"
 		labels: [string]: string
 	}
 
@@ -14,18 +14,16 @@ package ecr
 
 		imageTagMutability?: "MUTABLE" | "IMMUTABLE" | *"MUTABLE"
 
-		imageScanningConfiguration?: {
-			scanOnPush: bool | *false
-		}
+		imageScanningConfiguration?: scanOnPush: bool | *false
 
 		encryptionConfiguration?: {
 			encryptionType: "AES256" | "KMS" | *"AES256"
-			kmsKey?:         string
+			kmsKey?:        string
 		}
 
 		repositoryPolicy?: string
 		forceDelete?:      bool | *false
-		tags?:             [string]: string
+		tags?: [string]: string
 	}
 
 	outputs?: {

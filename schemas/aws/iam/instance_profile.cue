@@ -10,7 +10,7 @@ package iam
 	}
 
 	spec: {
-		path: string | *"/"
+		path:     string | *"/"
 		roleName: string
 		tags: [string]: string
 	}

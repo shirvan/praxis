@@ -28,6 +28,8 @@ func newApplyCmd(flags *rootFlags) *cobra.Command {
 	var (
 		// vars collects --var key=value pairs for template variables.
 		vars []string
+		// varsFile is an optional JSON file containing template variables.
+		varsFile string
 		// deploymentKey lets the user pin a stable deployment identity.
 		deploymentKey string
 		// wait enables polling until the deployment reaches a terminal state.
@@ -64,10 +66,12 @@ the prompt (useful for CI and scripting).
 The command returns immediately with the deployment key unless --wait is set,
 in which case it polls for completion.
 
-Template variables are passed with --var key=value. Multiple variables can be
-specified:
+Template variables can be loaded from a JSON file with -f and/or passed
+individually with --var. Flag values override file values:
 
+    praxis apply webapp.cue -f variables.json
     praxis apply webapp.cue --var env=production --var region=us-west-2
+    praxis apply webapp.cue -f base.json --var env=prod
 
 A stable deployment key can be pinned with --key to enable idempotent re-apply:
 
@@ -83,8 +87,8 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 				return fmt.Errorf("read template %q: %w", templatePath, err)
 			}
 
-			// Parse --var key=value pairs into a map.
-			variables, err := parseVariables(vars)
+			// Merge -f JSON file with --var key=value overrides.
+			variables, err := mergeVariables(vars, varsFile)
 			if err != nil {
 				return err
 			}
@@ -96,11 +100,12 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 
 			// Run plan first to show what would change.
 			planResp, err := client.Plan(ctx, types.PlanRequest{
-				Template:  string(content),
-				Variables: variables,
-				Account:   account,
-				Workspace: cliCfg.ActiveWorkspace,
-				Targets:   targets,
+				Template:     string(content),
+				Variables:    variables,
+				Account:      account,
+				Workspace:    cliCfg.ActiveWorkspace,
+				Targets:      targets,
+				TemplatePath: templatePath,
 			})
 			if err != nil {
 				return err
@@ -137,6 +142,7 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 				Workspace:     cliCfg.ActiveWorkspace,
 				Targets:       targets,
 				Replace:       replace,
+				TemplatePath:  templatePath,
 			})
 			if err != nil {
 				return err
@@ -174,6 +180,7 @@ A stable deployment key can be pinned with --key to enable idempotent re-apply:
 	}
 
 	cmd.Flags().StringArrayVar(&vars, "var", nil, "Template variable in key=value format (repeatable)")
+	cmd.Flags().StringVarP(&varsFile, "file", "f", "", "JSON file containing template variables")
 	cmd.Flags().StringVar(&deploymentKey, "key", "", "Pin a stable deployment key for idempotent re-apply")
 	cmd.Flags().StringVar(&account, "account", account, "AWS account name to use (env: PRAXIS_ACCOUNT)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until deployment completes or fails")

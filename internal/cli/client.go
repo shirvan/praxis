@@ -490,10 +490,11 @@ func (c *Client) StateMv(ctx context.Context, req types.StateMvRequest) (*types.
 // --------------------------------------------------------------------------
 
 const (
-	conciergeSessionServiceName = "ConciergeSession"
-	conciergeConfigServiceName  = "ConciergeConfig"
-	approvalRelayServiceName    = "ApprovalRelay"
-	conciergeConfigKey          = "global"
+	conciergeSessionServiceName  = "ConciergeSession"
+	conciergeConfigServiceName   = "ConciergeConfig"
+	approvalRelayServiceName     = "ApprovalRelay"
+	conciergeProgressServiceName = "ConciergeProgress"
+	conciergeConfigKey           = "global"
 )
 
 // ConciergeAsk sends a prompt to the concierge session.
@@ -501,6 +502,18 @@ func (c *Client) ConciergeAsk(ctx context.Context, sessionID string, req concier
 	resp, err := ingress.Object[conciergeAskRequest, conciergeAskResponse](
 		c.rc, conciergeSessionServiceName, sessionID, "Ask",
 	).Request(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ConciergeGetProgress returns the live tool-call progress for a session.
+// Used by the CLI to render tool calls in real time while Ask is executing.
+func (c *Client) ConciergeGetProgress(ctx context.Context, sessionID string) (*conciergeProgressState, error) {
+	resp, err := ingress.Object[restate.Void, conciergeProgressState](
+		c.rc, conciergeProgressServiceName, sessionID, "Get",
+	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, err
 	}
@@ -578,9 +591,29 @@ type conciergeAskRequest struct {
 
 // conciergeAskResponse is the reply from ConciergeSession.Ask.
 type conciergeAskResponse struct {
-	Response  string `json:"response"`
-	SessionID string `json:"sessionId"`
-	TurnCount int    `json:"turnCount"`
+	Response   string             `json:"response"`
+	SessionID  string             `json:"sessionId"`
+	TurnCount  int                `json:"turnCount"`
+	ToolLog    []conciergeToolLog `json:"toolLog,omitempty"`
+	Model      string             `json:"model,omitempty"`
+	Provider   string             `json:"provider,omitempty"`
+	Usage      conciergeUsage     `json:"usage,omitempty"`
+	DurationMs int64              `json:"durationMs,omitempty"`
+}
+
+// conciergeToolLog records a single tool invocation for CLI display.
+type conciergeToolLog struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
+	DurationMs int64  `json:"durationMs,omitempty"`
+}
+
+// conciergeUsage holds aggregate token usage for a single Ask.
+type conciergeUsage struct {
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
+	TotalTokens      int `json:"totalTokens"`
 }
 
 // conciergeSessionStatus is returned by ConciergeSession.GetStatus.
@@ -640,6 +673,18 @@ type conciergeApprovalRequest struct {
 	Approved    bool   `json:"approved"`
 	Reason      string `json:"reason,omitempty"`
 	Actor       string `json:"actor,omitempty"`
+}
+
+// conciergeProgressState holds real-time tool execution progress.
+type conciergeProgressState struct {
+	Entries []conciergeProgressEntry `json:"entries"`
+}
+
+// conciergeProgressEntry is a single progress event from ConciergeProgress.
+type conciergeProgressEntry struct {
+	Name   string `json:"name"`
+	Status string `json:"status"` // "running", "ok", "error"
+	Error  string `json:"error,omitempty"`
 }
 
 // --------------------------------------------------------------------------

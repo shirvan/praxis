@@ -10,7 +10,8 @@ package elb
 	}
 
 	spec: {
-		account?: string
+		account?:    string
+		region?:     string
 		listenerArn: string
 		priority:    int & >=1 & <=50000
 		conditions: [...#RuleCondition] & [_, ...]
@@ -28,12 +29,10 @@ package elb
 	field: "path-pattern" | "host-header" | "http-header" | "query-string" | "source-ip" | "http-request-method"
 	values?: [...string]
 	httpHeaderConfig?: {
-		name:   string
+		name: string
 		values: [...string] & [_, ...]
 	}
-	queryStringConfig?: {
-		values: [...#QueryStringKV] & [_, ...]
-	}
+	queryStringConfig?: values: [...#QueryStringKV] & [_, ...]
 }
 
 #QueryStringKV: {
@@ -42,8 +41,8 @@ package elb
 }
 
 #RuleAction: {
-	type: "forward" | "redirect" | "fixed-response"
-	order?: int & >=1
+	type:            "forward" | "redirect" | "fixed-response"
+	order?:          int & >=1
 	targetGroupArn?: string
 	forwardConfig?: {
 		targetGroups: [...#WeightedTargetGroup] & [_, ...]

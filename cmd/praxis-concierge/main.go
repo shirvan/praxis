@@ -20,7 +20,8 @@ func main() {
 	srv := server.NewRestate().
 		Bind(restate.Reflect(concierge.NewConciergeSession())).
 		Bind(restate.Reflect(concierge.ConciergeConfig{})).
-		Bind(restate.Reflect(concierge.ApprovalRelay{}))
+		Bind(restate.Reflect(concierge.ApprovalRelay{})).
+		Bind(restate.Reflect(concierge.ConciergeProgress{}))
 
 	slog.Info("starting Praxis concierge runtime", "addr", addr) //nolint:gosec // G706 addr is from env var, not user input
 	if err := srv.Start(context.Background(), addr); err != nil {

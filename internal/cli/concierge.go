@@ -63,8 +63,8 @@ LLM provider. See 'praxis concierge configure --help' for setup.`,
 }
 
 // newConciergeAskCmd builds `praxis concierge ask <prompt>`. Sends the
-// prompt to ConciergeSession.Ask. The session ID defaults to "default" for
-// single-user workflows; use --session for multi-conversation support.
+// prompt to ConciergeSession.Ask. A random session ID is generated for each
+// new conversation; use --session to resume an existing one.
 func newConciergeAskCmd(flags *rootFlags) *cobra.Command {
 	var (
 		session   string
@@ -79,22 +79,23 @@ func newConciergeAskCmd(flags *rootFlags) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prompt := strings.Join(args, " ")
-			if session == "" {
-				session = "default"
-			}
 			if account == "" {
 				account = flags.account
 			}
 
 			client := flags.newClient()
-			req := conciergeAskRequest{
+			r := flags.renderer()
+			isJSON := flags.outputFormat() == OutputJSON
+
+			resp, err := runConciergeAsk(context.Background(), conciergeAskOpts{
+				Client:    client,
+				Renderer:  r,
+				Session:   session,
 				Prompt:    prompt,
 				Account:   account,
 				Workspace: workspace,
-				Source:    "cli",
-			}
-
-			resp, err := client.ConciergeAsk(context.Background(), session, req)
+				JSON:      isJSON,
+			})
 			if err != nil {
 				if isConciergeUnavailable(err) {
 					fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
@@ -103,16 +104,14 @@ func newConciergeAskCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("concierge ask: %w", err)
 			}
 
-			if flags.outputFormat() == OutputJSON {
+			if isJSON {
 				return json.NewEncoder(os.Stdout).Encode(resp)
 			}
-
-			fmt.Println(resp.Response)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&session, "session", "", "Session ID (default: \"default\")")
+	cmd.Flags().StringVar(&session, "session", "", "Session ID (env: PRAXIS_SESSION, omit to start new)")
 	cmd.Flags().StringVar(&account, "account", "", "AWS account name")
 	cmd.Flags().StringVarP(&workspace, "workspace", "w", "", "Workspace name")
 	return cmd

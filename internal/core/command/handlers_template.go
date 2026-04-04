@@ -90,7 +90,7 @@ func (s *PraxisCommandService) ValidateTemplate(ctx restate.Context, req types.V
 	switch mode {
 	case types.ValidateModeStatic:
 		// Resolve the template source (inline or from registry).
-		source, _, err := s.resolveTemplateSource(ctx, req.Source, req.TemplateRef)
+		source, _, err := s.resolveTemplateSource(ctx, req.Source, req.TemplateRef, "")
 		if err != nil {
 			return types.ValidateTemplateResponse{}, err
 		}
@@ -112,7 +112,7 @@ func (s *PraxisCommandService) ValidateTemplate(ctx restate.Context, req types.V
 		if err != nil {
 			return types.ValidateTemplateResponse{Valid: false, Errors: validationErrors(restate.TerminalError(err, 400))}, nil
 		}
-		_, err = s.compileTemplate(ctx, req.Source, req.TemplateRef, req.Variables, account, nil)
+		_, err = s.compileTemplate(ctx, req.Source, req.TemplateRef, req.Variables, account, nil, "")
 		if err != nil {
 			return types.ValidateTemplateResponse{Valid: false, Errors: validationErrors(err)}, nil
 		}

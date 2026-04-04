@@ -61,7 +61,7 @@ func (s *PraxisCommandService) Deploy(ctx restate.Context, req DeployRequest) (D
 
 	// Compile the template via the pipeline using a TemplateRef (the
 	// registry lookup fetches the stored CUE source by name).
-	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, mergedVars, account, req.Targets)
+	compiled, err := s.compileTemplate(ctx, "", &types.TemplateRef{Name: templateName}, mergedVars, account, req.Targets, "")
 	if err != nil {
 		return DeployResponse{}, err
 	}

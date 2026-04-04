@@ -10,18 +10,18 @@ package rds
 	}
 
 	spec: {
-		region: string
+		region:      string
 		description: string
 		subnetIds: [...string] & [_, _, ...]
 		tags: [string]: string
 	}
 
 	outputs?: {
-		groupName:         string
-		arn:               string
-		vpcId:             string
-		subnetIds:         [...string]
+		groupName: string
+		arn:       string
+		vpcId:     string
+		subnetIds: [...string]
 		availabilityZones: [...string]
-		status:            string
+		status: string
 	}
 }

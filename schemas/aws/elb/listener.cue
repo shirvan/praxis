@@ -10,13 +10,14 @@ package elb
 	}
 
 	spec: {
-		account?: string
+		account?:        string
+		region?:         string
 		loadBalancerArn: string
-		port:     int & >=1 & <=65535
-		protocol: "HTTP" | "HTTPS" | "TCP" | "UDP" | "TLS" | "TCP_UDP"
-		sslPolicy?: string
+		port:            int & >=1 & <=65535
+		protocol:        "HTTP" | "HTTPS" | "TCP" | "UDP" | "TLS" | "TCP_UDP"
+		sslPolicy?:      string
 		certificateArn?: string
-		alpnPolicy?: string
+		alpnPolicy?:     string
 		defaultActions: [...#ListenerAction] & [_, ...]
 		tags: [string]: string
 	}
@@ -29,7 +30,7 @@ package elb
 }
 
 #ListenerAction: {
-	type: "forward" | "redirect" | "fixed-response"
+	type:            "forward" | "redirect" | "fixed-response"
 	targetGroupArn?: string
 	redirectConfig?: {
 		protocol:   string

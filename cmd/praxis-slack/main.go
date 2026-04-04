@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
@@ -32,7 +33,8 @@ func main() {
 		Bind(restate.Reflect(slack.SlackThreadState{})).
 		Bind(restate.Reflect(slack.SlackEventReceiver{}))
 
-	// 2. Start Restate server in background
+	// 2. Start Restate server in background — this must stay running so that
+	// Restate can discover our services even before Slack is configured.
 	go func() {
 		slog.Info("starting praxis-slack restate runtime", "addr", addr)
 		if err := srv.Start(context.Background(), addr); err != nil {
@@ -41,28 +43,30 @@ func main() {
 		}
 	}()
 
-	// 3. Create gateway with Restate client
+	// 3. Set up signal handling early so we can shut down cleanly during the
+	// config-wait phase.
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	rc := ingress.NewClient(restateURI)
 
-	// Verify Slack config exists
-	if _, err := loadSlackConfig(rc); err != nil {
-		slog.Error("slack gateway not configured", "err", err.Error()) //nolint:gosec // G706 error message is safe
-		slog.Info("configure with: praxis concierge slack configure --bot-token xoxb-... --app-token xapp-...")
-		os.Exit(1)
+	// 4. Wait for Slack config to become available. The Restate handlers are
+	// already serving (step 2), so Restate can discover them and operators
+	// can configure tokens via the CLI while we wait.
+	if waitForConfig(ctx, rc) == nil {
+		slog.Info("shutting down — no slack config received before signal")
+		return
 	}
 
-	// 3a. Startup sink re-sync
+	// 5. Startup sink re-sync
 	if err := syncSinkOnStartup(rc); err != nil {
 		slog.Warn("failed to sync notification sink on startup", "err", err)
 	}
 
-	// 4. Start Socket Mode connection to Slack
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
+	// 6. Start Socket Mode connection to Slack
 	gateway := slack.NewGateway(rc)
 
-	// 5. Clean shutdown: deregister the notification sink
+	// 7. Clean shutdown: deregister the notification sink
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down — removing notification sink")
@@ -76,6 +80,28 @@ func main() {
 		slog.Error("slack gateway exited", "err", err.Error()) //nolint:gosec // G706 error message is safe
 		cancel()
 		os.Exit(1) //nolint:gocritic // exitAfterDefer is intentional at end of main
+	}
+}
+
+// waitForConfig polls for Slack configuration, retrying every 10 seconds.
+// Returns the config once available, or nil if the context is cancelled.
+func waitForConfig(ctx context.Context, rc *ingress.Client) *slack.SlackGatewayConfiguration {
+	slog.Info("waiting for slack configuration — restate handlers are serving")
+	for {
+		cfg, err := loadSlackConfig(rc)
+		if err == nil {
+			slog.Info("slack configuration found, starting gateway")
+			return cfg
+		}
+
+		slog.Info("slack not yet configured, retrying in 10s",
+			"hint", "configure with: praxis concierge slack configure --bot-token xoxb-... --app-token xapp-...")
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(10 * time.Second):
+		}
 	}
 }
 

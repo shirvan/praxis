@@ -13,25 +13,23 @@ variables: {
 	baseDomain:  string & =~"^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,})$"
 }
 
-resources: {
-	cert: {
-		apiVersion: "praxis.io/v1"
-		kind:       "ACMCertificate"
-		metadata: name: "\(variables.name)-\(variables.environment)-wildcard"
-		spec: {
-			region:     "us-east-1"
-			domainName: "*.\(variables.baseDomain)"
-			subjectAlternativeNames: [
-				variables.baseDomain,
-			]
-			validationMethod: "DNS"
-			keyAlgorithm:     "EC_prime256v1"
-			options: certificateTransparencyLoggingPreference: "ENABLED"
-			tags: {
-				app:  variables.name
-				env:  variables.environment
-				type: "wildcard"
-			}
+resources: cert: {
+	apiVersion: "praxis.io/v1"
+	kind:       "ACMCertificate"
+	metadata: name: "\(variables.name)-\(variables.environment)-wildcard"
+	spec: {
+		region:     "us-east-1"
+		domainName: "*.\(variables.baseDomain)"
+		subjectAlternativeNames: [
+			variables.baseDomain,
+		]
+		validationMethod: "DNS"
+		keyAlgorithm:     "EC_prime256v1"
+		options: certificateTransparencyLoggingPreference: "ENABLED"
+		tags: {
+			app:  variables.name
+			env:  variables.environment
+			type: "wildcard"
 		}
 	}
 }

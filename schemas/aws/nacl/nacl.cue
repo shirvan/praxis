@@ -14,9 +14,9 @@ package nacl
 		vpcId:  string
 
 		ingressRules?: [...#NetworkACLRule]
-		egressRules?:  [...#NetworkACLRule]
+		egressRules?: [...#NetworkACLRule]
 		subnetAssociations?: [...string]
-		tags?:               [string]: string
+		tags?: [string]: string
 	}
 
 	outputs?: {
@@ -24,7 +24,7 @@ package nacl
 		vpcId:        string
 		isDefault:    bool
 		ingressRules: [...#NetworkACLRuleOutput]
-		egressRules:  [...#NetworkACLRuleOutput]
+		egressRules: [...#NetworkACLRuleOutput]
 		associations: [...#NetworkACLAssociationOutput]
 	}
 }

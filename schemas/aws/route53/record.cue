@@ -5,7 +5,7 @@ package route53
 	kind:       "Route53Record"
 
 	metadata: {
-		name:   string & =~"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$"
+		name: string & =~"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$"
 		labels: [string]: string
 	}
 

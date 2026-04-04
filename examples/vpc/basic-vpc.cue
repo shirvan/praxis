@@ -10,22 +10,18 @@ variables: {
 	cidrBlock:   string | *"10.0.0.0/16"
 }
 
-resources: {
-	vpc: {
-		apiVersion: "praxis.io/v1"
-		kind:       "VPC"
-		metadata: {
-			name: "\(variables.name)-\(variables.environment)-vpc"
-		}
-		spec: {
-			region:             "us-east-1"
-			cidrBlock:          variables.cidrBlock
-			enableDnsHostnames: true
-			enableDnsSupport:   true
-			tags: {
-				app: variables.name
-				env: variables.environment
-			}
+resources: vpc: {
+	apiVersion: "praxis.io/v1"
+	kind:       "VPC"
+	metadata: name: "\(variables.name)-\(variables.environment)-vpc"
+	spec: {
+		region:             "us-east-1"
+		cidrBlock:          variables.cidrBlock
+		enableDnsHostnames: true
+		enableDnsSupport:   true
+		tags: {
+			app: variables.name
+			env: variables.environment
 		}
 	}
 }

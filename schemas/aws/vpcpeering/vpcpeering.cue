@@ -20,13 +20,9 @@ package vpcpeering
 
 		autoAccept: bool | *true
 
-		requesterOptions?: {
-			allowDnsResolutionFromRemoteVpc: bool | *false
-		}
+		requesterOptions?: allowDnsResolutionFromRemoteVpc: bool | *false
 
-		accepterOptions?: {
-			allowDnsResolutionFromRemoteVpc: bool | *false
-		}
+		accepterOptions?: allowDnsResolutionFromRemoteVpc: bool | *false
 
 		tags: [string]: string
 	}

@@ -130,9 +130,30 @@ type AskRequest struct {
 // AskResponse is returned by the Ask handler after the tool loop completes.
 // Response contains the LLM's final natural language answer to the user.
 type AskResponse struct {
-	Response  string `json:"response"`  // LLM's final text response to the user
-	SessionID string `json:"sessionId"` // Session key (matches the Virtual Object key)
-	TurnCount int    `json:"turnCount"` // Cumulative LLM invocation count across the session
+	Response   string         `json:"response"`             // LLM's final text response to the user
+	SessionID  string         `json:"sessionId"`            // Session key (matches the Virtual Object key)
+	TurnCount  int            `json:"turnCount"`            // Cumulative LLM invocation count across the session
+	ToolLog    []ToolLogEntry `json:"toolLog,omitempty"`    // Tools invoked during this ask (for CLI display)
+	Model      string         `json:"model,omitempty"`      // Model used for this response
+	Provider   string         `json:"provider,omitempty"`   // Provider used for this response
+	Usage      AskUsage       `json:"usage,omitempty"`      // Aggregate token usage across all LLM calls
+	DurationMs int64          `json:"durationMs,omitempty"` // Total Ask handler duration in milliseconds
+}
+
+// ToolLogEntry records a single tool invocation during the agent loop.
+// Collected per-ask and returned to the CLI for transparency.
+type ToolLogEntry struct {
+	Name       string `json:"name"`                 // Tool name (e.g., "listDeployments")
+	Status     string `json:"status"`               // "ok" or "error"
+	Error      string `json:"error,omitempty"`      // Error message if status is "error"
+	DurationMs int64  `json:"durationMs,omitempty"` // Execution time in milliseconds
+}
+
+// AskUsage holds aggregate token usage across all LLM calls in a single Ask.
+type AskUsage struct {
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
+	TotalTokens      int `json:"totalTokens"`
 }
 
 // ApprovalDecision is the payload delivered through a Restate awakeable when a

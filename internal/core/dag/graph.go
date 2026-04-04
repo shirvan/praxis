@@ -322,6 +322,34 @@ func (g *Graph) NodeNames() []string {
 	return g.sortedNodeNames()
 }
 
+// Node returns the ResourceNode for the given name, or nil if not present.
+func (g *Graph) Node(name string) *types.ResourceNode {
+	return g.nodes[name]
+}
+
+// Dependencies returns the direct dependencies of a resource (sorted).
+// Returns nil if the resource does not exist in the graph.
+func (g *Graph) Dependencies(name string) []string {
+	return g.edges[name]
+}
+
+// Levels assigns each node to a depth level based on the longest path from
+// any root. Roots (no dependencies) are level 0. A node's level is
+// max(level of each dependency) + 1. The returned map is keyed by node name.
+func (g *Graph) Levels() map[string]int {
+	levels := make(map[string]int, len(g.nodes))
+	for _, name := range g.TopologicalOrder() {
+		maxDep := -1
+		for _, dep := range g.edges[name] {
+			if levels[dep] > maxDep {
+				maxDep = levels[dep]
+			}
+		}
+		levels[name] = maxDep + 1
+	}
+	return levels
+}
+
 // formatCycle produces a human-readable cycle path like "a -> b -> c -> a".
 // It scans the DFS stack to find where the cycle begins (the first occurrence
 // of the repeated node) and joins the path with " -> " arrows.

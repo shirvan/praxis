@@ -170,8 +170,20 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	provider := a.llm.ForConfig(cfg, resolvedKey)
 	tools := a.tools.Definitions()
 
+	var toolLog []ToolLogEntry
+	var totalUsage AskUsage
+	askStart := time.Now()
+
+	// Clear stale progress entries from any previous ask on this session.
+	restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Clear").
+		Send(restate.Void{})
+
 	for range cfg.MaxTurns {
 		state.TurnCount++
+
+		// Signal "thinking" to the progress tracker so the CLI can show it.
+		restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+			Send(ToolProgressEntry{Name: "thinking", Status: "thinking"})
 
 		// Call LLM inside restate.Run() to make it durable. The LLM response
 		// is journaled — on replay, Restate returns the cached result instead
@@ -197,12 +209,26 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 			state.LastActiveAt = now
 			restate.Set(ctx, "state", state)
 
+			totalUsage.PromptTokens += llmResp.Usage.PromptTokens
+			totalUsage.CompletionTokens += llmResp.Usage.CompletionTokens
+			totalUsage.TotalTokens += llmResp.Usage.TotalTokens
+
 			return AskResponse{
-				Response:  llmResp.Content,
-				SessionID: sessionID,
-				TurnCount: state.TurnCount,
+				Response:   llmResp.Content,
+				SessionID:  sessionID,
+				TurnCount:  state.TurnCount,
+				ToolLog:    toolLog,
+				Model:      cfg.Model,
+				Provider:   cfg.Provider,
+				Usage:      totalUsage,
+				DurationMs: time.Since(askStart).Milliseconds(),
 			}, nil
 		}
+
+		// Accumulate token usage from this LLM turn.
+		totalUsage.PromptTokens += llmResp.Usage.PromptTokens
+		totalUsage.CompletionTokens += llmResp.Usage.CompletionTokens
+		totalUsage.TotalTokens += llmResp.Usage.TotalTokens
 
 		// Append assistant message with tool calls.
 		state.Messages = append(state.Messages, Message{
@@ -214,25 +240,45 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 		// Execute each tool call. Read-only tools run immediately; write tools
 		// (RequiresApproval=true) suspend on a Restate awakeable for human approval.
 		for _, tc := range llmResp.ToolCalls {
+			toolStart := time.Now()
 			tool := a.tools.Get(tc.Name)
 			if tool == nil {
 				appendToolError(&state, tc.ID, tc.Name, "unknown tool")
+				restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+					Send(ToolProgressEntry{Name: tc.Name, Status: "error", Error: "unknown tool"})
+				toolLog = append(toolLog, ToolLogEntry{Name: tc.Name, Status: "error", Error: "unknown tool", DurationMs: time.Since(toolStart).Milliseconds()})
 				continue
 			}
+
+			// Signal tool start to the progress tracker.
+			restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+				Send(ToolProgressEntry{Name: tc.Name, Status: "running"})
 
 			if tool.RequiresApproval {
 				result, err := a.executeWithApproval(ctx, &state, cfg, tool, tc, now)
 				if err != nil {
 					appendToolError(&state, tc.ID, tc.Name, err.Error())
+					restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+						Send(ToolProgressEntry{Name: tc.Name, Status: "error", Error: err.Error()})
+					toolLog = append(toolLog, ToolLogEntry{Name: tc.Name, Status: "error", Error: err.Error(), DurationMs: time.Since(toolStart).Milliseconds()})
 				} else {
 					appendToolResult(&state, tc.ID, tc.Name, result)
+					restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+						Send(ToolProgressEntry{Name: tc.Name, Status: "ok"})
+					toolLog = append(toolLog, ToolLogEntry{Name: tc.Name, Status: "ok", DurationMs: time.Since(toolStart).Milliseconds()})
 				}
 			} else {
 				result, err := a.executeTool(ctx, tool, tc, state)
 				if err != nil {
 					appendToolError(&state, tc.ID, tc.Name, err.Error())
+					restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+						Send(ToolProgressEntry{Name: tc.Name, Status: "error", Error: err.Error()})
+					toolLog = append(toolLog, ToolLogEntry{Name: tc.Name, Status: "error", Error: err.Error(), DurationMs: time.Since(toolStart).Milliseconds()})
 				} else {
 					appendToolResult(&state, tc.ID, tc.Name, result)
+					restate.ObjectSend(ctx, ConciergeProgressServiceName, sessionID, "Update").
+						Send(ToolProgressEntry{Name: tc.Name, Status: "ok"})
+					toolLog = append(toolLog, ToolLogEntry{Name: tc.Name, Status: "ok", DurationMs: time.Since(toolStart).Milliseconds()})
 				}
 			}
 		}
@@ -248,9 +294,14 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 	state.LastActiveAt = now
 	restate.Set(ctx, "state", state)
 	return AskResponse{
-		Response:  turnLimitMsg,
-		SessionID: sessionID,
-		TurnCount: state.TurnCount,
+		Response:   turnLimitMsg,
+		SessionID:  sessionID,
+		TurnCount:  state.TurnCount,
+		ToolLog:    toolLog,
+		Model:      cfg.Model,
+		Provider:   cfg.Provider,
+		Usage:      totalUsage,
+		DurationMs: time.Since(askStart).Milliseconds(),
 	}, nil
 }
 

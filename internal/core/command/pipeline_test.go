@@ -15,21 +15,29 @@ import (
 
 func TestResolveTemplateSource_Inline(t *testing.T) {
 	service := &PraxisCommandService{}
-	source, templatePath, err := service.resolveTemplateSource(nil, " resources: {} ", nil)
+	source, templatePath, err := service.resolveTemplateSource(nil, " resources: {} ", nil, "")
 	require.NoError(t, err)
 	assert.Equal(t, "resources: {}", source)
 	assert.Equal(t, "inline://template.cue", templatePath)
 }
 
+func TestResolveTemplateSource_InlineWithPathHint(t *testing.T) {
+	service := &PraxisCommandService{}
+	source, templatePath, err := service.resolveTemplateSource(nil, " resources: {} ", nil, "webapp.cue")
+	require.NoError(t, err)
+	assert.Equal(t, "resources: {}", source)
+	assert.Equal(t, "webapp.cue", templatePath)
+}
+
 func TestResolveTemplateSource_RejectsBothInlineAndRef(t *testing.T) {
 	service := &PraxisCommandService{}
-	_, _, err := service.resolveTemplateSource(nil, "resources: {}", &types.TemplateRef{Name: "webapp"})
+	_, _, err := service.resolveTemplateSource(nil, "resources: {}", &types.TemplateRef{Name: "webapp"}, "")
 	require.Error(t, err)
 }
 
 func TestResolveTemplateSource_RejectsMissingTemplate(t *testing.T) {
 	service := &PraxisCommandService{}
-	_, _, err := service.resolveTemplateSource(nil, "", nil)
+	_, _, err := service.resolveTemplateSource(nil, "", nil, "")
 	require.Error(t, err)
 }
 

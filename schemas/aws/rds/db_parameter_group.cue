@@ -10,12 +10,12 @@ package rds
 	}
 
 	spec: {
-		region: string
-		type: "db" | "cluster" | *"db"
-		family: string
+		region:      string
+		type:        "db" | "cluster" | *"db"
+		family:      string
 		description: string | *""
 		parameters: [string]: string
-		tags: [string]: string
+		tags: [string]:       string
 	}
 
 	outputs?: {
