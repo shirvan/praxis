@@ -597,7 +597,7 @@ type conciergeAskResponse struct {
 	ToolLog    []conciergeToolLog `json:"toolLog,omitempty"`
 	Model      string             `json:"model,omitempty"`
 	Provider   string             `json:"provider,omitempty"`
-	Usage      conciergeUsage     `json:"usage,omitempty"`
+	Usage      conciergeUsage     `json:"usage,omitzero"`
 	DurationMs int64              `json:"durationMs,omitempty"`
 }
 

@@ -136,7 +136,7 @@ type AskResponse struct {
 	ToolLog    []ToolLogEntry `json:"toolLog,omitempty"`    // Tools invoked during this ask (for CLI display)
 	Model      string         `json:"model,omitempty"`      // Model used for this response
 	Provider   string         `json:"provider,omitempty"`   // Provider used for this response
-	Usage      AskUsage       `json:"usage,omitempty"`      // Aggregate token usage across all LLM calls
+	Usage      AskUsage       `json:"usage,omitzero"`       // Aggregate token usage across all LLM calls
 	DurationMs int64          `json:"durationMs,omitempty"` // Total Ask handler duration in milliseconds
 }
 

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -47,7 +46,8 @@ func TestPrintPlanPlainHasNoANSI(t *testing.T) {
 	text := out.String()
 	require.NotEmpty(t, text)
 	assert.NotContains(t, text, "\x1b[")
-	assert.True(t, strings.Contains(text, "+ my-bucket (S3Bucket)"), text)
-	assert.True(t, strings.Contains(text, "+ bucket_name = my-bucket") || strings.Contains(text, "+ bucket_name = \"my-bucket\""), text)
+	assert.Contains(t, text, `# S3Bucket "my-bucket" will be created`)
+	assert.Contains(t, text, `+ resource "S3Bucket" "my-bucket"`)
+	assert.Contains(t, text, `+ bucket_name = "my-bucket"`)
 	assert.Contains(t, text, "Plan: 1 to create, 0 to update, 0 to delete, 0 unchanged.")
 }

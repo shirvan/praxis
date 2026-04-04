@@ -115,8 +115,7 @@ func renderBox(name, kind string) string {
 	var lines []string
 	lines = append(lines, top)
 	if kind != "" {
-		lines = append(lines, "│ "+pad(kind, width)+" │")
-		lines = append(lines, "│ "+pad(name, width)+" │")
+		lines = append(lines, "│ "+pad(kind, width)+" │", "│ "+pad(name, width)+" │")
 	} else {
 		lines = append(lines, "│ "+pad(name, width)+" │")
 	}
@@ -164,7 +163,7 @@ func splitBoxes(boxes []string) []string {
 	// Pad shorter boxes with blank lines and merge.
 	merged := make([]string, maxLines)
 	gutter := strings.Repeat(" ", boxGutter)
-	for row := 0; row < maxLines; row++ {
+	for row := range maxLines {
 		var parts []string
 		for i := range boxes {
 			if row < len(allLines[i]) {
@@ -299,7 +298,7 @@ func renderConnectors(parents []string, parentWidths []int, children []string, g
 	}
 
 	line2 := makeCharLine(totalWidth, ' ')
-	for x := 0; x < totalWidth; x++ {
+	for x := range totalWidth {
 		r := roles[x]
 		if !r.parentDrop && !r.childReceive && !r.horizontal {
 			continue
@@ -308,36 +307,39 @@ func renderConnectors(parents []string, parentWidths []int, children []string, g
 		hasLeft := x > 0 && roles[x-1].horizontal
 		hasRight := x < totalWidth-1 && roles[x+1].horizontal
 
-		if r.parentDrop && r.childReceive {
+		switch {
+		case r.parentDrop && r.childReceive:
 			// Both: vertical pipe (straight through).
 			if r.horizontal && (hasLeft || hasRight) {
 				line2[x] = '┼'
 			} else {
 				line2[x] = '│'
 			}
-		} else if r.parentDrop {
+		case r.parentDrop:
 			// Coming from above.
-			if hasLeft && hasRight {
+			switch {
+			case hasLeft && hasRight:
 				line2[x] = '┴'
-			} else if hasLeft {
+			case hasLeft:
 				line2[x] = '┘'
-			} else if hasRight {
+			case hasRight:
 				line2[x] = '└'
-			} else {
+			default:
 				line2[x] = '│'
 			}
-		} else if r.childReceive {
+		case r.childReceive:
 			// Going down to child.
-			if hasLeft && hasRight {
+			switch {
+			case hasLeft && hasRight:
 				line2[x] = '┬'
-			} else if hasLeft {
+			case hasLeft:
 				line2[x] = '┐'
-			} else if hasRight {
+			case hasRight:
 				line2[x] = '┌'
-			} else {
+			default:
 				line2[x] = '│'
 			}
-		} else if r.horizontal {
+		case r.horizontal:
 			line2[x] = '─'
 		}
 	}

@@ -67,7 +67,10 @@ func TestRender_Create(t *testing.T) {
 	})
 	output := diff.Render(plan)
 	assert.Contains(t, output, "will be created")
-	assert.Contains(t, output, "+ versioning: true")
+	assert.Contains(t, output, "+ region")
+	assert.Contains(t, output, "= \"us-east-1\"")
+	assert.Contains(t, output, "+ versioning")
+	assert.Contains(t, output, "= true")
 	assert.Contains(t, output, "1 to create")
 }
 
@@ -78,7 +81,8 @@ func TestRender_Update(t *testing.T) {
 	})
 	output := diff.Render(plan)
 	assert.Contains(t, output, "will be updated in-place")
-	assert.Contains(t, output, "~ versioning: false -> true")
+	assert.Contains(t, output, "~ versioning")
+	assert.Contains(t, output, "false -> true")
 }
 
 func TestRender_Delete(t *testing.T) {
@@ -88,7 +92,8 @@ func TestRender_Delete(t *testing.T) {
 	})
 	output := diff.Render(plan)
 	assert.Contains(t, output, "will be destroyed")
-	assert.Contains(t, output, "- versioning: true")
+	assert.Contains(t, output, "- versioning")
+	assert.Contains(t, output, "= true")
 	assert.Contains(t, output, "1 to delete")
 }
 

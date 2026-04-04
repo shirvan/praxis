@@ -14,7 +14,10 @@
 package diff
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -82,29 +85,27 @@ func Render(plan *types.PlanResult) string {
 			continue
 		}
 
+		symbol := "+"
+		actionVerb := "will be created"
 		switch rd.Operation {
-		case types.OpCreate:
-			fmt.Fprintf(&b, "  # %s %q will be created\n", rd.ResourceType, rd.ResourceKey)
-			fmt.Fprintf(&b, "  + resource %q %q {\n", rd.ResourceType, rd.ResourceKey)
 		case types.OpUpdate:
-			fmt.Fprintf(&b, "  # %s %q will be updated in-place\n", rd.ResourceType, rd.ResourceKey)
-			fmt.Fprintf(&b, "  ~ resource %q %q {\n", rd.ResourceType, rd.ResourceKey)
+			symbol = "~"
+			actionVerb = "will be updated in-place"
 		case types.OpDelete:
-			fmt.Fprintf(&b, "  # %s %q will be destroyed\n", rd.ResourceType, rd.ResourceKey)
-			fmt.Fprintf(&b, "  - resource %q %q {\n", rd.ResourceType, rd.ResourceKey)
+			symbol = "-"
+			actionVerb = "will be destroyed"
 		}
 
-		for _, fd := range rd.FieldDiffs {
-			switch rd.Operation {
-			case types.OpCreate:
-				fmt.Fprintf(&b, "      + %s: %s\n", fd.Path, formatValue(fd.NewValue))
-			case types.OpUpdate:
-				fmt.Fprintf(&b, "      ~ %s: %s -> %s\n", fd.Path, formatValue(fd.OldValue), formatValue(fd.NewValue))
-			case types.OpDelete:
-				fmt.Fprintf(&b, "      - %s: %s\n", fd.Path, formatValue(fd.OldValue))
-			}
+		fmt.Fprintf(&b, "  # %s %q %s\n", rd.ResourceType, rd.ResourceKey, actionVerb)
+
+		if len(rd.FieldDiffs) == 0 {
+			fmt.Fprintf(&b, "  %s resource %q %q {}\n\n", symbol, rd.ResourceType, rd.ResourceKey)
+			continue
 		}
 
+		fmt.Fprintf(&b, "  %s resource %q %q {\n", symbol, rd.ResourceType, rd.ResourceKey)
+		nodes := GroupFields(rd.FieldDiffs)
+		renderNodes(&b, nodes, rd.Operation, 6)
 		b.WriteString("    }\n\n")
 	}
 
@@ -130,6 +131,11 @@ func formatValue(v any) string {
 			return "true"
 		}
 		return "false"
+	case float64:
+		if val == float64(int64(val)) {
+			return fmt.Sprintf("%d", int64(val))
+		}
+		return fmt.Sprintf("%g", val)
 	case map[string]string:
 		if len(val) == 0 {
 			return "{}"
@@ -141,5 +147,155 @@ func formatValue(v any) string {
 		return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
 	default:
 		return fmt.Sprintf("%v", val)
+	}
+}
+
+// FieldNode represents either a leaf field or a group of nested fields in the
+// plan output. GroupFields produces a tree of FieldNodes from flat FieldDiffs.
+type FieldNode struct {
+	Key      string
+	IsGroup  bool
+	Diff     *types.FieldDiff
+	Children []FieldNode
+}
+
+// GroupFields organizes flat field diffs into a hierarchical tree for display.
+// It strips the "spec." prefix and merges fields sharing a common dot-separated
+// prefix into nested groups. Single-child groups are kept flat to avoid
+// unnecessary nesting.
+func GroupFields(diffs []types.FieldDiff) []FieldNode {
+	cleaned := make([]types.FieldDiff, len(diffs))
+	for i, d := range diffs {
+		cleaned[i] = d
+		cleaned[i].Path = strings.TrimPrefix(d.Path, "spec.")
+	}
+	return groupFieldDiffs(cleaned)
+}
+
+func groupFieldDiffs(diffs []types.FieldDiff) []FieldNode {
+	type group struct {
+		children []types.FieldDiff
+	}
+	groups := make(map[string]*group)
+	groupOrder := make([]string, 0)
+	var flat []types.FieldDiff
+
+	for _, d := range diffs {
+		if idx := strings.IndexByte(d.Path, '.'); idx >= 0 {
+			prefix := d.Path[:idx]
+			child := d
+			child.Path = d.Path[idx+1:]
+			if g, ok := groups[prefix]; ok {
+				g.children = append(g.children, child)
+			} else {
+				groups[prefix] = &group{children: []types.FieldDiff{child}}
+				groupOrder = append(groupOrder, prefix)
+			}
+		} else {
+			flat = append(flat, d)
+		}
+	}
+
+	entries := make([]FieldNode, 0, len(flat)+len(groups))
+	for i := range flat {
+		entries = append(entries, FieldNode{Key: flat[i].Path, Diff: &flat[i]})
+	}
+	for _, prefix := range groupOrder {
+		g := groups[prefix]
+		if len(g.children) == 1 {
+			child := g.children[0]
+			fd := types.FieldDiff{
+				Path:     prefix + "." + child.Path,
+				OldValue: child.OldValue,
+				NewValue: child.NewValue,
+			}
+			entries = append(entries, FieldNode{Key: fd.Path, Diff: &fd})
+		} else {
+			entries = append(entries, FieldNode{
+				Key:      prefix,
+				IsGroup:  true,
+				Children: groupFieldDiffs(g.children),
+			})
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Key < entries[j].Key
+	})
+	return entries
+}
+
+func renderNodes(b *strings.Builder, nodes []FieldNode, op types.DiffOperation, indent int) {
+	symbol := "+"
+	switch op {
+	case types.OpUpdate:
+		symbol = "~"
+	case types.OpDelete:
+		symbol = "-"
+	}
+
+	pad := strings.Repeat(" ", indent)
+	maxKeyLen := 0
+	for _, n := range nodes {
+		if len(n.Key) > maxKeyLen {
+			maxKeyLen = len(n.Key)
+		}
+	}
+
+	for _, n := range nodes {
+		if n.IsGroup {
+			fmt.Fprintf(b, "%s%s %-*s {\n", pad, symbol, maxKeyLen, n.Key)
+			renderNodes(b, n.Children, op, indent+4)
+			fmt.Fprintf(b, "%s  }\n", pad)
+		} else {
+			switch op {
+			case types.OpCreate:
+				fmt.Fprintf(b, "%s%s %-*s = %s\n", pad, symbol, maxKeyLen, n.Key, formatValue(n.Diff.NewValue))
+			case types.OpUpdate:
+				fmt.Fprintf(b, "%s%s %-*s = %s -> %s\n", pad, symbol, maxKeyLen, n.Key, formatValue(n.Diff.OldValue), formatValue(n.Diff.NewValue))
+			case types.OpDelete:
+				fmt.Fprintf(b, "%s%s %-*s = %s\n", pad, symbol, maxKeyLen, n.Key, formatValue(n.Diff.OldValue))
+			}
+		}
+	}
+}
+
+// FieldDiffsFromJSON converts raw JSON spec bytes into a flat list of
+// FieldDiff entries (all with NewValue only). This is used for resources
+// whose specs contain unresolved expressions — we can still show the
+// known fields even though the resource can't be diffed against cloud state.
+func FieldDiffsFromJSON(raw json.RawMessage) []types.FieldDiff {
+	if len(raw) == 0 {
+		return nil
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil
+	}
+	var diffs []types.FieldDiff
+	flattenJSON("spec", decoded, &diffs)
+	return diffs
+}
+
+func flattenJSON(path string, value any, diffs *[]types.FieldDiff) {
+	switch typed := value.(type) {
+	case map[string]any:
+		if len(typed) == 0 {
+			return
+		}
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			flattenJSON(path+"."+key, typed[key], diffs)
+		}
+	case []any:
+		for index, item := range typed {
+			flattenJSON(path+"."+strconv.Itoa(index), item, diffs)
+		}
+	default:
+		*diffs = append(*diffs, types.FieldDiff{Path: path, NewValue: typed})
 	}
 }

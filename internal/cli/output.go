@@ -23,6 +23,7 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/shirvan/praxis/internal/core/dag"
+	"github.com/shirvan/praxis/internal/core/diff"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -188,8 +189,9 @@ func printDeploymentSummaries(r *Renderer, summaries []types.DeploymentSummary) 
 // Plan formatters
 // --------------------------------------------------------------------------
 
-// printPlan renders a plan summary to stdout. Each resource
-// is shown with its planned operation and any field-level changes.
+// printPlan renders a plan summary to stdout using Terraform-inspired block
+// formatting. Each resource shows a descriptive comment, block structure with
+// nested field grouping, and aligned values.
 func printPlan(r *Renderer, plan *types.PlanResult) {
 	if plan == nil || len(plan.Resources) == 0 {
 		_, _ = fmt.Fprintln(r.out, r.renderMuted("No changes. Infrastructure is up-to-date."))
@@ -197,27 +199,99 @@ func printPlan(r *Renderer, plan *types.PlanResult) {
 	}
 
 	for _, rd := range plan.Resources {
-		symbol := operationSymbol(rd.Operation)
-		_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, fmt.Sprintf("%s %s (%s)", symbol, rd.ResourceKey, rd.ResourceType)))
-
-		for _, fd := range rd.FieldDiffs {
-			line := ""
-			switch rd.Operation {
-			case types.OpCreate:
-				line = fmt.Sprintf("    + %s = %v", fd.Path, fd.NewValue)
-			case types.OpDelete:
-				line = fmt.Sprintf("    - %s = %v", fd.Path, fd.OldValue)
-			case types.OpUpdate:
-				line = fmt.Sprintf("    ~ %s: %v => %v", fd.Path, fd.OldValue, fd.NewValue)
-			}
-			if line != "" {
-				_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, line))
-			}
+		if rd.Operation == types.OpNoOp {
+			continue
 		}
-		_, _ = fmt.Fprintln(r.out)
+		printResourceDiff(r, rd)
 	}
 
 	_, _ = fmt.Fprintln(r.out, r.renderSection(plan.Summary.String()))
+}
+
+func printResourceDiff(r *Renderer, rd types.ResourceDiff) {
+	actionVerb := "will be created"
+	switch rd.Operation {
+	case types.OpUpdate:
+		actionVerb = "will be updated in-place"
+	case types.OpDelete:
+		actionVerb = "will be destroyed"
+	}
+
+	// Comment line describing the action.
+	_, _ = fmt.Fprintln(r.out, r.renderMuted(fmt.Sprintf("  # %s %q %s", rd.ResourceType, rd.ResourceKey, actionVerb)))
+
+	symbol := operationSymbol(rd.Operation)
+
+	if len(rd.FieldDiffs) == 0 {
+		_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, fmt.Sprintf("  %s resource %q %q {}", symbol, rd.ResourceType, rd.ResourceKey)))
+		_, _ = fmt.Fprintln(r.out)
+		return
+	}
+
+	// Resource block header.
+	_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, fmt.Sprintf("  %s resource %q %q {", symbol, rd.ResourceType, rd.ResourceKey)))
+
+	// Group and render field diffs with alignment.
+	nodes := diff.GroupFields(rd.FieldDiffs)
+	printFieldNodes(r, rd.Operation, nodes, 6)
+
+	// Close block.
+	_, _ = fmt.Fprintln(r.out, r.renderDiff(rd.Operation, "    }"))
+	_, _ = fmt.Fprintln(r.out)
+}
+
+func printFieldNodes(r *Renderer, op types.DiffOperation, nodes []diff.FieldNode, indent int) {
+	symbol := operationSymbol(op)
+	pad := strings.Repeat(" ", indent)
+
+	maxKeyLen := 0
+	for _, n := range nodes {
+		if len(n.Key) > maxKeyLen {
+			maxKeyLen = len(n.Key)
+		}
+	}
+
+	for _, n := range nodes {
+		if n.IsGroup {
+			_, _ = fmt.Fprintln(r.out, r.renderDiff(op, fmt.Sprintf("%s%s %-*s {", pad, symbol, maxKeyLen, n.Key)))
+			printFieldNodes(r, op, n.Children, indent+4)
+			_, _ = fmt.Fprintln(r.out, r.renderDiff(op, fmt.Sprintf("%s  }", pad)))
+		} else {
+			value := ""
+			switch op {
+			case types.OpCreate:
+				value = formatPlanValue(n.Diff.NewValue)
+			case types.OpDelete:
+				value = formatPlanValue(n.Diff.OldValue)
+			case types.OpUpdate:
+				value = fmt.Sprintf("%s => %s", formatPlanValue(n.Diff.OldValue), formatPlanValue(n.Diff.NewValue))
+			}
+			_, _ = fmt.Fprintln(r.out, r.renderDiff(op, fmt.Sprintf("%s%s %-*s = %s", pad, symbol, maxKeyLen, n.Key, value)))
+		}
+	}
+}
+
+// formatPlanValue formats a value for plan output with proper quoting.
+func formatPlanValue(v any) string {
+	if v == nil {
+		return "(known after apply)"
+	}
+	switch val := v.(type) {
+	case string:
+		return fmt.Sprintf("%q", val)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case float64:
+		if val == float64(int64(val)) {
+			return fmt.Sprintf("%d", int64(val))
+		}
+		return fmt.Sprintf("%g", val)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // printGraph renders the resource dependency DAG from the plan response.

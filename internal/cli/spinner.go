@@ -55,7 +55,7 @@ func (s *spinner) Start() {
 
 	if !s.styles {
 		// Plain mode: print a static message, no animation.
-		fmt.Fprintf(s.out, "%s...\n", s.message)
+		_, _ = fmt.Fprintf(s.out, "%s...\n", s.message)
 		return
 	}
 
@@ -93,11 +93,11 @@ func (s *spinner) PrintLine(text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.styles {
-		fmt.Fprintln(s.out, text)
+		_, _ = fmt.Fprintln(s.out, text)
 		return
 	}
 	// Clear spinner line, print permanent text, spinner redraws on next tick.
-	fmt.Fprintf(s.out, "\r\033[K%s\n", text)
+	_, _ = fmt.Fprintf(s.out, "\r\033[K%s\n", text)
 	s.lines = append(s.lines, text)
 }
 
@@ -112,7 +112,7 @@ func (s *spinner) run() {
 		select {
 		case <-s.done:
 			// Clear the spinner line.
-			fmt.Fprintf(s.out, "\r\033[K")
+			_, _ = fmt.Fprintf(s.out, "\r\033[K")
 			return
 		case <-ticker.C:
 			elapsed := time.Since(start).Truncate(100 * time.Millisecond)
@@ -122,7 +122,7 @@ func (s *spinner) run() {
 			icon := s.theme.Muted.Render(spinnerFrames[frame%len(spinnerFrames)])
 			styledMsg := s.theme.Muted.Render(msg)
 			dur := s.theme.Muted.Render(formatDuration(elapsed))
-			fmt.Fprintf(s.out, "\r\033[K%s %s %s", icon, styledMsg, dur)
+			_, _ = fmt.Fprintf(s.out, "\r\033[K%s %s %s", icon, styledMsg, dur)
 			frame++
 		}
 	}

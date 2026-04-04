@@ -318,8 +318,8 @@ func TestRenderBox_WithKind(t *testing.T) {
 }
 
 func TestBoxWidth(t *testing.T) {
-	assert.Equal(t, 7, boxWidth("vpc", ""))                 // "│ vpc │" = 4 + 3
-	assert.Equal(t, 17, boxWidth("my_sg", "SecurityGroup")) // max(5, 13) + 4 = 17
+	assert.Equal(t, 7, boxWidth("vpc", ""))                 // width = 4 + 3
+	assert.Equal(t, 17, boxWidth("my_sg", "SecurityGroup")) // width = max(5, 13) + 4 = 17
 	assert.Equal(t, len("SecurityGroup")+4, boxWidth("my_sg", "SecurityGroup"))
 }
 

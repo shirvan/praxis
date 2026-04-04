@@ -52,9 +52,11 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 
 		// Resources with dispatch-time expressions (${resources.X.outputs.Y})
 		// contain unresolved placeholders, so their specs cannot be compared
-		// against cloud state. Treat them as OpCreate for the plan.
+		// against cloud state. We still extract the known fields from the raw
+		// spec so the plan output shows what will be configured.
 		if len(resource.Expressions) > 0 {
-			corediff.Add(plan, resource.Kind, resource.Key, types.OpCreate, nil)
+			fields := corediff.FieldDiffsFromJSON(resource.Spec)
+			corediff.Add(plan, resource.Kind, resource.Key, types.OpCreate, fields)
 			continue
 		}
 

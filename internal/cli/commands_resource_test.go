@@ -209,10 +209,10 @@ func TestWorkspaceCreateCmd_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/WorkspaceService/dev/Configure":
+		switch r.URL.Path {
+		case "/WorkspaceService/dev/Configure":
 			w.WriteHeader(http.StatusOK)
-		case r.URL.Path == "/WorkspaceIndex/global/List":
+		case "/WorkspaceIndex/global/List":
 			_ = json.NewEncoder(w).Encode([]string{"dev"})
 		default:
 			t.Logf("unexpected path: %s", r.URL.Path)
@@ -253,14 +253,14 @@ func TestWorkspaceListCmd_Success(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/WorkspaceIndex/global/List":
+		switch r.URL.Path {
+		case "/WorkspaceIndex/global/List":
 			_ = json.NewEncoder(w).Encode([]string{"dev", "prod"})
-		case r.URL.Path == "/WorkspaceService/dev/Get":
+		case "/WorkspaceService/dev/Get":
 			_ = json.NewEncoder(w).Encode(workspace.WorkspaceInfo{
 				Name: "dev", Account: "dev-acct", Region: "us-east-1",
 			})
-		case r.URL.Path == "/WorkspaceService/prod/Get":
+		case "/WorkspaceService/prod/Get":
 			_ = json.NewEncoder(w).Encode(workspace.WorkspaceInfo{
 				Name: "prod", Account: "prod-acct", Region: "us-west-2",
 			})
