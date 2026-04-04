@@ -59,34 +59,38 @@ func main() {
 	// functions that know how to build driver call parameters from generic specs.
 	providers := provider.NewRegistry(authClient)
 
+	// Default retry policy prevents infinite retry loops: 50 attempts with
+	// exponential backoff (100ms → 60s cap), then pause for operator inspection.
+	rp := config.DefaultRetryPolicy()
+
 	// Register every Core service with the Restate server.
 	// restate.Reflect() uses Go struct method signatures to auto-generate
 	// Restate handler definitions (Virtual Objects, Workflows, plain Services).
 	srv := server.NewRestate().
 		// AuthService: manages AWS account credentials as durable state.
-		Bind(restate.Reflect(authservice.NewAuthService(bootstrap))).
+		Bind(restate.Reflect(authservice.NewAuthService(bootstrap), rp)).
 		// WorkspaceService: CRUD for named workspaces (e.g., "staging", "prod").
-		Bind(restate.Reflect(workspace.NewWorkspaceService(cfg.SchemaDir))).
+		Bind(restate.Reflect(workspace.NewWorkspaceService(cfg.SchemaDir), rp)).
 		// WorkspaceIndex: cross-workspace listing using a durable index object.
-		Bind(restate.Reflect(workspace.WorkspaceIndex{})).
+		Bind(restate.Reflect(workspace.WorkspaceIndex{}, rp)).
 		// PraxisCommandService: the main command handlers (plan, apply, deploy, etc.).
-		Bind(restate.Reflect(command.NewPraxisCommandService(cfg, authClient, providers))).
+		Bind(restate.Reflect(command.NewPraxisCommandService(cfg, authClient, providers), rp)).
 		// DeploymentWorkflow: durable workflow that orchestrates create/update deploys.
-		Bind(restate.Reflect(orchestrator.NewDeploymentWorkflow(providers))).
+		Bind(restate.Reflect(orchestrator.NewDeploymentWorkflow(providers), rp)).
 		// DeploymentDeleteWorkflow: durable workflow that orchestrates resource deletion.
-		Bind(restate.Reflect(orchestrator.NewDeploymentDeleteWorkflow(providers))).
+		Bind(restate.Reflect(orchestrator.NewDeploymentDeleteWorkflow(providers), rp)).
 		// DeploymentRollbackWorkflow: durable workflow for deployment rollbacks.
-		Bind(restate.Reflect(orchestrator.NewDeploymentRollbackWorkflow(providers))).
+		Bind(restate.Reflect(orchestrator.NewDeploymentRollbackWorkflow(providers), rp)).
 		// DeploymentStateObj: per-deployment read model (status, resources, errors).
-		Bind(restate.Reflect(orchestrator.DeploymentStateObj{})).
+		Bind(restate.Reflect(orchestrator.DeploymentStateObj{}, rp)).
 		// DeploymentIndex: cross-deployment listing and search index.
-		Bind(restate.Reflect(orchestrator.DeploymentIndex{})).
+		Bind(restate.Reflect(orchestrator.DeploymentIndex{}, rp)).
 		// TemplateRegistry: stores and retrieves versioned templates.
-		Bind(restate.Reflect(registry.TemplateRegistry{})).
+		Bind(restate.Reflect(registry.TemplateRegistry{}, rp)).
 		// TemplateIndex: searchable index over all registered templates.
-		Bind(restate.Reflect(registry.TemplateIndex{})).
+		Bind(restate.Reflect(registry.TemplateIndex{}, rp)).
 		// PolicyRegistry: stores CUE-based validation policies.
-		Bind(restate.Reflect(registry.PolicyRegistry{}))
+		Bind(restate.Reflect(registry.PolicyRegistry{}, rp))
 
 	// If a policy seed directory is configured, load .cue files in the background.
 	// This runs in a goroutine because it needs the Restate server to be accepting

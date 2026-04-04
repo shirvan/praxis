@@ -61,6 +61,20 @@ func (s *PraxisCommandService) DeleteDeployment(ctx restate.Context, req DeleteD
 		return DeleteDeploymentResponse{}, restate.TerminalError(fmt.Errorf("deployment %q is already deleted", deploymentKey), 409)
 	}
 
+	// If the deployment is currently provisioning (Running or Pending),
+	// cancel the in-progress apply workflow first. This sets a durable flag
+	// that the apply loop polls — it will stop dispatching new resources and
+	// let in-flight ones finish. The delete workflow then picks up whatever
+	// state the deployment is in and tears everything down.
+	//
+	// This makes delete a "flush" operation: users can always unstick a
+	// deployment by deleting it, regardless of what's in progress.
+	if state.Status == types.DeploymentRunning || state.Status == types.DeploymentPending {
+		if _, err := restate.Object[restate.Void](ctx, orchestrator.DeploymentStateServiceName, deploymentKey, "RequestCancel").Request(restate.Void{}); err != nil {
+			return DeleteDeploymentResponse{}, fmt.Errorf("failed to cancel in-progress operation: %w", err)
+		}
+	}
+
 	// Emit a structured audit event before dispatching the workflow.
 	commandEvent, err := orchestrator.NewCommandDeleteEvent(deploymentKey, state.Workspace, state.Generation, time.Time{})
 	if err != nil {

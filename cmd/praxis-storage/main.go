@@ -25,18 +25,19 @@ import (
 func main() {
 	cfg := config.Load()
 	auth := authservice.NewAuthClient()
+	rp := config.DefaultRetryPolicy()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
-		Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth))).
-		Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
-		Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
-		Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
-		Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth))).
-		Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth))).
-		Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth))).
-		Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth))).
-		Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth)))
+		Bind(restate.Reflect(s3.NewS3BucketDriver(auth), rp)).
+		Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth), rp)).
+		Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth), rp)).
+		Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth), rp)).
+		Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth), rp)).
+		Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth), rp)).
+		Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth), rp)).
+		Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth), rp)).
+		Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth), rp)).
+		Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth), rp))
 
 	slog.Info("starting storage driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

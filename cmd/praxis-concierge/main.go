@@ -9,6 +9,7 @@ import (
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/shirvan/praxis/internal/concierge"
+	"github.com/shirvan/praxis/internal/core/config"
 )
 
 func main() {
@@ -16,12 +17,13 @@ func main() {
 	if addr == "" {
 		addr = "0.0.0.0:9080"
 	}
+	rp := config.DefaultRetryPolicy()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(concierge.NewConciergeSession())).
-		Bind(restate.Reflect(concierge.ConciergeConfig{})).
-		Bind(restate.Reflect(concierge.ApprovalRelay{})).
-		Bind(restate.Reflect(concierge.ConciergeProgress{}))
+		Bind(restate.Reflect(concierge.NewConciergeSession(), rp)).
+		Bind(restate.Reflect(concierge.ConciergeConfig{}, rp)).
+		Bind(restate.Reflect(concierge.ApprovalRelay{}, rp)).
+		Bind(restate.Reflect(concierge.ConciergeProgress{}, rp))
 
 	slog.Info("starting Praxis concierge runtime", "addr", addr) //nolint:gosec // G706 addr is from env var, not user input
 	if err := srv.Start(context.Background(), addr); err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/restatedev/sdk-go/server"
 
+	"github.com/shirvan/praxis/internal/core/config"
 	"github.com/shirvan/praxis/internal/slack"
 )
 
@@ -25,13 +26,14 @@ func main() {
 	if restateURI == "" {
 		restateURI = "http://localhost:8080"
 	}
+	rp := config.DefaultRetryPolicy()
 
 	// 1. Register Restate services
 	srv := server.NewRestate().
-		Bind(restate.Reflect(slack.SlackGatewayConfig{})).
-		Bind(restate.Reflect(slack.SlackWatchConfig{})).
-		Bind(restate.Reflect(slack.SlackThreadState{})).
-		Bind(restate.Reflect(slack.SlackEventReceiver{}))
+		Bind(restate.Reflect(slack.SlackGatewayConfig{}, rp)).
+		Bind(restate.Reflect(slack.SlackWatchConfig{}, rp)).
+		Bind(restate.Reflect(slack.SlackThreadState{}, rp)).
+		Bind(restate.Reflect(slack.SlackEventReceiver{}, rp))
 
 	// 2. Start Restate server in background — this must stay running so that
 	// Restate can discover our services even before Slack is configured.

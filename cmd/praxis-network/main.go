@@ -33,26 +33,27 @@ import (
 func main() {
 	cfg := config.Load()
 	auth := authservice.NewAuthClient()
+	rp := config.DefaultRetryPolicy()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth))).
-		Bind(restate.Reflect(alb.NewALBDriver(auth))).
-		Bind(restate.Reflect(nlb.NewNLBDriver(auth))).
-		Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth))).
-		Bind(restate.Reflect(listener.NewListenerDriver(auth))).
-		Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth))).
-		Bind(restate.Reflect(eip.NewElasticIPDriver(auth))).
-		Bind(restate.Reflect(igw.NewIGWDriver(auth))).
-		Bind(restate.Reflect(natgw.NewNATGatewayDriver(auth))).
-		Bind(restate.Reflect(nacl.NewNetworkACLDriver(auth))).
-		Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth))).
-		Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth))).
-		Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth))).
-		Bind(restate.Reflect(routetable.NewRouteTableDriver(auth))).
-		Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
-		Bind(restate.Reflect(subnet.NewSubnetDriver(auth))).
-		Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(auth))).
-		Bind(restate.Reflect(vpc.NewVPCDriver(auth)))
+		Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth), rp)).
+		Bind(restate.Reflect(alb.NewALBDriver(auth), rp)).
+		Bind(restate.Reflect(nlb.NewNLBDriver(auth), rp)).
+		Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth), rp)).
+		Bind(restate.Reflect(listener.NewListenerDriver(auth), rp)).
+		Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth), rp)).
+		Bind(restate.Reflect(eip.NewElasticIPDriver(auth), rp)).
+		Bind(restate.Reflect(igw.NewIGWDriver(auth), rp)).
+		Bind(restate.Reflect(natgw.NewNATGatewayDriver(auth), rp)).
+		Bind(restate.Reflect(nacl.NewNetworkACLDriver(auth), rp)).
+		Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth), rp)).
+		Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth), rp)).
+		Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth), rp)).
+		Bind(restate.Reflect(routetable.NewRouteTableDriver(auth), rp)).
+		Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth), rp)).
+		Bind(restate.Reflect(subnet.NewSubnetDriver(auth), rp)).
+		Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(auth), rp)).
+		Bind(restate.Reflect(vpc.NewVPCDriver(auth), rp))
 
 	slog.Info("starting network driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

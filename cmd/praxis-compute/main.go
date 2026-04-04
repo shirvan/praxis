@@ -24,17 +24,18 @@ import (
 func main() {
 	cfg := config.Load()
 	auth := authservice.NewAuthClient()
+	rp := config.DefaultRetryPolicy()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(ami.NewAMIDriver(auth))).
-		Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
-		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
-		Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
-		Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth))).
-		Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
-		Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
-		Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
-		Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth)))
+		Bind(restate.Reflect(ami.NewAMIDriver(auth), rp)).
+		Bind(restate.Reflect(keypair.NewKeyPairDriver(auth), rp)).
+		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth), rp)).
+		Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth), rp)).
+		Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth), rp)).
+		Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth), rp)).
+		Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth), rp)).
+		Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth), rp)).
+		Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth), rp))
 
 	slog.Info("starting compute driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

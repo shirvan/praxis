@@ -18,11 +18,12 @@ import (
 func main() {
 	cfg := config.Load()
 	auth := authservice.NewAuthClient()
+	rp := config.DefaultRetryPolicy()
 
 	srv := server.NewRestate().
-		Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth))).
-		Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth))).
-		Bind(restate.Reflect(dashboard.NewDashboardDriver(auth)))
+		Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth), rp)).
+		Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth), rp)).
+		Bind(restate.Reflect(dashboard.NewDashboardDriver(auth), rp))
 
 	slog.Info("starting monitoring driver pack", "addr", cfg.ListenAddr)
 	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

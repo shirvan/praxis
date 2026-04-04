@@ -106,3 +106,109 @@ func TestHydrateExprs_PartialHydration(t *testing.T) {
 	assert.Equal(t, "sg-123", specMap["groupId"])
 	assert.Equal(t, "${resources.db.outputs.port}", specMap["port"])
 }
+
+func TestHydrateExprs_ArrayIndexedOutput(t *testing.T) {
+	spec := json.RawMessage(`{"spec":{"recordName":"${resources.cert.outputs.dnsValidationRecords[0].resourceRecordName}"}}`)
+
+	resolved, err := HydrateExprs(spec, map[string]string{
+		"spec.recordName": "resources.cert.outputs.dnsValidationRecords[0].resourceRecordName",
+	}, map[string]map[string]any{
+		"cert": {
+			"dnsValidationRecords": []any{
+				map[string]any{
+					"resourceRecordName":  "_abc.example.com.",
+					"resourceRecordValue": "_xyz.acm-validations.aws.",
+				},
+				map[string]any{
+					"resourceRecordName":  "_def.example.com.",
+					"resourceRecordValue": "_uvw.acm-validations.aws.",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(resolved, &parsed))
+	assert.Equal(t, "_abc.example.com.", parsed["spec"].(map[string]any)["recordName"])
+}
+
+func TestHydrateExprs_ArrayIndexedOutput_SecondElement(t *testing.T) {
+	spec := json.RawMessage(`{"spec":{"val":"${resources.cert.outputs.records[1].name}"}}`)
+
+	resolved, err := HydrateExprs(spec, map[string]string{
+		"spec.val": "resources.cert.outputs.records[1].name",
+	}, map[string]map[string]any{
+		"cert": {
+			"records": []any{
+				map[string]any{"name": "first"},
+				map[string]any{"name": "second"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(resolved, &parsed))
+	assert.Equal(t, "second", parsed["spec"].(map[string]any)["val"])
+}
+
+func TestHydrateExprs_ArrayIndexedOutput_WholeElement(t *testing.T) {
+	spec := json.RawMessage(`{"spec":{"record":"${resources.cert.outputs.records[0]}"}}`)
+
+	resolved, err := HydrateExprs(spec, map[string]string{
+		"spec.record": "resources.cert.outputs.records[0]",
+	}, map[string]map[string]any{
+		"cert": {
+			"records": []any{
+				map[string]any{"name": "first", "value": "v1"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(resolved, &parsed))
+	record := parsed["spec"].(map[string]any)["record"].(map[string]any)
+	assert.Equal(t, "first", record["name"])
+	assert.Equal(t, "v1", record["value"])
+}
+
+func TestHydrateExprs_ArrayIndexedOutput_OutOfRange(t *testing.T) {
+	spec := json.RawMessage(`{"spec":{"val":"${resources.cert.outputs.records[5].name}"}}`)
+
+	_, err := HydrateExprs(spec, map[string]string{
+		"spec.val": "resources.cert.outputs.records[5].name",
+	}, map[string]map[string]any{
+		"cert": {
+			"records": []any{
+				map[string]any{"name": "only"},
+			},
+		},
+	})
+	require.Error(t, err)
+
+	var tErrs template.TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, template.ErrExprUnresolved, tErrs[0].Kind)
+}
+
+func TestHydrateExprs_ArrayIndexedOutput_TypedSlice(t *testing.T) {
+	// Drivers may return []map[string]any instead of []any.
+	spec := json.RawMessage(`{"spec":{"val":"${resources.cert.outputs.records[0].name}"}}`)
+
+	resolved, err := HydrateExprs(spec, map[string]string{
+		"spec.val": "resources.cert.outputs.records[0].name",
+	}, map[string]map[string]any{
+		"cert": {
+			"records": []map[string]any{
+				{"name": "typed-slice-value"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(resolved, &parsed))
+	assert.Equal(t, "typed-slice-value", parsed["spec"].(map[string]any)["val"])
+}
