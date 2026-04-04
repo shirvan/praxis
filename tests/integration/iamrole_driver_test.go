@@ -101,7 +101,7 @@ func TestIAMRoleImport_ExistingRoleDefaultsObserved(t *testing.T) {
 		AssumeRolePolicyDocument: aws.String(assumeRolePolicyDoc),
 	})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 

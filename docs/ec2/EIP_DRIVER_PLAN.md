@@ -137,7 +137,7 @@ internal/drivers/eip/drift_test.go        — Unit tests for drift detection
 internal/core/provider/eip_adapter.go     — EIPAdapter implementing provider.Adapter
 internal/core/provider/eip_adapter_test.go — Unit tests for EIP adapter
 schemas/aws/ec2/eip.cue                   — CUE schema for ElasticIP resource
-tests/integration/eip_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+tests/integration/eip_driver_test.go      — Integration tests (Testcontainers + Moto)
 cmd/praxis-network/main.go               — Bind EIP driver in network pack
 internal/core/provider/registry.go        — EIPAdapter registered in NewRegistry()
 ```

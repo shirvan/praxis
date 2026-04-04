@@ -90,17 +90,18 @@ The EC2 driver family spans **three** runtime packs:
 ```go
 // cmd/praxis-compute/main.go
 auth := authservice.NewAuthClient()
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+    Bind(restate.Reflect(ami.NewAMIDriver(auth), rp)).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth), rp)).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth), rp)).
     // Also hosts ECR, Lambda, and ESM drivers
-    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
-    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth))).
-    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
-    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
-    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
-    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth)))
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth), rp)).
+    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth), rp)).
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth), rp)).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth), rp)).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth), rp)).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth), rp))
 ```
 
 ### praxis-storage Entry Point (EBS)
@@ -108,16 +109,17 @@ srv := server.NewRestate().
 ```go
 // cmd/praxis-storage/main.go
 auth := authservice.NewAuthClient()
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
-    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth)))
+    Bind(restate.Reflect(s3.NewS3BucketDriver(auth), rp)).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth), rp))
 ```
 
 ### praxis-network Entry Point (EIP)
 
 ```go
 // cmd/praxis-network/main.go — EIP among network drivers
-Bind(restate.Reflect(eip.NewElasticIPDriver(auth)))
+Bind(restate.Reflect(eip.NewElasticIPDriver(auth), rp))
 ```
 
 ---

@@ -111,19 +111,20 @@ other compute drivers is the natural domain alignment.
 
 ```go
 // cmd/praxis-compute/main.go
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
+    Bind(restate.Reflect(ami.NewAMIDriver(auth), rp)).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth), rp)).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth), rp)).
     // Lambda drivers (future)
-    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
-    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
-    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth))).
-    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth), rp)).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth), rp)).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth), rp)).
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth), rp)).
     // ECS drivers
-    Bind(restate.Reflect(ecscluster.NewECSClusterDriver(auth))).
-    Bind(restate.Reflect(ecstaskdef.NewECSTaskDefinitionDriver(auth))).
-    Bind(restate.Reflect(ecsservice.NewECSServiceDriver(auth)))
+    Bind(restate.Reflect(ecscluster.NewECSClusterDriver(auth), rp)).
+    Bind(restate.Reflect(ecstaskdef.NewECSTaskDefinitionDriver(auth), rp)).
+    Bind(restate.Reflect(ecsservice.NewECSServiceDriver(auth), rp))
 ```
 
 ---
@@ -255,7 +256,7 @@ praxis-compute:
   ports:
     - "9084:9080"
   environment:
-    - AWS_ENDPOINT_URL=http://localstack:4566
+    - AWS_ENDPOINT_URL=http://moto:4566
     - AWS_ACCESS_KEY_ID=test
     - AWS_SECRET_ACCESS_KEY=test
     - AWS_REGION=us-east-1
@@ -265,7 +266,7 @@ No new Docker Compose service is needed. All ECS drivers are discovered automati
 from the existing `praxis-compute` registration via Restate's reflection-based
 service discovery.
 
-**Note:** LocalStack's ECS support is limited. Integration tests should focus on API
+**Note:** Moto's ECS support is limited. Integration tests should focus on API
 shape validation. For full deployment lifecycle testing, consider using a real AWS
 account or moto-based mocks.
 

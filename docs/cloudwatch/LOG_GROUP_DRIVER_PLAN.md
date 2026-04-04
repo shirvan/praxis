@@ -158,7 +158,7 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/loggroup_adapter.go        — LogGroupAdapter implementing provider.Adapter
 ✦ internal/core/provider/loggroup_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/cloudwatch/log_group.cue              — CUE schema for LogGroup resource
-✦ tests/integration/loggroup_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/loggroup_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ internal/infra/awsclient/client.go                — Add NewCloudWatchLogsClient()
 ✎ cmd/praxis-monitoring/main.go                     — Bind LogGroup driver
 ✎ internal/core/provider/registry.go                — Add adapter to NewRegistry()
@@ -1102,7 +1102,7 @@ test-loggroup:    go test ./internal/drivers/loggroup/...    -v -count=1 -race
 
 ### Prerequisites
 
-- LocalStack with CloudWatch Logs support
+- Moto with CloudWatch Logs support
 - Restate dev server
 - praxis-monitoring pack running
 

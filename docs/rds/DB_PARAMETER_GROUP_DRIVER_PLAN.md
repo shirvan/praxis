@@ -682,7 +682,7 @@ Part of the `praxis-storage` service (port 9081). No additional configuration ne
 
 | Test | Description |
 |---|---|
-| `TestDBParameterGroup_Provision_DBType` | Creates a DB parameter group with 2 custom params. Verifies in LocalStack. |
+| `TestDBParameterGroup_Provision_DBType` | Creates a DB parameter group with 2 custom params. Verifies in Moto. |
 | `TestDBParameterGroup_Provision_ClusterType` | Creates a cluster parameter group. Verifies creation. |
 | `TestDBParameterGroup_Provision_Idempotent` | Provisions same spec twice. Same ARN returned. |
 | `TestDBParameterGroup_Provision_AddParameter` | Re-provisions with an additional parameter. Verifies it's set. |

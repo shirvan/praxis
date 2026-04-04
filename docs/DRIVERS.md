@@ -137,7 +137,7 @@ These can run concurrently and never block exclusive handlers.
 | `GetStatus` | `(ObjectSharedContext) → (StatusResponse, error)` | Return lifecycle status, mode, generation. |
 | `GetOutputs` | `(ObjectSharedContext) → (Outputs, error)` | Return resource outputs (ARN, endpoint, etc.). |
 
-The Restate SDK discovers handlers automatically via reflection (`restate.Reflect`) — there is no Go interface to implement.
+The Restate SDK discovers handlers automatically via reflection (`restate.Reflect`) — there is no Go interface to implement. All drivers are registered with `config.DefaultRetryPolicy()`, which bounds retries to 50 attempts with exponential backoff (100ms → 60s cap) and pauses the invocation on exhaustion.
 
 ---
 
@@ -239,6 +239,16 @@ flowchart TD
    - **Observed**: reports drift (sets `ReconcileResult.Drift = true`) but does not modify the resource
 
 4. Schedules the next timer.
+
+Operators can also trigger reconciliation on-demand via the CLI without waiting
+for the next timer cycle:
+
+```bash
+praxis reconcile S3Bucket/my-bucket
+praxis reconcile EC2Instance/us-east-1~web-server
+```
+
+See the [CLI reference](CLI.md#reconcile) for details.
 
 The plan diff engine (in Core) also respects `lifecycle.ignoreChanges` — field diffs matching ignored paths are filtered before presenting plan results. This filtering happens in the command handlers, not in drivers. Drivers always report full drift; the orchestrator decides what to act on.
 
@@ -379,7 +389,7 @@ Use for permanent failures: validation errors, conflicts, not-found during impor
 return fmt.Errorf("AWS API timeout: %w", err)
 ```
 
-Use for transient failures: throttling, timeouts, 5xx responses. Restate retries automatically with backoff.
+Use for transient failures: throttling, timeouts, 5xx responses. Restate retries automatically with exponential backoff, bounded by the default retry policy (50 attempts, 100ms → 60s cap). If all attempts are exhausted, the invocation **pauses** for operator inspection rather than retrying indefinitely.
 
 **Critical rule:** error classification MUST happen inside `restate.Run()` callbacks. If a `restate.Run()` callback returns a non-terminal error, Restate retries the entire callback. Terminal errors must be returned from inside the callback to signal that the failure is permanent.
 

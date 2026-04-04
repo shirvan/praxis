@@ -55,14 +55,14 @@ func createExternalTestAMI(t *testing.T, ec2Client *ec2sdk.Client) string {
 		SourceRegion:  aws.String("us-east-1"),
 	})
 	if err != nil {
-		t.Skipf("LocalStack AMI copy support unavailable: %v", err)
+		t.Skipf("Moto AMI copy support unavailable: %v", err)
 	}
 	imageID := aws.ToString(out.ImageId)
 	require.NotEmpty(t, imageID)
 
 	waiter := ec2sdk.NewImageAvailableWaiter(ec2Client)
 	if err := waiter.Wait(context.Background(), &ec2sdk.DescribeImagesInput{ImageIds: []string{imageID}}, 3*time.Minute); err != nil {
-		t.Skipf("LocalStack AMI availability waiter unsupported: %v", err)
+		t.Skipf("Moto AMI availability waiter unsupported: %v", err)
 	}
 	return imageID
 }
@@ -84,7 +84,7 @@ func TestAMIProvision_CopyImage(t *testing.T) {
 		Tags:       map[string]string{"Name": name, "env": "test"},
 	})
 	if err != nil {
-		t.Skipf("LocalStack AMI provision support unavailable: %v", err)
+		t.Skipf("Moto AMI provision support unavailable: %v", err)
 	}
 	require.NotEmpty(t, outputs.ImageId)
 	assert.Equal(t, name, outputs.Name)

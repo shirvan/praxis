@@ -96,12 +96,13 @@ func main() {
     cfg := config.Load()
     auth := authservice.NewAuthClient()
 
+    rp := config.DefaultRetryPolicy()
     srv := server.NewRestate().
-        Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth))).
-        Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth))).
-        Bind(restate.Reflect(iamuser.NewIAMUserDriver(auth))).
-        Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(auth))).
-        Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(auth)))
+        Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth), rp)).
+        Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth), rp)).
+        Bind(restate.Reflect(iamuser.NewIAMUserDriver(auth), rp)).
+        Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(auth), rp)).
+        Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(auth), rp))
 
     slog.Info("starting identity driver pack", "addr", cfg.ListenAddr)
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {

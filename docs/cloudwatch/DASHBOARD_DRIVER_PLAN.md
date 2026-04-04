@@ -143,7 +143,7 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/dashboard_adapter.go        — DashboardAdapter implementing provider.Adapter
 ✦ internal/core/provider/dashboard_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/cloudwatch/dashboard.cue               — CUE schema for Dashboard resource
-✦ tests/integration/dashboard_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/dashboard_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ internal/infra/awsclient/client.go                 — Uses existing NewCloudWatchClient()
 ✎ cmd/praxis-monitoring/main.go                      — Bind Dashboard driver
 ✎ internal/core/provider/registry.go                 — Add adapter to NewRegistry()
@@ -943,7 +943,7 @@ test-dashboard:    go test ./internal/drivers/dashboard/...    -v -count=1 -race
 
 ### Prerequisites
 
-- LocalStack with CloudWatch support
+- Moto with CloudWatch support
 - Restate dev server
 - praxis-monitoring pack running
 

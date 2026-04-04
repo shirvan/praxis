@@ -579,7 +579,7 @@ Add `NewTargetGroupAdapterWithAuth` to `internal/core/provider/registry.go`.
 
 ### Prerequisites
 
-- LocalStack with ELBv2 support
+- Moto with ELBv2 support
 - Pre-existing VPC
 
 ### Test Scenarios

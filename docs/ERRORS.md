@@ -17,10 +17,12 @@ Errors originate in drivers or command handlers and flow through Restate to the 
 ```text
 Driver / Handler
   │  restate.TerminalError(fmt.Errorf("message"), httpCode)
-  │  — OR — bare error (retryable, Restate will retry)
+  │  — OR — bare error (retryable, Restate will retry up to 50 times then pause)
   ▼
 Restate Runtime
   │  Wraps TerminalError into HTTP response with [httpCode] prefix
+  │  Retries bare errors per config.DefaultRetryPolicy() (50 attempts,
+  │  exponential backoff 100ms → 60s cap, pause on exhaustion)
   ▼
 Restate Ingress → HTTP response
   ▼
@@ -314,8 +316,9 @@ These per-driver classifiers handle the AWS service-specific error codes while t
 A throttled error passes through as retryable — the user never sees it:
 
 ```text
-# Restate retries automatically; no user-visible output.
-# Internally: awserr.IsThrottled(err) == true → bare error → retry with backoff
+# Restate retries automatically (up to 50 attempts); no user-visible output.
+# Internally: awserr.IsThrottled(err) == true → bare error → retry with backoff.
+# If retries are exhausted, the invocation pauses for operator inspection.
 ```
 
 An access-denied error becomes terminal:
@@ -344,7 +347,7 @@ Drivers classify errors into two categories. See [Drivers — Error Classificati
 return restate.TerminalError(fmt.Errorf("bucket is not empty"), 409)
 ```
 
-**Retryable errors** are retried automatically by Restate with backoff:
+**Retryable errors** are retried automatically by Restate with exponential backoff, bounded by the default retry policy (50 attempts, 100ms → 60s cap). If all attempts are exhausted, the invocation **pauses** so operators can inspect it via the Restate UI or CLI (`restate invocations list`) and resume after fixing the underlying issue:
 
 ```go
 return fmt.Errorf("AWS API timeout: %w", err)
@@ -362,7 +365,7 @@ All drivers use consistent HTTP status codes with `restate.TerminalError`:
 | Internal/unexpected errors | **500** | Should be rare — indicates a bug |
 | Capacity, quota, hard limit | **503** | AWS account limits reached; user must request quota increase |
 
-Throttling and transient rate-limit errors are **not** terminal — they are returned as bare errors so Restate retries them. Only hard quota limits that won't resolve on retry (e.g., `AddressLimitExceeded`, `TooManyBuckets`, `NetworkAclLimitExceeded`) use 503.
+Throttling and transient rate-limit errors are **not** terminal — they are returned as bare errors so Restate retries them (up to 50 attempts per the default retry policy; the invocation pauses if exhausted). Only hard quota limits that won't resolve on retry (e.g., `AddressLimitExceeded`, `TooManyBuckets`, `NetworkAclLimitExceeded`) use 503.
 
 #### Examples by status code
 

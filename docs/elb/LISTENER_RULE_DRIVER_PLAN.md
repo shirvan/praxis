@@ -641,7 +641,7 @@ Add `NewListenerRuleAdapterWithAuth` to `internal/core/provider/registry.go`.
 
 ### Prerequisites
 
-- LocalStack with ELBv2 support
+- Moto with ELBv2 support
 - Pre-existing ALB + Listener + Target Group
 
 ### Test Scenarios

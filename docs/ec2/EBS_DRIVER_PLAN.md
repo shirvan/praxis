@@ -150,7 +150,7 @@ internal/drivers/ebs/drift_test.go        — Unit tests for drift detection
 internal/core/provider/ebs_adapter.go     — EBSAdapter implementing provider.Adapter
 internal/core/provider/ebs_adapter_test.go — Unit tests for EBS adapter
 schemas/aws/ebs/ebs.cue                   — CUE schema for EBSVolume resource
-tests/integration/ebs_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+tests/integration/ebs_driver_test.go      — Integration tests (Testcontainers + Moto)
 cmd/praxis-storage/main.go               — Bind EBS driver in storage pack
 internal/core/provider/registry.go        — EBSAdapter registered in NewRegistry()
 ```
@@ -1130,9 +1130,9 @@ destructive and unrecoverable (unless snapshots exist). The Delete mode guard
    Waiting for the modification (up to several hours for large volumes) would
    block the Virtual Object key for too long.
 
-3. **LocalStack EBS compatibility scope:**
+3. **Moto EBS compatibility scope:**
    Integration tests cover: create, describe, delete, tag updates. `ModifyVolume`
-   may not be fully supported by LocalStack — volume type/size/IOPS changes are
+   may not be fully supported by Moto — volume type/size/IOPS changes are
    covered in unit tests with a mocked EBSAPI only.
 
 4. **Should Observed mode block both Reconcile corrections and Delete?**

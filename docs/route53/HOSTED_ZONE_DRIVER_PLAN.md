@@ -992,7 +992,7 @@ See [ROUTE53_DRIVER_PACK_OVERVIEW.md](ROUTE53_DRIVER_PACK_OVERVIEW.md) ยง7 and ย
 
 **File**: `tests/integration/route53_hosted_zone_driver_test.go`
 
-Uses Testcontainers + LocalStack. LocalStack supports Route 53 in the free tier.
+Uses Testcontainers + Moto. Moto supports Route 53 in the free tier.
 
 ### Test Scenarios
 

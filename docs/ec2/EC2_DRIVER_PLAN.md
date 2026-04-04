@@ -198,7 +198,7 @@ internal/drivers/ec2/drift_test.go      — Unit tests for drift detection
 internal/core/provider/ec2_adapter.go   — EC2Adapter implementing provider.Adapter
 internal/core/provider/ec2_adapter_test.go — Unit tests for EC2 adapter
 schemas/aws/ec2/ec2.cue                 — CUE schema for EC2Instance resource
-tests/integration/ec2_driver_test.go    — Integration tests (Testcontainers + LocalStack)
+tests/integration/ec2_driver_test.go    — Integration tests (Testcontainers + Moto)
 cmd/praxis-compute/main.go              — Compute driver pack entry point (EC2 bound here)
 cmd/praxis-compute/Dockerfile           — Multi-stage Docker build
 ```
@@ -2230,7 +2230,7 @@ Add a `praxis-compute` service block (the compute driver pack). This hosts the E
     depends_on:
       restate:
         condition: service_healthy
-      localstack:
+      moto:
         condition: service_healthy
     ports:
       - "9084:9080"
@@ -2391,7 +2391,7 @@ Test cases (follow `registry_test.go` patterns):
 
 **File**: `tests/integration/ec2_driver_test.go`
 
-These tests use Testcontainers (Restate) + LocalStack (EC2 emulation) — same pattern
+These tests use Testcontainers (Restate) + Moto (EC2 emulation) — same pattern
 as the S3 and SG integration tests.
 
 ### Setup Helper
@@ -2439,7 +2439,7 @@ func uniqueInstanceName(t *testing.T) string {
 ### Test Cases
 
 1. **TestEC2Provision_CreatesRealInstance** — Provisions an instance, verifies it appears in
-   DescribeInstances. Uses a LocalStack-compatible AMI ID (LocalStack typically accepts any AMI
+   DescribeInstances. Uses a Moto-compatible AMI ID (Moto typically accepts any AMI
    format — use `ami-12345678` for tests).
 
 2. **TestEC2Provision_Idempotent** — Two provisions with same spec, same outputs returned.
@@ -2453,9 +2453,9 @@ func uniqueInstanceName(t *testing.T) string {
 
 6. **TestEC2GetStatus_ReturnsReady** — Provisions, calls GetStatus, verifies Ready + ModeManaged.
 
-### LocalStack EC2 Compatibility Note
+### Moto EC2 Compatibility Note
 
-LocalStack's EC2 emulation is reasonably complete for basic instance operations:
+Moto's EC2 emulation is reasonably complete for basic instance operations:
 RunInstances, DescribeInstances, TerminateInstances, CreateTags, DescribeVolumes.
 Some advanced features (instance type modification, monitoring toggle) may behave
 differently. Integration tests should focus on the core CRUD lifecycle and tag drift.
@@ -2725,10 +2725,10 @@ AMI-family-agnostic. Tracked in FUTURE.md.
    guard (see Step 6, Delete Handler), but operators who explicitly import with
    `--mode managed` accept dual-control responsibility.
 
-3. **LocalStack EC2 integration test scope:**
+3. **Moto EC2 integration test scope:**
    Integration tests cover: create, idempotent re-provision, import, delete, and tag
    drift correction. `stop-modify-start` (instance type change) is covered in unit
-   tests with a mocked `EC2API` only — LocalStack's behaviour for this sequence is
+   tests with a mocked `EC2API` only — Moto's behaviour for this sequence is
    inconsistent enough to make integration coverage unreliable.
 
 4. **Should Observed mode mean read-only for both Reconcile and Delete?**

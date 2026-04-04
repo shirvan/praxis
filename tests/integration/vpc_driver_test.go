@@ -145,7 +145,7 @@ func TestVPCProvision_CreatesVPC(t *testing.T) {
 	assert.True(t, outputs.EnableDnsHostnames)
 	assert.True(t, outputs.EnableDnsSupport)
 
-	// Verify VPC exists in LocalStack
+	// Verify VPC exists in Moto
 	desc, err := ec2Client.DescribeVpcs(context.Background(), &ec2sdk.DescribeVpcsInput{
 		VpcIds: []string{outputs.VpcId},
 	})
@@ -187,7 +187,7 @@ func TestVPCImport_ExistingVPC(t *testing.T) {
 	client, ec2Client := setupVPCDriver(t)
 	cidr := uniqueCidr()
 
-	// Create VPC directly in LocalStack
+	// Create VPC directly in Moto
 	createOut, err := ec2Client.CreateVpc(context.Background(), &ec2sdk.CreateVpcInput{
 		CidrBlock: aws.String(cidr),
 	})
@@ -263,7 +263,7 @@ func TestVPCDelete_RemovesVPC(t *testing.T) {
 	_, err = ec2Client.DescribeVpcs(context.Background(), &ec2sdk.DescribeVpcsInput{
 		VpcIds: []string{out.VpcId},
 	})
-	require.Error(t, err, "VPC should be deleted from LocalStack")
+	require.Error(t, err, "VPC should be deleted from Moto")
 }
 
 func TestVPCGetStatus_ReturnsReady(t *testing.T) {

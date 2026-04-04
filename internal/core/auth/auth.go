@@ -19,10 +19,10 @@
 // (falling back to the default), and Resolve returns a fully-configured
 // aws.Config ready for use by any AWS service client.
 //
-// # LocalStack Support
+// # Moto Support
 //
 // When AWS_ENDPOINT_URL is set, all AWS API calls are redirected to that
-// endpoint. This is how Praxis integrates with LocalStack for local development
+// endpoint. This is how Praxis integrates with Moto for local development
 // and integration testing.
 package auth
 
@@ -59,7 +59,7 @@ type Account struct {
 	SecretAccessKey  string // For static credentials only.
 	RoleARN          string // For role-based credentials: the ARN to assume.
 	ExternalID       string // Optional external ID for STS AssumeRole (cross-account security).
-	EndpointURL      string // AWS endpoint override (e.g. LocalStack URL).
+	EndpointURL      string // AWS endpoint override (e.g. Moto URL).
 }
 
 // Registry maps account names to their configurations and resolves them to
@@ -125,7 +125,7 @@ func (r *Registry) Lookup(accountName string) (Account, error) {
 //   - "default" (or empty): uses the AWS SDK default credential chain, which
 //     checks env vars, shared config files, and IMDS in order.
 //
-// If EndpointURL is set on the account (e.g. for LocalStack), all AWS API
+// If EndpointURL is set on the account (e.g. for Moto), all AWS API
 // calls will be routed to that endpoint.
 func (r *Registry) Resolve(accountName string) (aws.Config, error) {
 	account, err := r.Lookup(accountName)
@@ -187,7 +187,7 @@ func (r *Registry) Resolve(accountName string) (aws.Config, error) {
 
 // applyEndpointOverride sets the BaseEndpoint on an AWS config if a non-empty
 // endpoint URL is provided. This redirects all AWS API calls to the given
-// endpoint — typically used for LocalStack during local dev and testing.
+// endpoint — typically used for Moto during local dev and testing.
 func applyEndpointOverride(cfg *aws.Config, endpoint string) {
 	if cfg == nil || strings.TrimSpace(endpoint) == "" {
 		return

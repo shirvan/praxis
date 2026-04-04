@@ -536,11 +536,11 @@ test-vpcpeering:
 7. **TestVPCPeeringReconcile_TagDrift** — Changes tags, reconcile corrects.
 8. **TestVPCPeeringGetStatus_ReturnsActive**.
 
-### LocalStack VPC Peering Compatibility Note
+### Moto VPC Peering Compatibility Note
 
-LocalStack (Pro) supports VPC peering connections including create, accept, describe,
-delete, and modify options. LocalStack Community may have limited support. Integration
-tests should verify LocalStack capabilities and skip unsupported operations.
+Moto (Pro) supports VPC peering connections including create, accept, describe,
+delete, and modify options. Moto Community may have limited support. Integration
+tests should verify Moto capabilities and skip unsupported operations.
 
 ---
 

@@ -903,9 +903,9 @@ test-lambda-permission-integration:
 | `TestLambdaPermission_Delete` | Add then remove, verify not in policy |
 | `TestLambdaPermission_Reconcile` | Add, externally remove, reconcile in managed mode |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports `AddPermission`, `RemovePermission`, and `GetPolicy`.
+- Moto supports `AddPermission`, `RemovePermission`, and `GetPolicy`.
 - Tests must create a Lambda function first (prerequisite) before adding permissions.
 - Use a minimal Lambda function with the Python runtime and a no-op handler.
 

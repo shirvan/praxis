@@ -132,7 +132,7 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/ecscluster_adapter.go        — ECSClusterAdapter implementing provider.Adapter
 ✦ internal/core/provider/ecscluster_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/ecs/cluster.cue                         — CUE schema for ECSCluster resource
-✦ tests/integration/ecscluster_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/ecscluster_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ internal/infra/awsclient/client.go                  — Add NewECSClient()
 ✎ cmd/praxis-compute/main.go                          — Bind ECSCluster driver
 ✎ internal/core/provider/registry.go                  — Add adapter to NewRegistry()
@@ -982,7 +982,7 @@ test-ecs-cluster-integration:
 
 **File**: `tests/integration/ecscluster_driver_test.go`
 
-Integration tests use Testcontainers (LocalStack) to exercise real AWS API calls.
+Integration tests use Testcontainers (Moto) to exercise real AWS API calls.
 
 ### Test Scenarios
 
@@ -992,7 +992,7 @@ Integration tests use Testcontainers (LocalStack) to exercise real AWS API calls
 4. **Import → Reconcile**: Import an existing cluster and verify observation.
 5. **Delete non-empty cluster**: Verify appropriate error when cluster has services.
 
-**LocalStack consideration**: ECS in LocalStack has limited fidelity. The integration
+**Moto consideration**: ECS in Moto has limited fidelity. The integration
 tests focus on API shape validation (correct parameters, error codes, response
 parsing) rather than full container orchestration behavior.
 

@@ -53,11 +53,11 @@ func TestS3Provision_CreatesRealBucket(t *testing.T) {
 	assert.Equal(t, bucket, outputs.BucketName)
 	assert.Contains(t, outputs.ARN, bucket)
 
-	// Verify bucket exists in LocalStack
+	// Verify bucket exists in Moto
 	_, err = s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{
 		Bucket: &bucket,
 	})
-	require.NoError(t, err, "bucket should exist in LocalStack")
+	require.NoError(t, err, "bucket should exist in Moto")
 }
 
 func TestS3Provision_Idempotent(t *testing.T) {
@@ -90,7 +90,7 @@ func TestS3Import_ExistingBucket(t *testing.T) {
 	client, s3Client := setupS3Driver(t)
 	bucket := uniqueBucket(t)
 
-	// Create bucket directly in LocalStack
+	// Create bucket directly in Moto
 	_, err := s3Client.CreateBucket(context.Background(), &s3sdk.CreateBucketInput{
 		Bucket: &bucket,
 	})
@@ -135,7 +135,7 @@ func TestS3Delete_RemovesBucket(t *testing.T) {
 	_, err = s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{
 		Bucket: &bucket,
 	})
-	require.Error(t, err, "bucket should be deleted from LocalStack")
+	require.Error(t, err, "bucket should be deleted from Moto")
 }
 
 func TestS3Delete_NonEmptyBucketFails(t *testing.T) {

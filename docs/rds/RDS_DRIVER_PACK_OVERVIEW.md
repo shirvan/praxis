@@ -92,12 +92,13 @@ in the `praxis-storage` pack. The relevant bindings:
 ```go
 auth := authservice.NewAuthClient()
 
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
     // ... other storage drivers ...
-    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
-    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
-    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
-    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth)))
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth), rp)).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth), rp)).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth), rp)).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth), rp))
 ```
 
 ### Port: 9081

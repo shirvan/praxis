@@ -443,9 +443,9 @@ test-igw:
 6. **TestIGWReconcile_TagDrift** — Changes tags, reconcile corrects.
 7. **TestIGWGetStatus_ReturnsReady** — Provisions, checks status.
 
-### LocalStack IGW Compatibility Note
+### Moto IGW Compatibility Note
 
-LocalStack supports CreateInternetGateway, DescribeInternetGateways,
+Moto supports CreateInternetGateway, DescribeInternetGateways,
 DeleteInternetGateway, AttachInternetGateway, DetachInternetGateway, and tag
 operations. IGW emulation is comprehensive.
 

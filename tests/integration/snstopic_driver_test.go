@@ -39,7 +39,7 @@ func TestSNSTopic_Provision(t *testing.T) {
 	assert.NotEmpty(t, outputs.TopicArn)
 	assert.Contains(t, outputs.TopicArn, topicName)
 
-	// Verify topic exists in LocalStack
+	// Verify topic exists in Moto
 	attrs, err := snsClient.GetTopicAttributes(context.Background(), &snssdk.GetTopicAttributesInput{
 		TopicArn: aws.String(outputs.TopicArn),
 	})
@@ -78,7 +78,7 @@ func TestSNSTopic_Import(t *testing.T) {
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 
-	// Create topic directly in LocalStack
+	// Create topic directly in Moto
 	created, err := snsClient.CreateTopic(context.Background(), &snssdk.CreateTopicInput{
 		Name: aws.String(topicName),
 	})
@@ -128,7 +128,7 @@ func TestSNSTopic_Delete(t *testing.T) {
 	_, err = snsClient.GetTopicAttributes(context.Background(), &snssdk.GetTopicAttributesInput{
 		TopicArn: aws.String(outputs.TopicArn),
 	})
-	require.Error(t, err, "topic should be deleted from LocalStack")
+	require.Error(t, err, "topic should be deleted from Moto")
 }
 
 func TestSNSTopic_Reconcile_DetectsDisplayNameDrift(t *testing.T) {

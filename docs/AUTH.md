@@ -39,7 +39,7 @@ The Auth Service supports three credential sources, resolved in the `resolveCred
 
 | Source | When Used | Caching | Refresh |
 |---|---|---|---|
-| `static` | Dev/test (LocalStack). Direct `AccessKeyID`/`SecretAccessKey` | Cached indefinitely (no expiry) | None |
+| `static` | Dev/test (Moto). Direct `AccessKeyID`/`SecretAccessKey` | Cached indefinitely (no expiry) | None |
 | `role` | Production, multi-account. STS AssumeRole with target role ARN | Cached until 5 min before expiry | Proactive refresh 10 min before expiry via durable timer |
 | `default` | Fallback. Delegates to the standard AWS SDK credential chain (env vars → shared config → IMDS/ECS task role) | Cached indefinitely (SDK manages its own refresh) | None (SDK-managed) |
 
@@ -149,7 +149,7 @@ curl -X POST http://restate:8080/AuthService/prod-us/Configure \
     }
   }'
 
-# Register a LocalStack account (static credentials)
+# Register a Moto account (static credentials)
 curl -X POST http://restate:8080/AuthService/local/Configure \
   -H 'content-type: application/json' \
   -d '{
@@ -158,7 +158,7 @@ curl -X POST http://restate:8080/AuthService/local/Configure \
       "credentialSource": "static",
       "accessKeyId": "test",
       "secretAccessKey": "test",
-      "endpointUrl": "http://localstack:4566"
+      "endpointUrl": "http://moto:4566"
     }
   }'
 ```
@@ -216,7 +216,7 @@ For local development and first-boot, the Auth Service falls back to environment
 | `PRAXIS_ACCOUNT_SECRET_ACCESS_KEY` | — | Static secret key |
 | `PRAXIS_ACCOUNT_ROLE_ARN` | — | STS role ARN |
 | `PRAXIS_ACCOUNT_EXTERNAL_ID` | — | STS external ID |
-| `AWS_ENDPOINT_URL` | — | Custom endpoint (LocalStack) |
+| `AWS_ENDPOINT_URL` | — | Custom endpoint (Moto) |
 
 The bootstrap config is loaded at startup in [cmd/praxis-core/main.go](../cmd/praxis-core/main.go) and passed to `NewAuthService()`.
 
@@ -306,9 +306,10 @@ Each driver pack binary creates an `AuthClient` and injects it into all drivers:
 ```go
 // cmd/praxis-identity/main.go
 auth := authservice.NewAuthClient()
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth))).
-    Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth))).
+    Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth), rp)).
+    Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth), rp)).
     // ...
 ```
 
@@ -318,11 +319,12 @@ The Core binary creates the `AuthClient` for its own components (provider regist
 // cmd/praxis-core/main.go
 bootstrap := authservice.LoadBootstrapFromEnv()
 authClient := authservice.NewAuthClient()
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(authservice.NewAuthService(bootstrap))).
-    Bind(restate.Reflect(workspace.WorkspaceService{})).
-    Bind(restate.Reflect(workspace.WorkspaceIndex{})).
-    Bind(restate.Reflect(command.NewPraxisCommandService(cfg, authClient, providers))).
+    Bind(restate.Reflect(authservice.NewAuthService(bootstrap), rp)).
+    Bind(restate.Reflect(workspace.WorkspaceService{}, rp)).
+    Bind(restate.Reflect(workspace.WorkspaceIndex{}, rp)).
+    Bind(restate.Reflect(command.NewPraxisCommandService(cfg, authClient, providers), rp)).
     // ...
 ```
 

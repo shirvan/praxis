@@ -109,7 +109,7 @@ All files below exist in the repository (✓ = implemented):
 ✓ cmd/praxis-network/Dockerfile            — Multi-stage Docker build
 ✓ docker-compose.yaml                      — (modified) praxis-network service on port 9082
 ✓ justfile                                 — (modified) network build/test/register targets
-✓ tests/integration/sg_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+✓ tests/integration/sg_driver_test.go      — Integration tests (Testcontainers + Moto)
 ```
 
 > **Note**: The CUE schema lives at `schemas/aws/ec2/sg.cue` (under the `ec2`
@@ -756,7 +756,7 @@ praxis-network:
     depends_on:
       restate:
         condition: service_healthy
-      localstack:
+      moto:
         condition: service_healthy
     ports:
       - "9082:9080"
@@ -765,7 +765,7 @@ praxis-network:
 ```
 
 Listens on container port 9080, mapped to host port 9082 (Storage is 9081, Core is 9083, Compute is 9084).
-Depends on both Restate and LocalStack being healthy.
+Depends on both Restate and Moto being healthy.
 
 ### Justfile Targets
 
@@ -833,27 +833,27 @@ Tests error classification:
 
 **File**: `tests/integration/sg_driver_test.go`
 
-Integration tests run against Testcontainers (Restate) + LocalStack (AWS). They
+Integration tests run against Testcontainers (Restate) + Moto (AWS). They
 use `restatetest.Start()` to spin up a real Restate environment with the SG driver
 registered. Each test gets a unique security group name via `uniqueSGName(t)` and
-uses the default VPC from LocalStack.
+uses the default VPC from Moto.
 
 ### Helper Functions
 
 - `uniqueSGName(t)`: Generates a test-unique SG name (sanitized test name + timestamp).
-- `setupSGDriver(t)`: Configures LocalStack account, creates Restate test env, returns
+- `setupSGDriver(t)`: Configures Moto account, creates Restate test env, returns
   ingress client and EC2 SDK client.
-- `getDefaultVpcId(t, ec2Client)`: Queries LocalStack for the default VPC ID.
+- `getDefaultVpcId(t, ec2Client)`: Queries Moto for the default VPC ID.
 
 ### Test Cases
 
 | Test | Description |
 |---|---|
-| `TestSGProvision_CreatesSecurityGroup` | Creates an SG with ingress/egress rules and tags. Verifies the group exists in LocalStack with the correct name. |
+| `TestSGProvision_CreatesSecurityGroup` | Creates an SG with ingress/egress rules and tags. Verifies the group exists in Moto with the correct name. |
 | `TestSGProvision_Idempotent` | Provisions the same spec twice on the same key. Verifies same GroupId is returned (no duplicate created). |
 | `TestSGImport_ExistingGroup` | Creates an SG directly via EC2 API, then imports it via the driver. Verifies the driver returns the correct GroupId. |
-| `TestSGDelete_RemovesGroup` | Provisions then deletes. Verifies the group is gone from LocalStack. |
-| `TestSGReconcile_DetectsDrift` | Provisions, then adds an extra rule directly via EC2 API. Triggers reconcile and verifies `Drift: true, Correcting: true`. Verifies the extra rule was removed from LocalStack. |
+| `TestSGDelete_RemovesGroup` | Provisions then deletes. Verifies the group is gone from Moto. |
+| `TestSGReconcile_DetectsDrift` | Provisions, then adds an extra rule directly via EC2 API. Triggers reconcile and verifies `Drift: true, Correcting: true`. Verifies the extra rule was removed from Moto. |
 | `TestSGGetStatus_ReturnsReady` | Provisions and checks `GetStatus` returns `Ready`, `Managed`, generation > 0. |
 
 ---
@@ -926,7 +926,7 @@ The GroupArn is synthesized locally as
 `arn:aws:ec2:{region}:000000000000:security-group/{groupId}` rather than fetched from
 AWS. AWS does not return the ARN directly from `CreateSecurityGroup` or
 `DescribeSecurityGroups`. The account number is hardcoded to `000000000000` for
-LocalStack compatibility; production would use the resolved account ID.
+Moto compatibility; production would use the resolved account ID.
 
 ### 8. Plan Uses FindSecurityGroup, Not GetOutputs
 

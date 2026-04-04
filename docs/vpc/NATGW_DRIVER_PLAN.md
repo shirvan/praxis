@@ -490,11 +490,11 @@ test-natgw:
 6. **TestNATGWReconcile_TagDrift** — Changes tags, reconcile corrects.
 7. **TestNATGWGetStatus_ReturnsReady**.
 
-### LocalStack NAT Gateway Compatibility Note
+### Moto NAT Gateway Compatibility Note
 
-LocalStack supports CreateNatGateway, DescribeNatGateways, DeleteNatGateway, and
+Moto supports CreateNatGateway, DescribeNatGateways, DeleteNatGateway, and
 tag operations. NAT Gateway state transitions (pending → available, deleting →
-deleted) may be instantaneous in LocalStack rather than taking minutes as in real
+deleted) may be instantaneous in Moto rather than taking minutes as in real
 AWS. Integration tests should account for this by using short wait timeouts.
 
 ---

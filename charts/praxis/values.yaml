@@ -51,7 +51,7 @@ restate:
 aws:
   # -- Default AWS region
   region: us-east-1
-  # -- AWS endpoint override (e.g. http://localstack:4566 for local development)
+  # -- AWS endpoint override (e.g. http://moto:4566 for local development)
   endpointUrl: ""
 
 # ---------------------------------------------------------------------------

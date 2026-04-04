@@ -73,7 +73,7 @@ func createTestSQSQueue(t *testing.T, name string) string {
 		QueueName: aws.String(name),
 	})
 	if err != nil {
-		t.Skipf("SQS not available in LocalStack: %v", err)
+		t.Skipf("SQS not available in Moto: %v", err)
 	}
 
 	attrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
@@ -113,7 +113,7 @@ func TestESMProvision_CreatesSQSMapping(t *testing.T) {
 	assert.NotEmpty(t, outputs.FunctionArn)
 	assert.Equal(t, int32(10), outputs.BatchSize)
 
-	// Verify mapping exists in LocalStack
+	// Verify mapping exists in Moto
 	desc, err := lambdaClient.GetEventSourceMapping(context.Background(), &lambdasdk.GetEventSourceMappingInput{
 		UUID: aws.String(outputs.UUID),
 	})

@@ -96,7 +96,7 @@ Praxis runs anywhere Restate runs — a single Docker Compose stack on your lapt
 
 ### Local Development
 
-The fastest way to try Praxis. Docker Compose brings up LocalStack (mock AWS), Restate, Praxis Core, and all driver packs.
+The fastest way to try Praxis. Docker Compose brings up Moto (mock AWS), Restate, Praxis Core, and all driver packs.
 
 #### Prerequisites
 
@@ -113,7 +113,7 @@ cd praxis
 # Create the operator environment file
 cp .env.example .env
 
-# Start LocalStack + Restate + Praxis Core + drivers, then register services
+# Start Moto + Restate + Praxis Core + drivers, then register services
 just up
 ```
 

@@ -38,7 +38,7 @@ func createIAMGroup(t *testing.T, iamClient *iamsdk.Client, groupName string) {
 	t.Helper()
 	_, err := iamClient.CreateGroup(context.Background(), &iamsdk.CreateGroupInput{GroupName: aws.String(groupName)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 }
@@ -48,7 +48,7 @@ func createManagedPolicy(t *testing.T, iamClient *iamsdk.Client, name string) st
 	doc := allowAllS3PolicyDoc()
 	out, err := iamClient.CreatePolicy(context.Background(), &iamsdk.CreatePolicyInput{PolicyName: aws.String(name), PolicyDocument: aws.String(doc)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 	return aws.ToString(out.Policy.Arn)
@@ -58,7 +58,7 @@ func createIAMUserDirect(t *testing.T, iamClient *iamsdk.Client, userName string
 	t.Helper()
 	_, err := iamClient.CreateUser(context.Background(), &iamsdk.CreateUserInput{UserName: aws.String(userName)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 }

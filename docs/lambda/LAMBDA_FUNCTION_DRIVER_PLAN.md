@@ -160,7 +160,7 @@ The following files comprise the Lambda Function driver:
 ✦ internal/core/provider/lambda_adapter.go        — LambdaFunctionAdapter implementing provider.Adapter
 ✦ internal/core/provider/lambda_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/lambda/function.cue                 — CUE schema for LambdaFunction resource
-✦ tests/integration/lambda_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/lambda_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ internal/infra/awsclient/client.go              — Add NewLambdaClient()
 ✎ cmd/praxis-compute/main.go                      — Bind LambdaFunction driver
 ✎ internal/core/provider/registry.go              — Add adapter to NewRegistry()
@@ -1211,7 +1211,7 @@ test-lambda-integration:
 
 **File**: `tests/integration/lambda_driver_test.go`
 
-Integration tests use Testcontainers to spin up LocalStack with Lambda support.
+Integration tests use Testcontainers to spin up Moto with Lambda support.
 
 ### Test Cases
 
@@ -1227,14 +1227,14 @@ Integration tests use Testcontainers to spin up LocalStack with Lambda support.
 | `TestLambdaFunction_Reconcile_DriftCorrection` | Create, externally modify, reconcile, verify correction |
 | `TestLambdaFunction_VpcAttachment` | Create function with VPC config, verify VPC state |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack Community Edition supports Lambda (including function creation,
+- Moto Community Edition supports Lambda (including function creation,
   invocation, and basic configuration). However, some features like layers,
   VPC attachment, and code signing have limited support.
 - Integration tests should tag functions with cleanup markers and use a test
   teardown to delete all test-created functions.
-- Lambda functions in LocalStack require a deployment package. Tests should use
+- Lambda functions in Moto require a deployment package. Tests should use
   a minimal ZIP file with a no-op handler.
 
 ---

@@ -86,11 +86,12 @@ alongside VPC, SG, EIP, subnet, and other network drivers.
 ```go
 auth := authservice.NewAuthClient()
 
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
     // ... other network drivers ...
-    Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth))).
-    Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth))).
-    Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth)))
+    Bind(restate.Reflect(route53zone.NewHostedZoneDriver(auth), rp)).
+    Bind(restate.Reflect(route53record.NewDNSRecordDriver(auth), rp)).
+    Bind(restate.Reflect(route53healthcheck.NewHealthCheckDriver(auth), rp))
 ```
 
 Constructor signature for all three drivers:

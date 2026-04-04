@@ -1005,7 +1005,7 @@ praxis-identity:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9085:9080"
@@ -1090,13 +1090,13 @@ Port 9085 (Storage: 9081, Network: 9082, Core: 9083, Compute: 9084, IAM: 9085).
 
 **File**: `tests/integration/iamrole_driver_test.go`
 
-Integration tests run against Testcontainers (Restate) + LocalStack (IAM).
+Integration tests run against Testcontainers (Restate) + Moto (IAM).
 
 ### Test Cases
 
 | Test | Description |
 |---|---|
-| `TestIAMRoleProvision_CreatesRole` | Creates a role with trust policy, inline policies, managed policy attachments, and tags. Verifies the role exists in LocalStack via `GetRole`. |
+| `TestIAMRoleProvision_CreatesRole` | Creates a role with trust policy, inline policies, managed policy attachments, and tags. Verifies the role exists in Moto via `GetRole`. |
 | `TestIAMRoleProvision_Idempotent` | Provisions the same spec twice on the same key. Verifies same ARN (no duplicate). |
 | `TestIAMRoleProvision_UpdateTrustPolicy` | Re-provisions with changed trust policy. Verifies the new policy is active. |
 | `TestIAMRoleProvision_AddInlinePolicy` | Re-provisions with an additional inline policy. Verifies both policies exist. |

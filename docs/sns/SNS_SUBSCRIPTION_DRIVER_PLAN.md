@@ -1342,7 +1342,7 @@ Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth)))
 ### Docker Compose
 
 No additional changes beyond what the SNS Topic driver requires. Both drivers share
-the praxis-storage container and the `sns` service in LocalStack.
+the praxis-storage container and the `sns` service in Moto.
 
 ### Justfile Additions
 
@@ -1432,15 +1432,15 @@ test-snssub-integration:
 | `TestSNSSubscription_Reconcile` | Create, externally change filter policy, reconcile in managed mode |
 | `TestSNSSubscription_IdempotentSubscribe` | Subscribe twice with same parameters, verify same ARN returned |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports SNS `Subscribe`, `Unsubscribe`, `GetSubscriptionAttributes`,
+- Moto supports SNS `Subscribe`, `Unsubscribe`, `GetSubscriptionAttributes`,
   `SetSubscriptionAttributes`, and `ListSubscriptionsByTopic`.
-- Lambda and SQS subscriptions are auto-confirmed in LocalStack.
-- HTTP/HTTPS subscription confirmation may behave differently in LocalStack
+- Lambda and SQS subscriptions are auto-confirmed in Moto.
+- HTTP/HTTPS subscription confirmation may behave differently in Moto
   (auto-confirmed or always pending, depending on version).
-- Filter policies and raw message delivery are supported in LocalStack.
-- Redrive policies require SQS to be available in LocalStack's `SERVICES` list.
+- Filter policies and raw message delivery are supported in Moto.
+- Redrive policies require SQS to be available in Moto's `SERVICES` list.
 
 ---
 

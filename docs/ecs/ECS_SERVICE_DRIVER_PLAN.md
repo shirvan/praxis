@@ -163,7 +163,7 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/ecsservice_adapter.go        — ECSServiceAdapter implementing provider.Adapter
 ✦ internal/core/provider/ecsservice_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/ecs/service.cue                         — CUE schema for ECSService resource
-✦ tests/integration/ecsservice_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/ecsservice_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ cmd/praxis-compute/main.go                          — Bind ECSService driver
 ✎ internal/core/provider/registry.go                  — Add adapter to NewRegistry()
 ✎ justfile                                            — Add ECS service test targets
@@ -1823,7 +1823,7 @@ test-ecs-service-integration:
 
 **File**: `tests/integration/ecsservice_driver_test.go`
 
-Integration tests use Testcontainers (LocalStack) to exercise real AWS API calls.
+Integration tests use Testcontainers (Moto) to exercise real AWS API calls.
 
 ### Test Scenarios
 
@@ -1877,11 +1877,11 @@ func setupECSStack(t *testing.T, client *ecs.Client) ecsStack {
 }
 ```
 
-**LocalStack limitation**: ECS in LocalStack has limited fidelity. Services will
+**Moto limitation**: ECS in Moto has limited fidelity. Services will
 be created but tasks will not actually run. Integration tests validate API shape
 (correct parameters, error codes, response parsing) and state transitions rather
 than full runtime behavior. The `runningCount` and `pendingCount` fields may not
-reflect a production-like state in LocalStack.
+reflect a production-like state in Moto.
 
 ### Cross-Driver Integration Test
 

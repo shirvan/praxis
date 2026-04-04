@@ -279,10 +279,11 @@ The runtime doesn't care about grouping. Restate routes by Virtual Object servic
 
 ```go
 // Each pack is a main.go that binds related drivers to one Restate server
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(vpc.NewVPCDriver(auth))).
-    Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth))).
-    Bind(restate.Reflect(subnet.NewSubnetDriver(auth)))
+    Bind(restate.Reflect(vpc.NewVPCDriver(auth), rp)).
+    Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth), rp)).
+    Bind(restate.Reflect(subnet.NewSubnetDriver(auth), rp))
 ```
 
 ### Why This Grouping Works

@@ -87,16 +87,17 @@ docker-compose.yaml header already identifies SNS as a future praxis-storage ser
 
 ```go
 // cmd/praxis-storage/main.go
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
-    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth))).
-    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
-    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
-    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
-    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth))).
+    Bind(restate.Reflect(s3.NewS3BucketDriver(auth), rp)).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth), rp)).
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth), rp)).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth), rp)).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth), rp)).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth), rp)).
     // SNS drivers
-    Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth))).
-    Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth)))
+    Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth), rp)).
+    Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth), rp))
 ```
 
 ---
@@ -187,7 +188,7 @@ SNS Topic (isolated) → SNS Subscription (uses SNS Topic)
 ## 6. Docker Compose Topology
 
 SNS drivers are hosted in the existing praxis-storage service. The only change
-required is adding `sns` to LocalStack's `SERVICES` list:
+required is adding `sns` to Moto's `SERVICES` list:
 
 ```yaml
 # praxis-storage hosts S3, EBS, and all SNS drivers
@@ -198,13 +199,13 @@ praxis-storage:
   ports:
     - "9081:9080"
   environment:
-    - AWS_ENDPOINT_URL=http://localstack:4566
+    - AWS_ENDPOINT_URL=http://moto:4566
     - AWS_ACCESS_KEY_ID=test
     - AWS_SECRET_ACCESS_KEY=test
     - AWS_REGION=us-east-1
 
-# LocalStack — add sns to SERVICES
-localstack:
+# Moto — add sns to SERVICES
+moto:
   environment:
     - SERVICES=s3,ssm,sts,ec2,iam,route53,sns
 ```
@@ -451,7 +452,7 @@ references.
 
 - [x] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
 - [x] `cmd/praxis-storage/main.go` — Bind both SNS drivers
-- [x] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
+- [x] `docker-compose.yaml` — Add `sns` to Moto SERVICES
 - [x] `justfile` — Add SNS test targets
 
 ### Documentation

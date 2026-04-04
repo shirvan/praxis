@@ -85,16 +85,17 @@ that lists SQS under praxis-storage.
 
 ```go
 // cmd/praxis-storage/main.go
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(s3.NewS3BucketDriver(auth))).
-    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth))).
-    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth))).
-    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth))).
-    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth))).
-    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth))).
+    Bind(restate.Reflect(s3.NewS3BucketDriver(auth), rp)).
+    Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth), rp)).
+    Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth), rp)).
+    Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth), rp)).
+    Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth), rp)).
+    Bind(restate.Reflect(auroracluster.NewAuroraClusterDriver(auth), rp)).
     // SQS drivers
-    Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth))).
-    Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth)))
+    Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth), rp)).
+    Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth), rp))
 ```
 
 ---
@@ -248,7 +249,7 @@ test-sqs-integration:
     go test ./tests/integration/ -run "TestSQSQueue|TestSQSQueuePolicy" \
             -v -count=1 -tags=integration -timeout=5m
 
-# Convenience: list queues in LocalStack
+# Convenience: list queues in Moto
 ls-sqs:
     aws --endpoint-url=http://localhost:4566 sqs list-queues --region us-east-1
 ```

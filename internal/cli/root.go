@@ -13,6 +13,7 @@
 //   - delete     — Tear down a deployment
 //   - list       — List active deployments
 //   - import     — Adopt an existing cloud resource
+//   - reconcile  — Trigger on-demand drift detection and correction
 //   - observe    — Watch deployment progress in real time
 //   - state      — Manage deployment state (mv)
 //   - concierge  — AI-powered infrastructure assistant
@@ -213,6 +214,7 @@ When the concierge is running, you can also talk to Praxis directly:
 		newDeleteCmd(flags),
 		newListCmd(flags),
 		newImportCmd(flags),
+		newReconcileCmd(flags),
 		newObserveCmd(flags),
 		newEventsCmd(flags),
 		newNotificationsCmd(flags),

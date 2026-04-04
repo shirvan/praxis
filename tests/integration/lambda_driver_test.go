@@ -99,7 +99,7 @@ func TestLambdaProvision_CreatesFunction(t *testing.T) {
 	assert.NotEmpty(t, outputs.FunctionArn)
 	assert.Contains(t, outputs.FunctionArn, name)
 
-	// Verify function exists in LocalStack
+	// Verify function exists in Moto
 	desc, err := lambdaClient.GetFunction(context.Background(), &lambdasdk.GetFunctionInput{
 		FunctionName: aws.String(name),
 	})
@@ -148,7 +148,7 @@ func TestLambdaProvision_UpdatesConfiguration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, name, out.FunctionName)
 
-	// Verify update in LocalStack
+	// Verify update in Moto
 	desc, err := lambdaClient.GetFunction(context.Background(), &lambdasdk.GetFunctionInput{
 		FunctionName: aws.String(name),
 	})
@@ -161,7 +161,7 @@ func TestLambdaImport_ExistingFunction(t *testing.T) {
 	client, lambdaClient := setupLambdaDriver(t)
 	name := uniqueFunctionName(t)
 
-	// Create function directly in LocalStack
+	// Create function directly in Moto
 	_, err := lambdaClient.CreateFunction(context.Background(), &lambdasdk.CreateFunctionInput{
 		FunctionName: aws.String(name),
 		Role:         aws.String(testLambdaRole),
@@ -209,7 +209,7 @@ func TestLambdaDelete_RemovesFunction(t *testing.T) {
 	_, err = lambdaClient.GetFunction(context.Background(), &lambdasdk.GetFunctionInput{
 		FunctionName: aws.String(name),
 	})
-	require.Error(t, err, "function should be deleted from LocalStack")
+	require.Error(t, err, "function should be deleted from Moto")
 }
 
 func TestLambdaGetStatus_ReturnsReady(t *testing.T) {

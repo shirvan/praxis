@@ -150,7 +150,7 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/metricalarm_adapter.go        — MetricAlarmAdapter implementing provider.Adapter
 ✦ internal/core/provider/metricalarm_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/cloudwatch/metric_alarm.cue              — CUE schema for MetricAlarm resource
-✦ tests/integration/metricalarm_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/metricalarm_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ internal/infra/awsclient/client.go                   — Add NewCloudWatchClient()
 ✎ cmd/praxis-monitoring/main.go                        — Bind MetricAlarm driver
 ✎ internal/core/provider/registry.go                   — Add adapter to NewRegistry()
@@ -1136,7 +1136,7 @@ test-metricalarm:    go test ./internal/drivers/metricalarm/...    -v -count=1 -
 
 ### Prerequisites
 
-- LocalStack with CloudWatch support
+- Moto with CloudWatch support
 - Restate dev server
 - praxis-monitoring pack running
 

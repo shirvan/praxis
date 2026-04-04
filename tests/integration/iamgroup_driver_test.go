@@ -39,7 +39,7 @@ func ensureIAMEnabledForGroupTests(t *testing.T, iamClient *iamsdk.Client) {
 	t.Helper()
 	_, err := iamClient.ListGroups(context.Background(), &iamsdk.ListGroupsInput{MaxItems: aws.Int32(1)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 }
@@ -48,7 +48,7 @@ func createIAMUserForGroup(t *testing.T, iamClient *iamsdk.Client, userName stri
 	t.Helper()
 	_, err := iamClient.CreateUser(context.Background(), &iamsdk.CreateUserInput{UserName: aws.String(userName)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 }
@@ -107,7 +107,7 @@ func TestIAMGroupImport_ExistingGroupDefaultsObserved(t *testing.T) {
 
 	_, err := iamClient.CreateGroup(context.Background(), &iamsdk.CreateGroupInput{GroupName: aws.String(groupName)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("LocalStack IAM service is not enabled; restart the local stack after the compose update")
+		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
 

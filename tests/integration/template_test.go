@@ -37,7 +37,7 @@ func localstackSSMClient(t *testing.T) *ssm.Client {
 func TestTemplate_SSMResolution_Integration(t *testing.T) {
 	ssmClient := localstackSSMClient(t)
 
-	// The LocalStack init script creates /praxis/dev/db-password with value "test-password-dev"
+	// The Moto init script creates /praxis/dev/db-password with value "test-password-dev"
 	r := resolver.NewSSMResolver(ssmClient)
 
 	specs := map[string]json.RawMessage{

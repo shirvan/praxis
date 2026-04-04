@@ -82,7 +82,7 @@ func TestECRLifecyclePolicy_Provision(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, repoName, outputs.RepositoryName)
 
-	// Verify lifecycle policy exists in LocalStack
+	// Verify lifecycle policy exists in Moto
 	pol, err := ecrClient.GetLifecyclePolicy(context.Background(), &ecrsdk.GetLifecyclePolicyInput{
 		RepositoryName: aws.String(repoName),
 	})

@@ -801,7 +801,7 @@ to the justfile.
 
 **File**: `tests/integration/ami_driver_test.go`
 
-Integration tests require LocalStack with EC2/AMI support. Note: LocalStack's AMI
+Integration tests require Moto with EC2/AMI support. Note: Moto's AMI
 support may be limited — some tests may need to be conditional.
 
 1. **TestAMIProvision_RegisterFromSnapshot** — Creates a snapshot, registers an AMI,

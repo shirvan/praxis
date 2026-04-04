@@ -139,7 +139,7 @@ natural conflict detection.
 ✎ internal/infra/awsclient/client.go                      — Add NewSNSClient factory
 ✎ cmd/praxis-storage/main.go                              — Bind SNSTopic driver
 ✎ internal/core/provider/registry.go                      — Add NewSNSTopicAdapter to NewRegistry()
-✎ docker-compose.yaml                                     — Add sns to LocalStack SERVICES
+✎ docker-compose.yaml                                     — Add sns to Moto SERVICES
 ✎ justfile                                                — Add SNS build/test targets
 ```
 
@@ -1248,7 +1248,7 @@ Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth)))
 
 **File**: `docker-compose.yaml` — **MODIFY**
 
-Add `sns` to LocalStack's `SERVICES` environment variable:
+Add `sns` to Moto's `SERVICES` environment variable:
 
 ```yaml
 - SERVICES=s3,ssm,sts,ec2,iam,route53,sns
@@ -1331,15 +1331,15 @@ test-snstopic-integration:
 | `TestSNSTopic_Reconcile` | Create, externally change display name, reconcile in managed mode |
 | `TestSNSTopic_EncryptionRoundTrip` | Create with KMS key, verify encryption, remove encryption |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports full SNS topic lifecycle (`CreateTopic`, `DeleteTopic`,
+- Moto supports full SNS topic lifecycle (`CreateTopic`, `DeleteTopic`,
   `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`,
   `ListTagsForResource`).
-- FIFO topics are supported in LocalStack.
-- KMS encryption may have limited fidelity in LocalStack — integration tests should
+- FIFO topics are supported in Moto.
+- KMS encryption may have limited fidelity in Moto — integration tests should
   verify attribute storage without relying on actual encryption.
-- SNS must be added to the `SERVICES` list in LocalStack.
+- SNS must be added to the `SERVICES` list in Moto.
 
 ---
 
@@ -1457,5 +1457,5 @@ ownership.
 - [x] `internal/infra/awsclient/client.go` — Add `NewSNSClient()`
 - [x] `cmd/praxis-storage/main.go` — Bind driver
 - [x] `internal/core/provider/registry.go` — Register adapter
-- [x] `docker-compose.yaml` — Add `sns` to LocalStack SERVICES
+- [x] `docker-compose.yaml` — Add `sns` to Moto SERVICES
 - [x] `justfile` — Add test targets

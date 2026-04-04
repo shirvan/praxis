@@ -52,7 +52,7 @@ func defaultSubnetAndAZ(t *testing.T, ec2Client *ec2sdk.Client) (string, string)
 		Filters: []ec2types.Filter{{Name: aws.String("default-for-az"), Values: []string{"true"}}},
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, out.Subnets, "LocalStack should have a default subnet")
+	require.NotEmpty(t, out.Subnets, "Moto should have a default subnet")
 	return aws.ToString(out.Subnets[0].SubnetId), aws.ToString(out.Subnets[0].AvailabilityZone)
 }
 
@@ -160,7 +160,7 @@ func TestEBSDelete_RemovesVolume(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = ec2Client.DescribeVolumes(context.Background(), &ec2sdk.DescribeVolumesInput{VolumeIds: []string{out.VolumeId}})
-	require.Error(t, err, "volume should be deleted from LocalStack")
+	require.Error(t, err, "volume should be deleted from Moto")
 }
 
 func TestEBSDelete_AttachedVolumeFails(t *testing.T) {
@@ -198,7 +198,7 @@ func TestEBSDelete_AttachedVolumeFails(t *testing.T) {
 		VolumeId:   aws.String(vol.VolumeId),
 	})
 	if err != nil {
-		t.Skipf("LocalStack volume attachment not supported here: %v", err)
+		t.Skipf("Moto volume attachment not supported here: %v", err)
 	}
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, "EBSVolume", key, "Delete").Request(t.Context(), restate.Void{})

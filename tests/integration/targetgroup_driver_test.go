@@ -50,15 +50,15 @@ func setupTargetGroupDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *e
 	return env.Ingress(), elbClient, ec2Client
 }
 
-// skipIfELBv2Unavailable skips the test when LocalStack's ELBv2 service is not
-// available (requires a paid license in LocalStack v4+).
+// skipIfELBv2Unavailable skips the test when the ELBv2 service is not
+// reachable (e.g., mock server not running).
 func skipIfELBv2Unavailable(t *testing.T) {
 	t.Helper()
 	awsCfg := localstackAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	_, err := elbClient.DescribeTargetGroups(context.Background(), &elbv2sdk.DescribeTargetGroupsInput{})
-	if err != nil && strings.Contains(err.Error(), "not included within your LocalStack license") {
-		t.Skip("ELBv2 service not available in this LocalStack edition — skipping")
+	if err != nil {
+		t.Skipf("ELBv2 service not available — skipping: %v", err)
 	}
 }
 
@@ -70,7 +70,7 @@ func tgDefaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
 		},
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, out.Vpcs, "LocalStack should have a default VPC")
+	require.NotEmpty(t, out.Vpcs, "Moto should have a default VPC")
 	return aws.ToString(out.Vpcs[0].VpcId)
 }
 

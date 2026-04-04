@@ -344,11 +344,11 @@ just ci
 ```mermaid
 graph TD
     subgraph L3["Layer 3: End-to-End Tests"]
-        E2E["Full deployment lifecycle<br/>Testcontainers: Restate + LocalStack"]
+        E2E["Full deployment lifecycle<br/>Testcontainers: Restate + Moto"]
     end
 
     subgraph L2["Layer 2: Driver Integration Tests"]
-        DIT["Driver CRUD against LocalStack<br/>Testcontainers: LocalStack only"]
+        DIT["Driver CRUD against Moto<br/>Testcontainers: Moto only"]
     end
 
     subgraph L1["Layer 1: Unit Tests (Pure Logic)"]
@@ -460,7 +460,7 @@ Every driver package has 3 test files covering the core patterns:
 
 #### Layer 2: Driver Integration Tests
 
-Driver CRUD operations tested against LocalStack via Testcontainers. No real AWS required. Each driver integration test covers the full lifecycle:
+Driver CRUD operations tested against Moto via Testcontainers. No real AWS required. Each driver integration test covers the full lifecycle:
 
 - **Provision** — Create resource, verify outputs (ARN, ID, etc.)
 - **Idempotent provision** — Re-provision same resource, verify convergence
@@ -524,7 +524,7 @@ Driver CRUD operations tested against LocalStack via Testcontainers. No real AWS
 
 #### Layer 3: End-to-End Tests
 
-Full deployment lifecycle through the Restate command service and orchestrator. Testcontainers (Restate + LocalStack).
+Full deployment lifecycle through the Restate command service and orchestrator. Testcontainers (Restate + Moto).
 
 ##### Workflow Scenarios Covered
 
@@ -646,7 +646,7 @@ flowchart TD
 ```
 
 1. Create `internal/drivers/<kind>/` with types, aws wrapper, drift detection, and driver
-2. Add the driver to the appropriate domain pack entry point (e.g., add a VPC driver to `cmd/praxis-network/main.go` via an additional `.Bind()` call)
+2. Add the driver to the appropriate domain pack entry point (e.g., add a VPC driver to `cmd/praxis-network/main.go` via an additional `.Bind()` call). The `config.DefaultRetryPolicy()` is already applied to all `restate.Reflect()` calls in every pack, so your new driver inherits the bounded retry policy (50 attempts, exponential backoff, pause on exhaustion) automatically.
 3. Create CUE schema in `schemas/aws/<service>/<kind>.cue`
 4. Add provider adapter in `internal/core/provider/` (adapter + registry entry + key scope)
 5. Update `docker-compose.yaml` registration if the driver pack is new

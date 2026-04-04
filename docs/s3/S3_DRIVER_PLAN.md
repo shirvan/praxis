@@ -107,7 +107,7 @@ All files below exist in the repository (✓ = implemented):
 ✓ cmd/praxis-storage/Dockerfile            — Multi-stage Docker build
 ✓ docker-compose.yaml                      — (modified) praxis-storage service on port 9081
 ✓ justfile                                 — (modified) storage build/test/register targets
-✓ tests/integration/s3_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+✓ tests/integration/s3_driver_test.go      — Integration tests (Testcontainers + Moto)
 ```
 
 ---
@@ -707,7 +707,7 @@ praxis-storage:
     depends_on:
       restate:
         condition: service_healthy
-      localstack:
+      moto:
         condition: service_healthy
     ports:
       - "9081:9080"
@@ -716,7 +716,7 @@ praxis-storage:
 ```
 
 Listens on container port 9080, mapped to host port 9081 (the first driver pack port;
-Network is 9082, Core is 9083, Compute is 9084). Depends on both Restate and LocalStack being healthy.
+Network is 9082, Core is 9083, Compute is 9084). Depends on both Restate and Moto being healthy.
 
 ### Justfile Targets
 
@@ -729,7 +729,7 @@ Network is 9082, Core is 9083, Compute is 9084). Depends on both Restate and Loc
 | `register` (shared) | Registers storage pack with Restate at `http://praxis-storage:9080` |
 | `up` (shared) | `docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute` |
 
-> **Note**: `ls-s3` is a convenience target that lists buckets in LocalStack directly
+> **Note**: `ls-s3` is a convenience target that lists buckets in Moto directly
 > — useful for debugging integration tests.
 
 ---
@@ -781,7 +781,7 @@ Tests error classification:
 
 **File**: `tests/integration/s3_driver_test.go`
 
-Integration tests run against Testcontainers (Restate) + LocalStack (AWS). They
+Integration tests run against Testcontainers (Restate) + Moto (AWS). They
 use `restatetest.Start()` to spin up a real Restate environment with the S3 driver
 registered. Each test gets a unique bucket name via `uniqueBucket(t)`.
 
@@ -790,19 +790,19 @@ registered. Each test gets a unique bucket name via `uniqueBucket(t)`.
 - `uniqueBucket(t)`: Generates a test-unique bucket name (sanitized + lowercased
   test name + timestamp). Ensures S3 naming rules (max 63 chars, lowercase, no
   underscores).
-- `setupS3Driver(t)`: Configures LocalStack account, creates Restate test env,
+- `setupS3Driver(t)`: Configures Moto account, creates Restate test env,
   returns ingress client and S3 SDK client.
 
 ### Test Cases
 
 | Test | Description |
 |---|---|
-| `TestS3Provision_CreatesRealBucket` | Creates a bucket with versioning, encryption, and tags. Verifies the bucket exists in LocalStack via `HeadBucket`. |
+| `TestS3Provision_CreatesRealBucket` | Creates a bucket with versioning, encryption, and tags. Verifies the bucket exists in Moto via `HeadBucket`. |
 | `TestS3Provision_Idempotent` | Provisions the same spec twice on the same key. Verifies same bucket name is returned (no error on second call). |
 | `TestS3Import_ExistingBucket` | Creates a bucket directly via S3 API, then imports it via the driver. Verifies correct outputs. |
-| `TestS3Delete_RemovesBucket` | Provisions then deletes. Verifies bucket is gone from LocalStack. |
+| `TestS3Delete_RemovesBucket` | Provisions then deletes. Verifies bucket is gone from Moto. |
 | `TestS3Delete_NonEmptyBucketFails` | Provisions, uploads an object directly, then attempts delete. Verifies terminal error (409) is returned. |
-| `TestS3Reconcile_DetectsAndFixesDrift` | Provisions with versioning enabled, then suspends versioning directly via S3 API. Triggers reconcile, verifies `Drift: true, Correcting: true`. Verifies versioning was re-enabled in LocalStack. |
+| `TestS3Reconcile_DetectsAndFixesDrift` | Provisions with versioning enabled, then suspends versioning directly via S3 API. Triggers reconcile, verifies `Drift: true, Correcting: true`. Verifies versioning was re-enabled in Moto. |
 | `TestS3GetStatus_ReturnsReady` | Provisions and checks `GetStatus` returns `Ready`, `Managed`, generation > 0. |
 
 ---

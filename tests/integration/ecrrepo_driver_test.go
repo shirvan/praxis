@@ -43,7 +43,7 @@ func TestECRRepository_Provision(t *testing.T) {
 	assert.NotEmpty(t, outputs.RepositoryArn)
 	assert.NotEmpty(t, outputs.RepositoryUri)
 
-	// Verify repository exists in LocalStack
+	// Verify repository exists in Moto
 	desc, err := ecrClient.DescribeRepositories(context.Background(), &ecrsdk.DescribeRepositoriesInput{
 		RepositoryNames: []string{repoName},
 	})
@@ -84,7 +84,7 @@ func TestECRRepository_Import(t *testing.T) {
 	client, ecrClient := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 
-	// Create repository directly in LocalStack
+	// Create repository directly in Moto
 	_, err := ecrClient.CreateRepository(context.Background(), &ecrsdk.CreateRepositoryInput{
 		RepositoryName: aws.String(repoName),
 	})
@@ -134,7 +134,7 @@ func TestECRRepository_Delete(t *testing.T) {
 	_, err = ecrClient.DescribeRepositories(context.Background(), &ecrsdk.DescribeRepositoriesInput{
 		RepositoryNames: []string{repoName},
 	})
-	require.Error(t, err, "repository should be deleted from LocalStack")
+	require.Error(t, err, "repository should be deleted from Moto")
 }
 
 func TestECRRepository_Reconcile_DetectsScanningDrift(t *testing.T) {

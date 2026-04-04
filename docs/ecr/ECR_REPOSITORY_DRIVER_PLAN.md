@@ -139,11 +139,11 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/drivers/ecrrepo/drift_test.go                   — Unit tests for drift detection
 ✦ internal/core/provider/ecrrepository_adapter.go          — ECRRepositoryAdapter implementing provider.Adapter
 ✦ internal/core/provider/ecrrepository_adapter_test.go     — Adapter unit tests
-✦ tests/integration/ecr_repository_driver_test.go          — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/ecr_repository_driver_test.go          — Integration tests (Testcontainers + Moto)
 ✎ internal/infra/awsclient/client.go                       — Add NewECRClient() factory
 ✎ cmd/praxis-compute/main.go                               — Bind ECRRepository driver
 ✎ internal/core/provider/registry.go                       — Add NewECRRepositoryAdapter() to NewRegistry()
-✎ docker-compose.yaml                                      — Add ecr to LocalStack SERVICES
+✎ docker-compose.yaml                                      — Add ecr to Moto SERVICES
 ✎ justfile                                                 — Add ECR build/test targets
 ```
 
@@ -1042,7 +1042,7 @@ srv := server.NewRestate().
 
 ### docker-compose.yaml
 
-Add `ecr` to LocalStack SERVICES:
+Add `ecr` to Moto SERVICES:
 
 ```yaml
 environment:
@@ -1117,7 +1117,7 @@ TestJSONEqual_Different              — different policy documents → not equa
 ```go
 func TestECRRepository_FullLifecycle(t *testing.T) {
     // 1. Provision a new repository
-    // 2. Verify it exists in LocalStack ECR
+    // 2. Verify it exists in Moto ECR
     // 3. Check outputs: repositoryArn, repositoryName, repositoryUri, registryId
     // 4. Provision again (idempotency check)
     // 5. Update imageTagMutability (drift convergence)
@@ -1209,5 +1209,5 @@ supporting cross-installation ownership lookups.
 - [x] Entry point bind (`cmd/praxis-compute/main.go`)
 - [x] AWS client factory (`internal/infra/awsclient/client.go`)
 - [x] Integration tests (`tests/integration/ecr_repository_driver_test.go`)
-- [x] LocalStack SERVICES includes `ecr` (`docker-compose.yaml`)
+- [x] Moto SERVICES includes `ecr` (`docker-compose.yaml`)
 - [x] Justfile targets

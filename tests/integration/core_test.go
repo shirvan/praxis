@@ -4,14 +4,14 @@
 //
 // These tests verify the full vertical stack:
 //
-//	CLI payload → PraxisCommandService → DeploymentWorkflow → Typed Drivers → LocalStack
+//	CLI payload → PraxisCommandService → DeploymentWorkflow → Typed Drivers → Moto
 //
 // Each test starts a full in-process Restate environment using Testcontainers
 // with every service bound (command service, workflows, read models, and both
-// S3 and SG drivers). LocalStack provides mock AWS APIs.
+// S3 and SG drivers). Moto provides mock AWS APIs.
 //
 // These tests deliberately exercise the real Restate runtime, real durable
-// execution, and real AWS SDK calls against LocalStack — no mocks at the
+// execution, and real AWS SDK calls against Moto — no mocks at the
 // service boundary.
 //
 // Run with:
@@ -20,7 +20,7 @@
 //	go test ./tests/integration/ -run TestCore -v -count=1 -tags=integration -timeout=10m
 //
 // Prerequisites:
-//   - Docker must be running (Testcontainers starts Restate and LocalStack)
+//   - Docker must be running (Testcontainers starts Restate and Moto)
 package integration
 
 import (
@@ -73,11 +73,11 @@ type coreTestEnv struct {
 	// workflow handlers exactly as the CLI would.
 	ingress *ingress.Client
 
-	// s3Client is a raw AWS S3 SDK client pointing at LocalStack.
+	// s3Client is a raw AWS S3 SDK client pointing at Moto.
 	// Tests use it to verify provisioned resources and clean up after.
 	s3Client *s3sdk.Client
 
-	// ec2Client is a raw AWS EC2 SDK client pointing at LocalStack.
+	// ec2Client is a raw AWS EC2 SDK client pointing at Moto.
 	// Tests use it to verify SecurityGroup resources and to resolve the
 	// default VPC ID.
 	ec2Client *ec2sdk.Client
@@ -85,7 +85,7 @@ type coreTestEnv struct {
 
 // setupCoreStack boots the entire in-process Praxis stack:
 //
-//  1. Builds a LocalStack-backed AWS config (same pattern as existing driver
+//  1. Builds a Moto-backed AWS config (same pattern as existing driver
 //     integration tests).
 //  2. Instantiates the S3, EC2, and SG drivers.
 //  3. Constructs the provider adapter registry with live AWS describe APIs.
@@ -100,7 +100,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	t.Helper()
 	configureLocalAccount(t)
 
-	// --- AWS clients pointing at LocalStack ---
+	// --- AWS clients pointing at Moto ---
 	awsCfg := localstackAWSConfig(t)
 	s3Client := awsclient.NewS3Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
@@ -186,7 +186,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	}
 }
 
-// defaultVpcId returns the default VPC ID from LocalStack. SecurityGroup tests
+// defaultVpcId returns the default VPC ID from Moto. SecurityGroup tests
 // need the real VPC ID because the EC2 API rejects unknown vpc-ids.
 func defaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
 	t.Helper()
@@ -196,7 +196,7 @@ func defaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
 		},
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, out.Vpcs, "LocalStack should have a default VPC")
+	require.NotEmpty(t, out.Vpcs, "Moto should have a default VPC")
 	return aws.ToString(out.Vpcs[0].VpcId)
 }
 
@@ -550,7 +550,7 @@ resources: {
 //  1. Submit a CUE template with one S3 bucket to PraxisCommandService.Apply
 //  2. Verify the immediate response returns a deployment key in Pending status
 //  3. Poll DeploymentState until the deployment reaches Complete
-//  4. Verify the S3 bucket was actually created in LocalStack
+//  4. Verify the S3 bucket was actually created in Moto
 //  5. Verify the deployment state contains the correct resource outputs
 //  6. Verify the deployment appears in the global listing index
 func TestCore_Apply_SingleS3(t *testing.T) {
@@ -590,14 +590,14 @@ func TestCore_Apply_SingleS3(t *testing.T) {
 	assert.Equal(t, types.DeploymentComplete, state.Status,
 		"deployment should reach Complete — a single S3 bucket with no deps")
 
-	// --- Step 4: Verify the bucket exists in LocalStack ---
+	// --- Step 4: Verify the bucket exists in Moto ---
 	//
-	// This confirms the driver actually talked to AWS (LocalStack) and
+	// This confirms the driver actually talked to AWS (Moto) and
 	// created the resource, not just journaled a no-op.
 	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{
 		Bucket: &bucketName,
 	})
-	require.NoError(t, err, "S3 bucket %q should exist in LocalStack after apply", bucketName)
+	require.NoError(t, err, "S3 bucket %q should exist in Moto after apply", bucketName)
 
 	// --- Step 5: Verify resource outputs in deployment state ---
 	//
@@ -634,7 +634,7 @@ func TestCore_Apply_SingleS3(t *testing.T) {
 //
 //  1. Submit a CUE template to PraxisCommandService.Plan (no provisioning)
 //  2. Verify it returns a plan with "1 to create" for a new resource
-//  3. Verify that no S3 bucket was actually created in LocalStack
+//  3. Verify that no S3 bucket was actually created in Moto
 func TestCore_Plan_ShowsDiff(t *testing.T) {
 	env := setupCoreStack(t)
 	bucketName := uniqueName(t, "plan")
@@ -680,7 +680,7 @@ func TestCore_Plan_ShowsDiff(t *testing.T) {
 //  2. Verify the bucket exists
 //  3. Submit a DeleteDeployment request
 //  4. Poll until the deployment reaches Deleted status
-//  5. Verify the S3 bucket was actually deleted from LocalStack
+//  5. Verify the S3 bucket was actually deleted from Moto
 //  6. Verify the deployment was removed from the listing index
 func TestCore_Delete_ReverseOrder(t *testing.T) {
 	env := setupCoreStack(t)
@@ -732,11 +732,11 @@ func TestCore_Delete_ReverseOrder(t *testing.T) {
 	assert.Equal(t, types.DeploymentDeleted, state.Status,
 		"deployment should reach Deleted status")
 
-	// --- Step 5: Verify bucket is gone from LocalStack ---
+	// --- Step 5: Verify bucket is gone from Moto ---
 	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{
 		Bucket: &bucketName,
 	})
-	require.Error(t, err, "bucket should be deleted from LocalStack")
+	require.Error(t, err, "bucket should be deleted from Moto")
 
 	// --- Step 6: Verify removal from listing index ---
 	//
@@ -752,7 +752,7 @@ func TestCore_Delete_ReverseOrder(t *testing.T) {
 //     tags reference the SG's outputs via expressions
 //  2. Verify the workflow dispatches the SG first (it has no deps)
 //  3. Verify the bucket is dispatched second (it depends on the SG)
-//  4. Verify both resources exist in LocalStack
+//  4. Verify both resources exist in Moto
 //  5. Verify the bucket's tags contain the actual SG group ID (expression hydration)
 //  6. Verify outputs for both resources are recorded in deployment state
 func TestCore_Apply_MultiResource_WithDependencies(t *testing.T) {
@@ -807,7 +807,7 @@ func TestCore_Apply_MultiResource_WithDependencies(t *testing.T) {
 	sgDesc, err := env.ec2Client.DescribeSecurityGroups(context.Background(), &ec2sdk.DescribeSecurityGroupsInput{
 		GroupIds: []string{sgGroupId},
 	})
-	require.NoError(t, err, "SG should exist in LocalStack")
+	require.NoError(t, err, "SG should exist in Moto")
 	require.Len(t, sgDesc.SecurityGroups, 1)
 
 	// --- Step 5: Verify expression hydration in bucket tags ---
@@ -1800,12 +1800,12 @@ func TestCore_GetDeploymentDetail(t *testing.T) {
 }
 
 // TestCore_Import_S3 verifies the Import command for an S3 bucket that was
-// created outside of Praxis (directly in LocalStack).
+// created outside of Praxis (directly in Moto).
 func TestCore_Import_S3(t *testing.T) {
 	env := setupCoreStack(t)
 	bucketName := uniqueName(t, "imp")
 
-	// Create bucket directly in LocalStack (simulating a pre-existing resource)
+	// Create bucket directly in Moto (simulating a pre-existing resource)
 	_, err := env.s3Client.CreateBucket(context.Background(), &s3sdk.CreateBucketInput{
 		Bucket: &bucketName,
 	})
@@ -1882,7 +1882,7 @@ func TestCore_Delete_MultiResource(t *testing.T) {
 	assert.Equal(t, types.DeploymentDeleted, deleteState.Status,
 		"multi-resource deployment should be fully deleted")
 
-	// --- Verify resources are gone from LocalStack ---
+	// --- Verify resources are gone from Moto ---
 	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{
 		Bucket: &bucketName,
 	})

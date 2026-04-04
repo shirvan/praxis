@@ -108,10 +108,11 @@ import (
 func main() {
     cfg := config.Load()
 
+    rp := config.DefaultRetryPolicy()
     srv := server.NewRestate().
-        Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth))).
-        Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth))).
-        Bind(restate.Reflect(dashboard.NewDashboardDriver(auth)))
+        Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth), rp)).
+        Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth), rp)).
+        Bind(restate.Reflect(dashboard.NewDashboardDriver(auth), rp))
 
     if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
         slog.Error("praxis-monitoring exited unexpectedly", "err", err.Error())
@@ -303,7 +304,7 @@ go mod tidy
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9086:9080"

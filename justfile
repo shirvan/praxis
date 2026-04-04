@@ -37,12 +37,12 @@ wait-stack:
     #!/bin/sh
     timeout={{wait_timeout_seconds}}
     start=$(date +%s)
-    echo "Waiting for LocalStack health endpoint (timeout: ${timeout}s)..."
-    until curl -fsS http://localhost:4566/_localstack/health >/dev/null; do
+    echo "Waiting for Moto health endpoint (timeout: ${timeout}s)..."
+    until curl -fsS http://localhost:4566/moto-api/ >/dev/null; do
         now=$(date +%s)
         elapsed=$((now-start))
         if [ "$elapsed" -ge "$timeout" ]; then
-            echo "Timed out waiting for LocalStack after ${elapsed}s"
+            echo "Timed out waiting for Moto after ${elapsed}s"
             exit 1
         fi
         printf "."
@@ -804,21 +804,21 @@ fmt-check:
 ci: lint test test-integration
     @echo "CI passed."
 
-# ─── LocalStack Helpers ─────────────────────────────────────
+# ─── Moto Helpers ───────────────────────────────────────────
 
-# List S3 buckets in LocalStack
+# List S3 buckets in Moto
 ls-s3:
     aws --endpoint-url=http://localhost:4566 s3 ls
 
-# List EBS volumes in LocalStack
+# List EBS volumes in Moto
 ls-ebs:
     aws --endpoint-url=http://localhost:4566 ec2 describe-volumes --query 'Volumes[].{VolumeId:VolumeId,State:State,Size:Size,AZ:AvailabilityZone,Type:VolumeType}' --output table
 
-# List Elastic IP allocations in LocalStack
+# List Elastic IP allocations in Moto
 ls-eip:
     aws --endpoint-url=http://localhost:4566 ec2 describe-addresses --query 'Addresses[].{AllocationId:AllocationId,PublicIp:PublicIp,AssociationId:AssociationId,InstanceId:InstanceId,Domain:Domain}' --output table
 
-# List EC2 key pairs in LocalStack
+# List EC2 key pairs in Moto
 ls-keypair:
     aws --endpoint-url=http://localhost:4566 ec2 describe-key-pairs --query 'KeyPairs[].{KeyName:KeyName,KeyPairId:KeyPairId,KeyType:KeyType,KeyFingerprint:KeyFingerprint}' --output table
 
@@ -834,8 +834,8 @@ rs-services:
 
 # Quick operator sanity check for the three most important local endpoints.
 doctor:
-    @echo "Checking LocalStack..."
-    @curl -fsS http://localhost:4566/_localstack/health >/dev/null && echo "  ✓ LocalStack"
+    @echo "Checking Moto..."
+    @curl -fsS http://localhost:4566/moto-api/ >/dev/null && echo "  ✓ Moto"
     @echo "Checking Restate admin..."
     @curl -fsS http://localhost:9070/health >/dev/null && echo "  ✓ Restate admin"
     @echo "Checking registered Restate services..."

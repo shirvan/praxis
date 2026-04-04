@@ -53,7 +53,7 @@ func getDefaultSubnetId(t *testing.T, ec2Client *ec2sdk.Client) string {
 		Filters: []ec2types.Filter{{Name: aws.String("default-for-az"), Values: []string{"true"}}},
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, out.Subnets, "LocalStack should have a default subnet")
+	require.NotEmpty(t, out.Subnets, "Moto should have a default subnet")
 	return aws.ToString(out.Subnets[0].SubnetId)
 }
 

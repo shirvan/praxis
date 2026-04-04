@@ -1104,13 +1104,13 @@ Part of the `praxis-storage` service (port 9081). No additional configuration ne
 
 **File**: `tests/integration/rdsinstance_driver_test.go`
 
-Integration tests run against Testcontainers (Restate) + LocalStack (RDS).
+Integration tests run against Testcontainers (Restate) + Moto (RDS).
 
 ### Test Cases
 
 | Test | Description |
 |---|---|
-| `TestRDSInstanceProvision_CreatesInstance` | Creates a PostgreSQL instance with subnet group, parameter group, SG, and tags. Verifies the instance exists in LocalStack via `DescribeDBInstances`. |
+| `TestRDSInstanceProvision_CreatesInstance` | Creates a PostgreSQL instance with subnet group, parameter group, SG, and tags. Verifies the instance exists in Moto via `DescribeDBInstances`. |
 | `TestRDSInstanceProvision_Idempotent` | Provisions the same spec twice on the same key. Verifies same DbiResourceId (no duplicate). |
 | `TestRDSInstanceProvision_UpdateInstanceClass` | Re-provisions with changed instance class. Verifies the modification is applied. |
 | `TestRDSInstanceProvision_ScaleStorage` | Re-provisions with larger storage. Verifies grow-only semantics. |

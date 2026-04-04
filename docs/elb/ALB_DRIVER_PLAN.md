@@ -689,7 +689,7 @@ service definition and Justfile targets.
 
 ### Prerequisites
 
-- LocalStack with ELBv2 support (Pro feature or community mock)
+- Moto with ELBv2 support (Pro feature or community mock)
 - Pre-existing VPC + 2 subnets in different AZs + security group
 
 ### Test Scenarios

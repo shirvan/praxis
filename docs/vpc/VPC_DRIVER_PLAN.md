@@ -182,7 +182,7 @@ Files (✓ = implemented):
 ✓ internal/core/provider/vpc_adapter.go     — VPCAdapter implementing provider.Adapter
 ✓ internal/core/provider/vpc_adapter_test.go — Unit tests for VPC adapter
 ✓ schemas/aws/vpc/vpc.cue                   — CUE schema for VPC resource
-✓ tests/integration/vpc_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+✓ tests/integration/vpc_driver_test.go      — Integration tests (Testcontainers + Moto)
 ✓ cmd/praxis-network/main.go               — Add VPC driver `.Bind()` to network pack
 ✓ internal/core/provider/registry.go        — Add NewVPCAdapter to NewRegistry()
 ✓ docker-compose.yaml                       — No change needed (VPC joins existing praxis-network service)
@@ -2176,7 +2176,7 @@ Test cases (follow `ec2_adapter_test.go` patterns):
 
 **File**: `tests/integration/vpc_driver_test.go`
 
-These tests use Testcontainers (Restate) + LocalStack (VPC emulation) — same
+These tests use Testcontainers (Restate) + Moto (VPC emulation) — same
 pattern as the S3, SG, and EC2 integration tests.
 
 ### Setup Helper
@@ -2251,11 +2251,11 @@ func uniqueCidr(t *testing.T) string {
 11. **TestVPCOutputs_VpcIdAvailableForDownstream** — Provisions VPC, reads
     GetOutputs, verifies vpcId is non-empty and matches DescribeVpcs.
 
-### LocalStack VPC Compatibility Note
+### Moto VPC Compatibility Note
 
-LocalStack's VPC emulation is comprehensive for basic operations: CreateVpc,
+Moto's VPC emulation is comprehensive for basic operations: CreateVpc,
 DescribeVpcs, DeleteVpc, ModifyVpcAttribute, CreateTags, DescribeVpcAttribute.
-VPC operations are among the best-emulated services in LocalStack. DNS attribute
+VPC operations are among the best-emulated services in Moto. DNS attribute
 modification is supported. Default VPC handling may differ from real AWS.
 Integration tests should focus on the full CRUD lifecycle, DNS attribute management,
 and tag drift correction.
@@ -2522,11 +2522,11 @@ would reduce API call volume.
    delegates range validation to AWS, which rejects invalid ranges with a clear
    error message. Restricting to RFC 1918 would be overly opinionated.
 
-7. **LocalStack VPC integration test scope:**
+7. **Moto VPC integration test scope:**
    Integration tests cover: create, idempotent re-provision, import, delete,
    dependency violation handling, and DNS attribute drift correction. Tag drift
    correction is covered in integration tests. DNS attribute changes via
-   `ModifyVpcAttribute` are well-supported by LocalStack.
+   `ModifyVpcAttribute` are well-supported by Moto.
 
 ---
 

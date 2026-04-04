@@ -685,7 +685,7 @@ If Praxis runs against [Restate Cloud](https://restate.dev/cloud/), register you
 ### Error Handling
 
 - Throw `TerminalError` for permanent failures (invalid input, 404s, authorization errors)
-- Let transient errors (rate limits, timeouts) propagate naturally. Restate will retry them
+- Let transient errors (rate limits, timeouts) propagate naturally. Restate will retry them up to 50 times (per `config.DefaultRetryPolicy()`), then **pause** the invocation for operator inspection
 - Classify errors inside `ctx.run` callbacks, not after
 
 ### Reconciliation

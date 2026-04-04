@@ -1153,7 +1153,7 @@ Part of the `praxis-network` service (port 9082). No additional configuration ne
 
 **File**: `tests/integration/route53_health_check_driver_test.go`
 
-Uses Testcontainers + LocalStack. LocalStack supports Route 53 health checks.
+Uses Testcontainers + Moto. Moto supports Route 53 health checks.
 
 ### Test Scenarios
 

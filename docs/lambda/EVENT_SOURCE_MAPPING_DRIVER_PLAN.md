@@ -1246,9 +1246,9 @@ test-esm-integration:
 | `TestESM_Reconcile_NoDrift` | Create, reconcile, verify no changes |
 | `TestESM_Reconcile_DriftCorrection` | Create, externally modify batch size, reconcile |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports event source mappings for SQS. DynamoDB Streams and Kinesis
+- Moto supports event source mappings for SQS. DynamoDB Streams and Kinesis
   ESMs have partial support.
 - Integration tests should focus on SQS-based ESMs for the most reliable coverage.
 - Tests must create a Lambda function and an SQS queue as prerequisites.

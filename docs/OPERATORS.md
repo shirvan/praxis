@@ -86,7 +86,7 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 | Monitoring Pack   | 9080          | 9087      | Restate endpoint     |
 | Concierge         | 9080          | 9088      | Restate endpoint     |
 | Slack Gateway     | 9080          | 9089      | Restate endpoint     |
-| LocalStack        | 4566          | 4566      | Mock AWS (local dev) |
+| Moto        | 4566          | 4566      | Mock AWS (local dev) |
 
 ### Kubernetes Deployment (Helm)
 
@@ -174,13 +174,13 @@ kubectl apply -f examples/ops/k8s/praxis-autoscaling.yaml
 ### Start the Stack
 
 ```bash
-# Start everything — LocalStack, Restate, Core, drivers
+# Start everything — Moto, Restate, Core, drivers
 just up
 
 # The recipe:
 #   1. Validates .env exists
 #   2. Builds and starts all containers
-#   3. Waits for LocalStack + Restate health checks
+#   3. Waits for Moto + Restate health checks
 #   4. Registers all Praxis endpoints with Restate
 
 # Stop and clean up (removes volumes)
@@ -194,7 +194,7 @@ just              # List all available recipes
 just up           # Start the full stack
 just down         # Stop and remove volumes
 just restart      # Rebuild and restart core + drivers, then re-register
-just wait-stack   # Wait for LocalStack + Restate readiness
+just wait-stack   # Wait for Moto + Restate readiness
 just status       # Show current container status
 just doctor       # Fast endpoint + registration sanity check
 ```
@@ -213,7 +213,7 @@ just logs-all     # Follow all service logs
 **Helpers:**
 
 ```bash
-just ls-s3        # List S3 buckets in LocalStack
+just ls-s3        # List S3 buckets in Moto
 just rs-services  # List registered Restate services
 just rs-deployments # List registered Restate deployments
 ```
@@ -229,7 +229,7 @@ Praxis Core and every driver load the same `.env` file. Copy `.env.example` to `
 | `PRAXIS_LISTEN_ADDR`      | `0.0.0.0:9080`  | HTTP listen address for Restate SDK       |
 | `PRAXIS_RESTATE_ENDPOINT` | `http://localhost:8080` | Restate ingress URL (Core + CLI)   |
 | `PRAXIS_SCHEMA_DIR`       | `./schemas`      | Filesystem path to the CUE schema bundle  |
-| `AWS_ENDPOINT_URL`        | *(empty)*        | AWS endpoint override (e.g. `http://localstack:4566`) |
+| `AWS_ENDPOINT_URL`        | *(empty)*        | AWS endpoint override (e.g. `http://moto:4566`) |
 
 ### Account Settings
 
@@ -267,7 +267,7 @@ Alternatively, configure the provider at runtime:
 praxis concierge configure --provider openai --api-key sk-... --model gpt-4o
 ```
 
-The concierge container (`praxis-concierge`) does not require LocalStack, AWS credentials, or schema mounts. It communicates with Praxis Core through Restate RPC.
+The concierge container (`praxis-concierge`) does not require Moto, AWS credentials, or schema mounts. It communicates with Praxis Core through Restate RPC.
 
 ## Restate Administration
 
@@ -340,7 +340,7 @@ curl http://localhost:9070/deployments | jq .
 | Endpoint                                    | Checks             |
 |---------------------------------------------|---------------------|
 | `GET http://localhost:9070/health`           | Restate server      |
-| `GET http://localhost:4566/_localstack/health` | LocalStack (dev)  |
+| `GET http://localhost:4566/moto-api/` | Moto (dev)  |
 
 For Praxis services, verify registration via `just rs-services` or `just doctor`.
 
@@ -405,6 +405,18 @@ Drivers reconcile automatically on a **5-minute interval** using Restate durable
 4. **Observed mode**: Reports drift without correcting
 
 The reconcile loop survives process restarts — Restate's durable timers ensure the next cycle fires even if the driver container is replaced.
+
+### On-Demand Reconciliation
+
+To trigger reconciliation immediately without waiting for the 5-minute timer:
+
+```bash
+praxis reconcile S3Bucket/my-bucket
+praxis reconcile EC2Instance/us-east-1~web-server
+praxis reconcile SecurityGroup/vpc-123~web-sg -o json
+```
+
+This is useful after manual AWS console changes, when diagnosing Error status, or in CI/CD pipelines that need to confirm resource state. See `praxis reconcile --help` or the [CLI reference](CLI.md#reconcile) for full details.
 
 ### External Deletion
 
@@ -500,11 +512,53 @@ The resource is not empty (e.g., S3 bucket with objects). Empty it manually, the
 
 ### Reconcile shows Error status
 
-Check the error field with `praxis get <Kind>/<Key>`. Common causes:
+Check the error field with `praxis get <Kind>/<Key>`. To trigger an immediate
+reconciliation and see the current drift status:
+
+```bash
+praxis reconcile <Kind>/<Key>
+```
+
+### Invocation paused (retry exhausted)
+
+All Praxis services are configured with a bounded retry policy (`config.DefaultRetryPolicy()`): 50 attempts with exponential backoff (100ms → 60s cap). When retries are exhausted, Restate **pauses** the invocation rather than retrying forever. This prevents orphan invocations that run for hours.
+
+To check for paused invocations:
+
+```bash
+restate invocations list --status paused
+```
+
+To inspect a specific invocation:
+
+```bash
+restate invocations describe <invocation_id>
+```
+
+To resume after fixing the underlying issue (e.g., IAM permissions, credential expiry):
+
+```bash
+restate invocations resume <invocation_id>
+```
+
+To cancel a paused invocation that is no longer needed:
+
+```bash
+restate invocations cancel <invocation_id>
+```
+
+Common causes of retry exhaustion:
+
+- **IAM misconfiguration** — `AccessDenied` errors that won't self-heal
+- **Expired credentials** — stale STS tokens that keep failing
+- **Persistent throttling** — sustained AWS rate limiting beyond the retry window
+- **Resource in unexpected state** — e.g., an EC2 instance that never reaches `running`
+
+Common causes:
 
 - IAM permissions insufficient for the operation
 - Resource deleted externally (re-apply to recreate)
-- AWS API throttling (will auto-retry via Restate)
+- AWS API throttling (will auto-retry via Restate up to 50 attempts; pauses if exhausted)
 
 ### Stack fails to start
 

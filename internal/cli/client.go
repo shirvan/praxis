@@ -271,6 +271,20 @@ func (c *Client) GetResourceStatus(ctx context.Context, kind, key string) (*type
 	return &resp, nil
 }
 
+// ReconcileResource triggers an on-demand reconciliation of a single resource.
+// kind is the Restate service name (e.g., "S3Bucket"), key is the canonical
+// resource key. The handler compares actual cloud state against the desired
+// spec and, in Managed mode, corrects any drift.
+func (c *Client) ReconcileResource(ctx context.Context, kind, key string) (*types.ReconcileResult, error) {
+	resp, err := ingress.Object[restate.Void, types.ReconcileResult](
+		c.rc, kind, key, "Reconcile",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, fmt.Errorf("reconcile %s/%s: %w", kind, key, err)
+	}
+	return &resp, nil
+}
+
 // GetResourceOutputs reads a resource's outputs as raw JSON from its driver.
 // The outputs are returned as a generic map since different drivers return
 // different typed structs.

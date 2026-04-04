@@ -86,17 +86,18 @@ with other compute-plane services follows the established domain alignment.
 
 ```go
 // cmd/praxis-compute/main.go
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth))).
-    Bind(restate.Reflect(ami.NewAMIDriver(auth))).
-    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth))).
-    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth))).
-    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth))).
-    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth))).
-    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth))).
+    Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth), rp)).
+    Bind(restate.Reflect(ami.NewAMIDriver(auth), rp)).
+    Bind(restate.Reflect(keypair.NewKeyPairDriver(auth), rp)).
+    Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth), rp)).
+    Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth), rp)).
+    Bind(restate.Reflect(lambdaperm.NewLambdaPermissionDriver(auth), rp)).
+    Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth), rp)).
     // ECR drivers
-    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth))).
-    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth)))
+    Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth), rp)).
+    Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth), rp))
 ```
 
 ---
@@ -164,12 +165,12 @@ Within each driver, implement in this order:
 ## 6. Docker Compose Topology
 
 ECR drivers are part of the existing `praxis-compute` service. No new service
-definition is needed. LocalStack must have `ecr` added to its `SERVICES` list:
+definition is needed. Moto must have `ecr` added to its `SERVICES` list:
 
 ```yaml
 # docker-compose.yaml
 services:
-  localstack:
+  moto:
     environment:
       SERVICES: s3,ec2,iam,lambda,ecr,ecs,sns,sqs,...
 ```
@@ -289,7 +290,7 @@ settings. This matches the `fifoTopic` pattern in the SNS Topic driver.
 - [x] Entry point bind (`cmd/praxis-compute/main.go`)
 - [x] Integration tests (`tests/integration/ecr_repository_driver_test.go`)
 - [x] AWS client factory (`internal/infra/awsclient/client.go`)
-- [x] LocalStack SERVICES (`docker-compose.yaml`)
+- [x] Moto SERVICES (`docker-compose.yaml`)
 - [x] Justfile targets
 
 ### ECR Lifecycle Policy

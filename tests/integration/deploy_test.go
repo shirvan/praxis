@@ -5,7 +5,7 @@
 //	Register template -> Deploy with variables -> Verify provisioning
 //
 // These tests exercise the user-facing Deploy and PlanDeploy handlers
-// end-to-end against the full in-process Praxis stack with LocalStack.
+// end-to-end against the full in-process Praxis stack with Moto.
 //
 // Run with:
 //
@@ -133,7 +133,7 @@ resources: {
 //  1. Register a CUE template with a variables block
 //  2. Deploy with valid variables via PraxisCommandService.Deploy
 //  3. Poll until the deployment reaches Complete
-//  4. Verify the S3 bucket was actually created in LocalStack
+//  4. Verify the S3 bucket was actually created in Moto
 //  5. Verify the deployment state has correct resource outputs
 func TestDeploy_HappyPath(t *testing.T) {
 	env := setupCoreStack(t)
@@ -177,7 +177,7 @@ func TestDeploy_HappyPath(t *testing.T) {
 	require.Equal(t, types.DeploymentComplete, state.Status,
 		"deployment should reach Complete")
 
-	// --- Step 4: Verify bucket exists in LocalStack ---
+	// --- Step 4: Verify bucket exists in Moto ---
 	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{
 		Bucket: &expectedBucket,
 	})

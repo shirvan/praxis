@@ -43,7 +43,7 @@ func TestSNSSubscription_Provision(t *testing.T) {
 	assert.Equal(t, "sqs", outputs.Protocol)
 	assert.Equal(t, queueArn, outputs.Endpoint)
 
-	// Verify subscription exists in LocalStack
+	// Verify subscription exists in Moto
 	subs, err := snsClient.ListSubscriptionsByTopic(context.Background(), &snssdk.ListSubscriptionsByTopicInput{
 		TopicArn: aws.String(topicArn),
 	})
@@ -117,7 +117,7 @@ func TestSNSSubscription_Delete(t *testing.T) {
 	_, err = snsClient.GetSubscriptionAttributes(context.Background(), &snssdk.GetSubscriptionAttributesInput{
 		SubscriptionArn: aws.String(outputs.SubscriptionArn),
 	})
-	require.Error(t, err, "subscription should be deleted from LocalStack")
+	require.Error(t, err, "subscription should be deleted from Moto")
 }
 
 func TestSNSSubscription_GetStatus(t *testing.T) {

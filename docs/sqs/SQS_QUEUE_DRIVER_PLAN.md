@@ -151,7 +151,7 @@ for natural conflict detection.
 ✎ internal/infra/awsclient/client.go                      — Add NewSQSClient factory
 ✎ cmd/praxis-storage/main.go                              — Bind SQSQueue driver
 ✎ internal/core/provider/registry.go                      — Add NewSQSQueueAdapter to NewRegistry()
-✎ docker-compose.yaml                                     — Add sqs to LocalStack SERVICES
+✎ docker-compose.yaml                                     — Add sqs to Moto SERVICES
 ✎ justfile                                                — Add SQS build/test targets
 ```
 
@@ -1404,7 +1404,7 @@ Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth)))
 
 **File**: `docker-compose.yaml` — **MODIFY**
 
-Add `sqs` to LocalStack's `SERVICES` environment variable:
+Add `sqs` to Moto's `SERVICES` environment variable:
 
 ```yaml
 - SERVICES=s3,ssm,sts,ec2,iam,route53,sqs
@@ -1510,18 +1510,18 @@ ls-sqs:
 | `TestSQSQueue_Reconcile` | Create, externally change visibility, reconcile in managed mode |
 | `TestSQSQueue_DeadLetterQueue` | Create DLQ and main queue with redrive, verify configuration |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports full SQS queue lifecycle (`CreateQueue`, `DeleteQueue`,
+- Moto supports full SQS queue lifecycle (`CreateQueue`, `DeleteQueue`,
   `GetQueueAttributes`, `SetQueueAttributes`, `GetQueueUrl`, `ListQueues`,
   `TagQueue`, `UntagQueue`, `ListQueueTags`).
-- FIFO queues are supported in LocalStack.
-- KMS encryption may have limited fidelity in LocalStack — integration tests should
+- FIFO queues are supported in Moto.
+- KMS encryption may have limited fidelity in Moto — integration tests should
   verify attribute storage without relying on actual encryption.
-- The 60-second deletion cooldown may not be enforced by LocalStack — the
-  `TestSQSQueue_DeleteRecently` test should use a conditional skip if LocalStack
+- The 60-second deletion cooldown may not be enforced by Moto — the
+  `TestSQSQueue_DeleteRecently` test should use a conditional skip if Moto
   does not enforce this constraint.
-- LocalStack already includes `sqs` in the shared `SERVICES` list used by the integration suite.
+- Moto already includes `sqs` in the shared `SERVICES` list used by the integration suite.
 
 ---
 
@@ -1667,5 +1667,5 @@ to take ownership.
 - [x] `internal/infra/awsclient/client.go` — Add `NewSQSClient()`
 - [x] `cmd/praxis-storage/main.go` — Bind driver
 - [x] `internal/core/provider/registry.go` — Register adapter
-- [x] `docker-compose.yaml` — LocalStack already includes `sqs` in `SERVICES`
+- [x] `docker-compose.yaml` — Moto already includes `sqs` in `SERVICES`
 - [x] `justfile` — Add test targets

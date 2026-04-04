@@ -892,7 +892,7 @@ Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth)))
 
 ### Docker Compose
 
-No additional changes needed — `sqs` is already added to LocalStack's `SERVICES`
+No additional changes needed — `sqs` is already added to Moto's `SERVICES`
 by the SQS Queue driver. The queue policy driver shares the same SQS API endpoint.
 
 ### Justfile Additions
@@ -976,15 +976,15 @@ test-sqs-all:
 | `TestSQSQueuePolicy_SNSAccess` | Create queue + SNS topic, set policy allowing SNS, verify configuration |
 | `TestSQSQueuePolicy_S3Access` | Create queue, set policy allowing S3 notifications, verify configuration |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports the `Policy` attribute via `GetQueueAttributes` and
+- Moto supports the `Policy` attribute via `GetQueueAttributes` and
   `SetQueueAttributes`.
 - Setting an empty string policy should remove the policy attribute.
-- Policy validation may be less strict in LocalStack compared to real AWS — invalid
+- Policy validation may be less strict in Moto compared to real AWS — invalid
   principal ARNs or actions may be accepted. Integration tests should focus on
   round-trip verification (set → get → compare) rather than policy evaluation.
-- LocalStack already includes `sqs` in the shared `SERVICES` list used by the integration suite.
+- Moto already includes `sqs` in the shared `SERVICES` list used by the integration suite.
 
 ---
 

@@ -612,14 +612,14 @@ Part of the `praxis-storage` service (port 9081). No additional configuration ne
 
 ### Prerequisites
 
-Integration tests require VPC and subnets in at least 2 AZs. Use LocalStack to
+Integration tests require VPC and subnets in at least 2 AZs. Use Moto to
 create test VPC infrastructure before running subnet group tests.
 
 ### Test Cases
 
 | Test | Description |
 |---|---|
-| `TestDBSubnetGroup_Provision_Creates` | Creates subnet group with 2 subnets in 2 AZs. Verifies in LocalStack. |
+| `TestDBSubnetGroup_Provision_Creates` | Creates subnet group with 2 subnets in 2 AZs. Verifies in Moto. |
 | `TestDBSubnetGroup_Provision_Idempotent` | Provisions same spec twice. Same ARN returned. |
 | `TestDBSubnetGroup_Provision_AddSubnet` | Re-provisions with an additional subnet. Verifies 3 subnets. |
 | `TestDBSubnetGroup_Provision_RemoveSubnet` | Re-provisions with one fewer subnet (still ≥2 AZs). Verifies update. |

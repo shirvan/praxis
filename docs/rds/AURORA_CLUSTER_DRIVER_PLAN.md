@@ -826,7 +826,7 @@ Part of the `praxis-storage` service (port 9081). No additional configuration ne
 
 | Test | Description |
 |---|---|
-| `TestAuroraClusterProvision_CreatesCluster` | Creates an Aurora PostgreSQL cluster with subnet group and SG. Verifies cluster exists in LocalStack. |
+| `TestAuroraClusterProvision_CreatesCluster` | Creates an Aurora PostgreSQL cluster with subnet group and SG. Verifies cluster exists in Moto. |
 | `TestAuroraClusterProvision_Idempotent` | Provisions same spec twice. Verifies same ClusterResourceId. |
 | `TestAuroraClusterProvision_UpdateEngineVersion` | Re-provisions with changed version. Verifies upgrade applied. |
 | `TestAuroraClusterProvision_ToggleDeletionProtection` | Re-provisions toggling deletion protection. |

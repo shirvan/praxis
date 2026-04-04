@@ -17,6 +17,7 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `list`               | Both     | List active deployments                          |
 | `delete`             | Both     | Tear down a deployment                           |
 | `import`             | Operators| Adopt an existing cloud resource                 |
+| `reconcile`          | Operators| Trigger on-demand drift detection and correction |
 | `workspace create`   | Operators| Create or update a workspace                     |
 | `workspace list`     | Both     | List workspaces                                  |
 | `workspace select`   | Both     | Set the active workspace                         |
@@ -538,6 +539,73 @@ Outputs:
   arn = arn:aws:s3:::my-existing-bucket
   region = us-east-1
 ```
+
+---
+
+## reconcile
+
+Trigger on-demand drift detection and correction for a single resource. Normally, reconciliation runs automatically every 5 minutes via Restate durable timers — this command lets you check immediately without waiting.
+
+```bash
+praxis reconcile <Kind>/<Key>
+```
+
+The argument uses `Kind/Key` format, identical to `praxis get`.
+
+**Examples:**
+
+```bash
+# Check drift on an S3 bucket
+praxis reconcile S3Bucket/my-bucket
+
+# Reconcile after a manual change in AWS console
+praxis reconcile EC2Instance/us-east-1~web-server
+
+# Check a security group
+praxis reconcile SecurityGroup/vpc-123~web-sg
+
+# JSON output for scripting
+praxis reconcile S3Bucket/my-bucket -o json
+```
+
+**Table Output (no drift):**
+
+```text
+Resource:   S3Bucket/my-bucket
+Drift:      Ready — no drift
+Correcting: false
+✓ Resource is in sync — no drift detected.
+```
+
+**Table Output (drift detected, Managed mode):**
+
+```text
+Resource:   S3Bucket/my-bucket
+Drift:      Failed — resource has drifted
+Correcting: Applying
+```
+
+**JSON Output:**
+
+```json
+{
+  "drift": true,
+  "correcting": true
+}
+```
+
+**Behavior:**
+
+- **Managed mode**: If drift is detected, the driver automatically re-applies the desired configuration to correct it. The `correcting` field is `true`.
+- **Observed mode**: Drift is reported but not corrected. The `correcting` field is always `false`.
+- If the reconciliation check itself fails (e.g., AWS API error), the `error` field contains the failure message.
+
+This command is useful for:
+
+- Verifying a resource is in sync after a manual AWS console change
+- Diagnosing why a resource is in `Error` status
+- Forcing immediate drift correction without waiting for the 5-minute timer
+- CI/CD pipelines that need to confirm resource state before proceeding
 
 ---
 

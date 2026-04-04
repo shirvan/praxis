@@ -71,7 +71,7 @@ func TestLambdaLayerProvision_PublishesVersion(t *testing.T) {
 	assert.NotEmpty(t, outputs.LayerVersionArn)
 	assert.Equal(t, int64(1), outputs.Version)
 
-	// Verify layer exists in LocalStack
+	// Verify layer exists in Moto
 	desc, err := lambdaClient.GetLayerVersion(context.Background(), &lambdasdk.GetLayerVersionInput{
 		LayerName:     aws.String(name),
 		VersionNumber: aws.Int64(1),
@@ -104,7 +104,7 @@ func TestLambdaLayerImport_ExistingLayer(t *testing.T) {
 	client, lambdaClient := setupLambdaLayerDriver(t)
 	name := uniqueLayerName(t)
 
-	// Create layer directly in LocalStack
+	// Create layer directly in Moto
 	_, err := lambdaClient.PublishLayerVersion(context.Background(), &lambdasdk.PublishLayerVersionInput{
 		LayerName:          aws.String(name),
 		Description:        aws.String("external layer"),
@@ -152,7 +152,7 @@ func TestLambdaLayerDelete_RemovesLayer(t *testing.T) {
 		LayerName:     aws.String(name),
 		VersionNumber: aws.Int64(outputs.Version),
 	})
-	require.Error(t, err, "layer version should be deleted from LocalStack")
+	require.Error(t, err, "layer version should be deleted from Moto")
 }
 
 func TestLambdaLayerGetStatus_ReturnsReady(t *testing.T) {

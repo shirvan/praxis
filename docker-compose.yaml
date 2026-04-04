@@ -2,7 +2,8 @@
 #
 # This file wires together every moving part needed for a realistic local Praxis
 # session:
-# - LocalStack stands in for AWS.
+# - Moto (https://github.com/getmoto/moto) stands in for AWS — free, open source,
+#   supports all services Praxis needs including ELBv2 and RDS.
 # - Restate is the public ingress and durable execution runtime.
 # - praxis-core hosts the command service, workflows, and read models.
 # - Driver packs group related drivers by AWS domain:
@@ -21,50 +22,41 @@
 services:
   # --- Infrastructure -------------------------------------------------------
 
-  localstack:
-    # Pinned to 4.14.0 — last community edition before LocalStack's
-    # March 2026 license change (":latest" now requires auth token).
-    # I'm looking for good alternatives, but LocalStack is currently the only local AWS emulator that
-    # supports all the services Praxis needs with reasonable fidelity.
-    #
+  moto:
+    # Moto — open-source AWS mock server (Apache 2.0).
     # If you are from AWS and reading this, I'd love a live environment I can test in without worrying about costs.
-    image: localstack/localstack:4.14.0
-    container_name: praxis-localstack
+
+    image: motoserver/moto:latest
+    container_name: praxis-moto
     ports:
       - "4566:4566"
     environment:
-      # Only enable the AWS APIs that Praxis requires.
-      - SERVICES=s3,ssm,sts,ec2,ecr,iam,route53,rds,lambda,sqs,elbv2,acm,cloudwatch,logs,sns
-      - DEFAULT_REGION=us-east-1
-      - DEBUG=0
-    volumes:
-      - "localstack-data:/var/lib/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - MOTO_PORT=4566
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/moto-api/')"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  # Seed LocalStack with the SSM parameters and default VPC that Praxis needs.
-  # Runs once and exits; every service that depends on localstack-init is
+  # Seed Moto with the SSM parameters and default VPC that Praxis needs.
+  # Runs once and exits; every service that depends on moto-init is
   # guaranteed the seed data exists before it starts.
-  localstack-init:
-    image: localstack/localstack:4.14.0
-    container_name: praxis-localstack-init
+  moto-init:
+    image: amazon/aws-cli:latest
+    container_name: praxis-moto-init
     depends_on:
-      localstack:
+      moto:
         condition: service_healthy
-    entrypoint: ["bash", "-c"]
+    entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        set -euo pipefail
-        export AWS_ENDPOINT_URL=http://localstack:4566
+        set -eu
+        export AWS_ENDPOINT_URL=http://moto:4566
         export AWS_DEFAULT_REGION=us-east-1
         export AWS_ACCESS_KEY_ID=test
         export AWS_SECRET_ACCESS_KEY=test
 
-        echo "=== Praxis LocalStack init ==="
+        echo "=== Praxis Moto init ==="
 
         aws ssm put-parameter \
           --name "/praxis/dev/db-password" \
@@ -78,14 +70,14 @@ services:
           --type "SecureString" \
           --overwrite
 
-        echo "=== Praxis LocalStack init complete ==="
+        echo "=== Praxis Moto init complete ==="
 
         aws ec2 describe-vpcs \
           --filters Name=isDefault,Values=true \
           --query 'Vpcs[0].VpcId' --output text \
           || aws ec2 create-default-vpc
 
-        echo "=== Praxis LocalStack VPC ready ==="
+        echo "=== Praxis Moto VPC ready ==="
     restart: "no"
 
   restate:
@@ -118,7 +110,7 @@ services:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9081:9080"
@@ -138,7 +130,7 @@ services:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9084:9080"
@@ -156,7 +148,7 @@ services:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9085:9080"
@@ -174,7 +166,7 @@ services:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9082:9080"
@@ -192,7 +184,7 @@ services:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9083:9080"
@@ -223,7 +215,7 @@ services:
     depends_on:
       restate:
         condition: service_healthy
-      localstack-init:
+      moto-init:
         condition: service_completed_successfully
     ports:
       - "9087:9080"
@@ -290,5 +282,5 @@ services:
 volumes:
   # Keep infra data in named volumes so operators can opt into clean slates via
   # `just down` while normal restarts remain fast.
-  localstack-data:
+  # Moto keeps state in-memory (no volume needed); Restate persists across restarts.
   restate-data:

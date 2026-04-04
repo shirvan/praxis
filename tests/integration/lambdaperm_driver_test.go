@@ -34,7 +34,7 @@ func uniqueStatementId(t *testing.T) string {
 	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%100000)
 }
 
-// createTestFunction creates a Lambda function directly in LocalStack for permission tests.
+// createTestFunction creates a Lambda function directly in Moto for permission tests.
 func createTestFunction(t *testing.T, lambdaClient *lambdasdk.Client, name string) {
 	t.Helper()
 	_, err := lambdaClient.CreateFunction(context.Background(), &lambdasdk.CreateFunctionInput{
@@ -84,7 +84,7 @@ func TestLambdaPermissionProvision_AddsPermission(t *testing.T) {
 	assert.Equal(t, funcName, outputs.FunctionName)
 	assert.NotEmpty(t, outputs.Statement)
 
-	// Verify permission exists in LocalStack
+	// Verify permission exists in Moto
 	policy, err := lambdaClient.GetPolicy(context.Background(), &lambdasdk.GetPolicyInput{
 		FunctionName: aws.String(funcName),
 	})

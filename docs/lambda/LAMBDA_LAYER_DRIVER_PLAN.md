@@ -836,9 +836,9 @@ test-lambda-layer-integration:
 | `TestLambdaLayer_Delete` | Publish then delete all versions, verify cleanup |
 | `TestLambdaLayer_Reconcile` | Publish, reconcile, verify no drift |
 
-### LocalStack Considerations
+### Moto Considerations
 
-- LocalStack supports Lambda layers with basic publish/describe/delete operations.
+- Moto supports Lambda layers with basic publish/describe/delete operations.
 - Test layers should use minimal ZIP archives (e.g., single empty file).
 - Tests should clean up all layer versions in teardown.
 

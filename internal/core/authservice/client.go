@@ -71,7 +71,7 @@ func (c *LocalAuthClient) GetCredentials(_ restate.Context, accountAlias string)
 // buildAWSConfig reconstructs an aws.Config from a CredentialResponse.
 // Uses a static credentials provider because the CredentialResponse contains
 // already-resolved credential strings from the AuthService. If EndpointURL
-// is set (LocalStack), configures BaseEndpoint for local development.
+// is set (Moto), configures BaseEndpoint for local development.
 func buildAWSConfig(creds CredentialResponse) (aws.Config, error) {
 	provider := credentials.NewStaticCredentialsProvider(
 		creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken,

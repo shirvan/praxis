@@ -998,11 +998,12 @@ func main() {
     cfg := config.Load()
 
     // 1. Register Restate services
+    rp := config.DefaultRetryPolicy()
     srv := server.NewRestate().
-        Bind(restate.Reflect(slack.SlackGatewayConfig{})).
-        Bind(restate.Reflect(slack.SlackWatchConfig{})).
-        Bind(restate.Reflect(slack.SlackThreadState{})).
-        Bind(restate.Reflect(slack.SlackEventReceiver{}))
+        Bind(restate.Reflect(slack.SlackGatewayConfig{}, rp)).
+        Bind(restate.Reflect(slack.SlackWatchConfig{}, rp)).
+        Bind(restate.Reflect(slack.SlackThreadState{}, rp)).
+        Bind(restate.Reflect(slack.SlackEventReceiver{}, rp))
 
     // 2. Start Restate server in background
     go func() {

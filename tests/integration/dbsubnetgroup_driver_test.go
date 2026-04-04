@@ -55,7 +55,7 @@ func getDefaultSubnetIds(t *testing.T, ec2Client *ec2sdk.Client) []string {
 		Filters: []ec2types.Filter{{Name: aws.String("default-for-az"), Values: []string{"true"}}},
 	})
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(out.Subnets), 2, "LocalStack should have at least 2 default subnets")
+	require.GreaterOrEqual(t, len(out.Subnets), 2, "Moto should have at least 2 default subnets")
 
 	ids := make([]string, 0, len(out.Subnets))
 	for _, s := range out.Subnets {

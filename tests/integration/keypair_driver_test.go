@@ -160,7 +160,7 @@ func TestKeyPairDelete_RemovesKeyPair(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = ec2Client.DescribeKeyPairs(context.Background(), &ec2sdk.DescribeKeyPairsInput{KeyNames: []string{name}})
-	require.Error(t, err, "key pair should be deleted from LocalStack")
+	require.Error(t, err, "key pair should be deleted from Moto")
 }
 
 func TestKeyPairReconcile_DetectsTagDrift(t *testing.T) {

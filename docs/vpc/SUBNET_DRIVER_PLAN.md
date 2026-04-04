@@ -142,7 +142,7 @@ Files (✓ = implemented):
 ✓ internal/core/provider/subnet_adapter.go     — SubnetAdapter implementing provider.Adapter
 ✓ internal/core/provider/subnet_adapter_test.go — Unit tests for Subnet adapter
 ✓ schemas/aws/subnet/subnet.cue               — CUE schema for Subnet resource
-✓ tests/integration/subnet_driver_test.go      — Integration tests (Testcontainers + LocalStack)
+✓ tests/integration/subnet_driver_test.go      — Integration tests (Testcontainers + Moto)
 ✓ cmd/praxis-network/main.go                  — Add Subnet driver `.Bind()` to network pack
 ✓ internal/core/provider/registry.go           — Add NewSubnetAdapter to NewRegistry()
 ✓ justfile                                     — Add subnet test targets
@@ -556,11 +556,11 @@ test-subnet:
 9. **TestSubnetGetStatus_ReturnsReady** — Provisions, checks status.
 10. **TestSubnetOutputs_SubnetIdAvailable** — Verifies subnetId in outputs.
 
-### LocalStack Subnet Compatibility Note
+### Moto Subnet Compatibility Note
 
-LocalStack's subnet emulation is comprehensive: CreateSubnet, DescribeSubnets,
+Moto's subnet emulation is comprehensive: CreateSubnet, DescribeSubnets,
 DeleteSubnet, ModifySubnetAttribute, CreateTags are all well-supported. Availability
-zone handling may produce synthetic AZ names in LocalStack.
+zone handling may produce synthetic AZ names in Moto.
 
 ---
 

@@ -894,7 +894,7 @@ srv := server.NewRestate().
 ### docker-compose.yaml
 
 No new service stanza required — both ECR drivers run in the existing `praxis-compute`
-service. Ensure `ecr` appears in LocalStack SERVICES (added once for the ECR
+service. Ensure `ecr` appears in Moto SERVICES (added once for the ECR
 Repository driver).
 
 ### justfile

@@ -147,7 +147,7 @@ must check for an existing managed certificate before requesting a new one:
 ✎ internal/infra/awsclient/client.go                        — Add NewACMClient factory
 ✎ cmd/praxis-network/main.go                                — Bind ACMCertificate driver
 ✎ internal/core/provider/registry.go                        — Add NewACMCertificateAdapter to NewRegistry()
-✎ docker-compose.yaml                                       — Add acm to LocalStack SERVICES
+✎ docker-compose.yaml                                       — Add acm to Moto SERVICES
 ✎ justfile                                                  — Add ACM build/test targets
 ```
 
@@ -1380,7 +1380,7 @@ srv := server.NewRestate().
 ### docker-compose.yaml
 
 ```yaml
-localstack:
+moto:
   environment:
     # Add acm to existing SERVICES list
     - SERVICES=s3,ssm,sts,ec2,iam,route53,acm,...
@@ -1465,7 +1465,7 @@ build-network:
 //   1. Provision ACMCertificate with DNS validation
 //   2. Check outputs.certificateArn is non-empty
 //   3. Check outputs.dnsValidationRecords has at least one entry
-//   4. Verify status == PENDING_VALIDATION (LocalStack does not auto-validate)
+//   4. Verify status == PENDING_VALIDATION (Moto does not auto-validate)
 
 // TestACMCertificate_IdempotentProvision
 //   1. Provision twice with the same managed key
@@ -1613,13 +1613,13 @@ with a new Praxis name) when immutable field changes are needed.
 
 - [x] `internal/infra/awsclient/client.go` — `NewACMClient()` factory added
 - [x] `cmd/praxis-network/main.go` — `ACMCertificateDriver` bound
-- [x] `docker-compose.yaml` — `acm` added to LocalStack `SERVICES`
+- [x] `docker-compose.yaml` — `acm` added to Moto `SERVICES`
 - [x] `justfile` — `test-acm`, `test-acmcert`, and `test-acm-integration` targets added
 
 ### Tests
 
 - [x] All unit test scenarios passing
-- [x] All integration test scenarios passing against LocalStack
+- [x] All integration test scenarios passing against Moto
 
 ### Documentation
 

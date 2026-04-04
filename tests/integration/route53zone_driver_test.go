@@ -40,7 +40,7 @@ func ensureRoute53Enabled(t *testing.T, client *route53sdk.Client) {
 	t.Helper()
 	_, err := client.ListHostedZones(context.Background(), &route53sdk.ListHostedZonesInput{MaxItems: aws.Int32(1)})
 	if err != nil && strings.Contains(err.Error(), "Service 'route53' is not enabled") {
-		t.Skip("LocalStack Route53 service is not enabled")
+		t.Skip("Moto Route53 service is not enabled")
 	}
 	require.NoError(t, err)
 }
@@ -66,7 +66,7 @@ func TestRoute53ZoneProvision_CreatesZone(t *testing.T) {
 	assert.Equal(t, zoneName, outputs.Name)
 	assert.False(t, outputs.IsPrivate)
 
-	// Verify zone exists in LocalStack
+	// Verify zone exists in Moto
 	desc, err := r53Client.GetHostedZone(context.Background(), &route53sdk.GetHostedZoneInput{Id: aws.String(outputs.HostedZoneId)})
 	require.NoError(t, err)
 	assert.Contains(t, aws.ToString(desc.HostedZone.Name), zoneName)

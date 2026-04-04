@@ -387,7 +387,7 @@ func buildResponse(cached *CachedCredential, cfg AccountConfig) CredentialRespon
 
 // resolveBaseConfig creates an aws.Config from account settings. For static
 // credentials, it injects a static credentials provider. For other sources,
-// it uses the default credential chain. If EndpointURL is set (LocalStack),
+// it uses the default credential chain. If EndpointURL is set (Moto),
 // it configures the BaseEndpoint accordingly.
 func resolveBaseConfig(account AccountConfig) (aws.Config, error) {
 	opts := []func(*awsconfig.LoadOptions) error{

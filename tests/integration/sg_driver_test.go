@@ -48,7 +48,7 @@ func setupSGDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 	return setupDriverEventingEnv(t, driver), ec2Client
 }
 
-// getDefaultVpcId returns the default VPC ID from LocalStack.
+// getDefaultVpcId returns the default VPC ID from Moto.
 func getDefaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
 	t.Helper()
 	out, err := ec2Client.DescribeVpcs(context.Background(), &ec2sdk.DescribeVpcsInput{
@@ -57,7 +57,7 @@ func getDefaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
 		},
 	})
 	require.NoError(t, err)
-	require.NotEmpty(t, out.Vpcs, "LocalStack should have a default VPC")
+	require.NotEmpty(t, out.Vpcs, "Moto should have a default VPC")
 	return aws.ToString(out.Vpcs[0].VpcId)
 }
 
@@ -86,7 +86,7 @@ func TestSGProvision_CreatesSecurityGroup(t *testing.T) {
 	assert.NotEmpty(t, outputs.GroupId)
 	assert.Equal(t, vpcId, outputs.VpcId)
 
-	// Verify SG exists in LocalStack
+	// Verify SG exists in Moto
 	desc, err := ec2Client.DescribeSecurityGroups(context.Background(), &ec2sdk.DescribeSecurityGroupsInput{
 		GroupIds: []string{outputs.GroupId},
 	})
@@ -130,7 +130,7 @@ func TestSGImport_ExistingGroup(t *testing.T) {
 	sgName := uniqueSGName(t)
 	vpcId := getDefaultVpcId(t, ec2Client)
 
-	// Create SG directly in LocalStack
+	// Create SG directly in Moto
 	createOut, err := ec2Client.CreateSecurityGroup(context.Background(), &ec2sdk.CreateSecurityGroupInput{
 		GroupName:   aws.String(sgName),
 		Description: aws.String("Manually created"),
@@ -179,7 +179,7 @@ func TestSGDelete_RemovesGroup(t *testing.T) {
 	_, err = ec2Client.DescribeSecurityGroups(context.Background(), &ec2sdk.DescribeSecurityGroupsInput{
 		GroupIds: []string{outputs.GroupId},
 	})
-	require.Error(t, err, "security group should be deleted from LocalStack")
+	require.Error(t, err, "security group should be deleted from Moto")
 }
 
 func TestSGReconcile_DetectsDrift(t *testing.T) {

@@ -65,7 +65,7 @@ func defaultAvailabilityZone(t *testing.T, ec2Client *ec2sdk.Client) string {
 	t.Helper()
 	out, err := ec2Client.DescribeSubnets(context.Background(), &ec2sdk.DescribeSubnetsInput{})
 	require.NoError(t, err)
-	require.NotEmpty(t, out.Subnets, "LocalStack should have at least one default subnet")
+	require.NotEmpty(t, out.Subnets, "Moto should have at least one default subnet")
 	return aws.ToString(out.Subnets[0].AvailabilityZone)
 }
 

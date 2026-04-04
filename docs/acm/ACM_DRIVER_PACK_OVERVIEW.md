@@ -102,9 +102,10 @@ primitives that are tightly coupled to DNS and load balancer configuration.
 
 ```go
 // cmd/praxis-network/main.go
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
     // ... existing network drivers ...
-    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth)))
+    Bind(restate.Reflect(acmcert.NewACMCertificateDriver(auth), rp))
 ```
 
 ---
@@ -167,7 +168,7 @@ ACM has a single driver with no intra-pack dependencies:
 ## 6. Docker Compose Topology
 
 ACM is hosted in the existing praxis-network service. The only change required
-is adding `acm` to LocalStack's `SERVICES` list:
+is adding `acm` to Moto's `SERVICES` list:
 
 ```yaml
 # praxis-network hosts VPC, Route53, ELB, and ACM drivers
@@ -178,13 +179,13 @@ praxis-network:
   ports:
     - "9082:9080"
   environment:
-    - AWS_ENDPOINT_URL=http://localstack:4566
+    - AWS_ENDPOINT_URL=http://moto:4566
     - AWS_ACCESS_KEY_ID=test
     - AWS_SECRET_ACCESS_KEY=test
     - AWS_REGION=us-east-1
 
-# LocalStack — add acm to SERVICES
-localstack:
+# Moto — add acm to SERVICES
+moto:
   environment:
     - SERVICES=s3,ssm,sts,ec2,iam,route53,acm,...
 ```
@@ -425,7 +426,7 @@ the resource.
 
 - [x] `internal/infra/awsclient/client.go` — Add `NewACMClient()`
 - [x] `cmd/praxis-network/main.go` — Bind ACM certificate driver
-- [x] `docker-compose.yaml` — Add `acm` to LocalStack SERVICES
+- [x] `docker-compose.yaml` — Add `acm` to Moto SERVICES
 - [x] `justfile` — Add ACM test targets
 
 ### Documentation

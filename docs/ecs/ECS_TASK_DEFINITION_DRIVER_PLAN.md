@@ -153,7 +153,7 @@ Create or modify these files (✦ = new file, ✎ = modify existing):
 ✦ internal/core/provider/ecstaskdef_adapter.go        — ECSTaskDefinitionAdapter implementing provider.Adapter
 ✦ internal/core/provider/ecstaskdef_adapter_test.go   — Unit tests for adapter
 ✦ schemas/aws/ecs/task_definition.cue                 — CUE schema for ECSTaskDefinition resource
-✦ tests/integration/ecstaskdef_driver_test.go         — Integration tests (Testcontainers + LocalStack)
+✦ tests/integration/ecstaskdef_driver_test.go         — Integration tests (Testcontainers + Moto)
 ✎ cmd/praxis-compute/main.go                          — Bind ECSTaskDefinition driver
 ✎ internal/core/provider/registry.go                  — Add adapter to NewRegistry()
 ✎ justfile                                            — Add task definition test targets

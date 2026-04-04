@@ -105,13 +105,14 @@ DNS resources.
 The ELB drivers are registered alongside all other networking drivers:
 
 ```go
+rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
     // ... VPC, SG, Route 53, etc. ...
-    Bind(restate.Reflect(alb.NewALBDriver(auth))).
-    Bind(restate.Reflect(nlb.NewNLBDriver(auth))).
-    Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth))).
-    Bind(restate.Reflect(listener.NewListenerDriver(auth))).
-    Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth)))
+    Bind(restate.Reflect(alb.NewALBDriver(auth), rp)).
+    Bind(restate.Reflect(nlb.NewNLBDriver(auth), rp)).
+    Bind(restate.Reflect(targetgroup.NewTargetGroupDriver(auth), rp)).
+    Bind(restate.Reflect(listener.NewListenerDriver(auth), rp)).
+    Bind(restate.Reflect(listenerrule.NewListenerRuleDriver(auth), rp))
 ```
 
 ### Port: 9082 (same as praxis-network)

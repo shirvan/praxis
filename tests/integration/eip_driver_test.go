@@ -132,7 +132,7 @@ func TestEIPDelete_ReleasesAddress(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = ec2Client.DescribeAddresses(context.Background(), &ec2sdk.DescribeAddressesInput{AllocationIds: []string{out.AllocationId}})
-	require.Error(t, err, "allocation should be deleted from LocalStack")
+	require.Error(t, err, "allocation should be deleted from Moto")
 }
 
 func TestEIPReconcile_DetectsAndFixesTagDrift(t *testing.T) {
