@@ -677,6 +677,10 @@ praxis concierge approve --awakeable-id <id> --reject --reason "Not ready"
 | `concierge history` | Display conversation history |
 | `concierge reset` | Clear session state |
 | `concierge approve` | Approve or reject a pending action |
+| `concierge slack configure` | Configure the Slack gateway (tokens, channels, allowed users) |
+| `concierge slack get-config` | Show current Slack gateway configuration |
+| `concierge slack allowed-users` | Manage the Slack allowed-user list (set, add, remove, list) |
+| `concierge slack watch` | Manage event watch rules (add, list, update, remove) |
 
 ### What the User Sees
 
@@ -695,13 +699,50 @@ The Praxis Concierge is an optional component. To use it:
 Run 'praxis --help' for available commands.
 ```
 
+### Live Progress
+
+When using `praxis concierge ask` or the root shorthand, the CLI displays a live-updating spinner with real-time tool-call progress on stderr. The spinner polls `ConciergeProgress` every 300ms while the `Ask` request is in flight.
+
+Each tool execution transitions through visible states:
+
+| State | Display | Meaning |
+|-------|---------|---------|
+| `thinking` | Spinner text: "Thinking" | LLM is processing |
+| `running` | Inline status + spinner: "Running toolName" | Tool is executing |
+| `ok` | Inline status (green) | Tool completed successfully |
+| `error` | Inline status (red) | Tool execution failed |
+
+This gives operators visibility into what the concierge is doing during multi-tool turns — especially useful for long-running operations like migrations or multi-step deployment plans.
+
+### Session Persistence
+
+Session IDs are resolved in this order:
+
+1. `PRAXIS_SESSION` environment variable
+2. State file at `~/.praxis/session`
+3. Auto-generated random hex ID
+
+After every `ask` invocation, the active session ID is saved to `~/.praxis/session` so subsequent commands automatically reuse the same session. This means `praxis "list my deployments"` followed by `praxis "tell me more about the first one"` continues the same conversation without needing `--session`.
+
+To start a fresh session, pass an explicit `--session <new-id>` or delete `~/.praxis/session`.
+
+### File Attachment
+
+The `--file` flag (available on both `praxis concierge ask` and root shorthand) supports:
+
+- **Single file**: `--file main.tf`
+- **Directory** (walked recursively): `--file ./terraform/`
+- **Glob patterns**: `--file "./modules/*.tf"`
+
+Each file is appended to the prompt with a path marker so the concierge can distinguish between multiple attached files. This is the primary entry point for template migration workflows.
+
 ---
 
 ## Session Lifecycle
 
 ### Creation and Expiry
 
-Sessions are created on first `Ask`. The CLI generates a random UUID and prints it for the user to save. Sessions expire after a configurable TTL (default: 24h, set via `ConciergeConfiguration.SessionTTL`).
+Sessions are created on first `Ask`. The CLI generates a random hex ID (8 characters) and saves it to `~/.praxis/session` for automatic reuse. Sessions expire after a configurable TTL (default: 24h, set via `ConciergeConfiguration.SessionTTL`).
 
 Expiry is **proactive, not lazy**. When a session is created, the `Ask` handler schedules a delayed self-send:
 
@@ -819,4 +860,8 @@ The concierge prioritizes clear, actionable error messages over preventive guard
 | `internal/concierge/prompts/system.txt` | System prompt (plain text, embedded via `go:embed`) |
 | `internal/concierge/prompts/migration.txt` | Migration prompt template (plain text, embedded via `go:embed`) |
 | `internal/cli/concierge.go` | CLI subcommands (ask, configure, status, history, reset, approve) |
+| `internal/cli/concierge_ask.go` | Shared ask logic with live spinner and progress polling |
+| `internal/cli/concierge_slack.go` | CLI subcommands for Slack gateway management |
+| `internal/cli/spinner.go` | Terminal spinner for long-running CLI operations |
+| `internal/cli/progress.go` | Real-time tool-call progress rendering |
 | `internal/cli/client.go` | Client methods for concierge API calls |

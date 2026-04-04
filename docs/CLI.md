@@ -27,6 +27,16 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `state mv`           | Operators| Rename or move a resource between deployments    |
 | `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
+| `events list`        | Both     | List events for one deployment                   |
+| `events query`       | Both     | Cross-deployment event search                    |
+| `notifications add-sink` | Operators | Create or update a notification sink         |
+| `notifications list-sinks` | Both   | List notification sinks                        |
+| `notifications get-sink` | Both    | Show one notification sink                      |
+| `notifications remove-sink` | Operators | Remove a notification sink                 |
+| `notifications test-sink` | Operators | Test delivery of a notification sink          |
+| `notifications health` | Both     | Show aggregate notification sink health          |
+| `config get`         | Both     | Read workspace-scoped configuration              |
+| `config set`         | Operators| Update workspace-scoped configuration            |
 | `<prompt>` (root)    | Users    | Natural language shorthand — forwards to concierge |
 | `concierge ask`      | Users    | Send a prompt to the AI assistant (explicit)     |
 | `concierge configure`| Operators| Configure the LLM provider                       |
@@ -34,6 +44,10 @@ The `praxis` binary is the primary human interface for Praxis. It communicates w
 | `concierge history`  | Both     | Show conversation history                        |
 | `concierge reset`    | Both     | Clear a concierge session                        |
 | `concierge approve`  | Both     | Approve or reject a pending action               |
+| `concierge slack configure` | Operators | Configure the Slack gateway              |
+| `concierge slack get-config` | Both   | Show Slack gateway configuration              |
+| `concierge slack allowed-users` | Operators | Manage the Slack allowed-user list      |
+| `concierge slack watch` | Operators | Manage event watch rules                      |
 
 ## Natural Language Shorthand
 
@@ -57,6 +71,31 @@ apply only when the root command forwards to the concierge:
 | `--workspace` | | | Override workspace |
 | `--auto-approve` | | `false` | Skip approval prompts |
 | `--json` | | `false` | Output raw AskResponse JSON |
+
+The `--file` flag supports single files, directories (walked recursively), and glob patterns:
+
+```bash
+# Single file
+praxis "convert this" --file main.tf
+
+# Directory (all files recursively)
+praxis "migrate everything" --file ./terraform/
+
+# Glob pattern
+praxis "analyze these modules" --file "./modules/*.tf"
+```
+
+Each attached file is appended to the prompt with a path marker so the concierge knows which file is which.
+
+### Session Persistence
+
+Session IDs are resolved in this order:
+
+1. `PRAXIS_SESSION` environment variable
+2. State file at `~/.praxis/session`
+3. Auto-generated random hex ID
+
+After every `ask` invocation, the active session ID is saved to `~/.praxis/session` so subsequent commands in any shell reuse the same session automatically. To start a fresh session, pass `--session <new-id>` or delete `~/.praxis/session`.
 
 When the concierge container is not running, unrecognised arguments print a
 helpful setup message instead of an error.
@@ -695,6 +734,300 @@ The underlying driver Virtual Object key does not change. This enables template 
 
 ---
 
+## events
+
+Query deployment events. Events are CloudEvents emitted by the orchestrator during deployment lifecycle transitions. They are stored per-deployment and indexed globally.
+
+### events list
+
+List events for a single deployment.
+
+```bash
+praxis events list Deployment/<key> [flags]
+```
+
+**Flags:**
+
+| Flag         | Default | Description                                              |
+|--------------|---------|----------------------------------------------------------|
+| `--since`    | —       | Show events from the last duration (e.g. `1h`, `7d`)    |
+| `--type`     | —       | Filter by event type prefix                              |
+| `--severity` | —       | Filter by severity (`info`, `warn`, `error`)             |
+| `--resource` | —       | Filter by resource name                                  |
+
+**Examples:**
+
+```bash
+# All events for a deployment
+praxis events list Deployment/my-webapp
+
+# Events from the last hour
+praxis events list Deployment/my-webapp --since 1h
+
+# Only errors
+praxis events list Deployment/my-webapp --severity error
+
+# Filter by resource
+praxis events list Deployment/my-webapp --resource my-bucket
+
+# JSON output
+praxis events list Deployment/my-webapp -o json
+```
+
+### events query
+
+Search events across all deployments.
+
+```bash
+praxis events query [flags]
+```
+
+**Flags:**
+
+| Flag             | Default | Description                                          |
+|------------------|---------|------------------------------------------------------|
+| `-w, --workspace`| —       | Filter by workspace                                  |
+| `--type`         | —       | Filter by event type prefix                          |
+| `--severity`     | —       | Filter by severity (`info`, `warn`, `error`)         |
+| `--resource`     | —       | Filter by resource name                              |
+| `--since`        | —       | Show events from the last duration (e.g. `1h`, `7d`) |
+| `--limit`        | `100`   | Maximum events to return                             |
+
+**Examples:**
+
+```bash
+# All recent events
+praxis events query
+
+# Events in the staging workspace from the last day
+praxis events query -w staging --since 1d
+
+# Errors across all deployments
+praxis events query --severity error
+
+# Combined filters
+praxis events query --severity warn --type "dev.praxis.deployment.*" --limit 50
+
+# JSON output
+praxis events query -o json
+```
+
+The `--since` flag accepts Go-style durations (`1h`, `30m`, `2h30m`) plus a `d` suffix for days (`7d`).
+
+---
+
+## notifications
+
+Manage notification sinks — delivery targets for deployment events. Praxis can push CloudEvents to webhooks, structured logs, or CloudEvents HTTP endpoints.
+
+### notifications add-sink
+
+Create or update a notification sink.
+
+```bash
+praxis notifications add-sink [flags]
+```
+
+**Flags:**
+
+| Flag                    | Default        | Description                                              |
+|-------------------------|----------------|----------------------------------------------------------|
+| `--name`                | —              | Sink name                                                |
+| `--type`                | —              | Sink type: `webhook`, `structured_log`, `cloudevents_http` |
+| `--url`                 | —              | Endpoint URL (for `webhook` and `cloudevents_http`)      |
+| `--filter-types`        | —              | Comma-separated event type prefixes                      |
+| `--filter-categories`   | —              | Comma-separated event categories                         |
+| `--filter-severities`   | —              | Comma-separated severities                               |
+| `--filter-workspaces`   | —              | Comma-separated workspace names                          |
+| `--filter-deployments`  | —              | Comma-separated deployment globs                         |
+| `--header`              | —              | HTTP header `key=value` (repeatable)                     |
+| `--max-retries`         | `3`            | Maximum delivery retry attempts                          |
+| `--backoff-ms`          | `1000`         | Initial retry backoff in milliseconds                    |
+| `--content-mode`        | `structured`   | CloudEvents HTTP content mode                            |
+| `--from-file`           | —              | Load sink config from JSON file (or `-` for stdin)       |
+
+**Examples:**
+
+```bash
+# Webhook sink
+praxis notifications add-sink --name ops-alerts --type webhook \
+  --url https://hooks.slack.com/services/T.../B.../xxx
+
+# CloudEvents HTTP endpoint with filters
+praxis notifications add-sink --name prod-errors --type cloudevents_http \
+  --url https://events.example.com/ingest \
+  --filter-severities error --filter-workspaces prod
+
+# With custom headers and retry config
+praxis notifications add-sink --name pagerduty --type webhook \
+  --url https://events.pagerduty.com/v2/enqueue \
+  --header "Authorization=Token token=xxx" \
+  --max-retries 5 --backoff-ms 2000
+
+# Load from a JSON file
+praxis notifications add-sink --from-file sink.json
+
+# Load from stdin
+cat sink.json | praxis notifications add-sink --from-file -
+```
+
+### notifications list-sinks
+
+List all configured notification sinks.
+
+```bash
+praxis notifications list-sinks
+```
+
+**Output:**
+
+```text
+NAME          TYPE               STATE    FAILURES  URL
+----          ----               -----    --------  ---
+ops-alerts    webhook            healthy  0         https://hooks.slack.com/...
+prod-errors   cloudevents_http   healthy  0         https://events.example.com/...
+```
+
+### notifications get-sink
+
+Show the full configuration of a single sink (JSON output).
+
+```bash
+praxis notifications get-sink <name>
+```
+
+### notifications remove-sink
+
+Remove a notification sink.
+
+```bash
+praxis notifications remove-sink <name>
+```
+
+### notifications test-sink
+
+Send a synthetic CloudEvent to a sink to verify delivery works.
+
+```bash
+praxis notifications test-sink <name>
+```
+
+### notifications health
+
+Show aggregate health across all notification sinks.
+
+```bash
+praxis notifications health
+```
+
+**Output:**
+
+```text
+TOTAL  HEALTHY  DEGRADED  OPEN  LAST DELIVERY
+-----  -------  --------  ----  -------------
+3      2        1         0     2026-04-03 10:30:00 UTC
+```
+
+---
+
+## config
+
+Manage workspace-scoped Praxis configuration. Currently supports event retention policy settings.
+
+### config get
+
+Read a configuration value for the active workspace.
+
+```bash
+praxis config get <path> [flags]
+```
+
+**Flags:**
+
+| Flag             | Default          | Description                              |
+|------------------|------------------|------------------------------------------|
+| `-w, --workspace`| active workspace | Workspace name                           |
+
+**Supported paths:**
+
+| Path                | Description                      |
+|---------------------|----------------------------------|
+| `events.retention`  | Event retention policy           |
+
+**Examples:**
+
+```bash
+# Read the retention policy for the active workspace
+praxis config get events.retention
+
+# For a specific workspace
+praxis config get events.retention -w staging
+
+# JSON output
+praxis config get events.retention -o json
+```
+
+**Output:**
+
+```text
+Max Age                    180d
+Max Events/Deployment      1000
+Max Index Entries           10000
+Sweep Interval             1h
+Ship Before Delete         false
+Drain Sink                 ops-drain
+```
+
+### config set
+
+Update workspace-scoped configuration. Individual retention fields can be updated without replacing the entire policy.
+
+```bash
+praxis config set <path> <value> [flags]
+```
+
+**Flags:**
+
+| Flag             | Default          | Description                              |
+|------------------|------------------|------------------------------------------|
+| `-w, --workspace`| active workspace | Workspace name                           |
+
+**Supported subcommands:**
+
+| Subcommand                                              | Description                                 |
+|---------------------------------------------------------|---------------------------------------------|
+| `config set events.retention --from-file <file>`        | Replace the full retention policy (JSON)    |
+| `config set events.retention.max-age <duration>`        | Max age for events (e.g. `180d`, `720h`)    |
+| `config set events.retention.max-events-per-deployment <n>` | Max events stored per deployment       |
+| `config set events.retention.max-index-entries <n>`     | Max entries in the global event index       |
+| `config set events.retention.sweep-interval <duration>` | How often to prune old events               |
+| `config set events.retention.ship-before-delete <bool>` | Ship events to drain sink before deletion   |
+| `config set events.retention.drain-sink <name>`         | Notification sink to drain events to        |
+
+**Examples:**
+
+```bash
+# Set max event age
+praxis config set events.retention.max-age 180d
+
+# Set max events per deployment
+praxis config set events.retention.max-events-per-deployment 500
+
+# Set the drain sink
+praxis config set events.retention.drain-sink ops-drain
+
+# Enable shipping before delete
+praxis config set events.retention.ship-before-delete true
+
+# Replace the full policy from a file
+praxis config set events.retention --from-file retention.json
+
+# Override workspace
+praxis config set events.retention.max-age 90d -w staging
+```
+
+---
+
 ## fmt
 
 Format CUE template files using the canonical CUE style. Files are formatted in place by default.
@@ -825,6 +1158,9 @@ praxis concierge ask <prompt> [flags]
 | `--session`   | `"default"` | Session ID                     |
 | `--account`   | env         | AWS account name               |
 | `-w, --workspace` | —       | Workspace name                 |
+| `-f, --file`  | —           | Attach file, directory, or glob to the prompt |
+| `--auto-approve` | false    | Skip approval prompts          |
+| `--json`      | false       | Output raw AskResponse JSON    |
 
 **Examples:**
 
@@ -838,9 +1174,14 @@ praxis concierge ask "Plan adding a security group for port 443"
 # Use a named session
 praxis concierge ask --session migration "Analyze my Terraform state"
 
+# Attach a file for migration
+praxis concierge ask "Convert this to Praxis" --file main.tf
+
 # JSON output
 praxis concierge ask "List deployments" -o json
 ```
+
+When running, the CLI displays a live spinner with real-time tool-call progress. Each tool execution is shown as it happens (thinking → running → ok/error), giving visibility into what the concierge is doing before returning the final response.
 
 ### concierge configure
 
@@ -937,6 +1278,116 @@ praxis concierge approve --awakeable-id <id>
 praxis concierge approve --awakeable-id <id> --reject --reason "Not ready for production"
 ```
 
+### concierge slack
+
+Manage the Slack gateway integration. The Slack gateway is an optional component that allows users to interact with the concierge from Slack channels.
+
+#### concierge slack configure
+
+Configure the Slack gateway with bot and app tokens.
+
+```bash
+praxis concierge slack configure [flags]
+```
+
+**Flags:**
+
+| Flag               | Default | Description                                |
+|--------------------|---------|--------------------------------------------|
+| `--bot-token`      | —       | Slack bot token (`xoxb-...`)               |
+| `--bot-token-ref`  | —       | SSM parameter name for bot token           |
+| `--app-token`      | —       | Slack app-level token (`xapp-...`)         |
+| `--app-token-ref`  | —       | SSM parameter name for app token           |
+| `--event-channel`  | —       | Default channel for event notifications    |
+| `--allowed-users`  | —       | Comma-separated Slack user IDs             |
+
+**Examples:**
+
+```bash
+# Direct tokens (development)
+praxis concierge slack configure \
+  --bot-token xoxb-... \
+  --app-token xapp-... \
+  --event-channel C01ABC123
+
+# SSM-backed tokens (production)
+praxis concierge slack configure \
+  --bot-token-ref ssm:///praxis/slack/bot-token \
+  --app-token-ref ssm:///praxis/slack/app-token \
+  --event-channel C01ABC123 \
+  --allowed-users U04XYZ,U05ABC
+```
+
+#### concierge slack get-config
+
+Show the current Slack gateway configuration (tokens are redacted server-side).
+
+```bash
+praxis concierge slack get-config
+```
+
+#### concierge slack allowed-users
+
+Manage the Slack allowed-user list. When the list is empty, all users are permitted.
+
+```bash
+# Replace the entire list
+praxis concierge slack allowed-users set "U04XYZ,U05ABC"
+
+# Clear the list (permit all users)
+praxis concierge slack allowed-users set ""
+
+# Add a user
+praxis concierge slack allowed-users add U06DEF
+
+# Remove a user
+praxis concierge slack allowed-users remove U04XYZ
+
+# List current allowed users
+praxis concierge slack allowed-users list
+```
+
+#### concierge slack watch
+
+Manage event watch rules that route deployment events to specific Slack channels.
+
+```bash
+# Add a watch rule
+praxis concierge slack watch add --name prod-errors \
+  --channel C01ABC123 \
+  --severities error \
+  --workspaces prod
+
+# List all watch rules
+praxis concierge slack watch list
+
+# Update a rule
+praxis concierge slack watch update --id <rule-id> --enabled false
+
+# Remove a rule
+praxis concierge slack watch remove --id <rule-id>
+```
+
+**Watch add flags:**
+
+| Flag             | Default | Description                                      |
+|------------------|---------|--------------------------------------------------|
+| `--name`         | —       | Watch rule name (required)                       |
+| `--channel`      | —       | Slack channel for notifications                  |
+| `--types`        | —       | Comma-separated event types (supports trailing `*`) |
+| `--categories`   | —       | Comma-separated categories                       |
+| `--severities`   | —       | Comma-separated severities                       |
+| `--workspaces`   | —       | Comma-separated workspaces                       |
+| `--deployments`  | —       | Comma-separated deployments                      |
+
+**Watch update flags:**
+
+| Flag        | Default | Description                    |
+|-------------|---------|--------------------------------|
+| `--id`      | —       | Watch rule ID (required)       |
+| `--name`    | —       | New name                       |
+| `--enabled` | —       | Enable or disable (`true`/`false`) |
+
 ---
 
 ## Resource Key Resolution
@@ -966,3 +1417,4 @@ When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain 
 | `PRAXIS_RESTATE_ENDPOINT`  | Restate ingress URL                    |
 | `PRAXIS_REGION`            | Default AWS region for key resolution  |
 | `PRAXIS_ACCOUNT`           | Default AWS account for provider calls |
+| `PRAXIS_SESSION`           | Override concierge session ID          |
