@@ -85,6 +85,8 @@ func main() {
 		Bind(restate.Reflect(orchestrator.DeploymentStateObj{}, rp)).
 		// DeploymentIndex: cross-deployment listing and search index.
 		Bind(restate.Reflect(orchestrator.DeploymentIndex{}, rp)).
+		// ResourceIndex: cross-deployment resource listing and search by Kind.
+		Bind(restate.Reflect(orchestrator.ResourceIndex{}, rp)).
 		// TemplateRegistry: stores and retrieves versioned templates.
 		Bind(restate.Reflect(registry.TemplateRegistry{}, rp)).
 		// TemplateIndex: searchable index over all registered templates.

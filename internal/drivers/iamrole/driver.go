@@ -573,7 +573,7 @@ func (d *IAMRoleDriver) correctDrift(ctx restate.ObjectContext, api IAMRoleAPI, 
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, roleName, desired.Tags)
 		})
@@ -647,7 +647,7 @@ func specFromObserved(obs ObservedState) IAMRoleSpec {
 		PermissionsBoundary:      obs.PermissionsBoundary,
 		InlinePolicies:           inlinePolicies,
 		ManagedPolicyArns:        sortedStrings(obs.ManagedPolicyArns),
-		Tags:                     filterPraxisTags(obs.Tags),
+		Tags:                     drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

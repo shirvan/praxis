@@ -1,6 +1,7 @@
 package auroracluster
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -141,14 +142,14 @@ func TestStringSliceEqual(t *testing.T) {
 }
 
 func TestTagsMatch(t *testing.T) {
-	assert.True(t, tagsMatch(nil, nil))
-	assert.True(t, tagsMatch(map[string]string{"k": "v"}, map[string]string{"k": "v"}))
-	assert.False(t, tagsMatch(map[string]string{"k": "v"}, map[string]string{"k": "x"}))
-	assert.True(t, tagsMatch(map[string]string{}, map[string]string{"praxis:key": "val"}))
+	assert.True(t, drivers.TagsMatch(nil, nil))
+	assert.True(t, drivers.TagsMatch(map[string]string{"k": "v"}, map[string]string{"k": "v"}))
+	assert.False(t, drivers.TagsMatch(map[string]string{"k": "v"}, map[string]string{"k": "x"}))
+	assert.True(t, drivers.TagsMatch(map[string]string{}, map[string]string{"praxis:key": "val"}))
 }
 
 func TestFilterPraxisTags(t *testing.T) {
-	result := filterPraxisTags(map[string]string{"env": "prod", "praxis:managed": "key", "team": "backend"})
+	result := drivers.FilterPraxisTags(map[string]string{"env": "prod", "praxis:managed": "key", "team": "backend"})
 	assert.Equal(t, map[string]string{"env": "prod", "team": "backend"}, result)
 }
 

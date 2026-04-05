@@ -40,6 +40,24 @@ func TestPlanCmd_Success(t *testing.T) {
 	assert.Equal(t, "{}", gotReq.Template)
 }
 
+func TestPlanCmd_TemplateName_Success(t *testing.T) {
+	var gotReq types.PlanDeployRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/PraxisCommandService/PlanDeploy", r.URL.Path)
+		_ = json.NewDecoder(r.Body).Decode(&gotReq)
+		resp := types.PlanDeployResponse{
+			Plan: &types.PlanResult{Summary: types.PlanSummary{ToCreate: 1}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	_, _, err := executeCmd(t, []string{"plan", "stack1"}, srv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "stack1", gotReq.Template)
+}
+
 func TestPlanCmd_MissingFile(t *testing.T) {
 	_, _, err := executeCmd(t, []string{"plan", "/nonexistent/file.cue"}, "http://unused")
 	require.Error(t, err)
@@ -152,10 +170,16 @@ func TestDeleteCmd_Rollback(t *testing.T) {
 	assert.Equal(t, "/PraxisCommandService/RollbackDeployment", gotPath)
 }
 
-func TestDeleteCmd_NonDeployment(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"delete", "S3Bucket/my-bucket", "--yes"}, "http://unused")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "only supports Deployment")
+func TestDeleteCmd_CloudResource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/S3Bucket/my-bucket/Delete", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(nil)
+	}))
+	defer srv.Close()
+
+	_, _, err := executeCmd(t, []string{"delete", "S3Bucket/my-bucket", "--yes"}, srv.URL)
+	require.NoError(t, err)
 }
 
 func TestDeleteCmd_NoArgs(t *testing.T) {
@@ -181,10 +205,35 @@ func TestListCmd_Deployments(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestListCmd_UnsupportedType(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"list", "pods"}, "http://unused")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported resource type")
+func TestListCmd_CloudResourceKind(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/DeploymentIndex/global/List":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]types.DeploymentSummary{
+				{Key: "app-1", Status: types.DeploymentComplete, Resources: 2, Workspace: "dev"},
+			})
+		case "/DeploymentStateObj/app-1/GetDetail":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(types.DeploymentDetail{
+				Key:    "app-1",
+				Status: types.DeploymentComplete,
+				Resources: []types.DeploymentResource{
+					{Name: "my-bucket", Kind: "S3Bucket", Key: "my-bucket", Status: types.DeploymentResourceReady},
+					{Name: "web-sg", Kind: "SecurityGroup", Key: "vpc-123~web-sg", Status: types.DeploymentResourceReady},
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	// Table output — just verify no error (renderer writes to os.Stdout directly)
+	_, _, err := executeCmd(t, []string{"list", "S3Bucket"}, srv.URL)
+	require.NoError(t, err)
+
+	// JSON output — captured via printJSON which writes to os.Stdout
+	_, _, err = executeCmd(t, []string{"list", "S3Bucket", "-o", "json"}, srv.URL)
+	require.NoError(t, err)
 }
 
 func TestListCmd_NoArgs(t *testing.T) {
@@ -206,36 +255,94 @@ func TestListCmd_DeploymentAliases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// apply (limited — requires file + confirmation prompt)
+// deploy
 // ---------------------------------------------------------------------------
 
-func TestApplyCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"apply"}, "http://unused")
+func TestDeployCmd_NoArgs(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"deploy"}, "http://unused")
 	require.Error(t, err)
 }
 
-func TestApplyCmd_MissingFile(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"apply", "/nonexistent.cue"}, "http://unused")
+func TestDeployCmd_File_MissingFile(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"deploy", "/nonexistent.cue"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read template")
 }
 
-func TestApplyCmd_NoChanges(t *testing.T) {
+func TestDeployCmd_File_NoChanges(t *testing.T) {
 	tmp := t.TempDir()
 	tpl := filepath.Join(tmp, "stack.cue")
 	require.NoError(t, os.WriteFile(tpl, []byte(`{}`), 0644))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Plan returns no changes → apply should exit early.
+		// Plan returns no changes so deploy exits before Apply.
 		_ = json.NewEncoder(w).Encode(types.PlanResponse{
 			Plan: &types.PlanResult{Summary: types.PlanSummary{}},
 		})
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"apply", tpl, "--auto-approve"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"deploy", tpl, "--yes"}, srv.URL)
 	require.NoError(t, err)
+}
+
+func TestDeployCmd_File_AppliesInlineTemplate(t *testing.T) {
+	tmp := t.TempDir()
+	tpl := filepath.Join(tmp, "stack.cue")
+	require.NoError(t, os.WriteFile(tpl, []byte(`{}`), 0644))
+
+	callCount := 0
+	var gotApply types.ApplyRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(types.PlanResponse{
+				Plan: &types.PlanResult{Summary: types.PlanSummary{ToCreate: 1}},
+			})
+			return
+		}
+		assert.Equal(t, "/PraxisCommandService/Apply", r.URL.Path)
+		_ = json.NewDecoder(r.Body).Decode(&gotApply)
+		_ = json.NewEncoder(w).Encode(types.ApplyResponse{
+			DeploymentKey: "app-inline",
+			Status:        types.DeploymentRunning,
+		})
+	}))
+	defer srv.Close()
+
+	_, _, err := executeCmd(t, []string{"deploy", tpl, "--yes"}, srv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "{}", gotApply.Template)
+	assert.Equal(t, tpl, gotApply.TemplatePath)
+}
+
+func TestDeployCmd_Template_UsesRegisteredTemplate(t *testing.T) {
+	callCount := 0
+	var gotDeploy types.DeployRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			assert.Equal(t, "/PraxisCommandService/PlanDeploy", r.URL.Path)
+			_ = json.NewEncoder(w).Encode(types.PlanDeployResponse{
+				Plan: &types.PlanResult{Summary: types.PlanSummary{ToCreate: 1}},
+			})
+			return
+		}
+		assert.Equal(t, "/PraxisCommandService/Deploy", r.URL.Path)
+		_ = json.NewDecoder(r.Body).Decode(&gotDeploy)
+		_ = json.NewEncoder(w).Encode(types.DeployResponse{
+			DeploymentKey: "app-template",
+			Status:        types.DeploymentRunning,
+		})
+	}))
+	defer srv.Close()
+
+	_, _, err := executeCmd(t, []string{"deploy", "stack1", "--yes"}, srv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "stack1", gotDeploy.Template)
 }
 
 // ---------------------------------------------------------------------------

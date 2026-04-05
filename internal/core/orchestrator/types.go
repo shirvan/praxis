@@ -90,6 +90,12 @@ const (
 
 	// NotificationSinkConfigGlobalKey is the fixed key used by sink configuration.
 	NotificationSinkConfigGlobalKey = "global"
+
+	// ResourceIndexServiceName is the Restate Virtual Object for cross-deployment resource queries.
+	ResourceIndexServiceName = "ResourceIndex"
+
+	// ResourceIndexGlobalKey is the well-known key used by ResourceIndex.
+	ResourceIndexGlobalKey = "global"
 )
 
 // DeploymentPlan is the input accepted by DeploymentWorkflow.Run.

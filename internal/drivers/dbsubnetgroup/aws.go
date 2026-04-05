@@ -3,6 +3,7 @@ package dbsubnetgroup
 import (
 	"context"
 	"errors"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 
@@ -141,7 +142,7 @@ func (r *realDBSubnetGroupAPI) UpdateTags(ctx context.Context, arn string, tags 
 	if err != nil {
 		return err
 	}
-	filteredDesired := filterPraxisTags(tags)
+	filteredDesired := drivers.FilterPraxisTags(tags)
 	var remove []string
 	for key := range current {
 		if _, ok := filteredDesired[key]; !ok {
@@ -198,7 +199,7 @@ func (r *realDBSubnetGroupAPI) listTags(ctx context.Context, arn string) (map[st
 
 // toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
 func toRDSTags(tags map[string]string) []rdstypes.Tag {
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	if len(filtered) == 0 {
 		return nil
 	}

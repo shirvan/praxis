@@ -3,6 +3,7 @@ package drivers
 import (
 	"time"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -28,4 +29,11 @@ func DefaultMode(m types.Mode) types.Mode {
 		return types.ModeManaged
 	}
 	return m
+}
+
+// IsAccessDenied returns true for AWS authorization failure codes.
+// Exported at the drivers package level so individual driver packages can use
+// it without importing awserr directly.
+func IsAccessDenied(err error) bool {
+	return awserr.IsAccessDenied(err)
 }

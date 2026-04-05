@@ -747,7 +747,7 @@ resources: {
 }
 
 # 4. Deploy as usual
-praxis apply template.cue --account prod --key my-deployment --wait
+praxis deploy template.cue --account prod --key my-deployment --wait
 ```
 
 Three steps to extend, zero lines changed in Praxis.

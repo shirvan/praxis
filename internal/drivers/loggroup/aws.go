@@ -8,6 +8,7 @@ package loggroup
 
 import (
 	"context"
+	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
 	"sort"
 	"strings"
@@ -230,8 +231,8 @@ func managedTags(tags map[string]string, managedKey string) map[string]string {
 }
 
 func tagDiff(desired, observed map[string]string, managedKey string) (map[string]string, []string) {
-	want := managedTags(filterPraxisTags(desired), managedKey)
-	have := managedTags(filterPraxisTags(observed), managedKey)
+	want := managedTags(drivers.FilterPraxisTags(desired), managedKey)
+	have := managedTags(drivers.FilterPraxisTags(observed), managedKey)
 	toAdd := map[string]string{}
 	for key, value := range want {
 		if current, ok := have[key]; !ok || current != value {

@@ -274,10 +274,14 @@ func (a *VPCAdapter) Lookup(ctx restate.Context, account string, filter LookupFi
 	}
 
 	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (vpc.ObservedState, error) {
-		return lookupVPC(runCtx, api, filter)
+		obs, runErr := lookupVPC(runCtx, api, filter)
+		if runErr != nil {
+			return obs, classifyLookupError(runErr, vpc.IsNotFound)
+		}
+		return obs, nil
 	})
 	if err != nil {
-		return nil, classifyLookupError(err, vpc.IsNotFound)
+		return nil, err
 	}
 	if !matchesVPCFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no VPC found matching filter"), 404)

@@ -138,7 +138,7 @@ func (d *ElasticIPDriver) Provision(ctx restate.ObjectContext, spec ElasticIPSpe
 			return ElasticIPOutputs{}, runErr
 		}
 		allocationID = result.AllocationId
-	} else if !tagsMatch(spec.Tags, state.Observed.Tags) {
+	} else if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 		_, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, allocationID, spec.Tags)
 		})
@@ -419,7 +419,7 @@ func (d *ElasticIPDriver) GetInputs(ctx restate.ObjectSharedContext) (ElasticIPS
 
 // correctDrift updates tags if they've drifted. EIPs have no other mutable fields.
 func (d *ElasticIPDriver) correctDrift(ctx restate.ObjectContext, api EIPAPI, allocationID string, desired ElasticIPSpec, observed ObservedState) error {
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, allocationID, desired.Tags)
 		})
@@ -458,7 +458,7 @@ func specFromObserved(obs ObservedState) ElasticIPSpec {
 	return ElasticIPSpec{
 		Domain:             obs.Domain,
 		NetworkBorderGroup: obs.NetworkBorderGroup,
-		Tags:               filterPraxisTags(obs.Tags),
+		Tags:               drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

@@ -416,7 +416,7 @@ func (d *IAMPolicyDriver) correctDrift(ctx restate.ObjectContext, api IAMPolicyA
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, policyArn, desired.Tags)
 		})
@@ -464,7 +464,7 @@ func specFromObserved(obs ObservedState) IAMPolicySpec {
 		PolicyName:     obs.PolicyName,
 		PolicyDocument: normalizePolicyDocument(obs.PolicyDocument),
 		Description:    obs.Description,
-		Tags:           filterPraxisTags(obs.Tags),
+		Tags:           drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

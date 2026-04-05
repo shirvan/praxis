@@ -2,7 +2,7 @@ package ebs
 
 import (
 	"fmt"
-	"strings"
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift returns true if the desired spec and observed state differ on mutable fields.
@@ -29,7 +29,7 @@ func HasDrift(desired EBSVolumeSpec, observed ObservedState) bool {
 	if desired.Throughput > 0 && desired.Throughput != observed.Throughput {
 		return true
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 
@@ -110,8 +110,8 @@ type FieldDiffEntry struct {
 // Tags prefixed with "praxis:" are filtered out (they are internal ownership markers).
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	desiredFiltered := filterPraxisTags(desired)
-	observedFiltered := filterPraxisTags(observed)
+	desiredFiltered := drivers.FilterPraxisTags(desired)
+	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -125,37 +125,6 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 		}
 	}
 	return diffs
-}
-
-// tagsMatch returns true when the two tag maps are semantically equal,
-// ignoring tags prefixed with "praxis:" (internal ownership markers).
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-// filterPraxisTags returns a copy of the map with "praxis:"-prefixed keys removed.
-// These are internal tags used for ownership tracking and should not be compared.
-func filterPraxisTags(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(m))
-	for key, value := range m {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 // formatManagedKeyConflict produces a human-readable error when a volume with

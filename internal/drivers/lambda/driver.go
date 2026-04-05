@@ -504,7 +504,7 @@ func outputsFromObserved(observed ObservedState) LambdaFunctionOutputs {
 
 // specFromObserved reconstructs a LambdaFunctionSpec from observed AWS state for Import.
 func specFromObserved(observed ObservedState) LambdaFunctionSpec {
-	spec := applyDefaults(LambdaFunctionSpec{FunctionName: observed.FunctionName, Role: observed.Role, PackageType: observed.PackageType, Runtime: observed.Runtime, Handler: observed.Handler, Description: observed.Description, MemorySize: observed.MemorySize, Timeout: observed.Timeout, Environment: observed.Environment, Layers: append([]string(nil), observed.Layers...), Tags: filterPraxisTags(observed.Tags)})
+	spec := applyDefaults(LambdaFunctionSpec{FunctionName: observed.FunctionName, Role: observed.Role, PackageType: observed.PackageType, Runtime: observed.Runtime, Handler: observed.Handler, Description: observed.Description, MemorySize: observed.MemorySize, Timeout: observed.Timeout, Environment: observed.Environment, Layers: append([]string(nil), observed.Layers...), Tags: drivers.FilterPraxisTags(observed.Tags)})
 	if len(observed.VpcConfig.SubnetIds) > 0 || len(observed.VpcConfig.SecurityGroupIds) > 0 {
 		spec.VPCConfig = &VPCConfigSpec{SubnetIds: append([]string(nil), observed.VpcConfig.SubnetIds...), SecurityGroupIds: append([]string(nil), observed.VpcConfig.SecurityGroupIds...)}
 	}

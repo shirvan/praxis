@@ -1,6 +1,7 @@
 package dbsubnetgroup
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,13 +85,13 @@ func TestStringSliceEqual(t *testing.T) {
 }
 
 func TestTagsMatch(t *testing.T) {
-	assert.True(t, tagsMatch(map[string]string{"env": "dev"}, map[string]string{"env": "dev"}))
-	assert.False(t, tagsMatch(map[string]string{"env": "dev"}, map[string]string{"env": "prod"}))
-	assert.True(t, tagsMatch(map[string]string{"env": "dev"}, map[string]string{"env": "dev", "praxis:key": "val"}))
+	assert.True(t, drivers.TagsMatch(map[string]string{"env": "dev"}, map[string]string{"env": "dev"}))
+	assert.False(t, drivers.TagsMatch(map[string]string{"env": "dev"}, map[string]string{"env": "prod"}))
+	assert.True(t, drivers.TagsMatch(map[string]string{"env": "dev"}, map[string]string{"env": "dev", "praxis:key": "val"}))
 }
 
 func TestFilterPraxisTags(t *testing.T) {
-	result := filterPraxisTags(map[string]string{"env": "dev", "praxis:managed-key": "val"})
+	result := drivers.FilterPraxisTags(map[string]string{"env": "dev", "praxis:managed-key": "val"})
 	assert.Equal(t, map[string]string{"env": "dev"}, result)
 }
 

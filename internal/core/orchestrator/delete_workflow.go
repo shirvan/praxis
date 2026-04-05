@@ -20,6 +20,12 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// deleteResourceTimeout is the maximum time to wait for a single resource's
+// delete sub-invocation before recording a failure and continuing to the next
+// resource. This prevents a single hung deletion from blocking the entire
+// delete workflow.
+const deleteResourceTimeout = 5 * time.Minute
+
 // DeploymentDeleteWorkflow runs one asynchronous deployment-wide delete flow.
 //
 // Delete stays separate from apply so both operations remain durable, observable
@@ -56,6 +62,22 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	}
 	if state == nil {
 		return DeploymentResult{}, restate.TerminalError(fmt.Errorf("deployment %q not found", req.DeploymentKey), 404)
+	}
+
+	// If an apply workflow is still running, wait for it to settle before
+	// beginning teardown. The DeleteDeployment handler sends RequestCancel
+	// before dispatching us, so the apply should already be draining. We
+	// poll until the deployment reaches a terminal or deletable state to
+	// avoid concurrent mutation of resources.
+	for state.Status == types.DeploymentRunning || state.Status == types.DeploymentPending {
+		_ = restate.Sleep(ctx, 2*time.Second)
+		state, err = getDeploymentState(ctx, req.DeploymentKey)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		if state == nil {
+			return DeploymentResult{}, restate.TerminalError(fmt.Errorf("deployment %q disappeared while waiting for apply to finish", req.DeploymentKey), 404)
+		}
 	}
 
 	// Reconstruct the DAG from the stored deployment resources so we can
@@ -96,9 +118,39 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	// dependencies. This guarantees that if resource B depends on resource A,
 	// B is deleted before A. If B's deletion fails, A (and its other deps)
 	// are skipped because B may still hold a live reference to A.
+	cancellationRequested := false
 	for _, name := range graph.ReverseTopo() {
 		if exec.skipped[name] {
 			continue
+		}
+
+		// Poll the cancellation flag. Once set, stop dispatching new deletes
+		// but honour resources already started. A cancelled delete finalizes
+		// as Failed (not Deleted) because not all resources were cleaned up.
+		if !cancellationRequested {
+			cancelled, err := deploymentCancelled(ctx, req.DeploymentKey)
+			if err != nil {
+				return DeploymentResult{}, err
+			}
+			if cancelled {
+				cancellationRequested = true
+			}
+		}
+		if cancellationRequested {
+			exec.markSkipped(name, "skipped: delete workflow cancelled")
+			continue
+		}
+
+		// Skip resources that were never successfully provisioned or are
+		// already deleted. Only attempt to delete resources that reached
+		// Ready, or are in Provisioning/Deleting/Error-with-outputs state
+		// (may have been partially created). This prevents spurious delete
+		// calls against resources that never existed in the cloud provider.
+		if rs := state.Resources[name]; rs != nil {
+			if shouldSkipDeleteByStatus(rs.Status) {
+				exec.markDeleted(name)
+				continue
+			}
 		}
 
 		resource := exec.plan[name]
@@ -151,6 +203,23 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			continue
 		}
 
+		// Await the delete with a timeout. If the sub-invocation exceeds
+		// deleteResourceTimeout, record a failure and continue to the next
+		// resource rather than blocking the entire workflow.
+		timeout := restate.After(ctx, deleteResourceTimeout)
+		first, err := restate.WaitFirst(ctx, invocation.Future(), timeout)
+		if err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete wait error: %v", err)); err != nil {
+				return DeploymentResult{}, err
+			}
+			continue
+		}
+		if first == timeout {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete timed out after %s", deleteResourceTimeout)); err != nil {
+				return DeploymentResult{}, err
+			}
+			continue
+		}
 		if err := invocation.Done(); err != nil {
 			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error()); err != nil {
 				return DeploymentResult{}, err
@@ -172,11 +241,17 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		if err := EmitDeploymentCloudEvent(ctx, deletedEvent); err != nil {
 			return DeploymentResult{}, err
 		}
+		if err := removeResourceIndex(ctx, req.DeploymentKey, name); err != nil {
+			return DeploymentResult{}, err
+		}
 	}
 
 	finalStatus := types.DeploymentDeleted
 	finalError := ""
-	if exec.hasFailures() {
+	if cancellationRequested {
+		finalStatus = types.DeploymentFailed
+		finalError = "delete workflow cancelled; not all resources were cleaned up"
+	} else if exec.hasFailures() {
 		finalStatus = types.DeploymentFailed
 		finalError = exec.failureSummary()
 	}
@@ -200,6 +275,9 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	// On partial failure, keep it so operators can see the failed state.
 	if finalStatus == types.DeploymentDeleted {
 		if err := removeDeploymentSummary(ctx, req.DeploymentKey); err != nil {
+			return DeploymentResult{}, err
+		}
+		if err := removeResourceIndexByDeployment(ctx, req.DeploymentKey); err != nil {
 			return DeploymentResult{}, err
 		}
 	} else {
@@ -268,4 +346,17 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 		}
 	}
 	return nil
+}
+
+// shouldSkipDeleteByStatus returns true for resource statuses that indicate
+// the resource was never successfully provisioned or is already deleted.
+// These resources should be skipped during the delete workflow to avoid
+// spurious driver calls against resources that don't exist in the cloud.
+func shouldSkipDeleteByStatus(status types.DeploymentResourceStatus) bool {
+	switch status {
+	case types.DeploymentResourcePending, types.DeploymentResourceSkipped, types.DeploymentResourceDeleted:
+		return true
+	default:
+		return false
+	}
 }

@@ -195,9 +195,25 @@ func (d *EventSourceMappingDriver) Delete(ctx restate.ObjectContext) error {
 	state.Error = ""
 	restate.Set(ctx, drivers.StateKey, state)
 	_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-		return restate.Void{}, api.DeleteEventSourceMapping(rc, state.Outputs.UUID)
+		runErr := api.DeleteEventSourceMapping(rc, state.Outputs.UUID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return restate.Void{}, nil
+			}
+			if IsConflict(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 409)
+			}
+			if IsInvalidParameter(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
+			}
+			if drivers.IsAccessDenied(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 403)
+			}
+			return restate.Void{}, runErr
+		}
+		return restate.Void{}, nil
 	})
-	if err != nil && !IsNotFound(err) {
+	if err != nil {
 		state.Status = types.StatusError
 		state.Error = err.Error()
 		restate.Set(ctx, drivers.StateKey, state)

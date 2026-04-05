@@ -18,6 +18,10 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// forceReplaceDeleteTimeout is the maximum time to wait for a force-replace
+// delete sub-invocation before recording a failure and continuing the dispatch.
+const forceReplaceDeleteTimeout = 5 * time.Minute
+
 // DeploymentWorkflow executes one apply/re-apply run for a deployment.
 //
 // The workflow itself is intentionally thin on durable state. The authoritative
@@ -264,6 +268,22 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						}
 						continue
 					}
+					// Use a timeout to prevent a stuck force-replace delete from
+					// blocking the entire dispatch loop.
+					delTimeout := restate.After(ctx, forceReplaceDeleteTimeout)
+					delFirst, delErr := restate.WaitFirst(ctx, delInvocation.Future(), delTimeout)
+					if delErr != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete wait error: %v", delErr)); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+					if delFirst == delTimeout {
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete timed out after %s", forceReplaceDeleteTimeout)); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
 					if err := delInvocation.Done(); err != nil {
 						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete failed: %v", err)); err != nil {
 							return DeploymentResult{}, err
@@ -365,6 +385,17 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		if err := EmitDeploymentCloudEvent(ctx, readyEvent); err != nil {
 			return DeploymentResult{}, err
 		}
+		if err := upsertResourceIndex(ctx, ResourceIndexEntry{
+			Kind:          resource.Kind,
+			Key:           resource.Key,
+			DeploymentKey: plan.Key,
+			ResourceName:  resourceName,
+			Workspace:     plan.Workspace,
+			Status:        string(types.DeploymentResourceReady),
+			CreatedAt:     plan.CreatedAt,
+		}); err != nil {
+			return DeploymentResult{}, err
+		}
 	}
 
 	// ---------------------------------------------------------------
@@ -420,6 +451,26 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	state.Outputs = exec.outputs
 	if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
 		return DeploymentResult{}, err
+	}
+	// Sync failed/skipped resources to the resource index so cross-deployment
+	// queries reflect the terminal state of every resource in this deployment.
+	for _, name := range exec.order {
+		status := exec.statuses[name]
+		if status == types.DeploymentResourceReady {
+			continue // already indexed at dispatch time
+		}
+		resource := exec.plan[name]
+		if err := upsertResourceIndex(ctx, ResourceIndexEntry{
+			Kind:          resource.Kind,
+			Key:           resource.Key,
+			DeploymentKey: plan.Key,
+			ResourceName:  name,
+			Workspace:     plan.Workspace,
+			Status:        string(status),
+			CreatedAt:     plan.CreatedAt,
+		}); err != nil {
+			return DeploymentResult{}, err
+		}
 	}
 	terminalEvent, err := NewDeploymentTerminalEvent(plan.Key, plan.Workspace, state.Generation, now, finalStatus, finalError)
 	if err != nil {

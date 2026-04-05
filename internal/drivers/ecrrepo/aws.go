@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
 	"strings"
 
@@ -244,7 +245,7 @@ func specFromObserved(observed ObservedState) ECRRepositorySpec {
 		ImageScanningConfiguration: observed.ImageScanningConfiguration,
 		EncryptionConfiguration:    observed.EncryptionConfiguration,
 		RepositoryPolicy:           observed.RepositoryPolicy,
-		Tags:                       filterPraxisTags(observed.Tags),
+		Tags:                       drivers.FilterPraxisTags(observed.Tags),
 	})
 }
 

@@ -175,10 +175,14 @@ func (a *Route53HostedZoneAdapter) Lookup(ctx restate.Context, account string, f
 		return nil, restate.TerminalError(err, 500)
 	}
 	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (route53zone.ObservedState, error) {
-		return lookupHostedZone(runCtx, api, filter)
+		obs, runErr := lookupHostedZone(runCtx, api, filter)
+		if runErr != nil {
+			return obs, classifyLookupError(runErr, route53zone.IsNotFound)
+		}
+		return obs, nil
 	})
 	if err != nil {
-		return nil, classifyLookupError(err, route53zone.IsNotFound)
+		return nil, err
 	}
 	if !matchesHostedZoneFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no Route53HostedZone found matching filter"), 404)

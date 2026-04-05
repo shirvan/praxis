@@ -255,6 +255,12 @@ func (d *ListenerRuleDriver) Delete(ctx restate.ObjectContext) error {
 			if IsNotFound(runErr) {
 				return restate.Void{}, nil
 			}
+			if IsInvalidConfig(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
+			}
+			if drivers.IsAccessDenied(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 403)
+			}
 			return restate.Void{}, runErr
 		}
 		return restate.Void{}, nil
@@ -400,7 +406,7 @@ func (d *ListenerRuleDriver) correctDrift(ctx restate.ObjectContext, api Listene
 		}
 	}
 	// Tags update
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, arn, desired.Tags)
 		})
@@ -457,7 +463,7 @@ func specFromObserved(observed ObservedState) ListenerRuleSpec {
 		Priority:    observed.Priority,
 		Conditions:  observed.Conditions,
 		Actions:     observed.Actions,
-		Tags:        filterPraxisTags(observed.Tags),
+		Tags:        drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

@@ -2,6 +2,7 @@ package routetable
 
 import (
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
@@ -29,7 +30,7 @@ func HasDrift(desired RouteTableSpec, observed ObservedState) bool {
 	if !associationsMatch(desired.Associations, observed.Associations) {
 		return true
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 	return false
@@ -228,8 +229,8 @@ func computeAssociationDiffs(desired []Association, observed []ObservedAssociati
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	desiredFiltered := filterPraxisTags(desired)
-	observedFiltered := filterPraxisTags(observed)
+	desiredFiltered := drivers.FilterPraxisTags(desired)
+	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -276,33 +277,6 @@ func associationsMatch(desired []Association, observed []ObservedAssociation) bo
 		}
 	}
 	return count == len(desiredSet)
-}
-
-func tagsMatch(desired, observed map[string]string) bool {
-	desiredFiltered := filterPraxisTags(desired)
-	observedFiltered := filterPraxisTags(observed)
-	if len(desiredFiltered) != len(observedFiltered) {
-		return false
-	}
-	for key, value := range desiredFiltered {
-		if other, ok := observedFiltered[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	filtered := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			filtered[key] = value
-		}
-	}
-	return filtered
 }
 
 func desiredRouteMap(routes []Route) map[string]Route {

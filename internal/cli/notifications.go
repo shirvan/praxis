@@ -1,213 +1,23 @@
-// notifications.go implements the `praxis notifications` command group.
+// notifications.go contains shared helpers for notification sink operations.
 //
-// Notification sinks are delivery targets for deployment events. Praxis can
-// push CloudEvents to webhooks, structured logs, or CloudEvents HTTP endpoints.
-// Sinks are configured globally and filter events by type, category, severity,
-// workspace, or deployment pattern.
-//
-// The notification subsystem communicates with two Restate services:
-//   - NotificationSinkConfig (Virtual Object, key="global") — CRUD for sinks
-//   - SinkRouter (Service) — test delivery of synthetic events
+// Sink commands are now accessed through top-level verbs:
+//   - `praxis create sink`          (create.go)
+//   - `praxis get sink/<name>`      (get.go)
+//   - `praxis list sinks`           (list.go)
+//   - `praxis delete sink/<name>`   (delete.go)
+//   - `praxis test sink/<name>`     (test_cmd.go)
+//   - `praxis get notifications`    (get.go)
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
-
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
-
-// newNotificationsCmd builds the `praxis notifications` parent command.
-// Subcommands: add-sink, list-sinks, get-sink, remove-sink, test-sink, health.
-func newNotificationsCmd(flags *rootFlags) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "notifications",
-		Short: "Manage notification sinks",
-	}
-
-	cmd.AddCommand(
-		newNotificationAddSinkCmd(flags),
-		newNotificationListSinksCmd(flags),
-		newNotificationHealthCmd(flags),
-		newNotificationGetSinkCmd(flags),
-		newNotificationRemoveSinkCmd(flags),
-		newNotificationTestSinkCmd(flags),
-	)
-	return cmd
-}
-
-// newNotificationAddSinkCmd builds `praxis notifications add-sink`.
-// Creates or updates a notification sink. The sink can be configured via
-// flags or loaded from a JSON file (--from-file). Calls
-// NotificationSinkConfig.Upsert via the ingress client.
-func newNotificationAddSinkCmd(flags *rootFlags) *cobra.Command {
-	var (
-		name             string
-		sinkType         string
-		url              string
-		typeFilters      string
-		categoryFilters  string
-		severityFilters  string
-		workspaceFilters string
-		deploymentFilter string
-		headers          []string
-		maxRetries       int
-		backoffMs        int
-		fromFile         string
-		contentMode      string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "add-sink",
-		Short: "Create or update a notification sink",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sink, err := buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryFilters, severityFilters, workspaceFilters, deploymentFilter, headers, maxRetries, backoffMs, contentMode)
-			if err != nil {
-				return err
-			}
-			if err := flags.newClient().UpsertNotificationSink(context.Background(), sink); err != nil {
-				return err
-			}
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(sink)
-			}
-			flags.renderer().successLine(fmt.Sprintf("Notification sink %q saved.", sink.Name))
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&name, "name", "", "Sink name")
-	cmd.Flags().StringVar(&sinkType, "type", "", "Sink type: webhook, structured_log, cloudevents_http")
-	cmd.Flags().StringVar(&url, "url", "", "Endpoint URL for webhook or cloudevents_http sinks")
-	cmd.Flags().StringVar(&typeFilters, "filter-types", "", "Comma-separated event type prefixes")
-	cmd.Flags().StringVar(&categoryFilters, "filter-categories", "", "Comma-separated event categories")
-	cmd.Flags().StringVar(&severityFilters, "filter-severities", "", "Comma-separated severities")
-	cmd.Flags().StringVar(&workspaceFilters, "filter-workspaces", "", "Comma-separated workspace names")
-	cmd.Flags().StringVar(&deploymentFilter, "filter-deployments", "", "Comma-separated deployment globs")
-	cmd.Flags().StringArrayVar(&headers, "header", nil, "HTTP header in key=value form")
-	cmd.Flags().IntVar(&maxRetries, "max-retries", 3, "Maximum delivery retry attempts")
-	cmd.Flags().IntVar(&backoffMs, "backoff-ms", 1000, "Initial delivery retry backoff in milliseconds")
-	cmd.Flags().StringVar(&fromFile, "from-file", "", "Read sink config from JSON file or - for stdin")
-	cmd.Flags().StringVar(&contentMode, "content-mode", "structured", "CloudEvents HTTP content mode")
-	return cmd
-}
-
-// newNotificationListSinksCmd builds `praxis notifications list-sinks`.
-// Lists all configured notification sinks with their delivery state.
-func newNotificationListSinksCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "list-sinks",
-		Short: "List notification sinks",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sinks, err := flags.newClient().ListNotificationSinks(context.Background())
-			if err != nil {
-				return err
-			}
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(sinks)
-			}
-			rows := make([][]string, 0, len(sinks))
-			for i := range sinks {
-				rows = append(rows, []string{sinks[i].Name, sinks[i].Type, sinkStateLabel(sinks[i]), fmt.Sprintf("%d", sinks[i].ConsecutiveFailures), sinks[i].URL})
-			}
-			printTable(flags.renderer(), []string{"NAME", "TYPE", "STATE", "FAILURES", "URL"}, rows)
-			return nil
-		},
-	}
-}
-
-// newNotificationHealthCmd builds `praxis notifications health`.
-// Shows aggregate health across all sinks: total, healthy, degraded, open.
-func newNotificationHealthCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "health",
-		Short: "Show aggregate notification sink health",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			health, err := flags.newClient().GetNotificationSinkHealth(context.Background())
-			if err != nil {
-				return err
-			}
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(health)
-			}
-			printTable(flags.renderer(), []string{"TOTAL", "HEALTHY", "DEGRADED", "OPEN", "LAST DELIVERY"}, [][]string{{
-				fmt.Sprintf("%d", health.Total),
-				fmt.Sprintf("%d", health.Healthy),
-				fmt.Sprintf("%d", health.Degraded),
-				fmt.Sprintf("%d", health.Open),
-				health.LastDeliveryAt,
-			}})
-			return nil
-		},
-	}
-}
-
-// newNotificationGetSinkCmd builds `praxis notifications get-sink <name>`.
-// Returns the full configuration of a single sink as JSON.
-func newNotificationGetSinkCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "get-sink <name>",
-		Short: "Show one notification sink",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sink, err := flags.newClient().GetNotificationSink(context.Background(), args[0])
-			if err != nil {
-				return err
-			}
-			if sink == nil {
-				return fmt.Errorf("notification sink %q not found", args[0])
-			}
-			return printJSON(sink)
-		},
-	}
-}
-
-// newNotificationRemoveSinkCmd builds `praxis notifications remove-sink <name>`.
-// Deletes a notification sink from the configuration.
-func newNotificationRemoveSinkCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "remove-sink <name>",
-		Short: "Remove a notification sink",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := flags.newClient().RemoveNotificationSink(context.Background(), args[0]); err != nil {
-				return err
-			}
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(map[string]string{"removed": args[0]})
-			}
-			flags.renderer().successLine(fmt.Sprintf("Notification sink %q removed.", args[0]))
-			return nil
-		},
-	}
-}
-
-// newNotificationTestSinkCmd builds `praxis notifications test-sink <name>`.
-// Sends a synthetic CloudEvent to the named sink to verify delivery works.
-// Calls SinkRouter.Test via the ingress client.
-func newNotificationTestSinkCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "test-sink <name>",
-		Short: "Send a synthetic event to a sink",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := flags.newClient().TestNotificationSink(context.Background(), args[0]); err != nil {
-				return err
-			}
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(map[string]string{"tested": args[0]})
-			}
-			flags.renderer().successLine(fmt.Sprintf("Notification sink %q accepted a synthetic event.", args[0]))
-			return nil
-		},
-	}
-}
 
 // buildNotificationSink assembles a NotificationSink from either a JSON file
 // (--from-file) or individual flag values. File loading takes precedence

@@ -1,6 +1,7 @@
 package targetgroup
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -271,19 +272,19 @@ func TestTargetsEqual_Different(t *testing.T) {
 }
 
 func TestTagsMatch_BothNil(t *testing.T) {
-	assert.True(t, tagsMatch(nil, nil))
+	assert.True(t, drivers.TagsMatch(nil, nil))
 }
 
 func TestTagsMatch_NilVsEmpty(t *testing.T) {
-	assert.True(t, tagsMatch(nil, map[string]string{}))
+	assert.True(t, drivers.TagsMatch(nil, map[string]string{}))
 }
 
 func TestTagsMatch_OnlyPraxisTags(t *testing.T) {
-	assert.True(t, tagsMatch(nil, map[string]string{"praxis:managed-key": "key"}))
+	assert.True(t, drivers.TagsMatch(nil, map[string]string{"praxis:managed-key": "key"}))
 }
 
 func TestFilterPraxisTags_Drift(t *testing.T) {
-	filtered := filterPraxisTags(map[string]string{
+	filtered := drivers.FilterPraxisTags(map[string]string{
 		"env":                "prod",
 		"praxis:managed-key": "key",
 	})
@@ -291,5 +292,5 @@ func TestFilterPraxisTags_Drift(t *testing.T) {
 }
 
 func TestFilterPraxisTags_Nil_Drift(t *testing.T) {
-	assert.Equal(t, map[string]string{}, filterPraxisTags(nil))
+	assert.Equal(t, map[string]string{}, drivers.FilterPraxisTags(nil))
 }

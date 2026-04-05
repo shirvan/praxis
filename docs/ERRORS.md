@@ -42,14 +42,14 @@ The CLI does not re-wrap errors from action commands (`apply`, `plan`, `delete`,
 A simple driver failure surfaces as a single line on stderr:
 
 ```text
-$ praxis apply -f webapp.cue
+$ praxis deploy webapp.cue
 Error: bucket "my-logs" exists but is not controllable by Praxis
 ```
 
 A multi-resource deployment shows the summary returned by the orchestrator:
 
 ```text
-$ praxis apply -f stack.cue
+$ praxis deploy stack.cue
 Error: 2 resource(s) failed:
   1. cache: parameter group "custom-redis" does not exist
   2. web-server: insufficient capacity in us-east-1a
@@ -324,7 +324,7 @@ A throttled error passes through as retryable — the user never sees it:
 An access-denied error becomes terminal:
 
 ```text
-$ praxis apply -f bucket.cue
+$ praxis deploy bucket.cue
 Error: AccessDenied: User: arn:aws:iam::123456789012:user/deploy is not authorized to perform: s3:CreateBucket
 ```
 

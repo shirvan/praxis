@@ -367,7 +367,7 @@ func (d *DBSubnetGroupDriver) correctDrift(ctx restate.ObjectContext, api DBSubn
 			return fmt.Errorf("modify db subnet group: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		})
@@ -424,7 +424,7 @@ func specFromObserved(observed ObservedState) DBSubnetGroupSpec {
 		GroupName:   observed.GroupName,
 		Description: observed.Description,
 		SubnetIds:   normalizeStrings(observed.SubnetIds),
-		Tags:        filterPraxisTags(observed.Tags),
+		Tags:        drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

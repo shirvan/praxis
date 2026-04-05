@@ -66,23 +66,23 @@ func toolExplainError(_ restate.Context, argsJSON string, _ SessionState) (strin
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	// Provide known error code explanations. The LLM interprets the response.
+	// Provide known error code explanations. These match the ErrorCode constants
+	// defined in pkg/types/errorcode.go. The LLM interprets the response.
 	explanations := map[string]string{
-		"TEMPLATE_EVAL_FAILED":   "The CUE template failed to evaluate. Common causes: syntax errors, undefined variables, type mismatches. Check the template source and variable values.",
-		"DEPENDENCY_CYCLE":       "The resource dependency graph contains a cycle. Review resource references (${resources.X.outputs.Y}) for circular dependencies.",
-		"RESOURCE_NOT_FOUND":     "A referenced resource does not exist. This can happen when a deployment references a resource that was deleted or never created.",
-		"POLICY_VIOLATION":       "The deployment violates one or more policies. Review the policy errors for details on which rules were violated and how to fix them.",
-		"AUTH_FAILED":            "AWS credential resolution failed. Check that the account is configured and credentials are valid.",
-		"DRIVER_ERROR":           "A resource driver returned an error during provisioning. Check the resource-level error for AWS API details.",
-		"WORKSPACE_NOT_FOUND":    "The specified workspace does not exist. Create it with 'praxis workspace create'.",
-		"TEMPLATE_NOT_FOUND":     "The specified template is not registered. Register it first or use 'praxis apply' with inline CUE.",
-		"DEPLOYMENT_NOT_FOUND":   "The specified deployment does not exist. Check the deployment key.",
-		"IMPORT_ALREADY_MANAGED": "The resource is already managed by Praxis. Use 'praxis apply' to update it.",
+		"VALIDATION_ERROR":  "Schema or input validation failure. CUE evaluation detected a constraint violation, a required field is missing, or a field value is outside the allowed range. Check the template source and variable values against the resource schema.",
+		"NOT_FOUND":         "The requested resource, deployment, or template does not exist. Verify the identifier (deployment key, template name, or resource key) is correct and the object has been created.",
+		"CONFLICT":          "A naming or ownership collision occurred. For example, a deployment key is already in use, an S3 bucket name is already taken, or a resource is already managed by Praxis.",
+		"CAPACITY_EXCEEDED": "A system limit has been reached, such as too many concurrent deployments or resources per template. Reduce parallelism or clean up unused deployments.",
+		"TEMPLATE_INVALID":  "The CUE template source could not be parsed or unified against the provider schemas. Common causes: syntax errors, undefined variables, type mismatches. Check the template source with 'praxis template validate'.",
+		"GRAPH_INVALID":     "The resource dependency graph contains cycles, missing references, or other structural errors that prevent safe orchestration. Review resource references (${resources.X.outputs.Y}) for circular dependencies or references to non-existent resources.",
+		"PROVISION_FAILED":  "One or more resources failed during the provisioning phase. Check the deployment detail for per-resource errors — these typically contain the underlying AWS API error message.",
+		"DELETE_FAILED":     "One or more resources failed during the deletion phase. A resource may have a preventDestroy lifecycle policy, or the AWS API returned an error. Check per-resource errors in the deployment detail.",
+		"INTERNAL_ERROR":    "An unexpected system error occurred. This may indicate a bug, an infrastructure failure, or a transient issue. Check the Praxis server logs for more details.",
 	}
 
-	// Check for known error codes.
+	// Check for known error codes (exact match and substring match).
 	for code, explanation := range explanations {
-		if args.Error == code {
+		if args.Error == code || strings.Contains(args.Error, code) {
 			return fmt.Sprintf("Error code: %s\n\n%s", code, explanation), nil
 		}
 	}
@@ -102,18 +102,77 @@ func toolExplainResource(_ restate.Context, argsJSON string, _ SessionState) (st
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	// Provide known resource kind descriptions.
+	// Provide known resource kind descriptions. These match the ServiceName()
+	// constants in internal/drivers/*/service.go.
 	descriptions := map[string]string{
-		"S3Bucket":          "An AWS S3 bucket for object storage. Spec fields: bucketName (required), region (required), versioning (bool), encryption {enabled, algorithm}, tags (map), forceDestroy (bool).",
-		"SecurityGroup":     "An AWS VPC Security Group. Spec fields: groupName (required), vpcId (required), description, ingressRules [{protocol, fromPort, toPort, cidrBlocks}], egressRules [{protocol, fromPort, toPort, cidrBlocks}], tags.",
-		"VPC":               "An AWS Virtual Private Cloud. Spec fields: cidrBlock (required), region (required), enableDnsSupport (bool), enableDnsHostnames (bool), tags.",
-		"Subnet":            "An AWS VPC Subnet. Spec fields: vpcId (required), cidrBlock (required), availabilityZone (required), mapPublicIpOnLaunch (bool), tags.",
-		"EC2Instance":       "An AWS EC2 instance. Spec fields: amiId (required), instanceType (required), subnetId, securityGroupIds, keyName, userData, tags.",
-		"IAMRole":           "An AWS IAM Role. Spec fields: roleName (required), assumeRolePolicy (required, JSON), description, policies [{arn}], inlinePolicies [{name, document}], tags.",
-		"IAMPolicy":         "An AWS IAM Policy. Spec fields: policyName (required), policyDocument (required, JSON), description, path, tags.",
-		"RDSInstance":       "An AWS RDS database instance. Spec fields: identifier (required), engine (required), engineVersion, instanceClass (required), allocatedStorage, masterUsername, masterPassword, subnetGroupName, securityGroupIds, tags.",
+		// Compute
+		"EC2Instance":    "An AWS EC2 instance. Spec fields: amiId (required), instanceType (required), subnetId, securityGroupIds, keyName, userData, tags.",
+		"AMI":            "An Amazon Machine Image. Spec fields: sourceInstanceId or sourceSnapshotId (required), name (required), description, tags.",
+		"EBSVolume":      "An Elastic Block Store volume. Spec fields: availabilityZone (required), size (required, GiB), volumeType, iops, encrypted (bool), kmsKeyId, tags.",
+		"ElasticIP":      "An Elastic IP address. Spec fields: domain (vpc), tags. Outputs: allocationId, publicIp.",
+		"KeyPair":        "An EC2 key pair. Spec fields: keyName (required), publicKeyMaterial (required), tags.",
+
+		// Networking
+		"VPC":                  "An AWS Virtual Private Cloud. Spec fields: cidrBlock (required), region (required), enableDnsSupport (bool), enableDnsHostnames (bool), tags.",
+		"Subnet":               "An AWS VPC Subnet. Spec fields: vpcId (required), cidrBlock (required), availabilityZone (required), mapPublicIpOnLaunch (bool), tags.",
+		"SecurityGroup":        "An AWS VPC Security Group. Spec fields: groupName (required), vpcId (required), description, ingressRules [{protocol, fromPort, toPort, cidrBlocks}], egressRules [{protocol, fromPort, toPort, cidrBlocks}], tags.",
+		"InternetGateway":      "A VPC Internet Gateway. Spec fields: vpcId (required), tags. Outputs: internetGatewayId.",
+		"NATGateway":           "A NAT Gateway for private subnet internet access. Spec fields: subnetId (required), allocationId (required — an ElasticIP), tags.",
+		"RouteTable":           "A VPC Route Table. Spec fields: vpcId (required), routes [{destinationCidrBlock, gatewayId or natGatewayId}], associations [{subnetId}], tags.",
+		"NetworkACL":           "A VPC Network ACL. Spec fields: vpcId (required), ingressRules [{ruleNumber, protocol, ruleAction, cidrBlock, fromPort, toPort}], egressRules (same), tags.",
+		"VPCPeeringConnection": "A VPC Peering Connection. Spec fields: vpcId (required), peerVpcId (required), peerOwnerId, peerRegion, tags.",
+
+		// Load Balancing
+		"ALB":          "An Application Load Balancer. Spec fields: name (required), subnets (required), securityGroups, scheme (internet-facing or internal), tags.",
+		"NLB":          "A Network Load Balancer. Spec fields: name (required), subnets (required), scheme, tags.",
+		"TargetGroup":  "An ELB Target Group. Spec fields: name (required), port (required), protocol (required), vpcId (required), healthCheck {path, protocol, port}, targetType, tags.",
+		"Listener":     "An ELB Listener. Spec fields: loadBalancerArn (required), port (required), protocol (required), defaultActions [{type, targetGroupArn}], certificateArn.",
+		"ListenerRule": "An ELB Listener Rule. Spec fields: listenerArn (required), priority (required), conditions [{field, values}], actions [{type, targetGroupArn}].",
+
+		// Storage
+		"S3Bucket": "An AWS S3 bucket for object storage. Spec fields: bucketName (required), region (required), versioning (bool), encryption {enabled, algorithm}, tags (map), forceDestroy (bool).",
+
+		// Database
+		"RDSInstance":      "An AWS RDS database instance. Spec fields: identifier (required), engine (required), engineVersion, instanceClass (required), allocatedStorage, masterUsername, masterPassword, subnetGroupName, securityGroupIds, tags.",
+		"AuroraCluster":    "An Aurora RDS cluster. Spec fields: clusterIdentifier (required), engine (required), engineVersion, masterUsername, masterPassword, dbSubnetGroupName, vpcSecurityGroupIds, tags.",
+		"DBSubnetGroup":    "An RDS DB Subnet Group. Spec fields: name (required), description, subnetIds (required), tags.",
+		"DBParameterGroup": "An RDS DB Parameter Group. Spec fields: name (required), family (required), description, parameters [{name, value}], tags.",
+
+		// IAM
+		"IAMRole":            "An AWS IAM Role. Spec fields: roleName (required), assumeRolePolicy (required, JSON), description, policies [{arn}], inlinePolicies [{name, document}], tags.",
+		"IAMPolicy":          "An AWS IAM Policy. Spec fields: policyName (required), policyDocument (required, JSON), description, path, tags.",
+		"IAMUser":            "An AWS IAM User. Spec fields: userName (required), path, groups, policies [{arn}], tags.",
+		"IAMGroup":           "An AWS IAM Group. Spec fields: groupName (required), path, policies [{arn}].",
+		"IAMInstanceProfile": "An AWS IAM Instance Profile. Spec fields: instanceProfileName (required), roleName (required), path, tags.",
+
+		// Serverless
 		"LambdaFunction":    "An AWS Lambda function. Spec fields: functionName (required), runtime (required), handler (required), role (required), code {s3Bucket, s3Key} or {zipFile}, memorySize, timeout, environment, tags.",
-		"Route53HostedZone": "An AWS Route 53 hosted zone. Spec fields: name (required), comment, privateZone (bool), vpcId (for private zones), tags.",
+		"LambdaLayer":       "A Lambda layer version. Spec fields: layerName (required), compatibleRuntimes, content {s3Bucket, s3Key}, description.",
+		"LambdaPermission":  "A Lambda resource-based policy permission. Spec fields: functionName (required), action (required), principal (required), sourceArn, statementId.",
+		"EventSourceMapping": "A Lambda event source mapping. Spec fields: functionName (required), eventSourceArn (required), batchSize, startingPosition, enabled (bool).",
+
+		// DNS
+		"Route53HostedZone":  "An AWS Route 53 hosted zone. Spec fields: name (required), comment, privateZone (bool), vpcId (for private zones), tags.",
+		"Route53Record":      "A Route 53 DNS record. Spec fields: hostedZoneId (required), name (required), type (required — A, AAAA, CNAME, etc.), ttl, records, aliasTarget {hostedZoneId, dnsName}.",
+		"Route53HealthCheck": "A Route 53 health check. Spec fields: type (required — HTTP, HTTPS, TCP), fqdn or ipAddress, port, resourcePath, failureThreshold, requestInterval.",
+
+		// Containers
+		"ECRRepository":      "An Elastic Container Registry repository. Spec fields: repositoryName (required), imageTagMutability, imageScanningConfiguration {scanOnPush}, tags.",
+		"ECRLifecyclePolicy": "An ECR lifecycle policy for image cleanup. Spec fields: repositoryName (required), policyText (required, JSON).",
+
+		// Messaging
+		"SNSTopic":        "An SNS topic. Spec fields: topicName (required), displayName, tags. Outputs: topicArn.",
+		"SNSSubscription":  "An SNS subscription. Spec fields: topicArn (required), protocol (required — email, sqs, lambda, etc.), endpoint (required).",
+		"SQSQueue":         "An SQS queue. Spec fields: queueName (required), delaySeconds, visibilityTimeout, messageRetentionPeriod, fifoQueue (bool), tags.",
+		"SQSQueuePolicy":   "An SQS queue access policy. Spec fields: queueUrl (required), policy (required, JSON).",
+
+		// Monitoring
+		"LogGroup":    "A CloudWatch log group. Spec fields: logGroupName (required), retentionInDays, tags.",
+		"MetricAlarm": "A CloudWatch metric alarm. Spec fields: alarmName (required), metricName (required), namespace (required), statistic, period, threshold, comparisonOperator, evaluationPeriods, alarmActions, tags.",
+		"Dashboard":   "A CloudWatch dashboard. Spec fields: dashboardName (required), dashboardBody (required, JSON).",
+
+		// Security
+		"ACMCertificate": "An AWS Certificate Manager TLS certificate. Spec fields: domainName (required), validationMethod (DNS or EMAIL), subjectAlternativeNames, tags.",
 	}
 
 	if desc, ok := descriptions[args.Kind]; ok {

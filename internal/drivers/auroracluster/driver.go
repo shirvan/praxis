@@ -392,7 +392,7 @@ func (d *AuroraClusterDriver) correctDrift(ctx restate.ObjectContext, api Aurora
 			return fmt.Errorf("modify Aurora cluster: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		})
@@ -469,7 +469,7 @@ func validateExisting(spec AuroraClusterSpec, observed ObservedState) error {
 
 // specFromObserved synthesises a spec from observed state for import.
 func specFromObserved(observed ObservedState) AuroraClusterSpec {
-	return applyDefaults(AuroraClusterSpec{ClusterIdentifier: observed.ClusterIdentifier, Engine: observed.Engine, EngineVersion: observed.EngineVersion, MasterUsername: observed.MasterUsername, DatabaseName: observed.DatabaseName, Port: observed.Port, DBSubnetGroupName: observed.DBSubnetGroupName, DBClusterParameterGroupName: observed.DBClusterParameterGroupName, VpcSecurityGroupIds: observed.VpcSecurityGroupIds, StorageEncrypted: observed.StorageEncrypted, KMSKeyId: observed.KMSKeyId, BackupRetentionPeriod: observed.BackupRetentionPeriod, PreferredBackupWindow: observed.PreferredBackupWindow, PreferredMaintenanceWindow: observed.PreferredMaintenanceWindow, DeletionProtection: observed.DeletionProtection, EnabledCloudwatchLogsExports: observed.EnabledCloudwatchLogsExports, Tags: filterPraxisTags(observed.Tags)})
+	return applyDefaults(AuroraClusterSpec{ClusterIdentifier: observed.ClusterIdentifier, Engine: observed.Engine, EngineVersion: observed.EngineVersion, MasterUsername: observed.MasterUsername, DatabaseName: observed.DatabaseName, Port: observed.Port, DBSubnetGroupName: observed.DBSubnetGroupName, DBClusterParameterGroupName: observed.DBClusterParameterGroupName, VpcSecurityGroupIds: observed.VpcSecurityGroupIds, StorageEncrypted: observed.StorageEncrypted, KMSKeyId: observed.KMSKeyId, BackupRetentionPeriod: observed.BackupRetentionPeriod, PreferredBackupWindow: observed.PreferredBackupWindow, PreferredMaintenanceWindow: observed.PreferredMaintenanceWindow, DeletionProtection: observed.DeletionProtection, EnabledCloudwatchLogsExports: observed.EnabledCloudwatchLogsExports, Tags: drivers.FilterPraxisTags(observed.Tags)})
 }
 
 // outputsFromObserved maps observed state to the output struct.

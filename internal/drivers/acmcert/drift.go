@@ -8,7 +8,7 @@
 package acmcert
 
 import (
-	"strings"
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired
@@ -27,7 +27,7 @@ func HasDrift(desired ACMCertificateSpec, observed ObservedState) bool {
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {
 		return true
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs produces a structured list of individual field changes
@@ -46,8 +46,8 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 }
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	desiredFiltered := filterPraxisTags(desired)
-	observedFiltered := filterPraxisTags(observed)
+	desiredFiltered := drivers.FilterPraxisTags(desired)
+	observedFiltered := drivers.FilterPraxisTags(observed)
 	diffs := make([]FieldDiffEntry, 0, len(desiredFiltered)+len(observedFiltered))
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
@@ -62,31 +62,4 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 		}
 	}
 	return diffs
-}
-
-func tagsMatch(desired, observed map[string]string) bool {
-	a := filterPraxisTags(desired)
-	b := filterPraxisTags(observed)
-	if len(a) != len(b) {
-		return false
-	}
-	for key, value := range a {
-		if other, ok := b[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }

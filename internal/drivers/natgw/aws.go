@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"strings"
 	"time"
 
@@ -135,7 +136,7 @@ func (r *realNATGatewayAPI) UpdateTags(ctx context.Context, natGatewayId string,
 	}
 
 	var stale []ec2types.Tag
-	for key := range filterPraxisTags(observed.Tags) {
+	for key := range drivers.FilterPraxisTags(observed.Tags) {
 		stale = append(stale, ec2types.Tag{Key: aws.String(key)})
 	}
 	if len(stale) > 0 {

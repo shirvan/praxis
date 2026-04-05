@@ -8,8 +8,8 @@
 package ec2
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
-	"strings"
 )
 
 // HasDrift returns true when any mutable EC2 instance field differs between desired and observed.
@@ -37,7 +37,7 @@ func HasDrift(desired EC2InstanceSpec, observed ObservedState) bool {
 	if desired.Monitoring != observed.Monitoring {
 		return true
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 
@@ -75,8 +75,8 @@ func ComputeFieldDiffs(desired EC2InstanceSpec, observed ObservedState) []FieldD
 		})
 	}
 
-	desiredFiltered := filterPraxisTags(desired.Tags)
-	observedFiltered := filterPraxisTags(observed.Tags)
+	desiredFiltered := drivers.FilterPraxisTags(desired.Tags)
+	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -145,35 +145,4 @@ func sortedCopy(values []string) []string {
 	copy(copyOf, values)
 	sort.Strings(copyOf)
 	return copyOf
-}
-
-// tagsMatch compares user tags between desired and observed, excluding praxis:-prefixed tags.
-// praxis: tags are internal system tags and are not part of the user-facing drift model.
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-// filterPraxisTags returns a copy of the tag map with all praxis:-prefixed keys removed.
-// Used to isolate user tags for drift comparison.
-func filterPraxisTags(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(m))
-	for key, value := range m {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }

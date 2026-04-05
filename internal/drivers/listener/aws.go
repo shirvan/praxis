@@ -301,19 +301,6 @@ func toELBTags(tags map[string]string) []elbv2types.Tag {
 	return out
 }
 
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
-}
-
 // IsNotFound returns true if the AWS error indicates the AWS ELBv2 Listener does not exist.
 func IsNotFound(err error) bool {
 	return awserr.HasCode(err, "ListenerNotFound")

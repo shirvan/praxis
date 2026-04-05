@@ -2,6 +2,7 @@ package route53zone
 
 import (
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
@@ -24,7 +25,7 @@ func HasDrift(desired HostedZoneSpec, observed ObservedState) bool {
 	if !hostedZoneVPCsMatch(desired.VPCs, observed.VPCs) {
 		return true
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 	return false
@@ -167,8 +168,8 @@ func computeVPCDiffs(desired, observed []HostedZoneVPC) []FieldDiffEntry {
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	desiredFiltered := filterPraxisTags(desired)
-	observedFiltered := filterPraxisTags(observed)
+	desiredFiltered := drivers.FilterPraxisTags(desired)
+	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -182,33 +183,6 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 		}
 	}
 	return diffs
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 func normalizeStringSlice(values []string) []string {

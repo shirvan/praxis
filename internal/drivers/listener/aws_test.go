@@ -3,6 +3,7 @@ package listener
 import (
 	"errors"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/aws/smithy-go"
@@ -74,12 +75,12 @@ func TestIsCertificateNotFound_Nil(t *testing.T) {
 
 func TestFilterPraxisTags(t *testing.T) {
 	tags := map[string]string{"env": "dev", "praxis:listener-name": "val", "Name": "my-listener"}
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	assert.Equal(t, map[string]string{"env": "dev", "Name": "my-listener"}, filtered)
 }
 
 func TestFilterPraxisTags_Empty(t *testing.T) {
-	filtered := filterPraxisTags(nil)
+	filtered := drivers.FilterPraxisTags(nil)
 	assert.Equal(t, map[string]string{}, filtered)
 }
 

@@ -3,7 +3,6 @@
   "environment": "prod",
   "instanceType": "t3.medium",
   "domainName": "app.acme-saas.com",
-  "hostedZoneId": "WIAUF92T5Q2ODOLKYNX65E",
   "dbInstanceClass": "db.r6g.large",
   "dbEngineVersion": "15.3",
   "enableLogging": true,

@@ -398,7 +398,7 @@ func (d *RDSInstanceDriver) correctDrift(ctx restate.ObjectContext, api RDSInsta
 			return fmt.Errorf("modify RDS instance: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		})
@@ -512,7 +512,7 @@ func specFromObserved(observed ObservedState) RDSInstanceSpec {
 		MonitoringInterval:         observed.MonitoringInterval,
 		MonitoringRoleArn:          observed.MonitoringRoleArn,
 		PerformanceInsightsEnabled: observed.PerformanceInsightsEnabled,
-		Tags:                       filterPraxisTags(observed.Tags),
+		Tags:                       drivers.FilterPraxisTags(observed.Tags),
 	})
 }
 

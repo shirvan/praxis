@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"sort"
 	"strings"
@@ -268,7 +269,7 @@ func (r *realIAMPolicyAPI) UpdateTags(ctx context.Context, policyArn string, tag
 	if err != nil {
 		return err
 	}
-	desired := filterPraxisTags(tags)
+	desired := drivers.FilterPraxisTags(tags)
 
 	var remove []string
 	for key := range existing {
@@ -382,7 +383,7 @@ func findOldestNonDefault(versions []PolicyVersionInfo) string {
 }
 
 func toIAMTags(tags map[string]string) []iamtypes.Tag {
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	awsTags := make([]iamtypes.Tag, 0, len(filtered))
 	for key, value := range filtered {
 		awsTags = append(awsTags, iamtypes.Tag{Key: aws.String(key), Value: aws.String(value)})

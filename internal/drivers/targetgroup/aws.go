@@ -9,6 +9,7 @@ package targetgroup
 import (
 	"context"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strconv"
 	"strings"
@@ -205,8 +206,8 @@ func (r *realTargetGroupAPI) UpdateTags(ctx context.Context, arn string, desired
 	if err != nil {
 		return err
 	}
-	filteredExisting := filterPraxisTags(existing)
-	filteredDesired := filterPraxisTags(desired)
+	filteredExisting := drivers.FilterPraxisTags(existing)
+	filteredDesired := drivers.FilterPraxisTags(desired)
 	var removeKeys []string
 	for key := range filteredExisting {
 		if _, ok := filteredDesired[key]; !ok {

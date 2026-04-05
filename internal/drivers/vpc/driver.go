@@ -221,7 +221,7 @@ func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutpu
 			}
 		}
 
-		if !tagsMatch(spec.Tags, state.Observed.Tags) {
+		if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 			_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, vpcId, spec.Tags)
 			})
@@ -562,7 +562,7 @@ func (d *VPCDriver) correctDrift(ctx restate.ObjectContext, api VPCAPI, vpcId st
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, vpcId, desired.Tags)
 		})

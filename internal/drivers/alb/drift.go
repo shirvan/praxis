@@ -8,6 +8,7 @@
 package alb
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
@@ -44,7 +45,7 @@ func HasDrift(desired ALBSpec, observed ObservedState) bool {
 	if desired.IdleTimeout != observed.IdleTimeout {
 		return true
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs produces a structured list of individual field changes
@@ -83,8 +84,8 @@ func ComputeFieldDiffs(desired ALBSpec, observed ObservedState) []FieldDiffEntry
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	fd := filterPraxisTags(desired)
-	fo := filterPraxisTags(observed)
+	fd := drivers.FilterPraxisTags(desired)
+	fo := drivers.FilterPraxisTags(observed)
 	for key, value := range fd {
 		if oldValue, ok := fo[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -99,20 +100,6 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	}
 	sort.Slice(diffs, func(i, j int) bool { return diffs[i].Path < diffs[j].Path })
 	return diffs
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
 }
 
 func accessLogsEqual(a, b *AccessLogConfig) bool {

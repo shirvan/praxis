@@ -1,6 +1,7 @@
 package iaminstanceprofile
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,7 +27,7 @@ func TestHasDrift_TagChanged(t *testing.T) {
 }
 
 func TestTagsMatch_IgnoresPraxisTags(t *testing.T) {
-	assert.True(t, tagsMatch(
+	assert.True(t, drivers.TagsMatch(
 		map[string]string{"env": "dev"},
 		map[string]string{"env": "dev", "praxis:managed-key": "ignore"},
 	))

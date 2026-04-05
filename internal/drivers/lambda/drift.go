@@ -4,7 +4,10 @@
 // are reported as informational diffs only.
 package lambda
 
-import "slices"
+import (
+	"github.com/shirvan/praxis/internal/drivers"
+	"slices"
+)
 
 // FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
@@ -65,7 +68,7 @@ func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []Fie
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.ephemeralStorage.size", OldValue: observed.EphemeralSize, NewValue: ephemeralSize(desired.EphemeralStorage)})
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: filterPraxisTags(observed.Tags), NewValue: filterPraxisTags(desired.Tags)})
+		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
 	}
 	if desired.PackageType != "" && desired.PackageType != observed.PackageType {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.packageType (immutable, ignored)", OldValue: observed.PackageType, NewValue: desired.PackageType})
@@ -106,22 +109,7 @@ func mapsEqual(a, b map[string]string) bool {
 
 // tagsEqual compares tags after filtering out praxis: namespace tags.
 func tagsEqual(a, b map[string]string) bool {
-	return mapsEqual(filterPraxisTags(a), filterPraxisTags(b))
-}
-
-// filterPraxisTags returns a copy with praxis: prefixed keys removed.
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if len(key) >= 7 && key[:7] == "praxis:" {
-			continue
-		}
-		out[key] = value
-	}
-	return out
+	return mapsEqual(drivers.FilterPraxisTags(a), drivers.FilterPraxisTags(b))
 }
 
 // vpcConfigEqual compares desired VPC config (may be nil) against observed.

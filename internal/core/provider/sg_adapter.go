@@ -248,10 +248,14 @@ func (a *SecurityGroupAdapter) Lookup(ctx restate.Context, account string, filte
 		return nil, restate.TerminalError(err, 500)
 	}
 	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (sg.ObservedState, error) {
-		return lookupSecurityGroup(runCtx, api, filter)
+		obs, runErr := lookupSecurityGroup(runCtx, api, filter)
+		if runErr != nil {
+			return obs, classifyLookupError(runErr, sg.IsNotFound)
+		}
+		return obs, nil
 	})
 	if err != nil {
-		return nil, classifyLookupError(err, sg.IsNotFound)
+		return nil, err
 	}
 	if !matchesSecurityGroupFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no SecurityGroup found matching filter"), 404)

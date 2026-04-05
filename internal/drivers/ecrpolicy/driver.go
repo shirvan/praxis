@@ -177,7 +177,16 @@ func (d *ECRLifecyclePolicyDriver) Delete(ctx restate.ObjectContext) error {
 	restate.Set(ctx, drivers.StateKey, state)
 	_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		deleteErr := api.DeleteLifecyclePolicy(rc, name)
-		if deleteErr != nil && !IsNotFound(deleteErr) {
+		if deleteErr != nil {
+			if IsNotFound(deleteErr) {
+				return restate.Void{}, nil
+			}
+			if IsInvalidParameter(deleteErr) || IsRepositoryNotFound(deleteErr) {
+				return restate.Void{}, restate.TerminalError(deleteErr, 400)
+			}
+			if drivers.IsAccessDenied(deleteErr) {
+				return restate.Void{}, restate.TerminalError(deleteErr, 403)
+			}
 			return restate.Void{}, deleteErr
 		}
 		return restate.Void{}, nil

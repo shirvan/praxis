@@ -3,6 +3,7 @@ package nlb
 import (
 	"errors"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/aws/smithy-go"
@@ -102,11 +103,11 @@ func TestSubnetsToMappings(t *testing.T) {
 
 func TestFilterPraxisTags(t *testing.T) {
 	tags := map[string]string{"env": "dev", "praxis:managed-key": "val", "Name": "my-nlb"}
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	assert.Equal(t, map[string]string{"env": "dev", "Name": "my-nlb"}, filtered)
 }
 
 func TestFilterPraxisTags_Empty(t *testing.T) {
-	filtered := filterPraxisTags(nil)
+	filtered := drivers.FilterPraxisTags(nil)
 	assert.Equal(t, map[string]string{}, filtered)
 }

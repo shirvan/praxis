@@ -198,33 +198,45 @@ const (
 // fields (DeliveredCount, FailedCount, DeliveryState, CircuitOpenUntil) are
 // maintained by the SinkRouter after each delivery attempt.
 type NotificationSink struct {
-	Name                string            `json:"name"`
-	Type                string            `json:"type"`
-	URL                 string            `json:"url,omitempty"`
-	Target              string            `json:"target,omitempty"`
-	Handler             string            `json:"handler,omitempty"`
-	Filter              SinkFilter        `json:"filter,omitzero"`
-	Headers             map[string]string `json:"headers,omitempty"`
-	Retry               RetryPolicy       `json:"retry,omitzero"`
-	ContentMode         string            `json:"contentMode,omitempty"`
-	LastError           string            `json:"lastError,omitempty"`
-	LastSuccessAt       string            `json:"lastSuccessAt,omitempty"`
-	LastFailureAt       string            `json:"lastFailureAt,omitempty"`
-	ConsecutiveFailures int               `json:"consecutiveFailures,omitempty"`
-	DeliveredCount      int64             `json:"deliveredCount,omitempty"`
-	FailedCount         int64             `json:"failedCount,omitempty"`
-	DeliveryState       string            `json:"deliveryState,omitempty"`
-	CircuitOpenedAt     string            `json:"circuitOpenedAt,omitempty"`
-	CircuitOpenUntil    string            `json:"circuitOpenUntil,omitempty"`
+	Name                   string            `json:"name"`
+	Type                   string            `json:"type"`
+	URL                    string            `json:"url,omitempty"`
+	Target                 string            `json:"target,omitempty"`
+	Handler                string            `json:"handler,omitempty"`
+	Filter                 SinkFilter        `json:"filter,omitzero"`
+	Headers                map[string]string `json:"headers,omitempty"`
+	Retry                  RetryPolicy       `json:"retry,omitzero"`
+	ContentMode            string            `json:"contentMode,omitempty"`
+	CircuitOpenDurationSec int               `json:"circuitOpenDurationSec,omitempty"`
+	LastError              string            `json:"lastError,omitempty"`
+	LastSuccessAt          string            `json:"lastSuccessAt,omitempty"`
+	LastFailureAt          string            `json:"lastFailureAt,omitempty"`
+	ConsecutiveFailures    int               `json:"consecutiveFailures,omitempty"`
+	DeliveredCount         int64             `json:"deliveredCount,omitempty"`
+	FailedCount            int64             `json:"failedCount,omitempty"`
+	DeliveryState          string            `json:"deliveryState,omitempty"`
+	CircuitOpenedAt        string            `json:"circuitOpenedAt,omitempty"`
+	CircuitOpenUntil       string            `json:"circuitOpenUntil,omitempty"`
 }
 
 // NotificationSinkHealth summarises the aggregate health of all registered sinks.
 type NotificationSinkHealth struct {
-	Total          int    `json:"total"`
-	Healthy        int    `json:"healthy"`
-	Degraded       int    `json:"degraded"`
-	Open           int    `json:"open"`
-	LastDeliveryAt string `json:"lastDeliveryAt,omitempty"`
+	Total           int                 `json:"total"`
+	Healthy         int                 `json:"healthy"`
+	Degraded        int                 `json:"degraded"`
+	Open            int                 `json:"open"`
+	TotalDelivered  int64               `json:"totalDelivered"`
+	TotalFailed     int64               `json:"totalFailed"`
+	LastDeliveryAt  string              `json:"lastDeliveryAt,omitempty"`
+	CircuitBreakers []SinkCircuitStatus `json:"circuitBreakers,omitempty"`
+}
+
+// SinkCircuitStatus reports the circuit breaker state for a single sink.
+type SinkCircuitStatus struct {
+	Name                string `json:"name"`
+	State               string `json:"state"`
+	ConsecutiveFailures int    `json:"consecutiveFailures"`
+	OpenUntil           string `json:"openUntil,omitempty"`
 }
 
 // SinkDeliveryUpdate records the outcome of a single delivery attempt. The

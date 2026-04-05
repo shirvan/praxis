@@ -1,6 +1,7 @@
 package rdsinstance
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
@@ -64,7 +65,7 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 	if desired.MonitoringInterval != observed.MonitoringInterval || desired.MonitoringRoleArn != observed.MonitoringRoleArn || desired.PerformanceInsightsEnabled != observed.PerformanceInsightsEnabled {
 		return true
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs returns field-level differences for plan output.
@@ -114,15 +115,15 @@ func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldD
 	appendIfDifferent("spec.engine (immutable, ignored)", observed.Engine, desired.Engine)
 	appendIfDifferent("spec.masterUsername (immutable, ignored)", observed.MasterUsername, desired.MasterUsername)
 	appendIfDifferent("spec.dbClusterIdentifier (immutable, ignored)", observed.DBClusterIdentifier, desired.DBClusterIdentifier)
-	for key, value := range filterPraxisTags(desired.Tags) {
-		if current, ok := filterPraxisTags(observed.Tags)[key]; !ok {
+	for key, value := range drivers.FilterPraxisTags(desired.Tags) {
+		if current, ok := drivers.FilterPraxisTags(observed.Tags)[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
-	for key, value := range filterPraxisTags(observed.Tags) {
-		if _, ok := filterPraxisTags(desired.Tags)[key]; !ok {
+	for key, value := range drivers.FilterPraxisTags(observed.Tags) {
+		if _, ok := drivers.FilterPraxisTags(desired.Tags)[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
@@ -181,34 +182,4 @@ func stringSliceEqual(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// tagsMatch returns true when two tag maps are semantically equal,
-// ignoring praxis:-prefixed internal tags.
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-// filterPraxisTags returns a copy with praxis:-prefixed keys removed.
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }

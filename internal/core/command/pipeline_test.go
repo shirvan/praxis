@@ -222,3 +222,32 @@ func TestIsIgnoredPath_DoesNotMatchPartialPrefix(t *testing.T) {
 	// "tags" SHOULD match "tags.env" (prefix + dot)
 	assert.True(t, isIgnoredPath("tags.env", []string{"tags"}))
 }
+
+func TestCheckSubmitGuard_BlocksActiveStatuses(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    types.DeploymentStatus
+		expectErr bool
+		errCode   int
+	}{
+		{"Deleting is blocked", types.DeploymentDeleting, true, 409},
+		{"Running is blocked", types.DeploymentRunning, true, 409},
+		{"Pending is blocked", types.DeploymentPending, true, 409},
+		{"Complete is allowed", types.DeploymentComplete, false, 0},
+		{"Failed is allowed", types.DeploymentFailed, false, 0},
+		{"Cancelled is allowed", types.DeploymentCancelled, false, 0},
+		{"Deleted is allowed", types.DeploymentDeleted, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSubmitGuard("test-deploy", tt.status)
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "test-deploy")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

@@ -21,12 +21,20 @@ func TestToolRegistryContainsAllTools(t *testing.T) {
 	assert.Contains(t, names, "getDrift")
 	assert.Contains(t, names, "planDeployment")
 	assert.Contains(t, names, "listWorkspaces")
+	assert.Contains(t, names, "listPolicies")
+	assert.Contains(t, names, "getPolicy")
+	assert.Contains(t, names, "planDeploy")
 
 	// Write tools
 	assert.Contains(t, names, "applyTemplate")
 	assert.Contains(t, names, "deployTemplate")
 	assert.Contains(t, names, "deleteDeployment")
 	assert.Contains(t, names, "importResource")
+	assert.Contains(t, names, "rollbackDeployment")
+	assert.Contains(t, names, "registerTemplate")
+	assert.Contains(t, names, "deleteTemplate")
+	assert.Contains(t, names, "addPolicy")
+	assert.Contains(t, names, "removePolicy")
 
 	// Explain tools
 	assert.Contains(t, names, "explainError")
@@ -68,7 +76,7 @@ func TestToolRegistryDefinitions(t *testing.T) {
 
 func TestWriteToolsRequireApproval(t *testing.T) {
 	r := NewToolRegistry()
-	writeTools := []string{"applyTemplate", "deployTemplate", "deleteDeployment", "importResource"}
+	writeTools := []string{"applyTemplate", "deployTemplate", "deleteDeployment", "importResource", "rollbackDeployment", "registerTemplate", "deleteTemplate", "addPolicy", "removePolicy"}
 
 	for _, name := range writeTools {
 		tool := r.Get(name)
@@ -79,7 +87,7 @@ func TestWriteToolsRequireApproval(t *testing.T) {
 
 func TestReadToolsDontRequireApproval(t *testing.T) {
 	r := NewToolRegistry()
-	readTools := []string{"getDeploymentStatus", "listDeployments", "listTemplates", "planDeployment"}
+	readTools := []string{"getDeploymentStatus", "listDeployments", "listTemplates", "planDeployment", "listPolicies", "getPolicy", "planDeploy"}
 
 	for _, name := range readTools {
 		tool := r.Get(name)

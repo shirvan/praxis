@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"sort"
 	"time"
@@ -282,7 +283,7 @@ func (r *realIAMRoleAPI) UpdateTags(ctx context.Context, roleName string, tags m
 	if err != nil {
 		return err
 	}
-	desired := filterPraxisTags(tags)
+	desired := drivers.FilterPraxisTags(tags)
 
 	var remove []string
 	for key := range existing {
@@ -421,7 +422,7 @@ func (r *realIAMRoleAPI) listRoleTags(ctx context.Context, roleName string) (map
 // toIAMTags converts a Go string map to the AWS SDK Tag slice format, filtering out
 // praxis:-prefixed reserved tags and sorting by key for deterministic API calls.
 func toIAMTags(tags map[string]string) []iamtypes.Tag {
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	awsTags := make([]iamtypes.Tag, 0, len(filtered))
 	for key, value := range filtered {
 		awsTags = append(awsTags, iamtypes.Tag{Key: aws.String(key), Value: aws.String(value)})

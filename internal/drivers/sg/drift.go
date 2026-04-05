@@ -2,6 +2,7 @@ package sg
 
 import (
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strconv"
 )
@@ -65,7 +66,7 @@ func HasDrift(desired SecurityGroupSpec, observed ObservedState) bool {
 		return true
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 
@@ -183,19 +184,6 @@ func sortRules(rules []NormalizedRule) {
 	sort.Slice(rules, func(i, j int) bool {
 		return rules[i].ruleKey() < rules[j].ruleKey()
 	})
-}
-
-// tagsMatch returns true when the two tag maps are semantically equal.
-func tagsMatch(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if bv, ok := b[k]; !ok || bv != v {
-			return false
-		}
-	}
-	return true
 }
 
 // SplitByDirection splits a rule slice into ingress and egress slices.

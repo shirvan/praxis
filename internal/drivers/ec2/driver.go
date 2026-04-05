@@ -214,7 +214,7 @@ func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2Instanc
 			}
 		}
 
-		if !tagsMatch(spec.Tags, state.Observed.Tags) {
+		if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 			_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, instanceId, spec.Tags)
 			})
@@ -548,7 +548,7 @@ func (d *EC2InstanceDriver) correctDrift(ctx restate.ObjectContext, api EC2API, 
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, instanceId, desired.Tags)
 		})
@@ -632,7 +632,7 @@ func specFromObserved(obs ObservedState) EC2InstanceSpec {
 		SecurityGroupIds:   obs.SecurityGroupIds,
 		IamInstanceProfile: obs.IamInstanceProfile,
 		Monitoring:         obs.Monitoring,
-		Tags:               filterPraxisTags(obs.Tags),
+		Tags:               drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

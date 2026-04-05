@@ -67,7 +67,14 @@ func (d *HostedZoneDriver) Provision(ctx restate.ObjectContext, spec HostedZoneS
 	observed := state.Observed
 	if hostedZoneID != "" {
 		described, descErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-			return api.DescribeHostedZone(rc, hostedZoneID)
+			obs, runErr := api.DescribeHostedZone(rc, hostedZoneID)
+			if runErr != nil {
+				if IsNotFound(runErr) {
+					return ObservedState{}, restate.TerminalError(runErr, 404)
+				}
+				return ObservedState{}, runErr
+			}
+			return obs, nil
 		})
 		if descErr == nil {
 			observed = described
@@ -89,15 +96,27 @@ func (d *HostedZoneDriver) Provision(ctx restate.ObjectContext, spec HostedZoneS
 		hostedZoneID = foundID
 		if hostedZoneID != "" {
 			described, descErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-				return api.DescribeHostedZone(rc, hostedZoneID)
+				obs, runErr := api.DescribeHostedZone(rc, hostedZoneID)
+				if runErr != nil {
+					if IsNotFound(runErr) {
+						return ObservedState{}, restate.TerminalError(runErr, 404)
+					}
+					return ObservedState{}, runErr
+				}
+				return obs, nil
 			})
 			if descErr != nil {
-				state.Status = types.StatusError
-				state.Error = descErr.Error()
-				restate.Set(ctx, drivers.StateKey, state)
-				return HostedZoneOutputs{}, descErr
+				if IsNotFound(descErr) {
+					hostedZoneID = ""
+				} else {
+					state.Status = types.StatusError
+					state.Error = descErr.Error()
+					restate.Set(ctx, drivers.StateKey, state)
+					return HostedZoneOutputs{}, descErr
+				}
+			} else {
+				observed = described
 			}
-			observed = described
 		}
 	}
 
@@ -141,7 +160,14 @@ func (d *HostedZoneDriver) Provision(ctx restate.ObjectContext, spec HostedZoneS
 	}
 
 	observed, err = restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeHostedZone(rc, hostedZoneID)
+		obs, runErr := api.DescribeHostedZone(rc, hostedZoneID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		state.Status = types.StatusError
@@ -402,7 +428,7 @@ func (d *HostedZoneDriver) correctDrift(ctx restate.ObjectContext, api HostedZon
 			}
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, hostedZoneID, desired.Tags)
 		})
@@ -439,7 +465,7 @@ func specFromObserved(observed ObservedState) HostedZoneSpec {
 		Comment:   observed.Comment,
 		IsPrivate: observed.IsPrivate,
 		VPCs:      observed.VPCs,
-		Tags:      filterPraxisTags(observed.Tags),
+		Tags:      drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

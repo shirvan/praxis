@@ -242,8 +242,12 @@ func (*NotificationSinkConfig) UpdateDeliveryState(ctx restate.ObjectContext, up
 		if sink.ConsecutiveFailures >= sinkCircuitBreakerThreshold {
 			sink.DeliveryState = SinkDeliveryStateOpen
 			sink.CircuitOpenedAt = occurredAt
+			duration := sinkCircuitOpenDuration
+			if sink.CircuitOpenDurationSec > 0 {
+				duration = time.Duration(sink.CircuitOpenDurationSec) * time.Second
+			}
 			if openedAt, parseErr := time.Parse(time.RFC3339, occurredAt); parseErr == nil {
-				sink.CircuitOpenUntil = openedAt.Add(sinkCircuitOpenDuration).UTC().Format(time.RFC3339)
+				sink.CircuitOpenUntil = openedAt.Add(duration).UTC().Format(time.RFC3339)
 			}
 		} else {
 			sink.DeliveryState = SinkDeliveryStateDegraded
@@ -277,7 +281,8 @@ func (SinkRouter) ServiceName() string {
 
 // Deliver fans out a single event to all matching sinks. Sinks whose filter
 // doesn't match or whose circuit breaker is open are silently skipped.
-// Delivery failures are logged but do not fail the overall operation.
+// Delivery failures are logged and recorded in sink delivery state but do not
+// fail the overall operation.
 func (SinkRouter) Deliver(ctx restate.Context, record SequencedCloudEvent) error {
 	sinks, err := restate.Object[[]NotificationSink](ctx, NotificationSinkConfigServiceName, NotificationSinkConfigGlobalKey, "List").Request(restate.Void{})
 	if err != nil {
@@ -292,9 +297,11 @@ func (SinkRouter) Deliver(ctx restate.Context, record SequencedCloudEvent) error
 			continue
 		}
 		if sinkCircuitOpen(sinks[i], now) {
+			log.Printf("[sink-router] skipping sink %q: circuit breaker open (event %s seq %d)", sinks[i].Name, record.Event.Type(), record.Sequence)
 			continue
 		}
 		if err := deliverToSink(ctx, sinks[i], record); err != nil {
+			log.Printf("[sink-router] delivery failed for sink %q (event %s seq %d): %v", sinks[i].Name, record.Event.Type(), record.Sequence, err)
 			continue
 		}
 	}
@@ -324,7 +331,7 @@ func (SinkRouter) DrainBatch(ctx restate.Context, req DrainBatchRequest) error {
 		return err
 	}
 	if sinkCircuitOpen(*sink, now) {
-		return nil
+		return fmt.Errorf("drain sink %q circuit is open; aborting drain to prevent event loss", req.SinkName)
 	}
 	if err := deliverBatchWithRetry(ctx, *sink, req.Records); err != nil {
 		return restate.TerminalError(err, 502)
@@ -530,11 +537,24 @@ func summarizeSinkHealth(entries map[string]NotificationSink, now time.Time) Not
 	health := NotificationSinkHealth{Total: len(entries)}
 	stable := stableSinkList(entries)
 	for i := range stable {
+		health.TotalDelivered += stable[i].DeliveredCount
+		health.TotalFailed += stable[i].FailedCount
 		switch {
 		case sinkCircuitOpen(stable[i], now):
 			health.Open++
+			health.CircuitBreakers = append(health.CircuitBreakers, SinkCircuitStatus{
+				Name:                stable[i].Name,
+				State:               SinkDeliveryStateOpen,
+				ConsecutiveFailures: stable[i].ConsecutiveFailures,
+				OpenUntil:           stable[i].CircuitOpenUntil,
+			})
 		case stable[i].ConsecutiveFailures > 0 || stable[i].DeliveryState == SinkDeliveryStateDegraded:
 			health.Degraded++
+			health.CircuitBreakers = append(health.CircuitBreakers, SinkCircuitStatus{
+				Name:                stable[i].Name,
+				State:               SinkDeliveryStateDegraded,
+				ConsecutiveFailures: stable[i].ConsecutiveFailures,
+			})
 		default:
 			health.Healthy++
 		}

@@ -1,5 +1,7 @@
 package s3
 
+import "github.com/shirvan/praxis/internal/drivers"
+
 // HasDrift compares the desired spec against the observed AWS state and returns
 // true if they differ. This function handles AWS API quirks:
 //
@@ -36,26 +38,11 @@ func HasDrift(desired S3BucketSpec, observed ObservedState) bool {
 	}
 
 	// --- Check tags ---
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 
 	return false
-}
-
-// tagsMatch returns true when the two tag maps are semantically equal.
-// Order-independent since Go maps are unordered.
-// Treats nil and empty maps as equivalent (no tags).
-func tagsMatch(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if bv, ok := b[k]; !ok || bv != v {
-			return false
-		}
-	}
-	return true
 }
 
 // ComputeFieldDiffs returns a list of specific field-level differences between

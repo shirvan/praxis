@@ -231,7 +231,7 @@ flowchart TD
     A["Operator: Register accounts
     AuthService/prod-us/Configure
     AuthService/staging/Configure"] --> B["User: Select account at deployment time
-    praxis apply -f stack.cue --account prod-us
+    praxis deploy stack.cue --account prod-us
     (or workspace default)"]
     B --> C["Template: Per-resource override
     spec: { account: 'shared-services' }"]
@@ -243,7 +243,7 @@ flowchart TD
 | Priority | Source | Scope | Example |
 |---|---|---|---|
 | 1 (highest) | Resource spec `account` field | Per-resource | `spec: { account: "shared-services" }` |
-| 2 | `--account` CLI flag | Per-deployment | `praxis apply --account prod-us` |
+| 2 | `--account` CLI flag | Per-deployment | `praxis deploy --account prod-us` |
 | 3 | Workspace default | Per-workspace | `praxis workspace select prod` (account = `prod-us`) |
 | 4 | `PRAXIS_ACCOUNT` env var | Per-environment | `export PRAXIS_ACCOUNT=staging` |
 | 5 (lowest) | Hardcoded `"default"` | Global fallback | Always available |

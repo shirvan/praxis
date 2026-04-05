@@ -1,6 +1,7 @@
 package dbsubnetgroup
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
@@ -22,7 +23,7 @@ func HasDrift(desired DBSubnetGroupSpec, observed ObservedState) bool {
 	if !stringSliceEqual(desired.SubnetIds, observed.SubnetIds) {
 		return true
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs returns a structured list of differences for display.
@@ -40,15 +41,15 @@ func ComputeFieldDiffs(desired DBSubnetGroupSpec, observed ObservedState) []Fiel
 	if !stringSliceEqual(desired.SubnetIds, observed.SubnetIds) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.subnetIds", OldValue: normalizeStrings(observed.SubnetIds), NewValue: normalizeStrings(desired.SubnetIds)})
 	}
-	for key, value := range filterPraxisTags(desired.Tags) {
-		if observedValue, ok := filterPraxisTags(observed.Tags)[key]; !ok {
+	for key, value := range drivers.FilterPraxisTags(desired.Tags) {
+		if observedValue, ok := drivers.FilterPraxisTags(observed.Tags)[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
-	for key, value := range filterPraxisTags(observed.Tags) {
-		if _, ok := filterPraxisTags(desired.Tags)[key]; !ok {
+	for key, value := range drivers.FilterPraxisTags(observed.Tags) {
+		if _, ok := drivers.FilterPraxisTags(desired.Tags)[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
@@ -63,35 +64,6 @@ func applyDefaults(spec DBSubnetGroupSpec) DBSubnetGroupSpec {
 	}
 	spec.SubnetIds = normalizeStrings(spec.SubnetIds)
 	return spec
-}
-
-// tagsMatch compares two tag maps after filtering praxis: internal tags.
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-// filterPraxisTags removes praxis:-prefixed tags used for internal bookkeeping.
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 // stringSliceEqual normalizes both slices then compares element-by-element.

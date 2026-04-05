@@ -200,10 +200,22 @@ func (d *LambdaLayerDriver) Delete(ctx restate.ObjectContext) error {
 			if IsNotFound(runErr) {
 				return restate.Void{}, nil
 			}
+			if IsInvalidParameter(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
+			}
+			if drivers.IsAccessDenied(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 403)
+			}
 			return restate.Void{}, runErr
 		}
 		for _, version := range versions {
 			if deleteErr := api.DeleteLayerVersion(rc, layerName, version); deleteErr != nil && !IsNotFound(deleteErr) {
+				if IsInvalidParameter(deleteErr) {
+					return restate.Void{}, restate.TerminalError(deleteErr, 400)
+				}
+				if drivers.IsAccessDenied(deleteErr) {
+					return restate.Void{}, restate.TerminalError(deleteErr, 403)
+				}
 				return restate.Void{}, deleteErr
 			}
 		}

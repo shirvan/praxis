@@ -361,7 +361,7 @@ func (d *DBParameterGroupDriver) correctDrift(ctx restate.ObjectContext, api DBP
 			return fmt.Errorf("update db parameter group parameters: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		})
@@ -416,7 +416,7 @@ func validateSpec(spec DBParameterGroupSpec) error {
 
 // specFromObserved synthesises a spec from observed state for import.
 func specFromObserved(observed ObservedState) DBParameterGroupSpec {
-	return DBParameterGroupSpec{GroupName: observed.GroupName, Type: observed.Type, Family: observed.Family, Description: observed.Description, Parameters: observed.Parameters, Tags: filterPraxisTags(observed.Tags)}
+	return DBParameterGroupSpec{GroupName: observed.GroupName, Type: observed.Type, Family: observed.Family, Description: observed.Description, Parameters: observed.Parameters, Tags: drivers.FilterPraxisTags(observed.Tags)}
 }
 
 // outputsFromObserved maps observed state to the output struct.

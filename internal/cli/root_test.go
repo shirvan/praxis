@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestShouldUseStyles(t *testing.T) {
@@ -61,4 +64,44 @@ func TestResolveResourceKey_RegionScope_AlreadyQualified(t *testing.T) {
 	// If user already included ~ in the key, don't prepend region.
 	key := flags.resolveResourceKey("Lambda", "us-west-2~my-function")
 	assert.Equal(t, "us-west-2~my-function", key)
+}
+
+func TestNewRootCmd_UsesOutputEnvDefault(t *testing.T) {
+	t.Setenv(envOutput, "json")
+	t.Setenv("HOME", t.TempDir())
+
+	root := NewRootCmd()
+	flag := root.PersistentFlags().Lookup("output")
+	require.NotNil(t, flag)
+	assert.Equal(t, "json", flag.DefValue)
+	assert.Equal(t, "json", flag.Value.String())
+}
+
+func TestNewRootCmd_UsesWorkspaceEnvBeforeConfig(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	require.NoError(t, SaveCLIConfig(CLIConfig{ActiveWorkspace: "from-config"}))
+	t.Setenv(envWorkspace, "from-env")
+
+	NewRootCmd()
+	require.NotNil(t, currentRootFlags)
+	assert.Equal(t, "from-env", currentRootFlags.activeWorkspace())
+}
+
+func TestNewRootCmd_UsesWorkspaceConfigFallback(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	require.NoError(t, SaveCLIConfig(CLIConfig{ActiveWorkspace: "from-config"}))
+	t.Setenv(envWorkspace, "")
+
+	NewRootCmd()
+	require.NotNil(t, currentRootFlags)
+	assert.Equal(t, "from-config", currentRootFlags.activeWorkspace())
+}
+
+func TestLoadActiveWorkspace_TrimsConfigValue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configPath := filepath.Join(home, ".praxis", "config.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0700))
+	require.NoError(t, os.WriteFile(configPath, []byte(`{"activeWorkspace":"  dev  "}`), 0600))
+	assert.Equal(t, "dev", loadActiveWorkspace())
 }

@@ -21,6 +21,10 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// rollbackResourceTimeout is the maximum time to wait for a single resource's
+// delete sub-invocation during rollback before recording a failure and moving on.
+const rollbackResourceTimeout = 5 * time.Minute
+
 // DeploymentRollbackWorkflow runs a targeted rollback that deletes only
 // resources proven to have been successfully provisioned, based on the
 // event store's record of resource.ready events.
@@ -112,6 +116,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 
 	// Iterate the rollback plan. Each item is a resource that reached Ready
 	// during the apply run and should be deleted to undo the deployment.
+	cancellationRequested := false
 	for _, item := range rollbackPlan.Resources {
 		resource, ok := exec.plan[item.Name]
 		if !ok {
@@ -120,6 +125,22 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		// Skip resources that are already deleted (e.g. from a prior partial
 		// rollback attempt or manual cleanup).
 		if current := state.Resources[item.Name]; current == nil || current.Status == types.DeploymentResourceDeleted {
+			continue
+		}
+
+		// Poll the cancellation flag. Once set, stop dispatching new deletes
+		// and finalize as Failed since not all resources were cleaned up.
+		if !cancellationRequested {
+			cancelled, err := deploymentCancelled(ctx, req.DeploymentKey)
+			if err != nil {
+				return DeploymentResult{}, err
+			}
+			if cancelled {
+				cancellationRequested = true
+			}
+		}
+		if cancellationRequested {
+			exec.markSkipped(item.Name, "skipped: rollback workflow cancelled")
 			continue
 		}
 
@@ -169,6 +190,22 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 			continue
 		}
 
+		// Await the delete with a timeout to prevent a single resource from
+		// blocking the entire rollback workflow.
+		timeout := restate.After(ctx, rollbackResourceTimeout)
+		first, err := restate.WaitFirst(ctx, invocation.Future(), timeout)
+		if err != nil {
+			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, fmt.Sprintf("rollback wait error: %v", err)); err != nil {
+				return DeploymentResult{}, err
+			}
+			continue
+		}
+		if first == timeout {
+			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, fmt.Sprintf("rollback delete timed out after %s", rollbackResourceTimeout)); err != nil {
+				return DeploymentResult{}, err
+			}
+			continue
+		}
 		if err := invocation.Done(); err != nil {
 			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, err.Error()); err != nil {
 				return DeploymentResult{}, err
@@ -190,11 +227,17 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		if err := EmitDeploymentCloudEvent(ctx, deletedEvent); err != nil {
 			return DeploymentResult{}, err
 		}
+		if err := removeResourceIndex(ctx, req.DeploymentKey, item.Name); err != nil {
+			return DeploymentResult{}, err
+		}
 	}
 
 	finalStatus := types.DeploymentDeleted
 	finalError := ""
-	if exec.hasFailures() {
+	if cancellationRequested {
+		finalStatus = types.DeploymentFailed
+		finalError = "rollback workflow cancelled; not all resources were cleaned up"
+	} else if exec.hasFailures() {
 		finalStatus = types.DeploymentFailed
 		finalError = exec.failureSummary()
 	}
@@ -218,6 +261,9 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		if err := removeDeploymentSummary(ctx, req.DeploymentKey); err != nil {
 			return DeploymentResult{}, err
 		}
+		if err := removeResourceIndexByDeployment(ctx, req.DeploymentKey); err != nil {
+			return DeploymentResult{}, err
+		}
 	} else {
 		if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
 			return DeploymentResult{}, err
@@ -234,10 +280,10 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 	return exec.result(req.DeploymentKey, finalStatus, finalError), nil
 }
 
-// recordRollbackFailure marks a resource as failed during rollback and emits
-// a resource.delete.error event. Unlike the full delete workflow, rollback does
-// not skip dependencies on failure because the rollback plan is already a
-// flat list of independently-provable resources.
+// recordRollbackFailure marks a resource as failed during rollback, emits
+// a resource.delete.error event, and skips the resource's dependencies
+// (resources it depends on) so they are not deleted while the failed
+// resource still references them.
 func (w *DeploymentRollbackWorkflow) recordRollbackFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,
@@ -260,5 +306,27 @@ func (w *DeploymentRollbackWorkflow) recordRollbackFailure(
 	if eventErr != nil {
 		return eventErr
 	}
-	return EmitDeploymentCloudEvent(ctx, errorEvent)
+	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
+		return err
+	}
+
+	skipped := exec.skipDependencies(resourceName, fmt.Sprintf("skipped because dependent %s failed to rollback-delete", resourceName))
+	for _, name := range skipped {
+		resource := exec.plan[name]
+		if err := updateDeploymentResource(ctx, deploymentKey, ResourceUpdate{
+			Name:   name,
+			Status: types.DeploymentResourceSkipped,
+			Error:  exec.errors[name],
+		}); err != nil {
+			return err
+		}
+		skippedEvent, eventErr := NewResourceSkippedEvent(deploymentKey, workspace, generation, time.Time{}, name, resource.Kind, types.DeploymentDeleting, exec.errors[name])
+		if eventErr != nil {
+			return eventErr
+		}
+		if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
+			return err
+		}
+	}
+	return nil
 }

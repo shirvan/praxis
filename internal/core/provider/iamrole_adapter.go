@@ -228,10 +228,14 @@ func (a *IAMRoleAdapter) Lookup(ctx restate.Context, account string, filter Look
 		return nil, restate.TerminalError(err, 500)
 	}
 	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (iamrole.ObservedState, error) {
-		return lookupIAMRole(runCtx, api, filter)
+		obs, runErr := lookupIAMRole(runCtx, api, filter)
+		if runErr != nil {
+			return obs, classifyLookupError(runErr, iamrole.IsNotFound)
+		}
+		return obs, nil
 	})
 	if err != nil {
-		return nil, classifyLookupError(err, iamrole.IsNotFound)
+		return nil, err
 	}
 	if !matchesIAMRoleFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no IAMRole found matching filter"), 404)

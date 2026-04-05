@@ -286,7 +286,10 @@ func (d *SQSQueueDriver) Delete(ctx restate.ObjectContext) error {
 				return restate.Void{}, nil
 			}
 			if IsConflict(runErr) {
-				return restate.Void{}, runErr
+				return restate.Void{}, restate.TerminalError(runErr, 409)
+			}
+			if IsInvalidInput(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
 			}
 			return restate.Void{}, shared.ClassifyAPIError(runErr, state.Desired.Account, ServiceName)
 		}
@@ -378,7 +381,7 @@ func (d *SQSQueueDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 			d.scheduleReconcile(ctx, &state)
 			return types.ReconcileResult{Drift: true, Correcting: true, Error: correctionErr.Error()}, nil
 		}
-		if !tagsMatch(state.Desired.Tags, observed.Tags) {
+		if !shared.TagsMatch(state.Desired.Tags, observed.Tags) {
 			if _, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, state.Outputs.QueueUrl, mergeTags(state.Desired.Tags, map[string]string{"praxis:managed-key": restate.Key(ctx)}))
 			}); tagErr != nil {
@@ -523,7 +526,7 @@ func specFromObserved(obs ObservedState, ref types.ImportRef) SQSQueueSpec {
 		ContentBasedDeduplication:     obs.ContentBasedDeduplication,
 		DeduplicationScope:            obs.DeduplicationScope,
 		FifoThroughputLimit:           obs.FifoThroughputLimit,
-		Tags:                          filterPraxisTags(obs.Tags),
+		Tags:                          shared.FilterPraxisTags(obs.Tags),
 	}
 }
 

@@ -295,19 +295,6 @@ func toELBTags(tags map[string]string) []elbv2types.Tag {
 	return out
 }
 
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
-}
-
 func normalizeSubnets(mappings []SubnetMapping) []string {
 	out := make([]string, len(mappings))
 	for i, m := range mappings {

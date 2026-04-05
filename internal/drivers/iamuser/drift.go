@@ -1,6 +1,8 @@
 package iamuser
 
-import "strings"
+import (
+	"github.com/shirvan/praxis/internal/drivers"
+)
 
 // HasDrift compares the desired IAM user spec against the observed AWS state.
 // Compared fields: path, permissions boundary, inline policies (JSON-normalized),
@@ -21,7 +23,7 @@ func HasDrift(desired IAMUserSpec, observed ObservedState) bool {
 	if !stringSetEqual(desired.Groups, observed.Groups) {
 		return true
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs produces a detailed list of per-field differences for drift reporting.
@@ -101,8 +103,8 @@ func normalizePolicyMap(in map[string]string) map[string]string {
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	filteredDesired := filterPraxisTags(desired)
-	filteredObserved := filterPraxisTags(observed)
+	filteredDesired := drivers.FilterPraxisTags(desired)
+	filteredObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range filteredDesired {
 		if observedValue, ok := filteredObserved[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -116,31 +118,4 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 		}
 	}
 	return diffs
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(m))
-	for key, value := range m {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }

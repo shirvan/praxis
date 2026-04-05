@@ -404,7 +404,7 @@ func (d *TargetGroupDriver) correctDrift(ctx restate.ObjectContext, api TargetGr
 			return fmt.Errorf("update targets: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, arn, desired.Tags)
 		})
@@ -538,7 +538,7 @@ func specFromObserved(observed ObservedState) TargetGroupSpec {
 		DeregistrationDelay: observed.DeregistrationDelay,
 		Stickiness:          observed.Stickiness,
 		Targets:             observed.Targets,
-		Tags:                filterPraxisTags(observed.Tags),
+		Tags:                drivers.FilterPraxisTags(observed.Tags),
 	})
 }
 

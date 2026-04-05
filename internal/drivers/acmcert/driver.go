@@ -402,7 +402,7 @@ func (d *ACMCertificateDriver) correctDrift(ctx restate.ObjectContext, api Certi
 			return fmt.Errorf("update certificate options: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, certificateArn, desired.Tags)
 		})
@@ -442,7 +442,7 @@ func specFromObserved(observed ObservedState) ACMCertificateSpec {
 		KeyAlgorithm:            observed.KeyAlgorithm,
 		CertificateAuthorityArn: observed.CertificateAuthorityArn,
 		Options:                 options,
-		Tags:                    filterPraxisTags(observed.Tags),
+		Tags:                    drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

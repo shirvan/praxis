@@ -421,7 +421,7 @@ func (d *ALBDriver) correctDrift(ctx restate.ObjectContext, api ALBAPI, arn stri
 			return fmt.Errorf("modify attributes: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, arn, desired.Tags)
 		})
@@ -582,7 +582,7 @@ func specFromObserved(observed ObservedState) ALBSpec {
 		AccessLogs:         observed.AccessLogs,
 		DeletionProtection: observed.DeletionProtection,
 		IdleTimeout:        observed.IdleTimeout,
-		Tags:               filterPraxisTags(observed.Tags),
+		Tags:               drivers.FilterPraxisTags(observed.Tags),
 	})
 }
 

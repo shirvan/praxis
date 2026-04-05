@@ -480,7 +480,7 @@ func specFromObserved(observed ObservedState) LogGroupSpec {
 		LogGroupClass:   observed.LogGroupClass,
 		RetentionInDays: observed.RetentionInDays,
 		KmsKeyID:        observed.KmsKeyID,
-		Tags:            filterPraxisTags(observed.Tags),
+		Tags:            drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

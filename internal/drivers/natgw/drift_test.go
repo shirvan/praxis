@@ -1,6 +1,7 @@
 package natgw
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,7 +56,7 @@ func TestComputeFieldDiffs_ImmutableConnectivity(t *testing.T) {
 }
 
 func TestTagsMatch_IgnoresPraxisTags(t *testing.T) {
-	assert.True(t, tagsMatch(
+	assert.True(t, drivers.TagsMatch(
 		map[string]string{"Name": "nat-a"},
 		map[string]string{"Name": "nat-a", "praxis:managed-key": "us-east-1~nat-a"},
 	))

@@ -248,7 +248,7 @@ func (d *AMIDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (AMIO
 	}
 
 	if observed.Tags["praxis:managed-key"] != restate.Key(ctx) {
-		allTags := mergeTags(filterPraxisTags(observed.Tags), map[string]string{
+		allTags := mergeTags(drivers.FilterPraxisTags(observed.Tags), map[string]string{
 			"Name":               observed.Name,
 			"praxis:managed-key": restate.Key(ctx),
 		})
@@ -449,7 +449,7 @@ func (d *AMIDriver) correctDrift(ctx restate.ObjectContext, api AMIAPI, imageID 
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		allTags := desiredTags(desired)
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, imageID, allTags)
@@ -573,7 +573,7 @@ func (d *AMIDriver) applyMutableAttributes(ctx restate.ObjectContext, api AMIAPI
 		}
 	}
 
-	if !tagsMatch(spec.Tags, observed.Tags) {
+	if !drivers.TagsMatch(spec.Tags, observed.Tags) {
 		if err := d.updateTags(ctx, api, imageID, spec, state); err != nil {
 			return restate.TerminalError(err, 500)
 		}
@@ -703,7 +703,7 @@ func specFromObserved(observed ObservedState) AMISpec {
 		Source: SourceSpec{
 			FromAMI: &FromAMISpec{SourceImageId: observed.ImageId},
 		},
-		Tags: filterPraxisTags(observed.Tags),
+		Tags: drivers.FilterPraxisTags(observed.Tags),
 	}
 	if perms := launchPermsFromObserved(observed); perms != nil {
 		spec.LaunchPermissions = perms

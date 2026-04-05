@@ -9,6 +9,7 @@ package alb
 import (
 	"context"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strconv"
 	"strings"
@@ -227,8 +228,8 @@ func (r *realALBAPI) UpdateTags(ctx context.Context, arn string, desired map[str
 	if err != nil {
 		return err
 	}
-	filteredExisting := filterPraxisTags(existing)
-	filteredDesired := filterPraxisTags(desired)
+	filteredExisting := drivers.FilterPraxisTags(existing)
+	filteredDesired := drivers.FilterPraxisTags(desired)
 	var removeKeys []string
 	for key := range filteredExisting {
 		if _, ok := filteredDesired[key]; !ok {
@@ -336,19 +337,6 @@ func toELBTags(tags map[string]string) []elbv2types.Tag {
 	out := make([]elbv2types.Tag, 0, len(tags))
 	for key, value := range tags {
 		out = append(out, elbv2types.Tag{Key: aws.String(key), Value: aws.String(value)})
-	}
-	return out
-}
-
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
 	}
 	return out
 }

@@ -653,7 +653,7 @@ func (d *RouteTableDriver) applyDesiredState(ctx restate.ObjectContext, api Rout
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			if runErr := api.UpdateTags(rc, routeTableID, desired.Tags); runErr != nil {
 				return restate.Void{}, runErr

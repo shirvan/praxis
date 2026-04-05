@@ -242,7 +242,21 @@ func (DeploymentStateObj) GetDetail(ctx restate.ObjectSharedContext, _ restate.V
 
 	var errorCode types.ErrorCode
 	if state.Status == types.DeploymentFailed && state.Error != "" {
-		errorCode = types.ErrCodeProvisionFailed
+		// Determine whether the failure occurred during a delete or provision flow.
+		// If any resource reached Deleting or Deleted status, the deployment was in
+		// a delete workflow when it failed.
+		isDeleteFailure := false
+		for _, rs := range state.Resources {
+			if rs.Status == types.DeploymentResourceDeleting || rs.Status == types.DeploymentResourceDeleted {
+				isDeleteFailure = true
+				break
+			}
+		}
+		if isDeleteFailure {
+			errorCode = types.ErrCodeDeleteFailed
+		} else {
+			errorCode = types.ErrCodeProvisionFailed
+		}
 	}
 
 	var resourceErrors map[string]string
@@ -292,7 +306,7 @@ func (DeploymentStateObj) MoveResource(ctx restate.ObjectContext, req MoveResour
 		return restate.TerminalError(fmt.Errorf("deployment %q not found", restate.Key(ctx)), 404)
 	}
 	if !isTerminal(state.Status) {
-		return restate.TerminalError(fmt.Errorf("deployment %q is %s; state mv requires a terminal state (Complete, Failed, Cancelled)", restate.Key(ctx), state.Status), 409)
+		return restate.TerminalError(fmt.Errorf("deployment %q is %s; state mv requires a terminal state (Complete, Failed, Cancelled, Deleted)", restate.Key(ctx), state.Status), 409)
 	}
 
 	rs, ok := state.Resources[req.ResourceName]
@@ -347,6 +361,21 @@ func (DeploymentStateObj) MoveResource(ctx restate.ObjectContext, req MoveResour
 	}); err != nil {
 		return err
 	}
+	// Update the resource index: remove the old name, upsert the new one.
+	if err := removeResourceIndex(ctx, state.Key, req.ResourceName); err != nil {
+		return err
+	}
+	if err := upsertResourceIndex(ctx, ResourceIndexEntry{
+		Kind:          rs.Kind,
+		Key:           rs.Key,
+		DeploymentKey: state.Key,
+		ResourceName:  newName,
+		Workspace:     state.Workspace,
+		Status:        string(rs.Status),
+		CreatedAt:     state.CreatedAt,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -362,7 +391,7 @@ func (DeploymentStateObj) RemoveResource(ctx restate.ObjectContext, name string)
 		return nil, restate.TerminalError(fmt.Errorf("deployment %q not found", restate.Key(ctx)), 404)
 	}
 	if !isTerminal(state.Status) {
-		return nil, restate.TerminalError(fmt.Errorf("deployment %q is %s; state mv requires a terminal state (Complete, Failed, Cancelled)", restate.Key(ctx), state.Status), 409)
+		return nil, restate.TerminalError(fmt.Errorf("deployment %q is %s; state mv requires a terminal state (Complete, Failed, Cancelled, Deleted)", restate.Key(ctx), state.Status), 409)
 	}
 
 	rs, ok := state.Resources[name]
@@ -394,6 +423,9 @@ func (DeploymentStateObj) RemoveResource(ctx restate.ObjectContext, name string)
 	if err := deleteResourceEventOwner(ctx, rs.Key); err != nil {
 		return nil, err
 	}
+	if err := removeResourceIndex(ctx, state.Key, name); err != nil {
+		return nil, err
+	}
 	return rs, nil
 }
 
@@ -408,7 +440,7 @@ func (DeploymentStateObj) AddResource(ctx restate.ObjectContext, rs ResourceStat
 		return restate.TerminalError(fmt.Errorf("deployment %q not found", restate.Key(ctx)), 404)
 	}
 	if !isTerminal(state.Status) {
-		return restate.TerminalError(fmt.Errorf("deployment %q is %s; state mv requires a terminal state (Complete, Failed, Cancelled)", restate.Key(ctx), state.Status), 409)
+		return restate.TerminalError(fmt.Errorf("deployment %q is %s; state mv requires a terminal state (Complete, Failed, Cancelled, Deleted)", restate.Key(ctx), state.Status), 409)
 	}
 	if _, exists := state.Resources[rs.Name]; exists {
 		return restate.TerminalError(fmt.Errorf("resource %q already exists in deployment %q", rs.Name, restate.Key(ctx)), 409)
@@ -431,13 +463,24 @@ func (DeploymentStateObj) AddResource(ctx restate.ObjectContext, rs ResourceStat
 	}); err != nil {
 		return err
 	}
+	if err := upsertResourceIndex(ctx, ResourceIndexEntry{
+		Kind:          rs.Kind,
+		Key:           rs.Key,
+		DeploymentKey: state.Key,
+		ResourceName:  rs.Name,
+		Workspace:     state.Workspace,
+		Status:        string(rs.Status),
+		CreatedAt:     state.CreatedAt,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
 // isTerminal returns true for deployment statuses that allow state mutations.
 func isTerminal(status types.DeploymentStatus) bool {
 	switch status {
-	case types.DeploymentComplete, types.DeploymentFailed, types.DeploymentCancelled:
+	case types.DeploymentComplete, types.DeploymentFailed, types.DeploymentCancelled, types.DeploymentDeleted:
 		return true
 	default:
 		return false

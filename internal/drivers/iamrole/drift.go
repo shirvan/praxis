@@ -1,8 +1,8 @@
 package iamrole
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
-	"strings"
 )
 
 // HasDrift compares the desired IAM role spec against the observed AWS state and returns
@@ -29,7 +29,7 @@ func HasDrift(desired IAMRoleSpec, observed ObservedState) bool {
 	if !stringSetEqual(desired.ManagedPolicyArns, observed.ManagedPolicyArns) {
 		return true
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs produces a detailed list of per-field differences between the desired spec
@@ -131,8 +131,8 @@ func computeInlinePolicyDiffs(desired, observed map[string]string) []FieldDiffEn
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	filteredDesired := filterPraxisTags(desired)
-	filteredObserved := filterPraxisTags(observed)
+	filteredDesired := drivers.FilterPraxisTags(desired)
+	filteredObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range filteredDesired {
 		if observedValue, ok := filteredObserved[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -146,36 +146,6 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 		}
 	}
 	return diffs
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-// filterPraxisTags returns a copy of the tag map with all "praxis:"-prefixed keys removed.
-// Praxis uses reserved tags for internal tracking; these are excluded from drift comparison
-// and from user-facing tag management operations.
-func filterPraxisTags(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(m))
-	for key, value := range m {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 // stringSetEqual compares two string slices as unordered sets, returning true

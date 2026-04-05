@@ -744,11 +744,11 @@ praxis events query [flags]
   --output string        Output format: text (default), json
 ```
 
-### `praxis notifications`
+### Notification Sinks (verb-first CLI)
 
 ```
-praxis notifications add-sink [flags]
-  --name string          Sink name (required unless using --from-file)
+praxis create sink [flags]
+  --name string          Sink name (required unless using --file)
   --type string          Sink type: webhook, structured_log, cloudevents_http
   --url string           Endpoint URL (required for webhook, cloudevents_http)
   --filter-types string  Comma-separated event type prefixes
@@ -758,26 +758,26 @@ praxis notifications add-sink [flags]
   --header key=value     HTTP header (repeatable, supports ssm:// values)
   --max-retries int      Max delivery retries (default: 3)
   --backoff-ms int       Initial retry backoff in ms (default: 1000)
-  --from-file string     Read sink config from JSON file (use - for stdin)
+  -f, --file string      Read sink config from JSON file (use - for stdin)
 
-praxis notifications list-sinks
-praxis notifications get-sink <name>
-praxis notifications remove-sink <name>
-praxis notifications test-sink <name>
-praxis notifications health
+praxis list sinks
+praxis get sink/<name>
+praxis delete sink/<name>
+praxis test sink/<name>
+praxis get notifications
 ```
 
-### `praxis config` (Retention)
+### Configuration (verb-first CLI)
 
 ```
-praxis config set events.retention [flags]
-  --from-file string     Read retention policy from JSON file (use - for stdin)
+praxis set config events.retention [flags]
+  -f, --file string      Read retention policy from JSON file (use - for stdin)
 
-praxis config set events.retention.max-age <duration>
-praxis config set events.retention.max-events-per-deployment <int>
-praxis config set events.retention.sweep-interval <duration>
-praxis config set events.retention.ship-before-delete <bool>
-praxis config set events.retention.drain-sink <sink-name>
+praxis set config events.retention.max-age <duration>
+praxis set config events.retention.max-events-per-deployment <int>
+praxis set config events.retention.sweep-interval <duration>
+praxis set config events.retention.ship-before-delete <bool>
+praxis set config events.retention.drain-sink <sink-name>
 
 praxis config get events.retention
 ```

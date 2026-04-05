@@ -3,6 +3,7 @@ package targetgroup
 import (
 	"errors"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/aws/smithy-go"
@@ -164,12 +165,12 @@ func TestFilterPraxisTags(t *testing.T) {
 		"praxis:managed-key": "us-east-1~api-tg",
 		"praxis:version":     "1.0",
 	}
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	assert.Equal(t, map[string]string{"env": "dev", "team": "platform"}, filtered)
 }
 
 func TestFilterPraxisTags_Nil(t *testing.T) {
-	filtered := filterPraxisTags(nil)
+	filtered := drivers.FilterPraxisTags(nil)
 	assert.NotNil(t, filtered)
 	assert.Empty(t, filtered)
 }

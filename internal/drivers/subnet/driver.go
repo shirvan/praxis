@@ -174,7 +174,7 @@ func (d *SubnetDriver) Provision(ctx restate.ObjectContext, spec SubnetSpec) (Su
 			}
 		}
 
-		if !tagsMatch(spec.Tags, state.Observed.Tags) {
+		if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 			_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, subnetId, spec.Tags)
 			})
@@ -474,7 +474,7 @@ func (d *SubnetDriver) correctDrift(ctx restate.ObjectContext, api SubnetAPI, su
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, subnetId, desired.Tags)
 		})

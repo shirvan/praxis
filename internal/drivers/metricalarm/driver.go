@@ -469,7 +469,7 @@ func specFromObserved(observed ObservedState) MetricAlarmSpec {
 		OKActions:               append([]string(nil), observed.OKActions...),
 		InsufficientDataActions: append([]string(nil), observed.InsufficientDataActions...),
 		Unit:                    observed.Unit,
-		Tags:                    filterPraxisTags(observed.Tags),
+		Tags:                    drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

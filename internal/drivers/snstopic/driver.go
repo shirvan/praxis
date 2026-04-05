@@ -144,7 +144,7 @@ func (d *SNSTopicDriver) Provision(ctx restate.ObjectContext, spec SNSTopicSpec)
 		}
 
 		// Converge tags.
-		if !tagsMatch(spec.Tags, state.Observed.Tags) {
+		if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 			if _, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, topicArn, mergeTags(
 					spec.Tags, map[string]string{"praxis:managed-key": restate.Key(ctx)},
@@ -321,7 +321,16 @@ func (d *SNSTopicDriver) Delete(ctx restate.ObjectContext) error {
 
 	if _, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		runErr := api.DeleteTopic(rc, state.Outputs.TopicArn)
-		if runErr != nil && !IsNotFound(runErr) {
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return restate.Void{}, nil
+			}
+			if IsInvalidParameter(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
+			}
+			if drivers.IsAccessDenied(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 403)
+			}
 			return restate.Void{}, runErr
 		}
 		return restate.Void{}, nil
@@ -406,7 +415,7 @@ func (d *SNSTopicDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 			return types.ReconcileResult{Drift: true, Correcting: true, Error: corrErr.Error()}, nil
 		}
 
-		if !tagsMatch(state.Desired.Tags, observed.Tags) {
+		if !drivers.TagsMatch(state.Desired.Tags, observed.Tags) {
 			if _, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, state.Outputs.TopicArn, mergeTags(
 					state.Desired.Tags, map[string]string{"praxis:managed-key": restate.Key(ctx)},
@@ -506,7 +515,7 @@ func specFromObserved(obs ObservedState, ref types.ImportRef) SNSTopicSpec {
 		Policy:                    obs.Policy,
 		DeliveryPolicy:            obs.DeliveryPolicy,
 		KmsMasterKeyId:            obs.KmsMasterKeyId,
-		Tags:                      filterPraxisTags(obs.Tags),
+		Tags:                      drivers.FilterPraxisTags(obs.Tags),
 	}
 	return spec
 }

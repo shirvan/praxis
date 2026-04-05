@@ -18,6 +18,7 @@
 	filter: #SinkFilter | *{}
 	headers?: [string]: string
 	retry: #RetryPolicy | *{maxAttempts: 3, backoffMs: 1000}
+	circuitOpenDurationSec?: int & >=10 & <=3600
 }
 
 #StructuredLogSink: {
@@ -33,6 +34,7 @@
 	filter: #SinkFilter | *{}
 	contentMode: "structured" | "binary" | *"structured"
 	retry: #RetryPolicy | *{maxAttempts: 3, backoffMs: 1000}
+	circuitOpenDurationSec?: int & >=10 & <=3600
 }
 
 #RestateRPCSink: {
@@ -41,6 +43,7 @@
 	target:  string & =~"^[a-zA-Z0-9_-]+$"
 	handler: string & =~"^[a-zA-Z0-9_-]+$"
 	filter: #SinkFilter | *{}
+	circuitOpenDurationSec?: int & >=10 & <=3600
 }
 
 #NotificationSink: #WebhookSink | #StructuredLogSink | #CloudEventsHTTPSink | #RestateRPCSink

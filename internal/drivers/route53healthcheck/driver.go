@@ -212,6 +212,12 @@ func (d *HealthCheckDriver) Delete(ctx restate.ObjectContext) error {
 			if IsNotFound(runErr) {
 				return restate.Void{}, nil
 			}
+			if IsInvalidInput(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
+			}
+			if drivers.IsAccessDenied(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 403)
+			}
 			return restate.Void{}, runErr
 		}
 		return restate.Void{}, nil
@@ -342,7 +348,7 @@ func (d *HealthCheckDriver) correctDrift(ctx restate.ObjectContext, api HealthCh
 			return fmt.Errorf("update health check configuration: %w", err)
 		}
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, healthCheckID, desired.Tags)
 		})
@@ -392,7 +398,7 @@ func specFromObserved(observed ObservedState) HealthCheckSpec {
 		InvertHealthCheck:            observed.InvertHealthCheck,
 		EnableSNI:                    observed.EnableSNI,
 		Regions:                      observed.Regions,
-		Tags:                         filterPraxisTags(observed.Tags),
+		Tags:                         drivers.FilterPraxisTags(observed.Tags),
 	}
 }
 

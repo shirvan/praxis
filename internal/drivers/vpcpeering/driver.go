@@ -476,7 +476,7 @@ func (d *VPCPeeringDriver) applyMutableSettings(ctx restate.ObjectContext, api V
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, peeringID, desired.Tags)
 		})
@@ -572,7 +572,7 @@ func specFromObserved(obs ObservedState) VPCPeeringSpec {
 		AutoAccept:       obs.Status == "active" || obs.Status == "pending-acceptance",
 		RequesterOptions: cloneOptions(obs.RequesterOptions),
 		AccepterOptions:  cloneOptions(obs.AccepterOptions),
-		Tags:             filterPraxisTags(obs.Tags),
+		Tags:             drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

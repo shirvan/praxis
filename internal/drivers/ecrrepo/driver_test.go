@@ -1,6 +1,7 @@
 package ecrrepo
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -136,7 +137,7 @@ func TestTagsForApply_EmptyManagedKey(t *testing.T) {
 }
 
 func TestFilterPraxisTags(t *testing.T) {
-	tags := filterPraxisTags(map[string]string{
+	tags := drivers.FilterPraxisTags(map[string]string{
 		"env":                "prod",
 		"praxis:managed-key": "us-east-1~my-repo",
 		"praxis:other":       "value",
@@ -148,7 +149,7 @@ func TestFilterPraxisTags(t *testing.T) {
 }
 
 func TestFilterPraxisTags_Nil(t *testing.T) {
-	tags := filterPraxisTags(nil)
+	tags := drivers.FilterPraxisTags(nil)
 	assert.NotNil(t, tags)
 	assert.Empty(t, tags)
 }

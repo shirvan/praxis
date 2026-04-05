@@ -155,7 +155,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
 			outputs = result
 			keyPairID = result.KeyPairId
 		}
-	} else if !tagsMatch(spec.Tags, state.Observed.Tags) {
+	} else if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 		_, runErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, keyPairID, spec.Tags)
 		})
@@ -440,7 +440,7 @@ func (d *KeyPairDriver) GetInputs(ctx restate.ObjectSharedContext) (KeyPairSpec,
 
 // correctDrift applies in-place tag updates to bring the key pair back to desired state.
 func (d *KeyPairDriver) correctDrift(ctx restate.ObjectContext, api KeyPairAPI, keyPairID string, desired KeyPairSpec, observed ObservedState) error {
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, keyPairID, desired.Tags)
 		})
@@ -490,7 +490,7 @@ func specFromObserved(obs ObservedState) KeyPairSpec {
 	return KeyPairSpec{
 		KeyName: obs.KeyName,
 		KeyType: obs.KeyType,
-		Tags:    filterPraxisTags(obs.Tags),
+		Tags:    drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

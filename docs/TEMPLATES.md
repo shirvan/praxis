@@ -1273,10 +1273,10 @@ curl -X POST http://localhost:8080/PraxisCommandService/Deploy \
   }'
 ```
 
-The inline Apply path is still available for operators and development:
+The inline deploy path is still available for operators and development:
 
 ```bash
-praxis apply service-stack.cue \
+praxis deploy service-stack.cue \
     --var name=orders-api \
     --var environment=prod \
     --var vpcId=vpc-0abc123 \

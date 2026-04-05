@@ -1,289 +1,20 @@
-// workspace.go implements the `praxis workspace` command group.
+// workspace.go contains shared helpers for workspace operations.
 //
-// Workspaces are logical groupings of deployments under a shared account,
-// region, and set of default template variables. The active workspace is
-// persisted in ~/.praxis/config.json and automatically injected into every
-// apply, plan, deploy, and import command.
-//
-// Workspaces are stored as WorkspaceService Virtual Objects in Restate
-// and indexed by the WorkspaceIndex Virtual Object (key="global").
+// Workspace commands are now accessed through top-level verbs:
+//   - `praxis create workspace <name>`   (create.go)
+//   - `praxis set workspace <name>`      (set.go)
+//   - `praxis get workspace [name]`      (get.go)
+//   - `praxis list workspaces`           (list.go)
+//   - `praxis delete workspace/<name>`   (delete.go)
 package cli
 
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
-
-	"github.com/spf13/cobra"
 
 	"github.com/shirvan/praxis/internal/core/workspace"
 )
-
-// newWorkspaceCmd builds the `praxis workspace` command group.
-func newWorkspaceCmd(flags *rootFlags) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "workspace",
-		Short: "Manage workspaces",
-		Long: `A workspace groups related deployments under a single account and region
-with shared default variables. The active workspace is injected into every
-apply, plan, deploy and import command automatically.`,
-	}
-
-	cmd.AddCommand(
-		newWorkspaceCreateCmd(flags),
-		newWorkspaceListCmd(flags),
-		newWorkspaceSelectCmd(flags),
-		newWorkspaceShowCmd(flags),
-		newWorkspaceDeleteCmd(flags),
-	)
-
-	return cmd
-}
-
-// newWorkspaceCreateCmd builds `praxis workspace create <name>`.
-func newWorkspaceCreateCmd(flags *rootFlags) *cobra.Command {
-	var (
-		account    string
-		region     string
-		vars       []string
-		selectFlag bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create or update a workspace",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			renderer := flags.renderer()
-			cliCfg := LoadCLIConfig()
-
-			if err := workspace.ValidateName(name); err != nil {
-				return err
-			}
-			if strings.TrimSpace(account) == "" {
-				return fmt.Errorf("--account is required")
-			}
-			if strings.TrimSpace(region) == "" {
-				return fmt.Errorf("--region is required")
-			}
-
-			variables, err := parseStringVariables(vars)
-			if err != nil {
-				return err
-			}
-
-			client := flags.newClient()
-			ctx := context.Background()
-
-			cfg := workspace.WorkspaceConfig{
-				Name:      name,
-				Account:   account,
-				Region:    region,
-				Variables: variables,
-				Events:    nil,
-			}
-			if err := client.ConfigureWorkspace(ctx, cfg); err != nil {
-				return err
-			}
-
-			renderer.successLine(fmt.Sprintf("Workspace %q created.", name))
-
-			names, err := client.ListWorkspaces(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Auto-select if --select is set or this is the first workspace.
-			if selectFlag || (cliCfg.ActiveWorkspace == "" && len(names) == 1) {
-				cliCfg.ActiveWorkspace = name
-				if err := SaveCLIConfig(cliCfg); err != nil {
-					return fmt.Errorf("save config: %w", err)
-				}
-				renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
-			}
-
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&account, "account", "", "AWS account alias (required)")
-	cmd.Flags().StringVar(&region, "region", "", "Default AWS region (required)")
-	cmd.Flags().StringArrayVar(&vars, "var", nil, "Default variable in key=value format (repeatable)")
-	cmd.Flags().BoolVar(&selectFlag, "select", false, "Set as the active workspace after creation")
-
-	return cmd
-}
-
-// newWorkspaceListCmd builds `praxis workspace list`.
-func newWorkspaceListCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List workspaces",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			renderer := flags.renderer()
-			client := flags.newClient()
-			ctx := context.Background()
-
-			names, err := client.ListWorkspaces(ctx)
-			if err != nil {
-				return err
-			}
-
-			if len(names) == 0 {
-				if flags.outputFormat() == OutputJSON {
-					return printJSON([]workspace.WorkspaceInfo{})
-				}
-				_, _ = fmt.Fprintln(renderer.out, renderer.renderMuted("No workspaces configured."))
-				return nil
-			}
-
-			cliCfg := LoadCLIConfig()
-			infos := make([]workspace.WorkspaceInfo, 0, len(names))
-			for _, n := range names {
-				info, err := client.GetWorkspace(ctx, n)
-				if err != nil {
-					return err
-				}
-				infos = append(infos, *info)
-			}
-
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(infos)
-			}
-
-			headers := []string{"NAME", "ACCOUNT", "REGION", "ACTIVE"}
-			rows := make([][]string, 0, len(infos))
-			for _, info := range infos {
-				marker := ""
-				if info.Name == cliCfg.ActiveWorkspace {
-					marker = "yes"
-				}
-				rows = append(rows, []string{info.Name, info.Account, info.Region, marker})
-			}
-			printTable(renderer, headers, rows)
-			return nil
-		},
-	}
-}
-
-// newWorkspaceSelectCmd builds `praxis workspace select <name>`.
-func newWorkspaceSelectCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "select <name>",
-		Short: "Set the active workspace",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			renderer := flags.renderer()
-			client := flags.newClient()
-			ctx := context.Background()
-
-			// Validate the workspace exists.
-			if _, err := client.GetWorkspace(ctx, name); err != nil {
-				return fmt.Errorf("workspace %q: %w", name, err)
-			}
-
-			cliCfg := LoadCLIConfig()
-			cliCfg.ActiveWorkspace = name
-			if err := SaveCLIConfig(cliCfg); err != nil {
-				return fmt.Errorf("save config: %w", err)
-			}
-
-			renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
-			return nil
-		},
-	}
-}
-
-// newWorkspaceShowCmd builds `praxis workspace show [name]`.
-func newWorkspaceShowCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "show [name]",
-		Short: "Show workspace details",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			renderer := flags.renderer()
-			name := ""
-			if len(args) > 0 {
-				name = args[0]
-			} else {
-				cliCfg := LoadCLIConfig()
-				name = cliCfg.ActiveWorkspace
-			}
-			if name == "" {
-				return fmt.Errorf("no workspace specified and no active workspace set")
-			}
-
-			client := flags.newClient()
-			ctx := context.Background()
-
-			info, err := client.GetWorkspace(ctx, name)
-			if err != nil {
-				return err
-			}
-
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(info)
-			}
-
-			renderer.writeLabelValue("Name", 10, info.Name)
-			renderer.writeLabelValue("Account", 10, info.Account)
-			renderer.writeLabelValue("Region", 10, info.Region)
-			if len(info.Variables) > 0 {
-				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Variables:"))
-				keys := make([]string, 0, len(info.Variables))
-				for k := range info.Variables {
-					keys = append(keys, k)
-				}
-				sort.Strings(keys)
-				for _, k := range keys {
-					v := info.Variables[k]
-					_, _ = fmt.Fprintf(renderer.out, "  %s = %s\n", k, v)
-				}
-			}
-			if info.Events != nil && info.Events.Retention != nil {
-				_, _ = fmt.Fprintln(renderer.out)
-				_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Event Retention:"))
-				printEventRetentionPolicy(renderer, info.Events.Retention)
-			}
-			return nil
-		},
-	}
-}
-
-// newWorkspaceDeleteCmd builds `praxis workspace delete <name>`.
-func newWorkspaceDeleteCmd(flags *rootFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a workspace",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			renderer := flags.renderer()
-			client := flags.newClient()
-			ctx := context.Background()
-
-			if err := client.DeleteWorkspace(ctx, name); err != nil {
-				return err
-			}
-
-			// Clear active workspace if it was the deleted one.
-			cliCfg := LoadCLIConfig()
-			if cliCfg.ActiveWorkspace == name {
-				cliCfg.ActiveWorkspace = ""
-				if err := SaveCLIConfig(cliCfg); err != nil {
-					return fmt.Errorf("save config: %w", err)
-				}
-			}
-
-			renderer.successLine(fmt.Sprintf("Workspace %q deleted.", name))
-			return nil
-		},
-	}
-}
 
 // parseStringVariables converts a slice of "key=value" strings into a
 // map[string]string. Unlike parseVariables (which returns map[string]any for
@@ -301,4 +32,57 @@ func parseStringVariables(vars []string) (map[string]string, error) {
 		result[strings.TrimSpace(parts[0])] = parts[1]
 	}
 	return result, nil
+}
+
+// createWorkspace is the shared logic for workspace creation, used by both
+// the old `workspace create` and the new `create workspace` commands.
+func createWorkspace(flags *rootFlags, name, account, region string, vars []string, selectFlag bool) error {
+	renderer := flags.renderer()
+	cliCfg := LoadCLIConfig()
+
+	if err := workspace.ValidateName(name); err != nil {
+		return err
+	}
+	if strings.TrimSpace(account) == "" {
+		return fmt.Errorf("--account is required")
+	}
+	if strings.TrimSpace(region) == "" {
+		return fmt.Errorf("--region is required")
+	}
+
+	variables, err := parseStringVariables(vars)
+	if err != nil {
+		return err
+	}
+
+	client := flags.newClient()
+	ctx := context.Background()
+
+	cfg := workspace.WorkspaceConfig{
+		Name:      name,
+		Account:   account,
+		Region:    region,
+		Variables: variables,
+		Events:    nil,
+	}
+	if err := client.ConfigureWorkspace(ctx, cfg); err != nil {
+		return err
+	}
+
+	renderer.successLine(fmt.Sprintf("Workspace %q created.", name))
+
+	names, err := client.ListWorkspaces(ctx)
+	if err != nil {
+		return err
+	}
+
+	if selectFlag || (cliCfg.ActiveWorkspace == "" && len(names) == 1) {
+		cliCfg.ActiveWorkspace = name
+		if err := SaveCLIConfig(cliCfg); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+		renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
+	}
+
+	return nil
 }

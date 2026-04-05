@@ -3,6 +3,7 @@ package dbparametergroup
 import (
 	"context"
 	"errors"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 
@@ -206,7 +207,7 @@ func (r *realDBParameterGroupAPI) UpdateTags(ctx context.Context, arn string, ta
 	if err != nil {
 		return err
 	}
-	filteredDesired := filterPraxisTags(tags)
+	filteredDesired := drivers.FilterPraxisTags(tags)
 	var remove []string
 	for key := range current {
 		if _, ok := filteredDesired[key]; !ok {
@@ -311,7 +312,7 @@ func (r *realDBParameterGroupAPI) listTags(ctx context.Context, arn string) (map
 
 // toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
 func toRDSTags(tags map[string]string) []rdstypes.Tag {
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	out := make([]rdstypes.Tag, 0, len(filtered))
 	for key, value := range filtered {
 		out = append(out, rdstypes.Tag{Key: aws.String(key), Value: aws.String(value)})

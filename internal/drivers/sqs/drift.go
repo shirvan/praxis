@@ -9,8 +9,8 @@ package sqs
 
 import (
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
-	"strings"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired
@@ -65,7 +65,7 @@ func HasDrift(desired SQSQueueSpec, observed ObservedState) bool {
 			return true
 		}
 	}
-	return !tagsMatch(desired.Tags, observed.Tags)
+	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
 // ComputeFieldDiffs produces a structured list of individual field changes
@@ -114,8 +114,8 @@ func ComputeFieldDiffs(desired SQSQueueSpec, observed ObservedState) []FieldDiff
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{Path: "tags", OldValue: filterPraxisTags(observed.Tags), NewValue: filterPraxisTags(desired.Tags)})
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
+		diffs = append(diffs, FieldDiffEntry{Path: "tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
 	}
 
 	return diffs
@@ -129,33 +129,6 @@ func redrivePolicyEqual(a, b *RedrivePolicy) bool {
 		return false
 	}
 	return a.DeadLetterTargetArn == b.DeadLetterTargetArn && a.MaxReceiveCount == b.MaxReceiveCount
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(m))
-	for key, value := range m {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 func mergeTags(user, system map[string]string) map[string]string {

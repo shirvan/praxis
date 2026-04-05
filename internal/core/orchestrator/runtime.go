@@ -412,6 +412,33 @@ func removeDeploymentSummary(ctx restate.Context, deploymentKey string) error {
 	return err
 }
 
+// upsertResourceIndex sends a resource entry upsert to the global ResourceIndex.
+func upsertResourceIndex(ctx restate.Context, entry ResourceIndexEntry) error {
+	_, err := restate.WithRequestType[ResourceIndexEntry, restate.Void](
+		restate.Object[restate.Void](ctx, ResourceIndexServiceName, ResourceIndexGlobalKey, "Upsert"),
+	).Request(entry)
+	return err
+}
+
+// removeResourceIndex removes a single resource entry from the global ResourceIndex.
+func removeResourceIndex(ctx restate.Context, deploymentKey, resourceName string) error {
+	_, err := restate.WithRequestType[ResourceIndexRemoveRequest, restate.Void](
+		restate.Object[restate.Void](ctx, ResourceIndexServiceName, ResourceIndexGlobalKey, "Remove"),
+	).Request(ResourceIndexRemoveRequest{
+		DeploymentKey: deploymentKey,
+		ResourceName:  resourceName,
+	})
+	return err
+}
+
+// removeResourceIndexByDeployment removes all entries for a deployment from the ResourceIndex.
+func removeResourceIndexByDeployment(ctx restate.Context, deploymentKey string) error {
+	_, err := restate.WithRequestType[string, restate.Void](
+		restate.Object[restate.Void](ctx, ResourceIndexServiceName, ResourceIndexGlobalKey, "RemoveByDeployment"),
+	).Request(deploymentKey)
+	return err
+}
+
 // upsertResourceEventOwner registers a resource key → deployment mapping in
 // the ResourceEventOwner bridge so drift events can be routed.
 func upsertResourceEventOwner(ctx restate.Context, resourceKey string, owner eventing.ResourceEventOwner) error {

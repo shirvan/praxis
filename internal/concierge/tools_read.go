@@ -120,6 +120,7 @@ func (r *ToolRegistry) registerReadTools() {
 				"variables": map[string]any{"type": "object", "description": "Template variables"},
 				"account":   map[string]any{"type": "string", "description": "AWS account alias"},
 				"workspace": map[string]any{"type": "string", "description": "Workspace name"},
+				"targets":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Limit plan to these resource names plus their dependencies (optional)"},
 			},
 			"required": []string{"template"},
 		},
@@ -134,6 +135,51 @@ func (r *ToolRegistry) registerReadTools() {
 			"properties": map[string]any{},
 		},
 		Execute: toolListWorkspaces,
+	})
+
+	r.Register(&ToolDef{
+		Name:        "listPolicies",
+		Description: "List all policies for a given scope (global or template-scoped)",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"scope":        map[string]any{"type": "string", "description": "Policy scope: 'global' or 'template'"},
+				"templateName": map[string]any{"type": "string", "description": "Template name (required when scope is 'template')"},
+			},
+			"required": []string{"scope"},
+		},
+		Execute: toolListPolicies,
+	})
+
+	r.Register(&ToolDef{
+		Name:        "getPolicy",
+		Description: "Get a specific policy by name and scope, including its CUE source",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":         map[string]any{"type": "string", "description": "Policy name"},
+				"scope":        map[string]any{"type": "string", "description": "Policy scope: 'global' or 'template'"},
+				"templateName": map[string]any{"type": "string", "description": "Template name (required when scope is 'template')"},
+			},
+			"required": []string{"name", "scope"},
+		},
+		Execute: toolGetPolicy,
+	})
+
+	r.Register(&ToolDef{
+		Name:        "planDeploy",
+		Description: "Run a plan (dry-run) from a registered template name. Plans are read-only.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"templateName": map[string]any{"type": "string", "description": "Registered template name"},
+				"variables":    map[string]any{"type": "object", "description": "Template variables"},
+				"account":      map[string]any{"type": "string", "description": "AWS account alias"},
+				"workspace":    map[string]any{"type": "string", "description": "Workspace name"},
+			},
+			"required": []string{"templateName"},
+		},
+		Execute: toolPlanDeploy,
 	})
 }
 
@@ -195,7 +241,7 @@ func toolListDeployments(ctx restate.Context, argsJSON string, session SessionSt
 
 // toolListTemplates queries the TemplateIndex for all registered template metadata.
 func toolListTemplates(ctx restate.Context, _ string, _ SessionState) (string, error) {
-	templates, err := restate.Object[[]types.TemplateMetadata](
+	templates, err := restate.Object[[]types.TemplateSummary](
 		ctx, "TemplateIndex", "global", "List",
 	).Request(restate.Void{})
 	if err != nil {
@@ -317,6 +363,7 @@ func toolPlanDeployment(ctx restate.Context, argsJSON string, session SessionSta
 		Variables map[string]any `json:"variables"`
 		Account   string         `json:"account"`
 		Workspace string         `json:"workspace"`
+		Targets   []string       `json:"targets"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -341,6 +388,7 @@ func toolPlanDeployment(ctx restate.Context, argsJSON string, session SessionSta
 		Variables: args.Variables,
 		Account:   account,
 		Workspace: workspace,
+		Targets:   args.Targets,
 	})
 	if err != nil {
 		return fmt.Sprintf("Plan failed: %s", err.Error()), nil
@@ -367,5 +415,108 @@ func toolListWorkspaces(ctx restate.Context, _ string, _ SessionState) (string, 
 	}
 
 	result, _ := json.MarshalIndent(workspaces, "", "  ")
+	return string(result), nil
+}
+
+// toolListPolicies queries PraxisCommandService.ListPolicies for all policies
+// in a given scope (global or template-scoped).
+func toolListPolicies(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
+	var args struct {
+		Scope        string `json:"scope"`
+		TemplateName string `json:"templateName"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if args.Scope == "" {
+		return "Error: scope is required ('global' or 'template')", nil
+	}
+
+	policies, err := restate.Service[[]types.PolicySummary](
+		ctx, "PraxisCommandService", "ListPolicies",
+	).Request(types.ListPoliciesRequest{
+		Scope:        types.PolicyScope(args.Scope),
+		TemplateName: args.TemplateName,
+	})
+	if err != nil {
+		return fmt.Sprintf("Error listing policies: %s", err.Error()), nil
+	}
+
+	if len(policies) == 0 {
+		return "No policies found.", nil
+	}
+
+	result, _ := json.MarshalIndent(policies, "", "  ")
+	return string(result), nil
+}
+
+// toolGetPolicy retrieves a specific policy by name and scope, including its
+// CUE source code. Useful for reviewing or debugging policy constraints.
+func toolGetPolicy(ctx restate.Context, argsJSON string, _ SessionState) (string, error) {
+	var args struct {
+		Name         string `json:"name"`
+		Scope        string `json:"scope"`
+		TemplateName string `json:"templateName"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if args.Name == "" || args.Scope == "" {
+		return "Error: name and scope are required", nil
+	}
+
+	policy, err := restate.Service[types.Policy](
+		ctx, "PraxisCommandService", "GetPolicy",
+	).Request(types.GetPolicyRequest{
+		Name:         args.Name,
+		Scope:        types.PolicyScope(args.Scope),
+		TemplateName: args.TemplateName,
+	})
+	if err != nil {
+		return fmt.Sprintf("Error: %s", err.Error()), nil
+	}
+
+	result, _ := json.MarshalIndent(policy, "", "  ")
+	return string(result), nil
+}
+
+// toolPlanDeploy runs a dry-run plan for a registered template (by name) via
+// PraxisCommandService.PlanDeploy. Falls back to the session's account/workspace.
+func toolPlanDeploy(ctx restate.Context, argsJSON string, session SessionState) (string, error) {
+	var args struct {
+		TemplateName string         `json:"templateName"`
+		Variables    map[string]any `json:"variables"`
+		Account      string         `json:"account"`
+		Workspace    string         `json:"workspace"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if args.TemplateName == "" {
+		return "Error: templateName is required", nil
+	}
+
+	account := args.Account
+	if account == "" {
+		account = session.Account
+	}
+	workspace := args.Workspace
+	if workspace == "" {
+		workspace = session.Workspace
+	}
+
+	planResp, err := restate.Service[types.PlanDeployResponse](
+		ctx, "PraxisCommandService", "PlanDeploy",
+	).Request(types.PlanDeployRequest{
+		Template:  args.TemplateName,
+		Variables: args.Variables,
+		Account:   account,
+		Workspace: workspace,
+	})
+	if err != nil {
+		return fmt.Sprintf("Plan failed: %s", err.Error()), nil
+	}
+
+	result, _ := json.MarshalIndent(planResp, "", "  ")
 	return string(result), nil
 }

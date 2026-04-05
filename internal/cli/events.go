@@ -1,12 +1,8 @@
-// events.go implements the `praxis events` command group.
+// events.go contains shared helpers for event operations.
 //
-// Events are CloudEvents emitted by the orchestrator during deployment
-// lifecycle transitions. They are stored in a per-deployment event store
-// (DeploymentEventStore Virtual Object) and indexed globally (EventIndex).
-//
-// Two subcommands provide access:
-//   - `praxis events list Deployment/<key>`  — list events for one deployment
-//   - `praxis events query`                 — cross-deployment event search
+// Event commands are now accessed through top-level verbs:
+//   - `praxis list events`    (list.go)
+//   - `praxis get events`     (get.go — per-deployment event list is via list)
 package cli
 
 import (
@@ -15,121 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
-
-// newEventsCmd builds the `praxis events` parent command.
-// Subcommands: list, query.
-func newEventsCmd(flags *rootFlags) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "events",
-		Short: "Query deployment events",
-	}
-
-	cmd.AddCommand(
-		newEventsListCmd(flags),
-		newEventsQueryCmd(flags),
-	)
-	return cmd
-}
-
-// newEventsListCmd builds `praxis events list Deployment/<key>`.
-// Fetches all events for one deployment from DeploymentEventStore.ListSince,
-// applies client-side filters (--type, --severity, --resource, --since), and
-// renders the filtered event timeline.
-func newEventsListCmd(flags *rootFlags) *cobra.Command {
-	var (
-		sinceRaw   string
-		typePrefix string
-		severity   string
-		resource   string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "list Deployment/<key>",
-		Short: "List events for one deployment",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			kind, key, err := parseKindKey(args[0])
-			if err != nil {
-				return err
-			}
-			if kind != "Deployment" {
-				return fmt.Errorf("events list only supports Deployment resources, got %q", kind)
-			}
-			since, err := parseLookback(sinceRaw)
-			if err != nil {
-				return err
-			}
-			query := orchestrator.EventQuery{
-				DeploymentKey: key,
-				TypePrefix:    typePrefix,
-				Severity:      severity,
-				Resource:      resource,
-				Since:         since,
-			}
-			return listDeploymentEvents(context.Background(), flags.newClient(), key, query, flags.outputFormat(), flags.renderer())
-		},
-	}
-
-	cmd.Flags().StringVar(&sinceRaw, "since", "", "Show events from the last duration (for example: 1h, 7d)")
-	cmd.Flags().StringVar(&typePrefix, "type", "", "Filter by event type prefix")
-	cmd.Flags().StringVar(&severity, "severity", "", "Filter by severity (info, warn, error)")
-	cmd.Flags().StringVar(&resource, "resource", "", "Filter by resource name")
-	return cmd
-}
-
-// newEventsQueryCmd builds `praxis events query`. Runs a cross-deployment
-// search against EventIndex.Query with workspace, type, severity, resource,
-// since, and limit filters.
-func newEventsQueryCmd(flags *rootFlags) *cobra.Command {
-	var (
-		workspace  string
-		typePrefix string
-		severity   string
-		resource   string
-		sinceRaw   string
-		limit      int
-	)
-
-	cmd := &cobra.Command{
-		Use:   "query",
-		Short: "Query events across deployments",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			since, err := parseLookback(sinceRaw)
-			if err != nil {
-				return err
-			}
-			query := orchestrator.EventQuery{
-				Workspace:  workspace,
-				TypePrefix: typePrefix,
-				Severity:   severity,
-				Resource:   resource,
-				Since:      since,
-				Limit:      limit,
-			}
-			events, err := flags.newClient().QueryCloudEvents(context.Background(), query)
-			if err != nil {
-				return err
-			}
-			if flags.outputFormat() == OutputJSON {
-				return printJSON(events)
-			}
-			printCloudEvents(flags.renderer(), events)
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVarP(&workspace, "workspace", "w", "", "Filter by workspace")
-	cmd.Flags().StringVar(&typePrefix, "type", "", "Filter by event type prefix")
-	cmd.Flags().StringVar(&severity, "severity", "", "Filter by severity (info, warn, error)")
-	cmd.Flags().StringVar(&resource, "resource", "", "Filter by resource name")
-	cmd.Flags().StringVar(&sinceRaw, "since", "", "Show events from the last duration (for example: 1h, 7d)")
-	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum events to return")
-	return cmd
-}
 
 // listDeploymentEvents fetches all events for a deployment (since sequence 0),
 // applies the query filter client-side, and renders the result.

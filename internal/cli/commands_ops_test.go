@@ -15,10 +15,10 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// events list
+// list events (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestEventsListCmd_Success(t *testing.T) {
+func TestListEventsCmd_PerDeployment_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/DeploymentEventStore/my-app/ListSince", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -26,32 +26,23 @@ func TestEventsListCmd_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"events", "list", "Deployment/my-app"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"list", "events", "Deployment/my-app"}, srv.URL)
 	require.NoError(t, err)
 }
 
-func TestEventsListCmd_NonDeployment(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"events", "list", "S3Bucket/my-bucket"}, "http://unused")
+func TestListEventsCmd_PerDeployment_NonDeployment(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"list", "events", "S3Bucket/my-bucket"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "only supports Deployment")
 }
 
-func TestEventsListCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"events", "list"}, "http://unused")
-	require.Error(t, err)
-}
-
-func TestEventsListCmd_InvalidArg(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"events", "list", "bad-format"}, "http://unused")
+func TestListEventsCmd_PerDeployment_InvalidArg(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"list", "events", "bad-format"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected Kind/Key")
 }
 
-// ---------------------------------------------------------------------------
-// events query
-// ---------------------------------------------------------------------------
-
-func TestEventsQueryCmd_Success(t *testing.T) {
+func TestListEventsCmd_Query_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/EventIndex/global/Query", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -59,12 +50,12 @@ func TestEventsQueryCmd_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"events", "query", "--severity", "error"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"list", "events", "--severity", "error"}, srv.URL)
 	require.NoError(t, err)
 }
 
-func TestEventsQueryCmd_InvalidDuration(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"events", "query", "--since", "notaduration"}, "http://unused")
+func TestListEventsCmd_Query_InvalidDuration(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"list", "events", "--since", "notaduration"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid duration")
 }
@@ -97,10 +88,10 @@ func TestParseLookback_Empty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// notifications add-sink
+// create sink (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestNotificationAddSinkCmd_Success(t *testing.T) {
+func TestCreateSinkCmd_Flags(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/NotificationSinkConfig/global/Upsert", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -109,7 +100,7 @@ func TestNotificationAddSinkCmd_Success(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := executeCmd(t, []string{
-		"notifications", "add-sink",
+		"create", "sink",
 		"--name", "my-webhook",
 		"--type", "webhook",
 		"--url", "https://hooks.example.com/deploy",
@@ -117,7 +108,7 @@ func TestNotificationAddSinkCmd_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestNotificationAddSinkCmd_FromFile(t *testing.T) {
+func TestCreateSinkCmd_FileFlag(t *testing.T) {
 	tmp := t.TempDir()
 	sinkFile := filepath.Join(tmp, "sink.json")
 	sink := orchestrator.NotificationSink{
@@ -137,34 +128,17 @@ func TestNotificationAddSinkCmd_FromFile(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := executeCmd(t, []string{
-		"notifications", "add-sink", "--from-file", sinkFile,
+		"create", "sink", "--file", sinkFile,
 	}, srv.URL)
 	require.NoError(t, err)
 	assert.Equal(t, "file-sink", gotSink.Name)
 }
 
 // ---------------------------------------------------------------------------
-// notifications list-sinks
+// get notifications (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestNotificationListSinksCmd_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]orchestrator.NotificationSink{
-			{Name: "slack", Type: "webhook", URL: "https://hooks.slack.com/xxx"},
-		})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"notifications", "list-sinks"}, srv.URL)
-	require.NoError(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// notifications health
-// ---------------------------------------------------------------------------
-
-func TestNotificationHealthCmd_Success(t *testing.T) {
+func TestGetNotificationsCmd_Health(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/NotificationSinkConfig/global/Health", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -174,77 +148,8 @@ func TestNotificationHealthCmd_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"notifications", "health"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"get", "notifications"}, srv.URL)
 	require.NoError(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// notifications get-sink
-// ---------------------------------------------------------------------------
-
-func TestNotificationGetSinkCmd_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(&orchestrator.NotificationSink{
-			Name: "my-webhook",
-			Type: "webhook",
-		})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"notifications", "get-sink", "my-webhook"}, srv.URL)
-	require.NoError(t, err)
-}
-
-func TestNotificationGetSinkCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"notifications", "get-sink"}, "http://unused")
-	require.Error(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// notifications remove-sink
-// ---------------------------------------------------------------------------
-
-func TestNotificationRemoveSinkCmd_Success(t *testing.T) {
-	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"notifications", "remove-sink", "old-sink"}, srv.URL)
-	require.NoError(t, err)
-	assert.Equal(t, "/NotificationSinkConfig/global/Remove", gotPath)
-}
-
-func TestNotificationRemoveSinkCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"notifications", "remove-sink"}, "http://unused")
-	require.Error(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// notifications test-sink
-// ---------------------------------------------------------------------------
-
-func TestNotificationTestSinkCmd_Success(t *testing.T) {
-	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"notifications", "test-sink", "my-webhook"}, srv.URL)
-	require.NoError(t, err)
-	assert.Equal(t, "/SinkRouter/Test", gotPath)
-}
-
-func TestNotificationTestSinkCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"notifications", "test-sink"}, "http://unused")
-	require.Error(t, err)
 }
 
 // ---------------------------------------------------------------------------
@@ -283,10 +188,10 @@ func TestParseHeaders_Invalid(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// state mv
+// move (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestStateMvCmd_SameDeployment(t *testing.T) {
+func TestMoveCmd_SameDeployment_PathCheck(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -295,48 +200,16 @@ func TestStateMvCmd_SameDeployment(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"state", "mv", "Deployment/web-app/myBucket", "renamedBucket"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"move", "Deployment/web-app/myBucket", "renamedBucket"}, srv.URL)
 	require.NoError(t, err)
 	assert.Equal(t, "/DeploymentStateObj/web-app/MoveResource", gotPath)
 }
 
-func TestStateMvCmd_CrossDeployment(t *testing.T) {
-	callCount := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		w.Header().Set("Content-Type", "application/json")
-		if callCount == 1 {
-			// RemoveResource
-			assert.Equal(t, "/DeploymentStateObj/source/RemoveResource", r.URL.Path)
-			_ = json.NewEncoder(w).Encode(orchestrator.ResourceState{Name: "myBucket"})
-		} else {
-			// AddResource
-			assert.Equal(t, "/DeploymentStateObj/dest/AddResource", r.URL.Path)
-			w.WriteHeader(http.StatusOK)
-		}
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"state", "mv", "Deployment/source/myBucket", "Deployment/dest/newBucket"}, srv.URL)
-	require.NoError(t, err)
-	assert.Equal(t, 2, callCount)
-}
-
-func TestStateMvCmd_InvalidSource(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"state", "mv", "badpath", "dest"}, "http://unused")
-	require.Error(t, err)
-}
-
-func TestStateMvCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"state", "mv"}, "http://unused")
-	require.Error(t, err)
-}
-
 // ---------------------------------------------------------------------------
-// config get
+// get config (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestConfigGetCmd_EventsRetention(t *testing.T) {
+func TestGetConfigCmd_EventsRetention(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	require.NoError(t, SaveCLIConfig(CLIConfig{ActiveWorkspace: "dev"}))
 
@@ -350,31 +223,31 @@ func TestConfigGetCmd_EventsRetention(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"config", "get", "events.retention"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"get", "config", "events.retention"}, srv.URL)
 	require.NoError(t, err)
 }
 
-func TestConfigGetCmd_UnsupportedPath(t *testing.T) {
+func TestGetConfigCmd_UnsupportedPath(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	require.NoError(t, SaveCLIConfig(CLIConfig{ActiveWorkspace: "dev"}))
 
-	_, _, err := executeCmd(t, []string{"config", "get", "some.unknown.path"}, "http://unused")
+	_, _, err := executeCmd(t, []string{"get", "config", "some.unknown.path"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported config path")
 }
 
-func TestConfigGetCmd_NoWorkspace(t *testing.T) {
+func TestGetConfigCmd_NoWorkspace(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	_, _, err := executeCmd(t, []string{"config", "get", "events.retention"}, "http://unused")
+	_, _, err := executeCmd(t, []string{"get", "config", "events.retention"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no workspace specified")
 }
 
 // ---------------------------------------------------------------------------
-// config set
+// set config (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestConfigSetRetentionFieldCmd_MaxAge(t *testing.T) {
+func TestSetConfigRetentionFieldCmd_MaxAge_VerbFirst(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	require.NoError(t, SaveCLIConfig(CLIConfig{ActiveWorkspace: "dev"}))
 
@@ -395,7 +268,7 @@ func TestConfigSetRetentionFieldCmd_MaxAge(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := executeCmd(t, []string{"config", "set", "events.retention.max-age", "180d"}, srv.URL)
+	_, _, err := executeCmd(t, []string{"set", "config", "events.retention.max-age", "180d"}, srv.URL)
 	require.NoError(t, err)
 }
 

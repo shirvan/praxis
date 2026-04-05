@@ -194,7 +194,7 @@ func (d *EBSVolumeDriver) Provision(ctx restate.ObjectContext, spec EBSVolumeSpe
 			}
 		}
 
-		if !tagsMatch(spec.Tags, state.Observed.Tags) {
+		if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
 			_, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, volumeID, spec.Tags)
 			})
@@ -498,7 +498,7 @@ func (d *EBSVolumeDriver) correctDrift(ctx restate.ObjectContext, api EBSAPI, vo
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, volumeID, desired.Tags)
 		})
@@ -547,7 +547,7 @@ func specFromObserved(obs ObservedState) EBSVolumeSpec {
 		Encrypted:        obs.Encrypted,
 		KmsKeyId:         obs.KmsKeyId,
 		SnapshotId:       obs.SnapshotId,
-		Tags:             filterPraxisTags(obs.Tags),
+		Tags:             drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

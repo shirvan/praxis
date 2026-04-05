@@ -268,10 +268,14 @@ func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter Looku
 		return nil, restate.TerminalError(err, 500)
 	}
 	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (subnet.ObservedState, error) {
-		return lookupSubnet(runCtx, api, filter)
+		obs, runErr := lookupSubnet(runCtx, api, filter)
+		if runErr != nil {
+			return obs, classifyLookupError(runErr, subnet.IsNotFound)
+		}
+		return obs, nil
 	})
 	if err != nil {
-		return nil, classifyLookupError(err, subnet.IsNotFound)
+		return nil, err
 	}
 	if !matchesSubnetFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no Subnet found matching filter"), 404)

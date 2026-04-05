@@ -162,3 +162,64 @@ func (rpcSinkTarget) ServiceName() string { return "RPCSinkTarget" }
 func (rpcSinkTarget) Receive(_ restate.Context, _ SequencedCloudEvent) error {
 	return nil
 }
+
+func TestSummarizeSinkHealth_AggregatesMetrics(t *testing.T) {
+	now := time.Now().UTC()
+	entries := map[string]NotificationSink{
+		"healthy-sink": {
+			Name:           "healthy-sink",
+			DeliveredCount: 100,
+			FailedCount:    2,
+			LastSuccessAt:  now.Add(-1 * time.Minute).Format(time.RFC3339),
+		},
+		"degraded-sink": {
+			Name:                "degraded-sink",
+			ConsecutiveFailures: 2,
+			DeliveryState:       SinkDeliveryStateDegraded,
+			DeliveredCount:      50,
+			FailedCount:         10,
+		},
+		"open-sink": {
+			Name:                "open-sink",
+			ConsecutiveFailures: 5,
+			DeliveryState:       SinkDeliveryStateOpen,
+			CircuitOpenedAt:     now.Add(-1 * time.Minute).Format(time.RFC3339),
+			CircuitOpenUntil:    now.Add(4 * time.Minute).Format(time.RFC3339),
+			DeliveredCount:      30,
+			FailedCount:         20,
+		},
+	}
+
+	health := summarizeSinkHealth(entries, now)
+
+	assert.Equal(t, 3, health.Total)
+	assert.Equal(t, 1, health.Healthy)
+	assert.Equal(t, 1, health.Degraded)
+	assert.Equal(t, 1, health.Open)
+	assert.Equal(t, int64(180), health.TotalDelivered)
+	assert.Equal(t, int64(32), health.TotalFailed)
+	require.Len(t, health.CircuitBreakers, 2)
+
+	// Find the open and degraded entries (order depends on map iteration)
+	var openCB, degradedCB SinkCircuitStatus
+	for _, cb := range health.CircuitBreakers {
+		if cb.State == SinkDeliveryStateOpen {
+			openCB = cb
+		} else {
+			degradedCB = cb
+		}
+	}
+	assert.Equal(t, "open-sink", openCB.Name)
+	assert.Equal(t, 5, openCB.ConsecutiveFailures)
+	assert.NotEmpty(t, openCB.OpenUntil)
+	assert.Equal(t, "degraded-sink", degradedCB.Name)
+	assert.Equal(t, 2, degradedCB.ConsecutiveFailures)
+}
+
+func TestSummarizeSinkHealth_EmptyEntries(t *testing.T) {
+	health := summarizeSinkHealth(nil, time.Now().UTC())
+	assert.Equal(t, 0, health.Total)
+	assert.Equal(t, int64(0), health.TotalDelivered)
+	assert.Equal(t, int64(0), health.TotalFailed)
+	assert.Empty(t, health.CircuitBreakers)
+}

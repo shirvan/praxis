@@ -530,7 +530,7 @@ func (d *IAMUserDriver) correctDrift(ctx restate.ObjectContext, api IAMUserAPI, 
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, userName, desired.Tags)
 		})
@@ -594,7 +594,7 @@ func specFromObserved(obs ObservedState) IAMUserSpec {
 		InlinePolicies:      inlinePolicies,
 		ManagedPolicyArns:   sortedStrings(obs.ManagedPolicyArns),
 		Groups:              sortedStrings(obs.Groups),
-		Tags:                filterPraxisTags(obs.Tags),
+		Tags:                drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

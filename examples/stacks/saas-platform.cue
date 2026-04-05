@@ -36,6 +36,7 @@ import "encoding/json"
 // └───────────────────────────────────────────────────────────────────┘
 //
 // DAG (abridged):
+//   hostedZone → validationRecord, appDnsRecord
 //   vpc → igw, subnets (×6), nacl, securityGroups
 //   publicSubnets → natEip → natgw → appRT, dataRT
 //   igw → publicRT
@@ -52,7 +53,7 @@ import "encoding/json"
 //   ✓ Conditional resources — log bucket, monitoring toggle, NAT in prod
 //   ✓ CUE definitions (#) — reusable tag blocks
 //   ✓ Hidden helpers (_) — naming prefix
-//   ✓ Data sources — existing Route 53 hosted zone lookup
+//   ✓ Data sources — see examples/stacks/data-source-*.cue for data source demos
 //   ✓ Output expressions — full DAG wiring across 30+ resources
 //   ✓ Lifecycle rules — preventDestroy on database + ignoreChanges
 //   ✓ Environment-aware logic — Multi-AZ RDS, monitoring, instance sizing
@@ -82,7 +83,6 @@ variables: {
 	instanceType: string | *"t3.small"
 	imageId:      string | *"ami-0885b1f6bd170450c" // Amazon Linux 2 (us-east-1)
 	domainName:   string & =~"^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,})$"
-	hostedZoneId: string
 
 	// Database
 	dbInstanceClass: string | *"db.t3.small"
@@ -120,18 +120,6 @@ _naming: {
 #WebTags: #StandardTags & {tier: "web"}
 
 // ═══════════════════════════════════════════════════════════════════════
-// DATA SOURCES — look up existing infrastructure
-// ═══════════════════════════════════════════════════════════════════════
-
-data: {
-	hostedZone: {
-		kind:   "Route53HostedZone"
-		region: _naming.region
-		filter: id: variables.hostedZoneId
-	}
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // RESOURCES
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -139,6 +127,17 @@ resources: {
 	// ═══════════════════════════════════════════════════
 	// 1. NETWORKING — VPC + Multi-AZ Subnets
 	// ═══════════════════════════════════════════════════
+
+	// Route 53 hosted zone for DNS records (cert validation + app A-record).
+	hostedZone: {
+		apiVersion: "praxis.io/v1"
+		kind:       "Route53HostedZone"
+		metadata: name: variables.domainName
+		spec: {
+			comment: "\(_naming.prefix) platform zone"
+			tags:    #StandardTags
+		}
+	}
 
 	vpc: {
 		apiVersion: "praxis.io/v1"
@@ -445,7 +444,7 @@ resources: {
 		kind:       "Route53Record"
 		metadata: name: "\(_naming.prefix)-cert-validation"
 		spec: {
-			hostedZoneId: variables.hostedZoneId
+			hostedZoneId: "${resources.hostedZone.outputs.hostedZoneId}"
 			name:         "${resources.cert.outputs.dnsValidationRecords[0].resourceRecordName}"
 			type:         "CNAME"
 			ttl:          300
@@ -462,7 +461,7 @@ resources: {
 		kind:       "Route53Record"
 		metadata: name: "\(_naming.prefix)-app-dns"
 		spec: {
-			hostedZoneId: variables.hostedZoneId
+			hostedZoneId: "${resources.hostedZone.outputs.hostedZoneId}"
 			name:         variables.domainName
 			type:         "A"
 			aliasTarget: {
@@ -623,7 +622,7 @@ resources: {
 			instanceClass:     variables.dbInstanceClass
 			masterUsername:    "admin"
 			multiAZ:             variables.environment == "prod"
-			dbSubnetGroupName: "${resources.dbSubnetGroup.outputs.dbSubnetGroupName}"
+			dbSubnetGroupName: "${resources.dbSubnetGroup.outputs.groupName}"
 			vpcSecurityGroupIds: ["${resources.dataSg.outputs.groupId}"]
 			tags: #DataTags
 		}

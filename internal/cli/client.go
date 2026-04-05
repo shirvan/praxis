@@ -52,6 +52,7 @@ const (
 	cloudEventIndexName        = "EventIndex"
 	notificationSinkConfigName = "NotificationSinkConfig"
 	sinkRouterServiceName      = "SinkRouter"
+	resourceIndexServiceName   = "ResourceIndex"
 	indexGlobalKey             = "global"
 )
 
@@ -323,6 +324,68 @@ func (c *Client) GetResourceInputs(ctx context.Context, kind, key string) (map[s
 		return nil, fmt.Errorf("decode resource inputs: %w", err)
 	}
 	return inputs, nil
+}
+
+// DeleteResource deletes a single cloud resource by calling the driver's
+// Delete handler on its Virtual Object. The driver handles cloud-side teardown
+// and clears its local state.
+func (c *Client) DeleteResource(ctx context.Context, kind, key string) error {
+	_, err := ingress.Object[restate.Void, restate.Void](
+		c.rc, kind, key, "Delete",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return fmt.Errorf("delete %s/%s: %w", kind, key, err)
+	}
+	return nil
+}
+
+// ResourceListItem represents a single resource returned by ListResourcesByKind.
+type ResourceListItem struct {
+	Kind          string `json:"kind"`
+	Key           string `json:"key"`
+	DeploymentKey string `json:"deploymentKey,omitempty"`
+	Workspace     string `json:"workspace,omitempty"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"createdAt,omitempty"`
+}
+
+// ListResourcesByKind queries the ResourceIndex for all resources of a given
+// Kind across deployments. If workspace is non-empty, results are filtered to
+// that workspace.
+func (c *Client) ListResourcesByKind(ctx context.Context, kind, workspace string) ([]ResourceListItem, error) {
+	type resourceQuery struct {
+		Kind      string `json:"kind,omitempty"`
+		Workspace string `json:"workspace,omitempty"`
+	}
+	type resourceIndexEntry struct {
+		Kind          string `json:"kind"`
+		Key           string `json:"key"`
+		DeploymentKey string `json:"deploymentKey"`
+		ResourceName  string `json:"resourceName"`
+		Workspace     string `json:"workspace,omitempty"`
+		Status        string `json:"status"`
+		CreatedAt     string `json:"createdAt,omitempty"`
+	}
+
+	entries, err := ingress.Object[resourceQuery, []resourceIndexEntry](
+		c.rc, resourceIndexServiceName, indexGlobalKey, "Query",
+	).Request(ctx, resourceQuery{Kind: kind, Workspace: workspace})
+	if err != nil {
+		return nil, fmt.Errorf("query resource index for %q: %w", kind, err)
+	}
+
+	items := make([]ResourceListItem, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, ResourceListItem{
+			Kind:          e.Kind,
+			Key:           e.Key,
+			DeploymentKey: e.DeploymentKey,
+			Workspace:     e.Workspace,
+			Status:        e.Status,
+			CreatedAt:     e.CreatedAt,
+		})
+	}
+	return items, nil
 }
 
 // --------------------------------------------------------------------------

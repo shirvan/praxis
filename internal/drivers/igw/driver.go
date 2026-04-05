@@ -187,7 +187,7 @@ func (d *IGWDriver) Provision(ctx restate.ObjectContext, spec IGWSpec) (IGWOutpu
 		}
 	}
 
-	if !created && !tagsMatch(spec.Tags, currentObserved.Tags) {
+	if !created && !drivers.TagsMatch(spec.Tags, currentObserved.Tags) {
 		_, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, internetGatewayID, spec.Tags)
 		})
@@ -544,7 +544,7 @@ func (d *IGWDriver) correctDrift(ctx restate.ObjectContext, api IGWAPI, internet
 		}
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, internetGatewayID, desired.Tags)
 		})
@@ -580,7 +580,7 @@ func (d *IGWDriver) apiForAccount(ctx restate.ObjectContext, account string) (IG
 func specFromObserved(obs ObservedState) IGWSpec {
 	return IGWSpec{
 		VpcId: obs.AttachedVpcId,
-		Tags:  filterPraxisTags(obs.Tags),
+		Tags:  drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

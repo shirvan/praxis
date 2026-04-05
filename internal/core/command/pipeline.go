@@ -284,9 +284,10 @@ func (s *PraxisCommandService) submitDeployment(
 	if err != nil {
 		return "", "", err
 	}
-	if existingState != nil && existingState.Status == types.DeploymentDeleting {
-		return "", "", restate.TerminalError(
-			fmt.Errorf("deployment %q is currently deleting; wait for deletion to complete or run 'praxis observe Deployment/%s'", deploymentKey, deploymentKey), 409)
+	if existingState != nil {
+		if err := checkSubmitGuard(deploymentKey, existingState.Status); err != nil {
+			return "", "", err
+		}
 	}
 
 	// Capture the current timestamp inside restate.Run so it is journaled.
@@ -349,6 +350,27 @@ func (s *PraxisCommandService) submitDeployment(
 	})
 	if err != nil {
 		return "", "", err
+	}
+
+	// Seed the global resource index with Pending entries for all resources
+	// in this deployment. This enables `praxis list <Kind>` to show resources
+	// immediately after submission, before the workflow transitions them.
+	for i := range plan.Resources {
+		r := &plan.Resources[i]
+		_, err = restate.WithRequestType[orchestrator.ResourceIndexEntry, restate.Void](
+			restate.Object[restate.Void](ctx, orchestrator.ResourceIndexServiceName, orchestrator.ResourceIndexGlobalKey, "Upsert"),
+		).Request(orchestrator.ResourceIndexEntry{
+			Kind:          r.Kind,
+			Key:           r.Key,
+			DeploymentKey: deploymentKey,
+			ResourceName:  r.Name,
+			Workspace:     workspace,
+			Status:        string(types.DeploymentResourcePending),
+			CreatedAt:     createdAt,
+		})
+		if err != nil {
+			return "", "", err
+		}
 	}
 
 	// Emit structured CloudEvents for audit trail. Two events:
@@ -760,4 +782,20 @@ func filterEmpty(values []string) []string {
 		}
 	}
 	return filtered
+}
+
+// checkSubmitGuard validates that a deployment is not in a state that prevents
+// submitting a new apply. Returns a TerminalError if the deployment is
+// currently Deleting, Running, or Pending.
+func checkSubmitGuard(deploymentKey string, status types.DeploymentStatus) error {
+	switch status {
+	case types.DeploymentDeleting:
+		return restate.TerminalError(
+			fmt.Errorf("deployment %q is currently deleting; wait for deletion to complete or run 'praxis observe Deployment/%s'", deploymentKey, deploymentKey), 409)
+	case types.DeploymentRunning, types.DeploymentPending:
+		return restate.TerminalError(
+			fmt.Errorf("deployment %q is currently %s; wait for completion, cancel, or delete before re-applying", deploymentKey, status), 409)
+	default:
+		return nil
+	}
 }

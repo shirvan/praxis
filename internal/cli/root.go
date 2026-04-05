@@ -5,18 +5,24 @@
 // ingress HTTP/JSON endpoint — it never talks to driver services or deployment
 // state directly.
 //
-// Commands:
+// Commands follow a verb-first grammar: praxis <VERB> [<RESOURCE>] [flags]
 //
-//   - apply      — Provision resources from a CUE template
+// Verb-first commands:
+//
+//   - deploy     — Provision resources from a CUE template or registered template
 //   - plan       — Preview what would change without provisioning
-//   - get        — Show deployment or resource details
-//   - delete     — Tear down a deployment
-//   - list       — List active deployments
+//   - get        — Show deployment, resource, workspace, config, or concierge details
+//   - list       — List deployments, templates, workspaces, sinks, events, or concierge history
+//   - delete     — Tear down a deployment, workspace, template, sink, or session
+//   - create     — Create a workspace, template, or notification sink
+//   - set        — Set active workspace, config field, or concierge provider
+//   - move       — Rename or move a resource between deployments
 //   - import     — Adopt an existing cloud resource
 //   - reconcile  — Trigger on-demand drift detection and correction
-//   - observe    — Watch deployment progress in real time
-//   - state      — Manage deployment state (mv)
-//   - concierge  — AI-powered infrastructure assistant
+//   - observe    — Watch any resource in real time
+//   - ask        — Send a natural language prompt to the concierge
+//   - approve    — Approve or reject a pending concierge action
+//   - test       — Test an integration (notification sinks)
 //   - fmt        — Format CUE template files
 //
 // The CLI supports two output formats:
@@ -55,8 +61,15 @@ const (
 	envRegion = "PRAXIS_REGION"
 
 	// envAccount is the environment variable that sets the default AWS account
-	// selection for apply, plan, and import operations.
+	// selection for deploy, plan, and import operations.
 	envAccount = "PRAXIS_ACCOUNT"
+
+	// envWorkspace is the environment variable that sets the default active
+	// workspace. It overrides the locally selected workspace in ~/.praxis/config.json.
+	envWorkspace = "PRAXIS_WORKSPACE"
+
+	// envOutput is the environment variable that sets the default output format.
+	envOutput = "PRAXIS_OUTPUT"
 )
 
 // rootFlags holds the global flags shared by all commands.
@@ -69,6 +82,8 @@ type rootFlags struct {
 	region string
 	// account is the default AWS account for requests that touch provider APIs.
 	account string
+	// workspace is the default workspace resolved from env/config.
+	workspace string
 	// plain disables styled CLI output even when stdout is a terminal.
 	plain bool
 }
@@ -161,6 +176,11 @@ When the concierge is running, you can also talk to Praxis directly:
 			acct = flags.account
 		}
 
+		workspace := conciergeWorkspace
+		if workspace == "" {
+			workspace = flags.activeWorkspace()
+		}
+
 		client := flags.newClient()
 		ctx := context.Background()
 		r := flags.renderer()
@@ -171,7 +191,7 @@ When the concierge is running, you can also talk to Praxis directly:
 			Session:   conciergeSession,
 			Prompt:    prompt,
 			Account:   acct,
-			Workspace: conciergeWorkspace,
+			Workspace: workspace,
 			JSON:      conciergeJSON,
 		})
 		if err != nil {
@@ -195,34 +215,46 @@ When the concierge is running, you can also talk to Praxis directly:
 	if defaultEndpoint == "" {
 		defaultEndpoint = defaultRestateEndpoint
 	}
+	defaultOutput := os.Getenv(envOutput)
+	if defaultOutput == "" {
+		defaultOutput = "table"
+	}
 	root.PersistentFlags().StringVar(&flags.endpoint, "endpoint", defaultEndpoint,
 		fmt.Sprintf("Restate ingress endpoint URL (env: %s)", envRestateEndpoint))
-	root.PersistentFlags().StringVarP(&flags.output, "output", "o", "table",
-		"Output format: table or json")
+	root.PersistentFlags().StringVarP(&flags.output, "output", "o", defaultOutput,
+		fmt.Sprintf("Output format: table or json (env: %s)", envOutput))
 	root.PersistentFlags().BoolVar(&flags.plain, "plain", false,
 		"Disable colors and styling for machine-readable output")
 	root.PersistentFlags().StringVar(&flags.region, "region", os.Getenv(envRegion),
 		fmt.Sprintf("Default AWS region for resource key resolution (env: %s)", envRegion))
 	flags.account = os.Getenv(envAccount)
+	flags.workspace = os.Getenv(envWorkspace)
+	if flags.workspace == "" {
+		flags.workspace = loadActiveWorkspace()
+	}
 
 	// Register all subcommands.
 	root.AddCommand(
-		newApplyCmd(flags),
+		// Verb-first commands (primary CLI grammar)
 		newDeployCmd(flags),
 		newPlanCmd(flags),
 		newGetCmd(flags),
 		newDeleteCmd(flags),
 		newListCmd(flags),
+		newCreateCmd(flags),
+		newSetCmd(flags),
+		newMoveCmd(flags),
 		newImportCmd(flags),
 		newReconcileCmd(flags),
 		newObserveCmd(flags),
-		newEventsCmd(flags),
-		newNotificationsCmd(flags),
-		newConfigCmd(flags),
-		newStateCmd(flags),
-		newTemplateCmd(flags),
-		newWorkspaceCmd(flags),
-		newConciergeCmd(flags),
+		newAskCmd(flags),
+		newApproveCmd(flags),
+		newTestCmd(flags),
+
+		// Admin (exception — concierge slack stays nested)
+		newConciergeAdminCmd(flags),
+
+		// Utilities
 		newFmtCmd(),
 		newVersionCmd(),
 	)
@@ -249,6 +281,10 @@ func (f *rootFlags) useStyles() bool {
 
 func (f *rootFlags) renderer() *Renderer {
 	return newRenderer(f.useStyles())
+}
+
+func (f *rootFlags) activeWorkspace() string {
+	return strings.TrimSpace(f.workspace)
 }
 
 func shouldUseStyles(format OutputFormat, plain, noColor, stdoutIsTTY bool) bool {
@@ -330,9 +366,56 @@ const (
 // to decide whether user-supplied names need a region prefix. Unknown kinds
 // default to scopeRegion (the safe fallback).
 var kindScopes = map[string]keyScope{
-	"S3Bucket":      scopeGlobal,
-	"EC2Instance":   scopeRegion,
-	"SecurityGroup": scopeCustom,
+	// Global-scoped: key is just the resource name, no region prefix.
+	"S3Bucket":           scopeGlobal,
+	"IAMRole":            scopeGlobal,
+	"IAMPolicy":          scopeGlobal,
+	"IAMUser":            scopeGlobal,
+	"IAMGroup":           scopeGlobal,
+	"IAMInstanceProfile": scopeGlobal,
+	"Route53HostedZone":  scopeGlobal,
+	"Route53HealthCheck": scopeGlobal,
+
+	// Region-scoped: key is region~name.
+	"ACMCertificate":       scopeRegion,
+	"ALB":                  scopeRegion,
+	"AMI":                  scopeRegion,
+	"AuroraCluster":        scopeRegion,
+	"Dashboard":            scopeRegion,
+	"DBParameterGroup":     scopeRegion,
+	"DBSubnetGroup":        scopeRegion,
+	"EBSVolume":            scopeRegion,
+	"EC2Instance":          scopeRegion,
+	"ECRRepository":        scopeRegion,
+	"ElasticIP":            scopeRegion,
+	"EventSourceMapping":   scopeRegion,
+	"InternetGateway":      scopeRegion,
+	"KeyPair":              scopeRegion,
+	"LambdaFunction":       scopeRegion,
+	"LambdaLayer":          scopeRegion,
+	"LambdaPermission":     scopeRegion,
+	"Listener":             scopeRegion,
+	"ListenerRule":         scopeRegion,
+	"LogGroup":             scopeRegion,
+	"MetricAlarm":          scopeRegion,
+	"NATGateway":           scopeRegion,
+	"NLB":                  scopeRegion,
+	"RDSInstance":          scopeRegion,
+	"SNSTopic":             scopeRegion,
+	"SQSQueue":             scopeRegion,
+	"SQSQueuePolicy":       scopeRegion,
+	"TargetGroup":          scopeRegion,
+	"VPC":                  scopeRegion,
+	"VPCPeeringConnection": scopeRegion,
+
+	// Custom-scoped: key is a composite (user supplies the full key).
+	"ECRLifecyclePolicy": scopeCustom,
+	"NetworkACL":         scopeCustom,
+	"Route53Record":      scopeCustom,
+	"RouteTable":         scopeCustom,
+	"SecurityGroup":      scopeCustom,
+	"SNSSubscription":    scopeCustom,
+	"Subnet":             scopeCustom,
 }
 
 // resolveResourceKey assembles the canonical resource key from a user-supplied
@@ -361,4 +444,8 @@ func (f *rootFlags) resolveResourceKey(kind, userKey string) string {
 // newClient constructs a Restate ingress client from the global endpoint flag.
 func (f *rootFlags) newClient() *Client {
 	return NewClient(f.endpoint)
+}
+
+func loadActiveWorkspace() string {
+	return strings.TrimSpace(LoadCLIConfig().ActiveWorkspace)
 }

@@ -3,6 +3,7 @@ package ami
 import (
 	"context"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 	"time"
@@ -231,7 +232,7 @@ func (r *realAMIAPI) UpdateTags(ctx context.Context, imageId string, tags map[st
 	}
 
 	var stale []ec2types.Tag
-	for key := range filterPraxisTags(observed.Tags) {
+	for key := range drivers.FilterPraxisTags(observed.Tags) {
 		stale = append(stale, ec2types.Tag{Key: aws.String(key)})
 	}
 	if len(stale) > 0 {

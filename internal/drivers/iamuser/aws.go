@@ -3,6 +3,7 @@ package iamuser
 import (
 	"context"
 	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"sort"
 	"time"
@@ -226,7 +227,7 @@ func (r *realIAMUserAPI) UpdateTags(ctx context.Context, userName string, tags m
 	if err != nil {
 		return err
 	}
-	desired := filterPraxisTags(tags)
+	desired := drivers.FilterPraxisTags(tags)
 
 	var remove []string
 	for key := range existing {
@@ -373,7 +374,7 @@ func (r *realIAMUserAPI) listUserTags(ctx context.Context, userName string) (map
 }
 
 func toIAMTags(tags map[string]string) []iamtypes.Tag {
-	filtered := filterPraxisTags(tags)
+	filtered := drivers.FilterPraxisTags(tags)
 	awsTags := make([]iamtypes.Tag, 0, len(filtered))
 	for key, value := range filtered {
 		awsTags = append(awsTags, iamtypes.Tag{Key: aws.String(key), Value: aws.String(value)})

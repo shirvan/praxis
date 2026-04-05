@@ -2,6 +2,7 @@ package nacl
 
 import (
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
@@ -21,7 +22,7 @@ type FieldDiffEntry struct {
 //     protocol names to IANA numbers (e.g. "tcp" → "6").
 //   - Subnet associations are compared as sets of subnet IDs.
 func HasDrift(desired NetworkACLSpec, observed ObservedState) bool {
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 	if !rulesMatch(desired.IngressRules, observed.IngressRules) {
@@ -53,20 +54,6 @@ func ComputeFieldDiffs(desired NetworkACLSpec, observed ObservedState) []FieldDi
 	diffs = append(diffs, computeAssociationDiffs(desired.SubnetAssociations, observed.Associations)...)
 
 	return diffs
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
 }
 
 func rulesMatch(desired, observed []NetworkACLRule) bool {
@@ -103,23 +90,10 @@ func associationsMatch(desired []string, observed []NetworkACLAssociation) bool 
 	return true
 }
 
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	filtered := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			filtered[key] = value
-		}
-	}
-	return filtered
-}
-
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	desiredFiltered := filterPraxisTags(desired)
-	observedFiltered := filterPraxisTags(observed)
+	desiredFiltered := drivers.FilterPraxisTags(desired)
+	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})

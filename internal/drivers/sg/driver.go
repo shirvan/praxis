@@ -338,7 +338,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 		}
 
 		// Apply tag diff
-		if !tagsMatch(state.Desired.Tags, observed.Tags) {
+		if !drivers.TagsMatch(state.Desired.Tags, observed.Tags) {
 			_, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.UpdateTags(rc, state.Outputs.GroupId, state.Desired.Tags)
 			})

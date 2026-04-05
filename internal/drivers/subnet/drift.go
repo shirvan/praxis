@@ -1,6 +1,8 @@
 package subnet
 
-import "strings"
+import (
+	"github.com/shirvan/praxis/internal/drivers"
+)
 
 // HasDrift returns true if the desired spec and observed state differ.
 //
@@ -20,7 +22,7 @@ func HasDrift(desired SubnetSpec, observed ObservedState) bool {
 		return true
 	}
 
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 
@@ -42,8 +44,8 @@ func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEn
 		})
 	}
 
-	desiredFiltered := filterPraxisTags(desired.Tags)
-	observedFiltered := filterPraxisTags(observed.Tags)
+	desiredFiltered := drivers.FilterPraxisTags(desired.Tags)
+	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
@@ -88,31 +90,4 @@ type FieldDiffEntry struct {
 	Path     string
 	OldValue any
 	NewValue any
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if observedValue, ok := fb[key]; !ok || observedValue != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }

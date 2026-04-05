@@ -254,3 +254,74 @@ func testPlanResource(name string, deps ...string) PlanResource {
 		Spec:          json.RawMessage(`{"spec":{}}`),
 	}
 }
+
+// TestDeleteWorkflow_ShouldSkipResourcesByStatus verifies that the delete
+// workflow's status filter logic correctly identifies resources that should
+// be skipped (Pending, Skipped, Deleted) vs. those that need deletion.
+func TestDeleteWorkflow_ShouldSkipResourcesByStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     types.DeploymentResourceStatus
+		shouldSkip bool
+	}{
+		{"Pending resources are skipped", types.DeploymentResourcePending, true},
+		{"Skipped resources are skipped", types.DeploymentResourceSkipped, true},
+		{"Deleted resources are skipped", types.DeploymentResourceDeleted, true},
+		{"Ready resources are NOT skipped", types.DeploymentResourceReady, false},
+		{"Provisioning resources are NOT skipped", types.DeploymentResourceProvisioning, false},
+		{"Error resources are NOT skipped", types.DeploymentResourceError, false},
+		{"Deleting resources are NOT skipped", types.DeploymentResourceDeleting, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shouldSkip := shouldSkipDeleteByStatus(tt.status)
+			assert.Equal(t, tt.shouldSkip, shouldSkip)
+		})
+	}
+}
+
+func TestIsTerminal_IncludesAllTerminalStatuses(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   types.DeploymentStatus
+		terminal bool
+	}{
+		{"Complete", types.DeploymentComplete, true},
+		{"Failed", types.DeploymentFailed, true},
+		{"Cancelled", types.DeploymentCancelled, true},
+		{"Deleted", types.DeploymentDeleted, true},
+		{"Running is not terminal", types.DeploymentRunning, false},
+		{"Pending is not terminal", types.DeploymentPending, false},
+		{"Deleting is not terminal", types.DeploymentDeleting, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.terminal, isTerminal(tt.status))
+		})
+	}
+}
+
+func TestExecutionState_RollbackFailureSkipsDependencies(t *testing.T) {
+	// Simulate rollback order: api depends on db depends on network.
+	// If api fails to rollback-delete, db and network should be skipped
+	// because api still holds references to them.
+	resources := []PlanResource{
+		testPlanResource("network"),
+		testPlanResource("db", "network"),
+		testPlanResource("api", "db"),
+	}
+
+	exec := newExecutionState(resources)
+	exec.markDeleting("api")
+	exec.markFailed("api", "access denied")
+	skipped := exec.skipDependencies("api", "skipped because dependent api failed to rollback-delete")
+
+	assert.Equal(t, []string{"network", "db"}, skipped)
+	assert.Equal(t, types.DeploymentResourceError, exec.statuses["api"])
+	assert.Equal(t, types.DeploymentResourceSkipped, exec.statuses["db"])
+	assert.Equal(t, types.DeploymentResourceSkipped, exec.statuses["network"])
+	assert.Equal(t, "skipped because dependent api failed to rollback-delete", exec.errors["db"])
+	assert.Equal(t, "skipped because dependent api failed to rollback-delete", exec.errors["network"])
+}

@@ -10,8 +10,8 @@ package snstopic
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
-	"strings"
 )
 
 // FieldDiffEntry represents a single field-level change for plan output.
@@ -38,7 +38,7 @@ func HasDrift(desired SNSTopicSpec, observed ObservedState) bool {
 	if desired.ContentBasedDeduplication != observed.ContentBasedDeduplication {
 		return true
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
 	}
 	return false
@@ -83,11 +83,11 @@ func ComputeFieldDiffs(desired SNSTopicSpec, observed ObservedState) []FieldDiff
 			NewValue: desired.ContentBasedDeduplication,
 		})
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "tags",
-			OldValue: filterPraxisTags(observed.Tags),
-			NewValue: filterPraxisTags(desired.Tags),
+			OldValue: drivers.FilterPraxisTags(observed.Tags),
+			NewValue: drivers.FilterPraxisTags(desired.Tags),
 		})
 	}
 
@@ -113,33 +113,6 @@ func policiesEqual(a, b string) bool {
 	aNorm, _ := json.Marshal(aObj)
 	bNorm, _ := json.Marshal(bObj)
 	return bytes.Equal(aNorm, bNorm)
-}
-
-func tagsMatch(a, b map[string]string) bool {
-	fa := filterPraxisTags(a)
-	fb := filterPraxisTags(b)
-	if len(fa) != len(fb) {
-		return false
-	}
-	for key, value := range fa {
-		if other, ok := fb[key]; !ok || other != value {
-			return false
-		}
-	}
-	return true
-}
-
-func filterPraxisTags(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(m))
-	for key, value := range m {
-		if !strings.HasPrefix(key, "praxis:") {
-			out[key] = value
-		}
-	}
-	return out
 }
 
 func mergeTags(user, system map[string]string) map[string]string {

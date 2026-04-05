@@ -1,6 +1,7 @@
 package dbparametergroup
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -96,7 +97,7 @@ func TestParametersEqual(t *testing.T) {
 }
 
 func TestFilterPraxisTags(t *testing.T) {
-	result := filterPraxisTags(map[string]string{"env": "dev", "praxis:key": "val"})
+	result := drivers.FilterPraxisTags(map[string]string{"env": "dev", "praxis:key": "val"})
 	assert.Equal(t, map[string]string{"env": "dev"}, result)
-	assert.Equal(t, map[string]string{}, filterPraxisTags(nil))
+	assert.Equal(t, map[string]string{}, drivers.FilterPraxisTags(nil))
 }

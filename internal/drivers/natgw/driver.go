@@ -216,7 +216,7 @@ func (d *NATGatewayDriver) Provision(ctx restate.ObjectContext, spec NATGatewayS
 		if err := d.waitUntilAvailable(ctx, api, natGatewayID, spec, &state); err != nil {
 			return NATGatewayOutputs{}, err
 		}
-	} else if !tagsMatch(spec.Tags, currentObserved.Tags) {
+	} else if !drivers.TagsMatch(spec.Tags, currentObserved.Tags) {
 		// Update tags on an existing gateway if they differ from desired.
 		_, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, natGatewayID, spec.Tags)
@@ -355,6 +355,12 @@ func (d *NATGatewayDriver) Delete(ctx restate.ObjectContext) error {
 		if runErr != nil {
 			if IsNotFound(runErr) {
 				return restate.Void{}, nil
+			}
+			if IsInvalidParam(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 400)
+			}
+			if drivers.IsAccessDenied(runErr) {
+				return restate.Void{}, restate.TerminalError(runErr, 403)
 			}
 			return restate.Void{}, runErr
 		}
@@ -522,7 +528,7 @@ func (d *NATGatewayDriver) GetInputs(ctx restate.ObjectSharedContext) (NATGatewa
 }
 
 func (d *NATGatewayDriver) correctDrift(ctx restate.ObjectContext, api NATGatewayAPI, natGatewayID string, desired NATGatewaySpec, observed ObservedState) error {
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, natGatewayID, desired.Tags)
 		})
@@ -610,7 +616,7 @@ func specFromObserved(obs ObservedState) NATGatewaySpec {
 		SubnetId:         obs.SubnetId,
 		ConnectivityType: obs.ConnectivityType,
 		AllocationId:     obs.AllocationId,
-		Tags:             filterPraxisTags(obs.Tags),
+		Tags:             drivers.FilterPraxisTags(obs.Tags),
 	})
 }
 

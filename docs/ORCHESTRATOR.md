@@ -26,6 +26,7 @@ The orchestrator consists of five Restate services, all hosted in the `praxis-co
 | `DeploymentDeleteWorkflow` | Workflow | `<deploymentKey>-delete-<N>` | Delete execution |
 | `DeploymentStateObj` | Virtual Object | `<deploymentKey>` | Durable lifecycle record |
 | `DeploymentIndex` | Virtual Object | `"global"` (fixed) | Listing index for all deployments |
+| `ResourceIndex` | Virtual Object | `"global"` (fixed) | Listing index for resources by Kind |
 | `DeploymentEvents` | Virtual Object | `<deploymentKey>` | Append-only event stream |
 
 ```mermaid
@@ -38,9 +39,12 @@ graph LR
     DDW -->|"Append"| DE
     DW -->|"Upsert"| DI["DeploymentIndex<br/>(global singleton)"]
     DDW -->|"Upsert"| DI
-    CLI["CLI"] -->|"Read"| DS
+    DW -->|"Upsert"| RI["ResourceIndex<br/>(global singleton)"]
+    DDW -->|"Remove"| RI
+    CLI -->|"Read"| DS
     CLI -->|"Poll"| DE
     CLI -->|"List"| DI
+    CLI -->|"Query"| RI
 ```
 
 ### Why Separate Workflows and State
@@ -271,6 +275,29 @@ The `List` handler returns summaries in deterministic key order.
 
 ---
 
+## Resource Index
+
+Similar to DeploymentIndex, the `ResourceIndex` Virtual Object (keyed by `"global"`) stores a denormalized map of resource entries across all deployments. This enables efficient cross-deployment queries by resource Kind (e.g., `praxis list S3Bucket`) without scanning every DeploymentStateObj.
+
+Entries are keyed by `deploymentKey~resourceName` and track the resource's Kind, canonical Key, deployment, workspace, and current status.
+
+| Handler | Access | Description |
+|---------|--------|-------------|
+| `Upsert` | Exclusive | Insert or update a resource entry |
+| `Remove` | Exclusive | Remove a single entry by deployment + resource name |
+| `RemoveByDeployment` | Exclusive | Remove all entries for a deployment |
+| `Query` | Shared | Query entries by Kind and/or Workspace |
+
+The index is updated at these lifecycle points:
+- **Deployment submission** (pipeline): all resources seeded as Pending
+- **Resource Ready** (apply workflow): status updated to Ready
+- **Terminal state** (apply workflow): Error/Skipped resources synced
+- **Resource Deleted** (delete/rollback workflows): entry removed
+- **Full deployment deletion**: batch removal via RemoveByDeployment
+- **State mv** (MoveResource/RemoveResource/AddResource): entries updated
+
+---
+
 ## Deployment Events
 
 An append-only event stream per deployment, stored in the `DeploymentEvents` Virtual Object.
@@ -331,7 +358,7 @@ The `Schedule` type wraps a validated graph and answers two questions:
 
 ## Re-Apply Semantics
 
-When a user runs `praxis apply` against an existing deployment:
+When a user runs `praxis deploy` against an existing deployment:
 
 1. Command Service detects the deployment key already exists
 2. Calls `DeploymentState.InitDeployment` which increments the generation counter

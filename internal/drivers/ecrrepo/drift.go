@@ -7,7 +7,10 @@
 // Immutable fields (those that require resource replacement) are annotated.
 package ecrrepo
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
+)
 
 // FieldDiffEntry represents a single field-level difference between the desired
 // spec and the observed state. Path uses dot notation (e.g. "spec.name");
@@ -47,7 +50,7 @@ func ComputeFieldDiffs(desired ECRRepositorySpec, observed ObservedState) []Fiel
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.repositoryPolicy", OldValue: observed.RepositoryPolicy, NewValue: desired.RepositoryPolicy})
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: filterPraxisTags(observed.Tags), NewValue: filterPraxisTags(desired.Tags)})
+		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
 	}
 
 	return diffs
@@ -80,8 +83,8 @@ func encryptionEqual(a, b *EncryptionConfiguration) bool {
 }
 
 func tagsEqual(a, b map[string]string) bool {
-	a = filterPraxisTags(a)
-	b = filterPraxisTags(b)
+	a = drivers.FilterPraxisTags(a)
+	b = drivers.FilterPraxisTags(b)
 	if len(a) != len(b) {
 		return false
 	}
@@ -91,20 +94,6 @@ func tagsEqual(a, b map[string]string) bool {
 		}
 	}
 	return true
-}
-
-func filterPraxisTags(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(tags))
-	for key, value := range tags {
-		if len(key) >= 7 && key[:7] == "praxis:" {
-			continue
-		}
-		out[key] = value
-	}
-	return out
 }
 
 func normalizeJSON(value string) string {

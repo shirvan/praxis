@@ -484,7 +484,7 @@ func (d *NetworkACLDriver) applyDesiredState(ctx restate.ObjectContext, api Netw
 	if err := d.applyAssociationDiff(ctx, api, networkAclID, desired.VpcId, desired.SubnetAssociations, observed.Associations); err != nil {
 		return err
 	}
-	if !tagsMatch(desired.Tags, observed.Tags) {
+	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, networkAclID, desired.Tags)
 		})
@@ -774,7 +774,7 @@ func specFromObserved(obs ObservedState) NetworkACLSpec {
 		IngressRules:       append([]NetworkACLRule(nil), obs.IngressRules...),
 		EgressRules:        append([]NetworkACLRule(nil), obs.EgressRules...),
 		SubnetAssociations: subnetIDsFromAssociations(obs.Associations),
-		Tags:               filterPraxisTags(obs.Tags),
+		Tags:               drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 

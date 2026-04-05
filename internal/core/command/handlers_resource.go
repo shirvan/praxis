@@ -141,9 +141,12 @@ func (s *PraxisCommandService) RollbackDeployment(ctx restate.Context, req Delet
 
 	// Unlike Delete, Rollback calls the workflow synchronously (Request
 	// instead of Send) because the caller needs the final state to know
-	// whether the rollback succeeded.
+	// whether the rollback succeeded. Using restate.Workflow with a
+	// deterministic workflow ID ensures idempotent dispatch — repeated
+	// rollback calls for the same deployment are deduplicated by Restate.
+	workflowID := deploymentKey + "-rollback"
 	_, err = restate.WithRequestType[orchestrator.DeleteRequest, restate.Void](
-		restate.Service[restate.Void](ctx, orchestrator.DeploymentRollbackWorkflowServiceName, "Run"),
+		restate.Workflow[restate.Void](ctx, orchestrator.DeploymentRollbackWorkflowServiceName, workflowID, "Run"),
 	).Request(orchestrator.DeleteRequest{DeploymentKey: deploymentKey})
 	if err != nil {
 		return DeleteDeploymentResponse{}, err

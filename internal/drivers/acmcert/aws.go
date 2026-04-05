@@ -9,6 +9,7 @@ package acmcert
 import (
 	"context"
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
 	"slices"
 	"strings"
@@ -117,7 +118,7 @@ func (r *realCertificateAPI) UpdateTags(ctx context.Context, certificateArn stri
 	if err != nil {
 		return err
 	}
-	desired := filterPraxisTags(tags)
+	desired := drivers.FilterPraxisTags(tags)
 	removeTags := make([]acmtypes.Tag, 0)
 	for key := range current {
 		if strings.HasPrefix(key, "praxis:") {

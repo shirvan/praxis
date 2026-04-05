@@ -163,7 +163,7 @@ Plan-time resolution works as follows:
 >
 > - **Unmanaged existing instance**: if a human-created EC2 instance already
 >   exists in the target region with the same `metadata.name`, `praxis plan`
->   will show `OpCreate` and `praxis apply` will launch a *second* instance.
+>   will show `OpCreate` and `praxis deploy` will launch a *second* instance.
 >   The pre-flight ownership check in `Provision` (see Design Decisions §10)
 >   catches this **only if the existing instance already carries the
 >   `praxis:managed-key` tag** — i.e., it was previously managed by Praxis.
@@ -2747,10 +2747,10 @@ AMI-family-agnostic. Tracked in FUTURE.md.
 5. **When state exists but DescribeInstance returns not-found during Plan, should we
    return OpCreate unconditionally or a more explicit "resource missing" signal?**
    **Product decision**: Plan returns `OpCreate`. This is the simplest and most
-   actionable signal — it tells the operator exactly what `praxis apply` will do.
+   actionable signal — it tells the operator exactly what `praxis deploy` will do.
    A separate "resource missing / state stale" status would require new plan
    operation types, CLI formatting changes, and operator documentation, with
-   minimal practical benefit: the operator's next action is either `apply` (to
+   minimal practical benefit: the operator's next action is either `deploy` (to
    recreate) or manual state cleanup in either case. The ownership-tag conflict
    check in `Provision` provides the safety net: if the original instance is still
    running with its `praxis:managed-key` tag, Provision will fail with a 409

@@ -2,52 +2,84 @@
 
 The `praxis` binary is the primary human interface for Praxis. It communicates with Praxis Core exclusively through the Restate ingress HTTP endpoint — it never talks to driver services or deployment state directly.
 
+## Verb-First Grammar
+
+Praxis uses a consistent **verb-first** grammar for all commands:
+
+```
+praxis <VERB> [<RESOURCE>] [flags]
+```
+
+### Core Verbs
+
+| Verb       | Meaning           | Description                                                                |
+|------------|-------------------|----------------------------------------------------------------------------|
+| `deploy`   | Provision it      | From a CUE file path or registered template name                          |
+| `plan`     | Dry-run it        | Changes nothing — shows the JSON diff that `deploy` would produce          |
+| `get`      | Show one thing    | Deployment, resource, workspace, config, concierge status, notifications   |
+| `list`     | Show many things  | Deployments, templates, workspaces, sinks, events, concierge history       |
+| `delete`   | Tear it down      | Deployment, workspace, template, sink, concierge session                   |
+| `create`   | Make a new thing  | Workspace, template, notification sink                                     |
+| `set`      | Update a setting  | Active workspace, config field, concierge provider                         |
+| `move`     | Relocate it       | Rename resource or move between deployments                                |
+| `import`   | Adopt it          | Adopt an existing cloud resource                                           |
+| `reconcile`| Drift-check it    | On-demand reconciliation of a resource                                     |
+| `observe`  | Watch it          | Real-time event stream for any resource: deployments, individual resources |
+| `ask`      | Talk to AI        | Send a natural language prompt to the concierge                            |
+| `approve`  | Human-in-the-loop | Approve or reject a pending concierge action                               |
+| `test`     | Verify it         | Test delivery of an integration (notification sinks)                       |
+| `fmt`      | Format it         | Format CUE template files                                                  |
+
+### Environment Variables
+
+| Variable                  | Purpose                                    | Default                 |
+|---------------------------|--------------------------------------------|-------------------------|
+| `PRAXIS_RESTATE_ENDPOINT` | Restate ingress URL                        | `http://localhost:8080` |
+| `PRAXIS_REGION`           | Default AWS region for key resolution      | —                       |
+| `PRAXIS_ACCOUNT`          | Default AWS account for deploy/plan/import | —                       |
+| `PRAXIS_WORKSPACE`        | Active workspace override                  | from `~/.praxis/config` |
+| `PRAXIS_OUTPUT`           | Default output format (`table` or `json`)  | `table`                 |
+| `PRAXIS_SESSION`          | Concierge session ID                       | auto-generated          |
+
 ## Quick Reference
 
 | Command              | Audience | Purpose                                         |
 |----------------------|----------|-------------------------------------------------|
-| `deploy`             | Users    | Deploy from a registered template               |
-| `template register`  | Operators| Register a CUE template                         |
-| `template list`      | Both     | List registered templates                        |
-| `template describe`  | Both     | Show template details and variable schema        |
-| `template delete`    | Operators| Remove a registered template                     |
-| `apply`              | Operators| Provision resources from inline CUE              |
+| **Verb-first (preferred)** | | |
+| `deploy`             | Users    | Deploy from a template or CUE file              |
 | `plan`               | Operators| Preview what would change without applying       |
-| `get`                | Both     | Show deployment or resource details              |
-| `list`               | Both     | List active deployments                          |
-| `delete`             | Both     | Tear down a deployment                           |
+| `get <Kind/Key>`     | Both     | Show deployment or resource details              |
+| `get workspace`      | Both     | Show workspace details                           |
+| `get config`         | Both     | Show workspace-scoped configuration              |
+| `get concierge`      | Both     | Show concierge session status                    |
+| `get notifications`  | Both     | Show notification sink health                    |
+| `list deployments`   | Both     | List active deployments                          |
+| `list templates`     | Both     | List registered templates                        |
+| `list workspaces`    | Both     | List workspaces                                  |
+| `list sinks`         | Both     | List notification sinks                          |
+| `list events`        | Both     | List or query events                             |
+| `list concierge`     | Both     | Show concierge conversation history              |
+| `delete <Kind/Key>`  | Both     | Delete a deployment, workspace, template, sink, or session |
+| `create workspace`   | Operators| Create or update a workspace                     |
+| `create template`    | Operators| Register or update a CUE template                |
+| `create sink`        | Operators| Create or update a notification sink             |
+| `set workspace`      | Both     | Set the active workspace                         |
+| `set config`         | Operators| Update workspace-scoped configuration            |
+| `set concierge`      | Operators| Configure the concierge LLM provider             |
+| `move`               | Operators| Rename or move a resource between deployments    |
 | `import`             | Operators| Adopt an existing cloud resource                 |
 | `reconcile`          | Operators| Trigger on-demand drift detection and correction |
-| `workspace create`   | Operators| Create or update a workspace                     |
-| `workspace list`     | Both     | List workspaces                                  |
-| `workspace select`   | Both     | Set the active workspace                         |
-| `workspace show`     | Both     | Show workspace details                           |
-| `workspace delete`   | Operators| Remove a workspace                               |
-| `observe`            | Both     | Watch deployment progress in real time           |
-| `state mv`           | Operators| Rename or move a resource between deployments    |
+| `observe <Kind/Key>` | Both     | Watch any resource in real time                  |
+| `ask`                | Users    | Send a prompt to the AI concierge                |
+| `approve`            | Both     | Approve or reject a pending concierge action     |
+| `test sink/<name>`   | Operators| Test notification sink delivery                  |
 | `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
-| `events list`        | Both     | List events for one deployment                   |
-| `events query`       | Both     | Cross-deployment event search                    |
-| `notifications add-sink` | Operators | Create or update a notification sink         |
-| `notifications list-sinks` | Both   | List notification sinks                        |
-| `notifications get-sink` | Both    | Show one notification sink                      |
-| `notifications remove-sink` | Operators | Remove a notification sink                 |
-| `notifications test-sink` | Operators | Test delivery of a notification sink          |
-| `notifications health` | Both     | Show aggregate notification sink health          |
-| `config get`         | Both     | Read workspace-scoped configuration              |
-| `config set`         | Operators| Update workspace-scoped configuration            |
-| `<prompt>` (root)    | Users    | Natural language shorthand — forwards to concierge |
-| `concierge ask`      | Users    | Send a prompt to the AI assistant (explicit)     |
-| `concierge configure`| Operators| Configure the LLM provider                       |
-| `concierge status`   | Both     | Show session status and pending approvals        |
-| `concierge history`  | Both     | Show conversation history                        |
-| `concierge reset`    | Both     | Clear a concierge session                        |
-| `concierge approve`  | Both     | Approve or reject a pending action               |
 | `concierge slack configure` | Operators | Configure the Slack gateway              |
 | `concierge slack get-config` | Both   | Show Slack gateway configuration              |
 | `concierge slack allowed-users` | Operators | Manage the Slack allowed-user list      |
 | `concierge slack watch` | Operators | Manage event watch rules                      |
+| `<prompt>` (root)    | Users    | Natural language shorthand — forwards to concierge |
 
 ## Natural Language Shorthand
 
@@ -60,7 +92,7 @@ praxis "convert this terraform to praxis" --file main.tf
 praxis "deploy the orders API to staging"
 ```
 
-This is equivalent to `praxis concierge ask <prompt>`. The following flags
+This is equivalent to `praxis ask <prompt>`. The following flags
 apply only when the root command forwards to the concierge:
 
 | Flag | Short | Default | Description |
@@ -107,11 +139,11 @@ Every subcommand inherits these flags:
 | Flag         | Env Var                   | Default                  | Description                              |
 |--------------|---------------------------|--------------------------|------------------------------------------|
 | `--endpoint` | `PRAXIS_RESTATE_ENDPOINT` | `http://localhost:8080`  | Restate ingress URL                      |
-| `-o, --output` | —                       | `table`                  | Output format: `table` or `json`         |
+| `-o, --output` | `PRAXIS_OUTPUT`           | `table`                  | Output format: `table` or `json`         |
 | `--plain`    | `NO_COLOR`               | `false`                  | Disable colors and styled table borders  |
 | `--region`   | `PRAXIS_REGION`           | —                        | Default AWS region for key resolution    |
 
-The `--account` flag is available on commands that touch provider APIs (`apply`, `deploy`, `plan`, `import`). It can also be set via the `PRAXIS_ACCOUNT` environment variable.
+The `--account` flag is available on commands that touch provider APIs (`deploy`, `plan`, `import`). It can also be set via the `PRAXIS_ACCOUNT` environment variable.
 
 ### Output Formats
 
@@ -143,10 +175,10 @@ The styling layer uses [Lip Gloss v2](https://github.com/charmbracelet/lipgloss)
 
 ## deploy
 
-Deploy infrastructure from a pre-registered CUE template. This is the primary user-facing command — no CUE knowledge required.
+Deploy infrastructure from a CUE file path or a pre-registered template name.
 
 ```bash
-praxis deploy <template-name> [flags]
+praxis deploy <template-name-or-file.cue> [flags]
 ```
 
 **Flags:**
@@ -157,6 +189,7 @@ praxis deploy <template-name> [flags]
 | `-f, --file`      | —       | JSON file containing template variables            |
 | `--key`           | —       | Pin a stable deployment key for idempotent re-deploy|
 | `--account`       | env     | AWS account name                                   |
+| `-y, --yes`       | false   | Skip confirmation prompt                           |
 | `--wait`          | false   | Poll until deployment reaches a terminal state     |
 | `--dry-run`       | false   | Preview changes without provisioning (runs PlanDeploy) |
 | `--show-rendered` | false   | Display the fully-evaluated template JSON (with `--dry-run`) |
@@ -169,6 +202,9 @@ praxis deploy <template-name> [flags]
 # Deploy from a registered template
 praxis deploy stack1 --var name=orders-api --var environment=prod
 
+# Deploy from a CUE file (inline template)
+praxis deploy webapp.cue --var env=production --var region=us-west-2
+
 # With a JSON variables file
 praxis deploy stack1 -f variables.json
 
@@ -177,6 +213,9 @@ praxis deploy stack1 -f base.json --var environment=prod
 
 # Idempotent re-deploy with a stable key
 praxis deploy stack1 --var name=orders-api --key orders-prod
+
+# Skip confirmation (CI/scripting)
+praxis deploy webapp.cue --yes
 
 # Wait for completion
 praxis deploy stack1 --var name=orders-api --key orders-prod --wait
@@ -190,146 +229,13 @@ praxis deploy stack1 --var name=orders-api -o json
 
 **Behavior:**
 
-The template must have been registered by an operator using `praxis template register`. Variables are validated against the template's extracted schema before the CUE pipeline runs — missing required variables, type mismatches, and invalid enum values are rejected immediately with a clear error.
+When the argument is a CUE file path (`*.cue`), deploy evaluates it as an inline template. When the argument is a bare name, deploy looks up a registered template (see `praxis create template`). Variables are validated against the template's extracted schema before the CUE pipeline runs — missing required variables, type mismatches, and invalid enum values are rejected immediately with a clear error.
 
 Without `--wait`, the command returns immediately with the deployment key and status. With `--wait`, the CLI polls until a terminal state or `--timeout` is reached.
 
 The `--dry-run` flag runs the full evaluation pipeline but does not submit a workflow — it shows a plan diff of what would change, identical to `praxis plan` output.
 
-When a template contains data sources, `plan`, `apply --dry-run`, and `deploy --dry-run` also print a `Data sources:` section showing each resolved lookup and its outputs. In JSON mode, the same information is returned in the `dataSources` field.
-
----
-
-## template
-
-Manage CUE templates in the Praxis registry. Templates must be registered before they can be used with `praxis deploy`.
-
-### template register
-
-Register or update a CUE template from a file.
-
-```bash
-praxis template register <file.cue> [flags]
-```
-
-**Flags:**
-
-| Flag            | Default        | Description                                |
-|-----------------|----------------|--------------------------------------------|
-| `--name`        | filename       | Template name (defaults to filename without extension) |
-| `--description` | —              | Human-readable description                 |
-
-**Examples:**
-
-```bash
-# Register with auto-name from filename
-praxis template register stack1.cue
-
-# Custom name
-praxis template register stack1.cue --name my-stack
-
-# With description
-praxis template register stack1.cue --description "Service stack with S3 and SG"
-```
-
-On registration, Praxis extracts the variable schema from the CUE `variables:` block. Re-registering the same name updates the template and shifts the previous version to a one-level rollback buffer.
-
-### template list
-
-List all registered templates.
-
-```bash
-praxis template list
-```
-
-**Output:**
-
-```text
-NAME          DESCRIPTION                        UPDATED
-----          -----------                        -------
-stack1        Service stack with S3 and SG       2026-03-15 10:30:00 UTC
-vpc-baseline  VPC baseline with public subnets   2026-03-14 09:00:00 UTC
-```
-
-### template describe
-
-Show template details including the extracted variable schema.
-
-```bash
-praxis template describe <name>
-```
-
-**Output:**
-
-```text
-Template:    stack1
-Description: Service stack with S3 and SG
-Digest:      a1b2c3d4...
-Created:     2026-03-15 10:30:00 UTC
-Updated:     2026-03-15 10:30:00 UTC
-
-Variables:
-  NAME          TYPE    REQUIRED  DEFAULT  CONSTRAINT
-  name          string  yes       -        ^[a-z][a-z0-9-]{2,40}$
-  environment   string  yes       -        dev | staging | prod
-  vpcId         string  yes       -        -
-```
-
-### template delete
-
-Remove a registered template.
-
-```bash
-praxis template delete <name>
-```
-
----
-
-## apply
-
-Evaluate a CUE template and submit it to the Praxis orchestrator for provisioning. This is the operator/developer path — for user-facing deployments, see `deploy`.
-
-```bash
-praxis apply <template.cue> [flags]
-```
-
-**Flags:**
-
-| Flag              | Default | Description                                        |
-|-------------------|---------|----------------------------------------------------|
-| `--var key=value` | —       | Template variable (repeatable)                     |
-| `--key`           | —       | Pin a stable deployment key for idempotent re-apply|
-| `--account`       | env     | AWS account name                                   |
-| `--wait`          | false   | Poll until deployment reaches a terminal state     |
-| `--poll-interval` | 2s      | Polling interval when `--wait` is set              |
-| `--timeout`       | 5m      | Maximum wait time (0 for no limit)                 |
-
-**Examples:**
-
-```bash
-# Basic apply
-praxis apply webapp.cue
-
-# With template variables
-praxis apply webapp.cue --var env=production --var region=us-west-2
-
-# Idempotent re-apply with a stable key
-praxis apply webapp.cue --key my-webapp
-
-# Wait for completion (blocks until terminal state)
-praxis apply webapp.cue --key my-webapp --wait
-
-# JSON output for scripting
-praxis apply webapp.cue -o json
-```
-
-**Behavior:**
-
-Without `--wait`, the command returns immediately with the deployment key and status. The deployment continues asynchronously in the background.
-
-With `--wait`, the CLI polls the deployment state at the configured interval. If the deployment does not reach a terminal state before `--timeout`, the CLI prints an error message with recovery commands and exits with code **2**.
-
-The `--key` flag enables idempotent re-apply: submitting the same template with the same key updates the existing deployment rather than creating a new one.
+When a template contains data sources, `plan` and `deploy --dry-run` also print a `Data sources:` section showing each resolved lookup and its outputs. In JSON mode, the same information is returned in the `dataSources` field.
 
 ---
 
@@ -340,7 +246,7 @@ Perform a dry-run evaluation of a CUE template. Runs the full template pipeline 
 No resources are provisioned — this is a read-only operation.
 
 ```bash
-praxis plan <template.cue> [flags]
+praxis plan <template-name-or-file.cue> [flags]
 ```
 
 **Flags:**
@@ -391,13 +297,23 @@ Resources with `lifecycle.ignoreChanges` have matching diffs filtered from the p
 
 ## get
 
-Retrieve the current state of a deployment or individual resource.
+Retrieve the current state of a deployment, individual resource, or meta-resource.
 
 ```bash
-praxis get <Kind>/<Key>
+praxis get <Kind/Key>
+praxis get workspace [name]
+praxis get config <path>
+praxis get concierge [--session <id>]
+praxis get notifications
+praxis get template/<name>
+praxis get sink/<name>
 ```
 
-The argument uses `Kind/Key` format. Supported kinds:
+The argument uses `Kind/Key` format for deployments and cloud resources. Meta-resources (workspace, config, concierge, notifications, template, sink) use subcommands.
+
+### get (deployment / cloud resource)
+
+Supported kinds:
 
 - `Deployment/<key>` — Full deployment status with per-resource breakdown and outputs
 - `S3Bucket/<key>` — Single S3 bucket resource status
@@ -454,31 +370,139 @@ Generation: 3
 
 For resources with errors, the full error text is displayed below the summary table so you can diagnose failures without digging into logs.
 
----
+### get workspace
 
-## list
-
-List known resources of a given type. Currently supports deployments.
+Show workspace details. Uses the active workspace if no name is given.
 
 ```bash
-praxis list <resource-type>
+praxis get workspace [name]
 ```
 
-Accepted values: `deployments`, `deployment`, `deploy`.
+### get config
+
+Read a configuration value for the active workspace.
+
+```bash
+praxis get config <path> [flags]
+```
 
 **Flags:**
 
-| Flag           | Default | Description                   |
-|----------------|---------|-------------------------------|
-| `-w, --workspace` | —    | Filter by workspace name      |
+| Flag             | Default          | Description                              |
+|------------------|------------------|------------------------------------------|
+| `-w, --workspace`| active workspace | Workspace name                           |
+
+**Supported paths:**
+
+| Path                | Description                      |
+|---------------------|----------------------------------|
+| `events.retention`  | Event retention policy           |
 
 **Examples:**
 
 ```bash
-praxis list deployments
-praxis list deployments -o json
-praxis list deployments -w staging
+praxis get config events.retention
+praxis get config events.retention -w staging
+praxis get config events.retention -o json
 ```
+
+### get concierge
+
+Show the current status of a concierge session, including any pending approvals.
+
+```bash
+praxis get concierge [--session <id>]
+```
+
+**Flags:**
+
+| Flag        | Default     | Description    |
+|-------------|-------------|----------------|
+| `--session` | `"default"` | Session ID     |
+
+### get notifications
+
+Show aggregate health across all notification sinks.
+
+```bash
+praxis get notifications
+```
+
+### get template/\<name\>
+
+Show template details including the extracted variable schema.
+
+```bash
+praxis get template/<name>
+```
+
+### get sink/\<name\>
+
+Show the full configuration of a single notification sink.
+
+```bash
+praxis get sink/<name>
+```
+
+---
+
+## list
+
+List known resources of a given type.
+
+```bash
+praxis list <resource-type> [flags]
+```
+
+Accepted values: `deployments` (aliases: `deployment`, `deploy`), `templates`, `workspaces`, `sinks`, `events`, `concierge`, or any cloud resource Kind (e.g. `S3Bucket`, `EC2Instance`, `VPC`).
+
+**Flags:**
+
+| Flag             | Default | Description                                         |
+|------------------|---------|-----------------------------------------------------|
+| `-w, --workspace`| —       | Filter by workspace name (deployments, events)      |
+| `--since`        | —       | Show events from the last duration (e.g. `1h`, `7d`)|
+| `--type`         | —       | Filter events by type prefix                        |
+| `--severity`     | —       | Filter events by severity (info, warn, error)       |
+| `--resource`     | —       | Filter events by resource name                      |
+| `--limit`        | 100     | Maximum events to return                            |
+| `--session`      | —       | Concierge session ID (default: "default")           |
+
+**Examples:**
+
+```bash
+# Deployments
+praxis list deployments
+praxis list deployments -w staging
+
+# Templates
+praxis list templates
+
+# Workspaces
+praxis list workspaces
+
+# Notification sinks
+praxis list sinks
+
+# Events for a single deployment
+praxis list events Deployment/my-webapp
+praxis list events Deployment/my-webapp --since 1h --severity error
+
+# Cross-deployment event search
+praxis list events --severity error
+praxis list events -w staging --since 1d --limit 50
+
+# Concierge conversation history
+praxis list concierge
+praxis list concierge --session my-session
+
+# Cloud resources by Kind (walks all deployments)
+praxis list S3Bucket
+praxis list S3Bucket -w staging
+praxis list EC2Instance -o json
+```
+
+The `--since` flag accepts Go-style durations (`1h`, `30m`, `2h30m`) plus a `d` suffix for days (`7d`).
 
 **Output:**
 
@@ -493,24 +517,27 @@ staging-app  Applying   2          2025-01-15 11:00:00 UTC   2025-01-15 11:00:05
 
 ## delete
 
-Tear down a deployment and all its resources in reverse dependency order.
+Tear down a deployment and all its resources, or delete a meta-resource.
 
 ```bash
-praxis delete Deployment/<key> [flags]
+praxis delete <Kind/Key> [flags]
 ```
+
+Supported kinds: `Deployment`, `workspace`, `template`, `sink`, `concierge`, or any cloud resource Kind (e.g. `S3Bucket/my-bucket`, `EC2Instance/us-east-1~web-server`).
 
 **Flags:**
 
-| Flag        | Default | Description                               |
-|-------------|---------|-------------------------------------------|
-| `--yes`     | false   | Skip confirmation prompt                  |
-| `--wait`    | false   | Block until deletion completes            |
-| `--timeout` | 5m      | Maximum wait time (0 for no limit)        |
+| Flag           | Default | Description                               |
+|----------------|---------|-------------------------------------------|
+| `-y, --yes`    | false   | Skip confirmation prompt                  |
+| `--wait`       | false   | Block until deletion completes            |
+| `--timeout`    | 5m      | Maximum wait time (0 for no limit)        |
+| `--rollback`   | false   | Delete only resources for a failed/cancelled deployment |
 
 **Examples:**
 
 ```bash
-# Interactive confirmation
+# Delete a deployment (interactive confirmation)
 praxis delete Deployment/my-webapp
 
 # Skip prompt (CI/scripting)
@@ -518,13 +545,30 @@ praxis delete Deployment/my-webapp --yes
 
 # Wait for completion
 praxis delete Deployment/my-webapp --yes --wait
+
+# Delete a workspace
+praxis delete workspace/old-env
+
+# Delete a template
+praxis delete template/legacy-stack
+
+# Delete a notification sink
+praxis delete sink/old-webhook
+
+# Delete an individual cloud resource
+praxis delete S3Bucket/my-bucket --yes
+praxis delete EC2Instance/us-east-1~web-server -y
+
+# Clear a concierge session
+praxis delete concierge
+praxis delete concierge/my-session
 ```
 
 Without `--yes`, the command prompts for confirmation before proceeding. Deletion is asynchronous — use `--wait` to block until all resources have been removed!
 
-Resources with `lifecycle.preventDestroy: true` cannot be deleted. The delete workflow fails with a terminal error identifying the protected resource. To proceed, update the template to remove or disable `preventDestroy`, re-apply, then retry the delete.
+Resources with `lifecycle.preventDestroy: true` cannot be deleted. The delete workflow fails with a terminal error identifying the protected resource. To proceed, update the template to remove or disable `preventDestroy`, re-deploy, then retry the delete.
 
-The same timeout behavior as `apply --wait` applies: exit code **2** on timeout, with recovery commands printed to stderr.
+The same timeout behavior as `deploy --wait` applies: exit code **2** on timeout, with recovery commands printed to stderr.
 
 ---
 
@@ -650,10 +694,14 @@ This command is useful for:
 
 ## observe
 
-Stream deployment progress events in real time by polling the event timeline.
+Watch a resource's status changes in real time.
+
+For Deployments, observe polls the event stream and displays incremental progress
+updates. For individual cloud resources, it polls the resource status and displays
+changes until the resource reaches a terminal state.
 
 ```bash
-praxis observe Deployment/<key> [flags]
+praxis observe <Kind/Key> [flags]
 ```
 
 **Flags:**
@@ -662,6 +710,9 @@ praxis observe Deployment/<key> [flags]
 |-------------------|---------|---------------------------------------|
 | `--poll-interval` | 1s      | How frequently to poll for new events |
 | `--timeout`       | 5m      | Maximum time to observe (0 = no limit)|
+| `--severity`      | —       | Filter by severity (info, warn, error)|
+| `--resource`      | —       | Filter by resource name               |
+| `--type`          | —       | Filter by event type prefix           |
 
 **Examples:**
 
@@ -672,32 +723,140 @@ praxis observe Deployment/my-webapp
 # Faster polling
 praxis observe Deployment/my-webapp --poll-interval 500ms
 
+# Watch an individual resource
+praxis observe S3Bucket/my-bucket
+praxis observe EC2Instance/web-1 --timeout 2m
+
 # JSON event stream
 praxis observe Deployment/my-webapp -o json
 ```
 
-**Output:**
-
-```text
-Observing deployment my-webapp...
-
-[2025-01-15 10:30:05 UTC] Applying my-bucket/S3Bucket: Provisioning started
-[2025-01-15 10:30:12 UTC] Applying web-sg/SecurityGroup: Provisioning started
-[2025-01-15 10:30:18 UTC] Complete my-bucket/S3Bucket: Resource ready
-[2025-01-15 10:30:25 UTC] Complete web-sg/SecurityGroup: Resource ready
-[2025-01-15 10:30:25 UTC] Complete Deployment complete
-```
-
-The command exits automatically when the deployment reaches a terminal state (Complete, Failed, Deleted, or Cancelled). If the event stream is unavailable, it falls back to status polling.
+The command exits automatically when a terminal state is reached. For deployments, that means Complete, Failed, Deleted, or Cancelled. For resources, that means Ready, Error, or Deleted.
 
 ---
 
-## state mv
+## create
 
-Rename a resource within a deployment or move it to another deployment. Only the deployment state mapping is updated — no cloud resources are created, modified, or deleted. The deployment must be in a terminal state (Complete, Failed, or Cancelled).
+Create a new resource in Praxis.
+
+### create workspace
+
+Create or update a workspace.
 
 ```bash
-praxis state mv <source> <destination>
+praxis create workspace <name> --account <acct> --region <region> [flags]
+```
+
+**Flags:**
+
+| Flag       | Default | Description                                     |
+|------------|---------|-------------------------------------------------|
+| `--account`| —       | AWS account alias (required)                    |
+| `--region` | —       | Default AWS region (required)                   |
+| `--var`    | —       | Default variable key=value (repeatable)         |
+| `--select` | false   | Set as active workspace after creation          |
+
+### create template
+
+Register or update a CUE template from a file.
+
+```bash
+praxis create template <file.cue> [flags]
+```
+
+**Flags:**
+
+| Flag           | Default        | Description                        |
+|----------------|----------------|------------------------------------|
+| `--name`       | filename       | Template name                      |
+| `--description`| —              | Human-readable description         |
+
+### create sink
+
+Create or update a notification sink.
+
+```bash
+praxis create sink [flags]
+```
+
+**Flags:**
+
+| Flag                  | Default      | Description                              |
+|-----------------------|-------------|------------------------------------------|
+| `--name`              | —            | Sink name                                |
+| `--type`              | —            | Sink type (webhook, structured_log, etc) |
+| `--url`               | —            | Endpoint URL                             |
+| `-f, --file`          | —            | Read config from JSON file or stdin (-)  |
+| `--filter-types`      | —            | Comma-separated event type prefixes      |
+| `--filter-severities` | —            | Comma-separated severities               |
+| `--max-retries`       | 3            | Max delivery retry attempts              |
+
+---
+
+## set
+
+Update a setting or select a resource.
+
+### set workspace
+
+Set the active workspace.
+
+```bash
+praxis set workspace <name>
+```
+
+### set config
+
+Update workspace-scoped configuration.
+
+```bash
+praxis set config <path> <value> [flags]
+```
+
+**Flags:**
+
+| Flag             | Default          | Description                              |
+|------------------|------------------|------------------------------------------|
+| `-w, --workspace`| active workspace | Workspace name                           |
+| `-f, --file`     | —                | Load full policy from JSON file          |
+
+Supported paths: `events.retention.max-age`, `events.retention.max-events-per-deployment`, `events.retention.max-index-entries`, `events.retention.sweep-interval`, `events.retention.ship-before-delete`, `events.retention.drain-sink`.
+
+**Examples:**
+
+```bash
+praxis set config events.retention.max-age 180d
+praxis set config events.retention.max-events-per-deployment 500
+praxis set config events.retention.drain-sink ops-drain
+praxis set config events.retention -f retention.json
+praxis set config events.retention.max-age 90d -w staging
+```
+
+### set concierge
+
+Configure the concierge LLM provider.
+
+```bash
+praxis set concierge --provider <provider> [flags]
+```
+
+**Flags:**
+
+| Flag         | Default | Description                    |
+|--------------|---------|--------------------------------|
+| `--provider` | —       | LLM provider: openai or claude |
+| `--model`    | —       | Model name                     |
+| `--api-key`  | —       | API key for the provider       |
+| `--base-url` | —       | Custom API base URL            |
+
+---
+
+## move
+
+Rename a resource within a deployment or move it to another deployment. Only the deployment state mapping is updated — no cloud resources are created, modified, or deleted.
+
+```bash
+praxis move <source> <destination>
 ```
 
 Source format: `Deployment/<key>/<resource-name>`
@@ -710,321 +869,64 @@ Destination can be:
 **Examples:**
 
 ```bash
-# Rename a resource within the same deployment
-praxis state mv Deployment/web-app/myBucket newBucketName
-
-# Move a resource to another deployment, keeping its name
-praxis state mv Deployment/web-app/myBucket Deployment/data-stack/myBucket
-
-# Move and rename in one step
-praxis state mv Deployment/web-app/myBucket Deployment/data-stack/dataBucket
-```
-
-**Table output:**
-
-```text
-Renamed myBucket → newBucketName in deployment web-app
-```
-
-```text
-Moved myBucket from web-app to data-stack as dataBucket
-```
-
-The underlying driver Virtual Object key does not change. This enables template refactoring (renaming a resource in CUE) without reprovisioning.
-
----
-
-## events
-
-Query deployment events. Events are CloudEvents emitted by the orchestrator during deployment lifecycle transitions. They are stored per-deployment and indexed globally.
-
-### events list
-
-List events for a single deployment.
-
-```bash
-praxis events list Deployment/<key> [flags]
-```
-
-**Flags:**
-
-| Flag         | Default | Description                                              |
-|--------------|---------|----------------------------------------------------------|
-| `--since`    | —       | Show events from the last duration (e.g. `1h`, `7d`)    |
-| `--type`     | —       | Filter by event type prefix                              |
-| `--severity` | —       | Filter by severity (`info`, `warn`, `error`)             |
-| `--resource` | —       | Filter by resource name                                  |
-
-**Examples:**
-
-```bash
-# All events for a deployment
-praxis events list Deployment/my-webapp
-
-# Events from the last hour
-praxis events list Deployment/my-webapp --since 1h
-
-# Only errors
-praxis events list Deployment/my-webapp --severity error
-
-# Filter by resource
-praxis events list Deployment/my-webapp --resource my-bucket
-
-# JSON output
-praxis events list Deployment/my-webapp -o json
-```
-
-### events query
-
-Search events across all deployments.
-
-```bash
-praxis events query [flags]
-```
-
-**Flags:**
-
-| Flag             | Default | Description                                          |
-|------------------|---------|------------------------------------------------------|
-| `-w, --workspace`| —       | Filter by workspace                                  |
-| `--type`         | —       | Filter by event type prefix                          |
-| `--severity`     | —       | Filter by severity (`info`, `warn`, `error`)         |
-| `--resource`     | —       | Filter by resource name                              |
-| `--since`        | —       | Show events from the last duration (e.g. `1h`, `7d`) |
-| `--limit`        | `100`   | Maximum events to return                             |
-
-**Examples:**
-
-```bash
-# All recent events
-praxis events query
-
-# Events in the staging workspace from the last day
-praxis events query -w staging --since 1d
-
-# Errors across all deployments
-praxis events query --severity error
-
-# Combined filters
-praxis events query --severity warn --type "dev.praxis.deployment.*" --limit 50
-
-# JSON output
-praxis events query -o json
-```
-
-The `--since` flag accepts Go-style durations (`1h`, `30m`, `2h30m`) plus a `d` suffix for days (`7d`).
-
----
-
-## notifications
-
-Manage notification sinks — delivery targets for deployment events. Praxis can push CloudEvents to webhooks, structured logs, or CloudEvents HTTP endpoints.
-
-### notifications add-sink
-
-Create or update a notification sink.
-
-```bash
-praxis notifications add-sink [flags]
-```
-
-**Flags:**
-
-| Flag                    | Default        | Description                                              |
-|-------------------------|----------------|----------------------------------------------------------|
-| `--name`                | —              | Sink name                                                |
-| `--type`                | —              | Sink type: `webhook`, `structured_log`, `cloudevents_http` |
-| `--url`                 | —              | Endpoint URL (for `webhook` and `cloudevents_http`)      |
-| `--filter-types`        | —              | Comma-separated event type prefixes                      |
-| `--filter-categories`   | —              | Comma-separated event categories                         |
-| `--filter-severities`   | —              | Comma-separated severities                               |
-| `--filter-workspaces`   | —              | Comma-separated workspace names                          |
-| `--filter-deployments`  | —              | Comma-separated deployment globs                         |
-| `--header`              | —              | HTTP header `key=value` (repeatable)                     |
-| `--max-retries`         | `3`            | Maximum delivery retry attempts                          |
-| `--backoff-ms`          | `1000`         | Initial retry backoff in milliseconds                    |
-| `--content-mode`        | `structured`   | CloudEvents HTTP content mode                            |
-| `--from-file`           | —              | Load sink config from JSON file (or `-` for stdin)       |
-
-**Examples:**
-
-```bash
-# Webhook sink
-praxis notifications add-sink --name ops-alerts --type webhook \
-  --url https://hooks.slack.com/services/T.../B.../xxx
-
-# CloudEvents HTTP endpoint with filters
-praxis notifications add-sink --name prod-errors --type cloudevents_http \
-  --url https://events.example.com/ingest \
-  --filter-severities error --filter-workspaces prod
-
-# With custom headers and retry config
-praxis notifications add-sink --name pagerduty --type webhook \
-  --url https://events.pagerduty.com/v2/enqueue \
-  --header "Authorization=Token token=xxx" \
-  --max-retries 5 --backoff-ms 2000
-
-# Load from a JSON file
-praxis notifications add-sink --from-file sink.json
-
-# Load from stdin
-cat sink.json | praxis notifications add-sink --from-file -
-```
-
-### notifications list-sinks
-
-List all configured notification sinks.
-
-```bash
-praxis notifications list-sinks
-```
-
-**Output:**
-
-```text
-NAME          TYPE               STATE    FAILURES  URL
-----          ----               -----    --------  ---
-ops-alerts    webhook            healthy  0         https://hooks.slack.com/...
-prod-errors   cloudevents_http   healthy  0         https://events.example.com/...
-```
-
-### notifications get-sink
-
-Show the full configuration of a single sink (JSON output).
-
-```bash
-praxis notifications get-sink <name>
-```
-
-### notifications remove-sink
-
-Remove a notification sink.
-
-```bash
-praxis notifications remove-sink <name>
-```
-
-### notifications test-sink
-
-Send a synthetic CloudEvent to a sink to verify delivery works.
-
-```bash
-praxis notifications test-sink <name>
-```
-
-### notifications health
-
-Show aggregate health across all notification sinks.
-
-```bash
-praxis notifications health
-```
-
-**Output:**
-
-```text
-TOTAL  HEALTHY  DEGRADED  OPEN  LAST DELIVERY
------  -------  --------  ----  -------------
-3      2        1         0     2026-04-03 10:30:00 UTC
+praxis move Deployment/web-app/myBucket newBucketName
+praxis move Deployment/web-app/myBucket Deployment/data-stack/dataBucket
 ```
 
 ---
 
-## config
+## ask
 
-Manage workspace-scoped Praxis configuration. Currently supports event retention policy settings.
-
-### config get
-
-Read a configuration value for the active workspace.
+Send a natural language prompt to the Concierge AI assistant.
 
 ```bash
-praxis config get <path> [flags]
+praxis ask <prompt> [flags]
 ```
 
 **Flags:**
 
-| Flag             | Default          | Description                              |
-|------------------|------------------|------------------------------------------|
-| `-w, --workspace`| active workspace | Workspace name                           |
-
-**Supported paths:**
-
-| Path                | Description                      |
-|---------------------|----------------------------------|
-| `events.retention`  | Event retention policy           |
+| Flag          | Default | Description                    |
+|---------------|---------|--------------------------------|
+| `--session`   | —       | Session ID for continuity      |
+| `--account`   | env     | AWS account name               |
+| `-w, --workspace` | — | Workspace name                 |
 
 **Examples:**
 
 ```bash
-# Read the retention policy for the active workspace
-praxis config get events.retention
-
-# For a specific workspace
-praxis config get events.retention -w staging
-
-# JSON output
-praxis config get events.retention -o json
+praxis ask how do I deploy a VPC
+praxis ask "what's the status of my-app"
 ```
 
-**Output:**
+---
 
-```text
-Max Age                    180d
-Max Events/Deployment      1000
-Max Index Entries           10000
-Sweep Interval             1h
-Ship Before Delete         false
-Drain Sink                 ops-drain
-```
+## approve
 
-### config set
-
-Update workspace-scoped configuration. Individual retention fields can be updated without replacing the entire policy.
+Approve or reject a pending action that the Concierge AI is waiting on.
 
 ```bash
-praxis config set <path> <value> [flags]
+praxis approve --awakeable-id <id> [flags]
 ```
 
 **Flags:**
 
-| Flag             | Default          | Description                              |
-|------------------|------------------|------------------------------------------|
-| `-w, --workspace`| active workspace | Workspace name                           |
+| Flag              | Default | Description                     |
+|-------------------|---------|---------------------------------|
+| `--awakeable-id`  | —       | Awakeable ID (required)         |
+| `--reject`        | false   | Reject instead of approve       |
+| `--reason`        | —       | Reason for approval/rejection   |
 
-**Supported subcommands:**
+---
 
-| Subcommand                                              | Description                                 |
-|---------------------------------------------------------|---------------------------------------------|
-| `config set events.retention --from-file <file>`        | Replace the full retention policy (JSON)    |
-| `config set events.retention.max-age <duration>`        | Max age for events (e.g. `180d`, `720h`)    |
-| `config set events.retention.max-events-per-deployment <n>` | Max events stored per deployment       |
-| `config set events.retention.max-index-entries <n>`     | Max entries in the global event index       |
-| `config set events.retention.sweep-interval <duration>` | How often to prune old events               |
-| `config set events.retention.ship-before-delete <bool>` | Ship events to drain sink before deletion   |
-| `config set events.retention.drain-sink <name>`         | Notification sink to drain events to        |
+## test
 
-**Examples:**
+Test an integration.
 
 ```bash
-# Set max event age
-praxis config set events.retention.max-age 180d
-
-# Set max events per deployment
-praxis config set events.retention.max-events-per-deployment 500
-
-# Set the drain sink
-praxis config set events.retention.drain-sink ops-drain
-
-# Enable shipping before delete
-praxis config set events.retention.ship-before-delete true
-
-# Replace the full policy from a file
-praxis config set events.retention --from-file retention.json
-
-# Override workspace
-praxis config set events.retention.max-age 90d -w staging
+praxis test sink/<name>
 ```
+
+Sends a synthetic CloudEvent to the named notification sink.
 
 ---
 
@@ -1076,207 +978,17 @@ praxis <version> (built <timestamp>)
 
 ---
 
-## workspace
-
-Manage workspaces — named environment contexts that bind deployments with shared defaults.
-
-See [Auth & Workspaces](AUTH.md) for the full design.
-
-### workspace create
-
-Create or update a workspace.
-
-```bash
-praxis workspace create <name> --account <alias> --region <region> [flags]
-```
-
-**Flags:**
-
-| Flag        | Required | Description                                        |
-|-------------|----------|----------------------------------------------------|
-| `--account` | Yes      | AWS account alias (must be registered in Auth)     |
-| `--region`  | Yes      | Default AWS region                                 |
-| `--var`     | No       | Default variable `key=value` (repeatable)          |
-| `--select`  | No       | Set as active workspace after creation             |
-
-```bash
-praxis workspace create prod --account prod-us --region us-east-1
-praxis workspace create staging --account staging --region us-west-2 --var env=staging --select
-```
-
-### workspace list
-
-List all workspaces with account, region, and active marker.
-
-```bash
-praxis workspace list
-praxis workspace list -o json
-```
-
-### workspace select
-
-Set the active workspace. Persisted in `~/.praxis/config.json`.
-
-```bash
-praxis workspace select <name>
-```
-
-### workspace show
-
-Show workspace details. Uses the active workspace if no name is given.
-
-```bash
-praxis workspace show [name]
-```
-
-### workspace delete
-
-Delete a workspace and deregister it from the index.
-
-```bash
-praxis workspace delete <name>
-```
-
----
-
 ## concierge
 
 AI-powered infrastructure assistant. The concierge is an optional service — these commands fail gracefully with setup instructions when the service is not running.
 
-### concierge ask
-
-Send a natural language prompt to the concierge.
-
-```bash
-praxis concierge ask <prompt> [flags]
-```
-
-**Flags:**
-
-| Flag          | Default     | Description                    |
-|---------------|-------------|--------------------------------|
-| `--session`   | `"default"` | Session ID                     |
-| `--account`   | env         | AWS account name               |
-| `-w, --workspace` | —       | Workspace name                 |
-| `-f, --file`  | —           | Attach file, directory, or glob to the prompt |
-| `--auto-approve` | false    | Skip approval prompts          |
-| `--json`      | false       | Output raw AskResponse JSON    |
-
-**Examples:**
-
-```bash
-# Ask about infrastructure
-praxis concierge ask "What S3 buckets are deployed?"
-
-# Plan a change
-praxis concierge ask "Plan adding a security group for port 443"
-
-# Use a named session
-praxis concierge ask --session migration "Analyze my Terraform state"
-
-# Attach a file for migration
-praxis concierge ask "Convert this to Praxis" --file main.tf
-
-# JSON output
-praxis concierge ask "List deployments" -o json
-```
-
-When running, the CLI displays a live spinner with real-time tool-call progress. Each tool execution is shown as it happens (thinking → running → ok/error), giving visibility into what the concierge is doing before returning the final response.
-
-### concierge configure
-
-Configure the LLM provider for the concierge.
-
-```bash
-praxis concierge configure [flags]
-```
-
-**Flags:**
-
-| Flag          | Default | Description                              |
-|---------------|---------|------------------------------------------|
-| `--provider`  | —       | LLM provider: `openai` or `claude` (required) |
-| `--model`     | —       | Model name (e.g. `gpt-4o`, `claude-sonnet-4-20250514`) |
-| `--api-key`   | —       | API key for the provider                 |
-| `--base-url`  | —       | Custom API base URL                      |
-
-**Examples:**
-
-```bash
-# Configure OpenAI
-praxis concierge configure --provider openai --api-key sk-... --model gpt-4o
-
-# Configure Claude
-praxis concierge configure --provider claude --api-key sk-ant-... --model claude-sonnet-4-20250514
-```
-
-### concierge status
-
-Show the current status of a concierge session.
-
-```bash
-praxis concierge status [flags]
-```
-
-**Flags:**
-
-| Flag        | Default     | Description    |
-|-------------|-------------|----------------|
-| `--session` | `"default"` | Session ID     |
-
-### concierge history
-
-Display the conversation history for a session.
-
-```bash
-praxis concierge history [flags]
-```
-
-**Flags:**
-
-| Flag        | Default     | Description    |
-|-------------|-------------|----------------|
-| `--session` | `"default"` | Session ID     |
-
-### concierge reset
-
-Clear the conversation history and state for a session.
-
-```bash
-praxis concierge reset [flags]
-```
-
-**Flags:**
-
-| Flag        | Default     | Description    |
-|-------------|-------------|----------------|
-| `--session` | `"default"` | Session ID     |
-
-### concierge approve
-
-Approve or reject a pending destructive action.
-
-```bash
-praxis concierge approve [flags]
-```
-
-**Flags:**
-
-| Flag              | Default | Description                             |
-|-------------------|---------|-----------------------------------------|
-| `--awakeable-id`  | —       | Awakeable ID from the pending approval (required) |
-| `--reject`        | false   | Reject the action instead of approving  |
-| `--reason`        | —       | Reason for approval or rejection        |
-
-**Examples:**
-
-```bash
-# Approve a pending action
-praxis concierge approve --awakeable-id <id>
-
-# Reject with a reason
-praxis concierge approve --awakeable-id <id> --reject --reason "Not ready for production"
-```
+The main concierge operations are now verb-first:
+- `praxis ask <prompt>` — Send a prompt
+- `praxis set concierge` — Configure the LLM provider
+- `praxis get concierge` — Show session status
+- `praxis list concierge` — Show conversation history
+- `praxis delete concierge` — Clear a session
+- `praxis approve` — Approve or reject a pending action
 
 ### concierge slack
 
@@ -1417,4 +1129,6 @@ When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain 
 | `PRAXIS_RESTATE_ENDPOINT`  | Restate ingress URL                    |
 | `PRAXIS_REGION`            | Default AWS region for key resolution  |
 | `PRAXIS_ACCOUNT`           | Default AWS account for provider calls |
+| `PRAXIS_WORKSPACE`         | Active workspace override              |
+| `PRAXIS_OUTPUT`            | Default output format (`table`/`json`) |
 | `PRAXIS_SESSION`           | Override concierge session ID          |

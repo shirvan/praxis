@@ -146,7 +146,7 @@ praxis delete Deployment/my-webapp --yes --wait
 
 # --- Operator: inline CUE (development/testing) ---
 praxis plan webapp.cue --account local --var env=dev
-praxis apply webapp.cue --account local --var env=dev --key my-webapp --wait
+praxis deploy webapp.cue --account local --var env=dev --key my-webapp --wait
 ```
 
 ### Centralized Deployment (Kubernetes)
@@ -266,7 +266,7 @@ Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
 
 - **AWS only.** No GCP, Azure, or other cloud providers yet.
 - **No cross-stack references.** One deployment cannot reference the outputs of another deployment yet.
-- **No automatic rollback.** Failed deployments stop and report — they don't automatically revert completed resources.
+- **No automatic rollback.** Failed deployments stop and report — they don't automatically revert completed resources. Operators can manually trigger a targeted rollback with `praxis delete Deployment/<key> --rollback`, which deletes only confirmed-provisioned resources in reverse dependency order.
 
 See [FUTURE.md](docs/FUTURE.md) for what's coming next and [`examples/`](examples/) for ready-to-use templates.
 

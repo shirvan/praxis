@@ -489,7 +489,7 @@ func specFromObserved(obs ObservedState) IAMInstanceProfileSpec {
 		Path:                obs.Path,
 		InstanceProfileName: obs.InstanceProfileName,
 		RoleName:            obs.RoleName,
-		Tags:                filterPraxisTags(obs.Tags),
+		Tags:                drivers.FilterPraxisTags(obs.Tags),
 	}
 }
 
@@ -504,8 +504,8 @@ func outputsFromObserved(obs ObservedState) IAMInstanceProfileOutputs {
 // diffTags computes the set of tags to add/update and keys to remove by comparing
 // desired vs observed tags, after filtering out "praxis:"-prefixed internal tags.
 func diffTags(desired, observed map[string]string) (map[string]string, []string) {
-	filteredDesired := filterPraxisTags(desired)
-	filteredObserved := filterPraxisTags(observed)
+	filteredDesired := drivers.FilterPraxisTags(desired)
+	filteredObserved := drivers.FilterPraxisTags(observed)
 
 	add := make(map[string]string)
 	for key, value := range filteredDesired {

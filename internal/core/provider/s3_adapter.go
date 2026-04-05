@@ -246,10 +246,14 @@ func (a *S3Adapter) Lookup(ctx restate.Context, account string, filter LookupFil
 		return nil, restate.TerminalError(err, 500)
 	}
 	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (s3.ObservedState, error) {
-		return lookupS3Bucket(runCtx, api, filter)
+		obs, runErr := lookupS3Bucket(runCtx, api, filter)
+		if runErr != nil {
+			return obs, classifyLookupError(runErr, s3.IsNotFound)
+		}
+		return obs, nil
 	})
 	if err != nil {
-		return nil, classifyLookupError(err, s3.IsNotFound)
+		return nil, err
 	}
 	if !matchesS3Filter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no S3Bucket found matching filter"), 404)

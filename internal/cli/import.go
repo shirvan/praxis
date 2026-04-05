@@ -62,6 +62,7 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kind := args[0]
 			renderer := flags.renderer()
+			workspace := flags.activeWorkspace()
 
 			if resourceID == "" {
 				return fmt.Errorf("--id is required")
@@ -82,15 +83,13 @@ Examples:
 			client := flags.newClient()
 			ctx := context.Background()
 
-			cliCfg := LoadCLIConfig()
-
 			resp, err := client.ImportResource(ctx, types.ImportRequest{
 				Kind:       kind,
 				ResourceID: resourceID,
 				Region:     region,
 				Mode:       mode,
 				Account:    account,
-				Workspace:  cliCfg.ActiveWorkspace,
+				Workspace:  workspace,
 			})
 			if err != nil {
 				return err

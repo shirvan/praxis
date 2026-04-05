@@ -8,6 +8,7 @@ package metricalarm
 
 import (
 	"context"
+	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
 	"slices"
 	"sort"
@@ -262,7 +263,7 @@ func syncTagDiff(desired, observed map[string]string, managedKey string) (map[st
 
 func managedTags(tags map[string]string, managedKey string) map[string]string {
 	out := make(map[string]string, len(tags)+1)
-	maps.Copy(out, filterPraxisTags(tags))
+	maps.Copy(out, drivers.FilterPraxisTags(tags))
 	if strings.TrimSpace(managedKey) != "" {
 		out["praxis:managed-key"] = managedKey
 	}
