@@ -106,11 +106,11 @@ func toolExplainResource(_ restate.Context, argsJSON string, _ SessionState) (st
 	// constants in internal/drivers/*/service.go.
 	descriptions := map[string]string{
 		// Compute
-		"EC2Instance":    "An AWS EC2 instance. Spec fields: amiId (required), instanceType (required), subnetId, securityGroupIds, keyName, userData, tags.",
-		"AMI":            "An Amazon Machine Image. Spec fields: sourceInstanceId or sourceSnapshotId (required), name (required), description, tags.",
-		"EBSVolume":      "An Elastic Block Store volume. Spec fields: availabilityZone (required), size (required, GiB), volumeType, iops, encrypted (bool), kmsKeyId, tags.",
-		"ElasticIP":      "An Elastic IP address. Spec fields: domain (vpc), tags. Outputs: allocationId, publicIp.",
-		"KeyPair":        "An EC2 key pair. Spec fields: keyName (required), publicKeyMaterial (required), tags.",
+		"EC2Instance": "An AWS EC2 instance. Spec fields: amiId (required), instanceType (required), subnetId, securityGroupIds, keyName, userData, tags.",
+		"AMI":         "An Amazon Machine Image. Spec fields: sourceInstanceId or sourceSnapshotId (required), name (required), description, tags.",
+		"EBSVolume":   "An Elastic Block Store volume. Spec fields: availabilityZone (required), size (required, GiB), volumeType, iops, encrypted (bool), kmsKeyId, tags.",
+		"ElasticIP":   "An Elastic IP address. Spec fields: domain (vpc), tags. Outputs: allocationId, publicIp.",
+		"KeyPair":     "An EC2 key pair. Spec fields: keyName (required), publicKeyMaterial (required), tags.",
 
 		// Networking
 		"VPC":                  "An AWS Virtual Private Cloud. Spec fields: cidrBlock (required), region (required), enableDnsSupport (bool), enableDnsHostnames (bool), tags.",
@@ -146,9 +146,9 @@ func toolExplainResource(_ restate.Context, argsJSON string, _ SessionState) (st
 		"IAMInstanceProfile": "An AWS IAM Instance Profile. Spec fields: instanceProfileName (required), roleName (required), path, tags.",
 
 		// Serverless
-		"LambdaFunction":    "An AWS Lambda function. Spec fields: functionName (required), runtime (required), handler (required), role (required), code {s3Bucket, s3Key} or {zipFile}, memorySize, timeout, environment, tags.",
-		"LambdaLayer":       "A Lambda layer version. Spec fields: layerName (required), compatibleRuntimes, content {s3Bucket, s3Key}, description.",
-		"LambdaPermission":  "A Lambda resource-based policy permission. Spec fields: functionName (required), action (required), principal (required), sourceArn, statementId.",
+		"LambdaFunction":     "An AWS Lambda function. Spec fields: functionName (required), runtime (required), handler (required), role (required), code {s3Bucket, s3Key} or {zipFile}, memorySize, timeout, environment, tags.",
+		"LambdaLayer":        "A Lambda layer version. Spec fields: layerName (required), compatibleRuntimes, content {s3Bucket, s3Key}, description.",
+		"LambdaPermission":   "A Lambda resource-based policy permission. Spec fields: functionName (required), action (required), principal (required), sourceArn, statementId.",
 		"EventSourceMapping": "A Lambda event source mapping. Spec fields: functionName (required), eventSourceArn (required), batchSize, startingPosition, enabled (bool).",
 
 		// DNS
@@ -162,9 +162,9 @@ func toolExplainResource(_ restate.Context, argsJSON string, _ SessionState) (st
 
 		// Messaging
 		"SNSTopic":        "An SNS topic. Spec fields: topicName (required), displayName, tags. Outputs: topicArn.",
-		"SNSSubscription":  "An SNS subscription. Spec fields: topicArn (required), protocol (required — email, sqs, lambda, etc.), endpoint (required).",
-		"SQSQueue":         "An SQS queue. Spec fields: queueName (required), delaySeconds, visibilityTimeout, messageRetentionPeriod, fifoQueue (bool), tags.",
-		"SQSQueuePolicy":   "An SQS queue access policy. Spec fields: queueUrl (required), policy (required, JSON).",
+		"SNSSubscription": "An SNS subscription. Spec fields: topicArn (required), protocol (required — email, sqs, lambda, etc.), endpoint (required).",
+		"SQSQueue":        "An SQS queue. Spec fields: queueName (required), delaySeconds, visibilityTimeout, messageRetentionPeriod, fifoQueue (bool), tags.",
+		"SQSQueuePolicy":  "An SQS queue access policy. Spec fields: queueUrl (required), policy (required, JSON).",
 
 		// Monitoring
 		"LogGroup":    "A CloudWatch log group. Spec fields: logGroupName (required), retentionInDays, tags.",

@@ -385,7 +385,7 @@ func (d *ListenerDriver) GetInputs(ctx restate.ObjectSharedContext) (ListenerSpe
 func (d *ListenerDriver) correctDrift(ctx restate.ObjectContext, api ListenerAPI, arn string, desired ListenerSpec, observed ObservedState) error {
 	needsModify := desired.Port != observed.Port ||
 		!strings.EqualFold(desired.Protocol, observed.Protocol) ||
-		desired.SslPolicy != observed.SslPolicy ||
+		effectiveSslPolicy(desired.SslPolicy, desired.Protocol) != observed.SslPolicy ||
 		desired.CertificateArn != observed.CertificateArn ||
 		desired.AlpnPolicy != observed.AlpnPolicy ||
 		!actionsEqual(desired.DefaultActions, observed.DefaultActions)

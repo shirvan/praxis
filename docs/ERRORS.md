@@ -236,9 +236,9 @@ Error: 1 resource(s) failed:
   1. prod-db: lifecycle.preventDestroy enabled; refusing to delete resource "prod-db" (RDSInstance)
 ```
 
-The error is terminal — the workflow does not retry. To delete the resource, update the template to remove or set `preventDestroy: false`, re-apply, then retry the delete.
+The error is terminal — the workflow does not retry. To delete the resource, update the template to remove or set `preventDestroy: false`, re-apply, then retry the delete. Alternatively, use `praxis delete --force` to override the protection (an audit event is emitted for each overridden resource).
 
-The same check applies when `--replace` would force-recreate a protected resource during apply.
+The same check applies when `--replace` or `--allow-replace` would force-recreate a protected resource during apply.
 
 ### Error Codes
 
@@ -391,6 +391,8 @@ Error: bucket "my-logs" exists but is not controllable by Praxis
 Error: instance name "web-1" in this region is already managed by Praxis (instanceId: i-0abc123); remove the existing resource or use a different metadata.name
 Error: deployment "prod" is already deleted
 ```
+
+When a driver returns 409 due to an immutable field change, `--allow-replace` causes the orchestrator to automatically delete and re-provision the resource. Without `--allow-replace`, the 409 is surfaced as a terminal error and the plan suggests using `--replace <resource>` or `--allow-replace`.
 
 **503 — Capacity / quota:**
 

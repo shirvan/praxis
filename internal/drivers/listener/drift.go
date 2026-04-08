@@ -8,8 +8,9 @@
 package listener
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired
@@ -32,7 +33,7 @@ func HasDrift(desired ListenerSpec, observed ObservedState) bool {
 		return true
 	}
 	if requiresSSL(desired.Protocol) {
-		if desired.SslPolicy != observed.SslPolicy {
+		if effectiveSslPolicy(desired.SslPolicy, desired.Protocol) != observed.SslPolicy {
 			return true
 		}
 		if desired.CertificateArn != observed.CertificateArn {
@@ -65,11 +66,14 @@ func ComputeFieldDiffs(desired ListenerSpec, observed ObservedState) []FieldDiff
 	if !strings.EqualFold(desired.Protocol, observed.Protocol) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.protocol", OldValue: observed.Protocol, NewValue: desired.Protocol})
 	}
-	if desired.SslPolicy != observed.SslPolicy {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.sslPolicy", OldValue: observed.SslPolicy, NewValue: desired.SslPolicy})
-	}
-	if desired.CertificateArn != observed.CertificateArn {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.certificateArn", OldValue: observed.CertificateArn, NewValue: desired.CertificateArn})
+	if requiresSSL(desired.Protocol) || requiresSSL(observed.Protocol) {
+		desiredSSL := effectiveSslPolicy(desired.SslPolicy, desired.Protocol)
+		if desiredSSL != observed.SslPolicy {
+			diffs = append(diffs, FieldDiffEntry{Path: "spec.sslPolicy", OldValue: observed.SslPolicy, NewValue: desiredSSL})
+		}
+		if desired.CertificateArn != observed.CertificateArn {
+			diffs = append(diffs, FieldDiffEntry{Path: "spec.certificateArn", OldValue: observed.CertificateArn, NewValue: desired.CertificateArn})
+		}
 	}
 	if desired.AlpnPolicy != observed.AlpnPolicy {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.alpnPolicy", OldValue: observed.AlpnPolicy, NewValue: desired.AlpnPolicy})
@@ -150,4 +154,17 @@ func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 func requiresSSL(protocol string) bool {
 	p := strings.ToUpper(protocol)
 	return p == "HTTPS" || p == "TLS"
+}
+
+// defaultSslPolicy is AWS's default SSL policy, applied when the user does not
+// specify one for an HTTPS/TLS listener.
+const defaultSslPolicy = "ELBSecurityPolicy-2016-08"
+
+// effectiveSslPolicy returns the SSL policy to compare, applying the AWS
+// default when the user omits it for SSL-requiring protocols.
+func effectiveSslPolicy(policy, protocol string) string {
+	if policy == "" && requiresSSL(protocol) {
+		return defaultSslPolicy
+	}
+	return policy
 }

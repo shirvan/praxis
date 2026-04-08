@@ -1,8 +1,9 @@
 package targetgroup
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -26,14 +27,14 @@ func TestHasDrift_NoDrift(t *testing.T) {
 func TestHasDrift_ProtocolChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTPS", Port: 443, VpcId: "vpc-1", TargetType: "instance"})
 	observed := ObservedState{Protocol: "HTTP", Port: 443, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
 func TestHasDrift_PortChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 8080, VpcId: "vpc-1", TargetType: "instance"})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
@@ -41,6 +42,7 @@ func TestHasDrift_HealthCheckChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		HealthCheck: HealthCheck{Protocol: "HTTP", Path: "/healthz", Port: "80", HealthyThreshold: 3, UnhealthyThreshold: 3, Interval: 30, Timeout: 5}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
+		ProtocolVersion:     spec.ProtocolVersion,
 		HealthCheck:         HealthCheck{Protocol: "HTTP", Path: "/", Port: "80", HealthyThreshold: 3, UnhealthyThreshold: 3, Interval: 30, Timeout: 5},
 		DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
@@ -49,7 +51,7 @@ func TestHasDrift_HealthCheckChanged(t *testing.T) {
 func TestHasDrift_DeregistrationDelayChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance", DeregistrationDelay: 60})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: 300, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: 300, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
@@ -57,7 +59,7 @@ func TestHasDrift_StickinessChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Stickiness: &Stickiness{Enabled: true, Type: "lb_cookie", Duration: 3600}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Stickiness: &Stickiness{Enabled: false, Type: "lb_cookie", Duration: 3600}, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
@@ -66,14 +68,14 @@ func TestHasDrift_StickinessNilVsSet(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Stickiness: &Stickiness{Enabled: true, Type: "lb_cookie", Duration: 86400}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Stickiness: nil, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
 func TestHasDrift_TargetsAndTags(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance", Tags: map[string]string{"env": "dev"}, Targets: []Target{{ID: "i-1", Port: 80}}})
-	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance", HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{"env": "prod"}, Targets: []Target{{ID: "i-2", Port: 80}}}
+	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance", ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{"env": "prod"}, Targets: []Target{{ID: "i-2", Port: 80}}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
@@ -81,7 +83,7 @@ func TestHasDrift_TagOnlyDrift(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Tags: map[string]string{"env": "staging"}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Tags: map[string]string{"env": "prod"}}
 	assert.True(t, HasDrift(spec, observed))
 }
@@ -90,7 +92,7 @@ func TestHasDrift_PraxisTagsIgnored(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Tags: map[string]string{"env": "prod"}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Tags: map[string]string{"env": "prod", "praxis:managed-key": "us-east-1~my-tg"}}
 	assert.False(t, HasDrift(spec, observed))
 }
@@ -98,7 +100,7 @@ func TestHasDrift_PraxisTagsIgnored(t *testing.T) {
 func TestHasDrift_NilVsEmptyTags(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance"})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Tags: map[string]string{}}
 	assert.False(t, HasDrift(spec, observed))
 }
@@ -106,14 +108,14 @@ func TestHasDrift_NilVsEmptyTags(t *testing.T) {
 func TestHasDrift_VpcIdChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-2", TargetType: "instance"})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
 func TestHasDrift_TargetTypeChanged(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "ip"})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	assert.True(t, HasDrift(spec, observed))
 }
 
@@ -137,7 +139,7 @@ func TestComputeFieldDiffs_NoDiffs(t *testing.T) {
 func TestComputeFieldDiffs_ProtocolImmutable(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTPS", Port: 443, VpcId: "vpc-1", TargetType: "instance"})
 	observed := ObservedState{Protocol: "HTTP", Port: 443, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
 	assert.Contains(t, diffs[0].Path, "immutable")
@@ -149,7 +151,7 @@ func TestComputeFieldDiffs_ProtocolImmutable(t *testing.T) {
 func TestComputeFieldDiffs_PortImmutable(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 8080, VpcId: "vpc-1", TargetType: "instance"})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
 	assert.Contains(t, diffs[0].Path, "immutable")
@@ -160,7 +162,8 @@ func TestComputeFieldDiffs_HealthCheck(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		HealthCheck: HealthCheck{Protocol: "HTTP", Path: "/new", Port: "80", HealthyThreshold: 3, UnhealthyThreshold: 3, Interval: 30, Timeout: 5}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck:         HealthCheck{Protocol: "HTTP", Path: "/old", Port: "80", HealthyThreshold: 3, UnhealthyThreshold: 3, Interval: 30, Timeout: 5},
+		ProtocolVersion:     spec.ProtocolVersion,
+		HealthCheck:         HealthCheck{Protocol: "HTTP", Path: "/old", Port: "80", HealthyThreshold: 3, UnhealthyThreshold: 3, Interval: 30, Timeout: 5, Matcher: "200"},
 		DeregistrationDelay: spec.DeregistrationDelay, Tags: map[string]string{}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
@@ -170,7 +173,7 @@ func TestComputeFieldDiffs_HealthCheck(t *testing.T) {
 func TestComputeFieldDiffs_DeregistrationDelay(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance", DeregistrationDelay: 60})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: 300, Tags: map[string]string{}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: 300, Tags: map[string]string{}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
 	assert.Equal(t, "spec.deregistrationDelay", diffs[0].Path)
@@ -182,7 +185,7 @@ func TestComputeFieldDiffs_Stickiness(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Stickiness: &Stickiness{Enabled: true, Type: "lb_cookie", Duration: 3600}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Stickiness: nil, Tags: map[string]string{}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
@@ -193,7 +196,7 @@ func TestComputeFieldDiffs_TagAdded(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Tags: map[string]string{"env": "prod", "team": "infra"}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Tags: map[string]string{"env": "prod"}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
@@ -206,7 +209,7 @@ func TestComputeFieldDiffs_TagRemoved(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Tags: map[string]string{}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Tags: map[string]string{"env": "prod"}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
@@ -219,7 +222,7 @@ func TestComputeFieldDiffs_TargetAdded(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
 		Targets: []Target{{ID: "i-1", Port: 80}, {ID: "i-2", Port: 80}}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: spec.DeregistrationDelay,
 		Tags: map[string]string{}, Targets: []Target{{ID: "i-1", Port: 80}}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.Len(t, diffs, 1)
@@ -231,7 +234,7 @@ func TestComputeFieldDiffs_MultipleDiffs(t *testing.T) {
 	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTPS", Port: 443, VpcId: "vpc-1", TargetType: "instance",
 		DeregistrationDelay: 60, Tags: map[string]string{"env": "staging"}})
 	observed := ObservedState{Protocol: "HTTP", Port: 80, VpcId: "vpc-1", TargetType: "instance",
-		HealthCheck: spec.HealthCheck, DeregistrationDelay: 300, Tags: map[string]string{"env": "prod"}}
+		ProtocolVersion: spec.ProtocolVersion, HealthCheck: spec.HealthCheck, DeregistrationDelay: 300, Tags: map[string]string{"env": "prod"}}
 	diffs := ComputeFieldDiffs(spec, observed)
 	assert.GreaterOrEqual(t, len(diffs), 4)
 }

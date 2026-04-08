@@ -157,8 +157,6 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 		restate.Reflect(orchestrator.DeploymentStateObj{}),
 		// Global deployment index
 		restate.Reflect(orchestrator.DeploymentIndex{}),
-		// Per-deployment event feed
-		restate.Reflect(orchestrator.DeploymentEvents{}),
 		// CloudEvents event system
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
@@ -200,15 +198,13 @@ func defaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
 	return aws.ToString(out.Vpcs[0].VpcId)
 }
 
-// uniqueName generates a short, unique, S3-rule-safe name for each test.
+// uniqueName generates a short, unique, DNS/ALB-safe name for each test.
+// The total must stay short because CUE templates append "-{env}-{suffix}"
+// (up to 19 chars for "-prod-http-redirect"), and ALB/NLB names are capped
+// at 32 characters.
 func uniqueName(t *testing.T, prefix string) string {
 	t.Helper()
-	name := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
-	name = strings.ReplaceAll(name, "_", "-")
-	if len(name) > 40 {
-		name = name[:40]
-	}
-	return fmt.Sprintf("%s-%s-%d", prefix, name, time.Now().UnixNano()%100000)
+	return fmt.Sprintf("%s-%05d", prefix, time.Now().UnixNano()%100000)
 }
 
 // pollDeploymentState polls the DeploymentState virtual object until the

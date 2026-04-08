@@ -89,7 +89,7 @@ func (r *realNetworkACLAPI) DescribeNetworkACL(ctx context.Context, networkAclId
 		return ObservedState{}, err
 	}
 	if len(out.NetworkAcls) == 0 {
-		return ObservedState{}, fmt.Errorf("network ACL %s not found", networkAclId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("network ACL %s not found", networkAclId))
 	}
 
 	acl := out.NetworkAcls[0]
@@ -327,7 +327,7 @@ func (r *realNetworkACLAPI) FindDefaultNetworkACL(ctx context.Context, vpcId str
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("default network ACL not found for VPC %s", vpcId)
+		return "", awserr.NotFound(fmt.Sprintf("default network ACL not found for VPC %s", vpcId))
 	case 1:
 		return matches[0], nil
 	default:
@@ -472,7 +472,7 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 
 // IsNotFound returns true when the NACL does not exist in AWS.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidNetworkAclID.NotFound")
+	return awserr.HasCode(err, "InvalidNetworkAclID.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsInUse returns true when the NACL cannot be deleted because subnets

@@ -30,7 +30,7 @@ package elb
 		deregistrationDelay: int & >=0 & <=3600 | *300
 		stickiness?: {
 			enabled:  bool | *false
-			type:     "lb_cookie" | "app_cookie" | *"lb_cookie"
+			type:     "lb_cookie" | "app_cookie" | "source_ip" | *"lb_cookie"
 			duration: int & >=1 & <=604800 | *86400
 		}
 		targets: [...#Target] | *[]

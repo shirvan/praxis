@@ -474,13 +474,16 @@ func applyDefaults(spec TargetGroupSpec) TargetGroupSpec {
 	if spec.TargetType == "" {
 		spec.TargetType = "instance"
 	}
+	if spec.ProtocolVersion == "" && (strings.EqualFold(spec.Protocol, "HTTP") || strings.EqualFold(spec.Protocol, "HTTPS")) {
+		spec.ProtocolVersion = "HTTP1"
+	}
 	spec.HealthCheck = healthCheckWithDefaults(spec.HealthCheck)
 	if spec.DeregistrationDelay == 0 {
 		spec.DeregistrationDelay = 300
 	}
 	if spec.Stickiness != nil {
 		if spec.Stickiness.Type == "" {
-			spec.Stickiness.Type = "lb_cookie"
+			spec.Stickiness.Type = defaultStickinessType(spec.Protocol)
 		}
 		if spec.Stickiness.Duration == 0 {
 			spec.Stickiness.Duration = 86400

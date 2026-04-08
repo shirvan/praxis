@@ -1,12 +1,16 @@
 {
-  "name": "acme",
+  "name": "e2e",
   "environment": "prod",
   "instanceType": "t3.medium",
   "imageId": "ssm:///praxis/moto/base-ami",
-  "domainName": "app.acme-saas.com",
+  "domainName": "app.e2e-test.com",
   "dbInstanceClass": "db.r6g.large",
   "dbEngineVersion": "15.3",
   "dbFamily": "postgres15",
-  "storageBuckets": ["assets", "uploads", "backups"],
+  "enableLogging": true,
+  "enableMonitoring": true,
+  "enableAurora": true,
+  "enableGoldenAmi": true,
+  "storageBuckets": ["assets", "uploads", "backups", "exports"],
   "availabilityZones": ["us-east-1a", "us-east-1b"]
 }

@@ -50,6 +50,14 @@ type ApplyRequest struct {
 	// update is not possible (e.g., VPC CIDR block change).
 	Replace []string `json:"replace,omitempty"`
 
+	// AllowReplace, when true, automatically replaces resources that fail
+	// with a 409 immutable-field conflict during provisioning. The
+	// orchestrator will delete the existing resource and re-provision it.
+	// WARNING: this destroys and recreates the resource, which may cause
+	// downtime and data loss. Resources with lifecycle.preventDestroy are
+	// still protected.
+	AllowReplace bool `json:"allowReplace,omitempty"`
+
 	// TemplatePath is the original source filename (e.g., "webapp.cue").
 	// When set, it replaces the default "inline://template.cue" in
 	// deployment audit records. Only meaningful for inline templates.
@@ -98,6 +106,13 @@ type PlanRequest struct {
 	// TemplatePath is the original source filename (e.g., "webapp.cue").
 	// When set, it replaces the default "inline://template.cue" in plan output.
 	TemplatePath string `json:"templatePath,omitempty"`
+
+	// DeploymentKey is an optional deployment key used to look up prior
+	// deployment state. When provided, the plan can compare expression-bearing
+	// resources against cloud state by resolving expressions from the previous
+	// deployment's outputs. When omitted, the plan auto-derives the key from
+	// the rendered template (same logic as Apply).
+	DeploymentKey string `json:"deploymentKey,omitempty"`
 }
 
 // PlanResponse contains the machine-readable plan result and the rendered
@@ -120,6 +135,11 @@ type PlanResponse struct {
 	// Each entry is a node with its dependencies. Populated when the
 	// plan pipeline successfully constructs the dependency graph.
 	Graph []GraphNode `json:"graph,omitempty"`
+
+	// Warnings contains non-fatal diagnostic messages from the plan pipeline.
+	// For example, when expression-bearing resources cannot be resolved against
+	// prior deployment state, a warning explains what was tried.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // GraphNode is a lightweight representation of a resource in the dependency
@@ -152,6 +172,11 @@ type DataSourceResult struct {
 type DeleteDeploymentRequest struct {
 	// DeploymentKey identifies which deployment to tear down.
 	DeploymentKey string `json:"deploymentKey"`
+
+	// Force overrides lifecycle.preventDestroy protection on resources.
+	// This is a release valve for stuck deployments where the normal
+	// workflow of disabling preventDestroy via a re-deploy is impractical.
+	Force bool `json:"force,omitempty"`
 }
 
 // DeleteDeploymentResponse confirms that the deletion workflow has been
@@ -395,6 +420,12 @@ type DeployRequest struct {
 
 	// Replace forces a destroy-then-recreate cycle on the named resources.
 	Replace []string `json:"replace,omitempty"`
+
+	// AllowReplace, when true, automatically replaces resources that fail
+	// with a 409 immutable-field conflict during provisioning.
+	// WARNING: this destroys and recreates the resource, which may cause
+	// downtime and data loss.
+	AllowReplace bool `json:"allowReplace,omitempty"`
 }
 
 // DeployResponse is returned after a deploy request is accepted.
@@ -425,6 +456,10 @@ type PlanDeployRequest struct {
 
 	// Targets limits the plan to named resources plus dependencies.
 	Targets []string `json:"targets,omitempty"`
+
+	// DeploymentKey is an optional deployment key for prior state lookup.
+	// See PlanRequest.DeploymentKey for details.
+	DeploymentKey string `json:"deploymentKey,omitempty"`
 }
 
 // PlanDeployResponse contains the plan result and rendered template.
@@ -438,6 +473,9 @@ type PlanDeployResponse struct {
 
 	// DataSources maps data source names to their resolved outputs.
 	DataSources map[string]DataSourceResult `json:"dataSources,omitempty"`
+
+	// Warnings contains non-fatal diagnostic messages from the plan pipeline.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // StateMvRequest is the CLI-facing payload for `praxis state mv`.

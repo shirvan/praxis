@@ -14,9 +14,10 @@ import (
 // Sends a natural language prompt to the Concierge AI assistant.
 func newAskCmd(flags *rootFlags) *cobra.Command {
 	var (
-		session   string
-		account   string
-		workspace string
+		session    string
+		newSession bool
+		account    string
+		workspace  string
 	)
 
 	cmd := &cobra.Command{
@@ -39,13 +40,14 @@ func newAskCmd(flags *rootFlags) *cobra.Command {
 			isJSON := flags.outputFormat() == OutputJSON
 
 			resp, err := runConciergeAsk(context.Background(), conciergeAskOpts{
-				Client:    client,
-				Renderer:  r,
-				Session:   session,
-				Prompt:    prompt,
-				Account:   account,
-				Workspace: workspace,
-				JSON:      isJSON,
+				Client:     client,
+				Renderer:   r,
+				Session:    session,
+				NewSession: newSession,
+				Prompt:     prompt,
+				Account:    account,
+				Workspace:  workspace,
+				JSON:       isJSON,
 			})
 			if err != nil {
 				if isConciergeUnavailable(err) {
@@ -62,7 +64,8 @@ func newAskCmd(flags *rootFlags) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&session, "session", "", "Session ID (env: PRAXIS_SESSION, omit to start new)")
+	cmd.Flags().StringVar(&session, "session", "", "Switch to a specific session ID (env: PRAXIS_SESSION)")
+	cmd.Flags().BoolVar(&newSession, "new-session", false, "Start a new session (ignores saved session)")
 	cmd.Flags().StringVar(&account, "account", "", "AWS account name")
 	cmd.Flags().StringVarP(&workspace, "workspace", "w", "", "Workspace name")
 	return cmd

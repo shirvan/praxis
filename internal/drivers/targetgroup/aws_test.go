@@ -3,8 +3,9 @@ package targetgroup
 import (
 	"errors"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
@@ -131,12 +132,14 @@ func TestHealthCheckWithDefaults(t *testing.T) {
 	assert.Equal(t, int32(2), hc.UnhealthyThreshold)
 	assert.Equal(t, int32(30), hc.Interval)
 	assert.Equal(t, int32(5), hc.Timeout)
+	assert.Equal(t, "200", hc.Matcher)
 }
 
 func TestHealthCheckWithDefaults_TCPNoPath(t *testing.T) {
 	hc := healthCheckWithDefaults(HealthCheck{Protocol: "TCP"})
 	assert.Equal(t, "TCP", hc.Protocol)
 	assert.Equal(t, "", hc.Path, "TCP health checks should not have a path")
+	assert.Equal(t, "", hc.Matcher, "TCP health checks should not have a matcher")
 }
 
 func TestHealthCheckWithDefaults_PreservesExisting(t *testing.T) {
@@ -156,6 +159,7 @@ func TestHealthCheckWithDefaults_PreservesExisting(t *testing.T) {
 	assert.Equal(t, int32(5), hc.UnhealthyThreshold)
 	assert.Equal(t, int32(10), hc.Interval)
 	assert.Equal(t, int32(8), hc.Timeout)
+	assert.Equal(t, "200", hc.Matcher, "HTTPS health check should get default matcher")
 }
 
 func TestFilterPraxisTags(t *testing.T) {
@@ -173,4 +177,25 @@ func TestFilterPraxisTags_Nil(t *testing.T) {
 	filtered := drivers.FilterPraxisTags(nil)
 	assert.NotNil(t, filtered)
 	assert.Empty(t, filtered)
+}
+
+func TestIsNLBProtocol(t *testing.T) {
+	assert.True(t, isNLBProtocol("TCP"))
+	assert.True(t, isNLBProtocol("UDP"))
+	assert.True(t, isNLBProtocol("TLS"))
+	assert.True(t, isNLBProtocol("TCP_UDP"))
+	assert.True(t, isNLBProtocol("tcp"))
+	assert.False(t, isNLBProtocol("HTTP"))
+	assert.False(t, isNLBProtocol("HTTPS"))
+	assert.False(t, isNLBProtocol(""))
+}
+
+func TestDefaultStickinessType(t *testing.T) {
+	assert.Equal(t, "source_ip", defaultStickinessType("TCP"))
+	assert.Equal(t, "source_ip", defaultStickinessType("UDP"))
+	assert.Equal(t, "source_ip", defaultStickinessType("TLS"))
+	assert.Equal(t, "source_ip", defaultStickinessType("TCP_UDP"))
+	assert.Equal(t, "lb_cookie", defaultStickinessType("HTTP"))
+	assert.Equal(t, "lb_cookie", defaultStickinessType("HTTPS"))
+	assert.Equal(t, "lb_cookie", defaultStickinessType(""))
 }

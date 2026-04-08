@@ -12,11 +12,18 @@ package awserr
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/aws/smithy-go"
 )
+
+// ErrNotFound is a sentinel error that driver Describe helpers return when an
+// AWS API call succeeds but the result set is empty (resource deleted externally
+// or never existed). Wrapping this sentinel lets IsNotFound recognise the
+// condition without relying on string matching.
+var ErrNotFound = errors.New("not found")
 
 // ErrorCode extracts the AWS error code from any error in the chain.
 // Returns empty string if the error is not an AWS API error.
@@ -63,6 +70,18 @@ func HasCode(err error, codes ...string) bool {
 		return false
 	}
 	return slices.Contains(codes, code)
+}
+
+// NotFound wraps ErrNotFound with a descriptive message. Use this instead of
+// bare errors.New("...not found") in driver Describe helpers so that
+// IsNotFoundErr can recognise the error.
+func NotFound(msg string) error {
+	return fmt.Errorf("%s: %w", msg, ErrNotFound)
+}
+
+// IsNotFoundErr returns true if any error in the chain wraps ErrNotFound.
+func IsNotFoundErr(err error) bool {
+	return errors.Is(err, ErrNotFound)
 }
 
 // HasCodePrefix returns true if the error's AWS code starts with any of the prefixes.

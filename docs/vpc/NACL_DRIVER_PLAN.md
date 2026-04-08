@@ -406,6 +406,24 @@ For each direction (ingress and egress):
 4. **Removed**: rules in observed but not desired → `DeleteEntry`.
 5. **Changed**: rules in both but with different parameters → `ReplaceEntry`.
 
+### Protocol Normalization
+
+Before comparing rules for drift, protocol values are normalized to IANA
+protocol numbers using `normalizeProtocolForDrift()`. This is necessary because
+user specs typically use protocol names (e.g. `"tcp"`) while AWS returns IANA
+numbers (e.g. `"6"`):
+
+| Name | IANA Number |
+|------|-------------|
+| `tcp` | `6` |
+| `udp` | `17` |
+| `icmp` | `1` |
+| `icmpv6` | `58` |
+| `all` / `""` | `-1` |
+
+This prevents false drift detection when the protocol value is semantically
+identical but uses a different representation.
+
 ### Implicit Deny-All Rule (32767)
 
 The implicit deny-all rule (ruleNumber 32767, protocol -1, deny 0.0.0.0/0) is

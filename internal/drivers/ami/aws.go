@@ -3,10 +3,11 @@ package ami
 import (
 	"context"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -158,7 +159,7 @@ func (r *realAMIAPI) describeSingleImage(ctx context.Context, input *ec2sdk.Desc
 		return ObservedState{}, err
 	}
 	if len(out.Images) == 0 {
-		return ObservedState{}, fmt.Errorf("AMI not found")
+		return ObservedState{}, awserr.NotFound("AMI not found")
 	}
 	if len(out.Images) > 1 {
 		var ids []string
@@ -411,7 +412,7 @@ func extractTags(tags []ec2types.Tag) map[string]string {
 
 // IsNotFound returns true if the error indicates the AMI does not exist or is unavailable.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidAMIID.NotFound", "InvalidAMIID.Unavailable")
+	return awserr.HasCode(err, "InvalidAMIID.NotFound", "InvalidAMIID.Unavailable") || awserr.IsNotFoundErr(err)
 }
 
 // IsInvalidParam returns true for parameter validation errors (terminal, non-retryable).

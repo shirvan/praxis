@@ -336,15 +336,19 @@ func (d *ECRRepositoryDriver) GetInputs(ctx restate.ObjectSharedContext) (ECRRep
 
 func (d *ECRRepositoryDriver) describeExisting(ctx restate.ObjectContext, api RepositoryAPI, name string) (ObservedState, bool, error) {
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeRepository(rc, name)
+		obs, runErr := api.DescribeRepository(rc, name)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, nil
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			return ObservedState{}, false, nil
-		}
 		return ObservedState{}, false, err
 	}
-	return observed, true, nil
+	return observed, observed.RepositoryArn != "", nil
 }
 
 func (d *ECRRepositoryDriver) applyMutableUpdates(ctx restate.ObjectContext, api RepositoryAPI, spec ECRRepositorySpec, observed ObservedState) error {

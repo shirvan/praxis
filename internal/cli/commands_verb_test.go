@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shirvan/praxis/internal/core/orchestrator"
@@ -445,8 +446,9 @@ func TestGetConfigCmd_VerbFirst_Success(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetConciergeCmd_Success(t *testing.T) {
+	t.Setenv("PRAXIS_SESSION", "test-session")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/ConciergeSession/default/GetStatus", r.URL.Path)
+		assert.Equal(t, "/ConciergeSession/test-session/GetStatus", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(conciergeSessionStatus{
 			Provider:  "openai",
@@ -745,10 +747,21 @@ func TestDeleteConciergeCmd_Success(t *testing.T) {
 func TestDeleteCmd_ShortYesFlag(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(types.DeleteDeploymentResponse{
-			DeploymentKey: "my-app",
-			Status:        types.DeploymentDeleting,
-		})
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/GetDetail"):
+			_ = json.NewEncoder(w).Encode(&types.DeploymentDetail{
+				Key:    "my-app",
+				Status: types.DeploymentComplete,
+				Resources: []types.DeploymentResource{
+					{Name: "bucket", Kind: "S3Bucket", Key: "my-bucket", Status: types.DeploymentResourceReady},
+				},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(types.DeleteDeploymentResponse{
+				DeploymentKey: "my-app",
+				Status:        types.DeploymentDeleting,
+			})
+		}
 	}))
 	defer srv.Close()
 

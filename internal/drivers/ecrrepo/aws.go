@@ -10,9 +10,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ecrsdk "github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -84,7 +85,7 @@ func (r *realRepositoryAPI) DescribeRepository(ctx context.Context, name string)
 		return ObservedState{}, err
 	}
 	if len(out.Repositories) == 0 {
-		return ObservedState{}, fmt.Errorf("repository %s not found", name)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("repository %s not found", name))
 	}
 	repo := out.Repositories[0]
 	observed := observedFromRepository(repo)

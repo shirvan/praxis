@@ -416,6 +416,14 @@ Layer versions are immutable, so drift detection is limited to:
 - **Compatible runtimes / architectures / description / license**: Immutable per
   version. Cannot drift.
 
+### Slice Comparison: Compatible Runtimes & Architectures
+
+When comparing `compatibleRuntimes` and `compatibleArchitectures` in
+`ComputeFieldDiffs`, slices are compared in a **sorted, order-insensitive**
+manner using `sortedSlicesEqual()`. This avoids false diffs when AWS returns
+the same elements in a different order (e.g. `[arm64 x86_64]` vs
+`[x86_64 arm64]`).
+
 ### HasDrift
 
 ```go

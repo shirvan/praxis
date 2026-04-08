@@ -461,7 +461,7 @@ sequenceDiagram
     WF->>WF: Finalize as Deleted
 ```
 
-**Plan (dry-run):** Same as Apply through template evaluation, then diffs each resource spec against current state. No workflow submitted.
+**Plan (dry-run):** Same as Apply through template evaluation, then diffs each resource spec against current state. No workflow submitted. For resources with `${resources.X.outputs.Y}` expressions, the plan walks resources in topological order, collecting live outputs from each driver's virtual-object state via `GetOutputs`, and hydrates downstream expression specs before diffing. This gives accurate create/update/noop diffs for all resources — including expression-bearing ones — without requiring a prior deployment record. On first deploy (no driver state yet), expression-bearing resources are shown as `create`. Expression keys are resolved for display (e.g., `${resources.vpc.outputs.vpcId}~web-sg` → `vpc-0abc123~web-sg`).
 
 ---
 

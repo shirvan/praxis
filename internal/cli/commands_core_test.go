@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -141,10 +142,22 @@ func TestGetCmd_Resource(t *testing.T) {
 func TestDeleteCmd_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(types.DeleteDeploymentResponse{
-			DeploymentKey: "my-app",
-			Status:        types.DeploymentDeleting,
-		})
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/GetDetail"):
+			_ = json.NewEncoder(w).Encode(&types.DeploymentDetail{
+				Key:    "my-app",
+				Status: types.DeploymentComplete,
+				Resources: []types.DeploymentResource{
+					{Name: "bucket", Kind: "S3Bucket", Key: "my-bucket", Status: types.DeploymentResourceReady},
+					{Name: "policy", Kind: "S3BucketPolicy", Key: "my-bucket-policy", Status: types.DeploymentResourceReady, DependsOn: []string{"bucket"}},
+				},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(types.DeleteDeploymentResponse{
+				DeploymentKey: "my-app",
+				Status:        types.DeploymentDeleting,
+			})
+		}
 	}))
 	defer srv.Close()
 
@@ -207,21 +220,18 @@ func TestListCmd_Deployments(t *testing.T) {
 
 func TestListCmd_CloudResourceKind(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/DeploymentIndex/global/List":
+		if r.URL.Path == "/ResourceIndex/global/Query" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]types.DeploymentSummary{
-				{Key: "app-1", Status: types.DeploymentComplete, Resources: 2, Workspace: "dev"},
-			})
-		case "/DeploymentStateObj/app-1/GetDetail":
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(types.DeploymentDetail{
-				Key:    "app-1",
-				Status: types.DeploymentComplete,
-				Resources: []types.DeploymentResource{
-					{Name: "my-bucket", Kind: "S3Bucket", Key: "my-bucket", Status: types.DeploymentResourceReady},
-					{Name: "web-sg", Kind: "SecurityGroup", Key: "vpc-123~web-sg", Status: types.DeploymentResourceReady},
-				},
+			type resourceIndexEntry struct {
+				Kind          string `json:"kind"`
+				Key           string `json:"key"`
+				DeploymentKey string `json:"deploymentKey"`
+				ResourceName  string `json:"resourceName"`
+				Workspace     string `json:"workspace,omitempty"`
+				Status        string `json:"status"`
+			}
+			_ = json.NewEncoder(w).Encode([]resourceIndexEntry{
+				{Kind: "S3Bucket", Key: "my-bucket", DeploymentKey: "app-1", ResourceName: "my-bucket", Workspace: "dev", Status: "Ready"},
 			})
 		}
 	}))

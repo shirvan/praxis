@@ -458,7 +458,13 @@ func (d *IAMGroupDriver) correctDrift(ctx restate.ObjectContext, api IAMGroupAPI
 	managedToAdd, managedToRemove := diffStringSets(desired.ManagedPolicyArns, observed.ManagedPolicyArns)
 	for _, policyArn := range managedToAdd {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-			return restate.Void{}, api.AttachManagedPolicy(rc, groupName, policyArn)
+			if runErr := api.AttachManagedPolicy(rc, groupName, policyArn); runErr != nil {
+				if IsNotFound(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 404)
+				}
+				return restate.Void{}, runErr
+			}
+			return restate.Void{}, nil
 		})
 		if err != nil {
 			return fmt.Errorf("attach managed policy %s: %w", policyArn, err)

@@ -9,6 +9,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	restate "github.com/restatedev/sdk-go"
@@ -306,9 +307,14 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 
 				exec.markProvisioning(name)
 				inFlight[name] = invocation
+
+				dispatchStatus := types.DeploymentResourceProvisioning
+				if rs := state.Resources[name]; rs != nil && rs.PriorReady {
+					dispatchStatus = types.DeploymentResourceUpdating
+				}
 				if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
 					Name:   name,
-					Status: types.DeploymentResourceProvisioning,
+					Status: dispatchStatus,
 				}); err != nil {
 					return DeploymentResult{}, err
 				}
@@ -335,23 +341,18 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			continue
 		}
 
-		// --- Step 4d: Await the first in-flight completion ---
-		// Restate's WaitFirst suspends the workflow until any one of the
-		// driver futures completes (success or failure). This is the
-		// mechanism that enables parallel resource provisioning while
-		// still processing completions one at a time for deterministic
-		// journal replay.
-		future, err := restate.WaitFirst(ctx, provisionFutures(inFlight)...)
-		if err != nil {
-			return DeploymentResult{}, err
-		}
-
-		// Match the completed future back to the resource name so we know
-		// which resource just finished.
-		resourceName, invocation, ok := matchProvisionFuture(inFlight, future)
-		if !ok {
-			return DeploymentResult{}, fmt.Errorf("completed future did not match any tracked resource")
-		}
+		// --- Step 4d: Await the next in-flight completion ---
+		// Process completions in deterministic sorted-name order so that
+		// Restate journal replay always sees the same sequence of calls.
+		// Resources still execute in parallel; only the *processing* of
+		// their completions is serialised in a stable order.
+		//
+		// Using WaitFirst with map-derived futures is non-deterministic
+		// because Go map iteration order varies across runs. During
+		// replay, the SDK may resolve a different future first, causing
+		// a journal mismatch (code 570). Sorted-order await eliminates
+		// this class of non-determinism entirely.
+		resourceName, invocation := nextInFlightCompletion(inFlight)
 		delete(inFlight, resourceName)
 
 		// Retrieve the resource outputs from the completed driver call.
@@ -361,8 +362,110 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		outputs, err := invocation.Outputs()
 		if err != nil {
 			resource := exec.plan[resourceName]
-			if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, err.Error()); err != nil {
-				return DeploymentResult{}, err
+
+			// Auto-replace: if the driver returned a 409 immutable-field
+			// conflict and the plan has AllowReplace enabled, delete the
+			// resource and re-provision it instead of failing outright.
+			if plan.AllowReplace && restate.ErrorCode(err) == 409 {
+				// Respect lifecycle.preventDestroy even in auto-replace.
+				if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("resource %s requires replacement (immutable field conflict) but has lifecycle.preventDestroy enabled: %s", resourceName, err.Error())); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+
+				// Emit a warning event so operators can see auto-replace activity.
+				autoReplaceEvent, eventErr := NewResourceAutoReplaceStartedEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, resourceName, resource.Kind, err.Error())
+				if eventErr != nil {
+					return DeploymentResult{}, eventErr
+				}
+				if err := EmitDeploymentCloudEvent(ctx, autoReplaceEvent); err != nil {
+					return DeploymentResult{}, err
+				}
+				ctx.Log().Warn("auto-replacing resource due to immutable field conflict",
+					"resource", resourceName, "kind", resource.Kind, "error", err.Error())
+
+				// Look up the adapter again for the delete+re-provision sequence.
+				adapter, adapterErr := w.providers.Get(resource.Kind)
+				if adapterErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace failed: %v", adapterErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+
+				// Delete the existing resource (same timeout as force-replace).
+				delInvocation, delErr := adapter.Delete(ctx, resource.Key)
+				if delErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace delete dispatch failed: %v", delErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+				delTimeout := restate.After(ctx, forceReplaceDeleteTimeout)
+				delFirst, delWaitErr := restate.WaitFirst(ctx, delInvocation.Future(), delTimeout)
+				if delWaitErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace delete wait error: %v", delWaitErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+				if delFirst == delTimeout {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace delete timed out after %s", forceReplaceDeleteTimeout)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+				if doneErr := delInvocation.Done(); doneErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace delete failed: %v", doneErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+
+				// Re-decode the spec and re-dispatch provision.
+				hydratedSpec, hydrErr := HydrateExprs(resource.Spec, resource.Expressions, exec.outputs)
+				if hydrErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace re-hydrate failed: %v", hydrErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+				decodedSpec, decErr := adapter.DecodeSpec(hydratedSpec)
+				if decErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace decode spec failed: %v", decErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+
+				reProvInvocation, provErr := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)
+				if provErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
+						fmt.Sprintf("auto-replace re-provision dispatch failed: %v", provErr)); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+
+				// Put the re-provisioned resource back in flight.
+				exec.resetToPending(resourceName)
+				exec.markProvisioning(resourceName)
+				inFlight[resourceName] = reProvInvocation
+				continue
+			}
+
+			if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, err.Error()); recErr != nil {
+				return DeploymentResult{}, recErr
 			}
 			continue
 		}
@@ -536,23 +639,18 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 	return nil
 }
 
-// provisionFutures extracts the Restate futures from all in-flight invocations
-// so they can be passed to restate.WaitFirst for parallel await.
-func provisionFutures(inFlight map[string]provider.ProvisionInvocation) []restate.Future {
-	futures := make([]restate.Future, 0, len(inFlight))
-	for _, invocation := range inFlight {
-		futures = append(futures, invocation.Future())
+// nextInFlightCompletion picks the alphabetically-first in-flight resource and
+// returns its name and invocation. The caller then blocks on invocation.Outputs()
+// which suspends the Restate workflow until that specific driver call completes.
+//
+// This is intentionally deterministic: sorting by name gives Restate a stable
+// journal sequence regardless of Go map iteration order or the real-time
+// completion order of parallel driver calls.
+func nextInFlightCompletion(inFlight map[string]provider.ProvisionInvocation) (string, provider.ProvisionInvocation) {
+	names := make([]string, 0, len(inFlight))
+	for name := range inFlight {
+		names = append(names, name)
 	}
-	return futures
-}
-
-// matchProvisionFuture identifies which resource's driver call completed by
-// comparing the resolved future against all tracked invocations' futures.
-func matchProvisionFuture(inFlight map[string]provider.ProvisionInvocation, future restate.Future) (string, provider.ProvisionInvocation, bool) {
-	for name, invocation := range inFlight {
-		if invocation.Future() == future {
-			return name, invocation, true
-		}
-	}
-	return "", nil, false
+	sort.Strings(names)
+	return names[0], inFlight[names[0]]
 }

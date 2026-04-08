@@ -64,7 +64,7 @@ func (s *PraxisCommandService) Apply(ctx restate.Context, req ApplyRequest) (App
 	// Step 4: Submit the deployment — init state, update global index,
 	// emit audit events, and send the workflow. After this returns, the
 	// deployment is durable and will proceed even if this handler crashes.
-	key, status, err := s.submitDeployment(ctx, deploymentKey, account, req.Workspace, mergedVars, compiled, req.Replace)
+	key, status, err := s.submitDeployment(ctx, deploymentKey, account, req.Workspace, mergedVars, compiled, req.Replace, req.AllowReplace)
 	if err != nil {
 		return ApplyResponse{}, err
 	}

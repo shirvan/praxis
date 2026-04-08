@@ -390,10 +390,32 @@ stateDiagram-v2
 
 Templates can declare protective **lifecycle rules** on individual resources:
 
-- **`preventDestroy: true`** — blocks deletion of the resource. `praxis delete` fails with a terminal error until the rule is removed from the template and re-applied.
+- **`preventDestroy: true`** — blocks deletion of the resource. `praxis delete` fails with a terminal error until the rule is removed from the template and re-applied. As an escape hatch, `praxis delete --force` overrides this protection — an audit event (`dev.praxis.policy.force_delete_override`) is emitted for each overridden resource.
 - **`ignoreChanges: ["field.path", ...]`** — skips drift correction for the listed spec fields. Drift in those fields is detected but not corrected, allowing external systems to co-manage them.
 
 Lifecycle rules are visible in deployment details and plan output. See [Templates — Lifecycle Rules](TEMPLATES.md#lifecycle-rules) for syntax.
+
+### Immutable Field Changes
+
+Some cloud resource fields cannot be modified after creation (e.g., VPC CIDR block, target group protocol). When `praxis plan` detects such changes, it flags them as "(immutable, requires replacement)" and suggests either:
+
+- **`--replace <resource>`** — explicitly target specific resources for destroy-then-recreate.
+- **`--allow-replace`** — automatically replace any resource that fails with a 409 immutable-field conflict during provisioning. Resources with `lifecycle.preventDestroy` are still protected.
+
+### Resource Statuses
+
+During orchestration, each resource transitions through these statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `Pending` | Queued, waiting for dependencies |
+| `Provisioning` | Driver has been dispatched for initial creation |
+| `Updating` | Driver has been dispatched for an update (resource existed in prior generation) |
+| `Ready` | Completed successfully |
+| `Error` | Driver returned an error |
+| `Skipped` | Bypassed due to dependency failure or cancellation |
+| `Deleting` | Delete operation in progress |
+| `Deleted` | Successfully removed |
 
 ## Reconciliation
 

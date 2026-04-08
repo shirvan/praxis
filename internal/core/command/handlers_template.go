@@ -32,7 +32,8 @@ import (
 // The registry object stores the CUE source, extracts the variable schema,
 // and maintains an index entry for listing.
 func (s *PraxisCommandService) RegisterTemplate(ctx restate.Context, req types.RegisterTemplateRequest) (types.RegisterTemplateResponse, error) {
-	if strings.TrimSpace(req.Name) == "" {
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
 		return types.RegisterTemplateResponse{}, restate.TerminalError(fmt.Errorf("template name is required"), 400)
 	}
 	if strings.TrimSpace(req.Source) == "" {
@@ -63,7 +64,8 @@ func (s *PraxisCommandService) ListTemplates(ctx restate.Context, _ restate.Void
 // DeleteTemplate removes a template from the registry. The registry object
 // handles both removing its own state and updating the global index.
 func (s *PraxisCommandService) DeleteTemplate(ctx restate.Context, req types.DeleteTemplateRequest) error {
-	if strings.TrimSpace(req.Name) == "" {
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
 		return restate.TerminalError(fmt.Errorf("template name is required"), 400)
 	}
 	_, err := restate.WithRequestType[types.DeleteTemplateRequest, restate.Void](

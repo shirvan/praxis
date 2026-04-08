@@ -275,6 +275,7 @@ func (s *PraxisCommandService) submitDeployment(
 	variables map[string]any,
 	compiled *compiledTemplate,
 	forceReplace []string,
+	allowReplace bool,
 ) (string, types.DeploymentStatus, error) {
 	// Guard: prevent submitting a new deployment while a delete is in progress.
 	// The user must wait for deletion to complete first.
@@ -322,6 +323,7 @@ func (s *PraxisCommandService) submitDeployment(
 		CreatedAt:    createdAt,
 		TemplatePath: compiled.TemplatePath,
 		ForceReplace: forceReplace,
+		AllowReplace: allowReplace,
 	}
 
 	// Initialize the durable DeploymentStateObj. This is the central

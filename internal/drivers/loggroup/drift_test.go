@@ -24,3 +24,11 @@ func TestComputeFieldDiffs_ImmutableClass(t *testing.T) {
 	assert.Len(t, diffs, 1)
 	assert.Equal(t, "spec.logGroupClass (immutable, requires replacement)", diffs[0].Path)
 }
+
+func TestComputeFieldDiffs_ImmutableClassWhenObservedEmpty(t *testing.T) {
+	diffs := ComputeFieldDiffs(LogGroupSpec{LogGroupClass: "STANDARD"}, ObservedState{LogGroupClass: ""})
+	assert.Len(t, diffs, 1)
+	assert.Equal(t, "spec.logGroupClass (immutable, requires replacement)", diffs[0].Path)
+	assert.Equal(t, "", diffs[0].OldValue)
+	assert.Equal(t, "STANDARD", diffs[0].NewValue)
+}

@@ -132,6 +132,12 @@ type DeploymentPlan struct {
 	// ForceReplace lists template-local resource names that should be deleted
 	// and re-provisioned regardless of plan diff results.
 	ForceReplace []string `json:"forceReplace,omitempty"`
+
+	// AllowReplace, when true, instructs the workflow to automatically
+	// replace any resource whose driver returns a 409 immutable-field
+	// conflict. The resource is deleted and then re-provisioned.
+	// Resources with lifecycle.preventDestroy are still protected.
+	AllowReplace bool `json:"allowReplace,omitempty"`
 }
 
 // PlanResource is one resource entry inside a deployment plan.
@@ -190,13 +196,14 @@ type DeploymentState struct {
 // ResourceState is the deployment-scoped view of one resource during
 // orchestration.
 type ResourceState struct {
-	Name      string                         `json:"name"`
-	Kind      string                         `json:"kind"`
-	Key       string                         `json:"key"`
-	DependsOn []string                       `json:"dependsOn,omitempty"`
-	Status    types.DeploymentResourceStatus `json:"status"`
-	Error     string                         `json:"error,omitempty"`
-	Lifecycle *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
+	Name       string                         `json:"name"`
+	Kind       string                         `json:"kind"`
+	Key        string                         `json:"key"`
+	DependsOn  []string                       `json:"dependsOn,omitempty"`
+	Status     types.DeploymentResourceStatus `json:"status"`
+	Error      string                         `json:"error,omitempty"`
+	Lifecycle  *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
+	PriorReady bool                           `json:"priorReady,omitempty"`
 }
 
 // DeploymentResult is the final workflow output returned from both apply and
@@ -248,6 +255,9 @@ type MoveResourceRequest struct {
 // DeleteRequest is the input payload accepted by DeploymentDeleteWorkflow.Run.
 type DeleteRequest struct {
 	DeploymentKey string `json:"deploymentKey"`
+
+	// Force overrides lifecycle.preventDestroy protection on resources.
+	Force bool `json:"force,omitempty"`
 }
 
 // RollbackResource identifies a single resource that was successfully provisioned

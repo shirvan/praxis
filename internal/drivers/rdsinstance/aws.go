@@ -3,10 +3,11 @@ package rdsinstance
 import (
 	"context"
 	"errors"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
@@ -141,7 +142,7 @@ func (r *realRDSInstanceAPI) DescribeDBInstance(ctx context.Context, dbIdentifie
 		return ObservedState{}, err
 	}
 	if len(out.DBInstances) == 0 {
-		return ObservedState{}, errors.New("db instance not found")
+		return ObservedState{}, awserr.NotFound("db instance not found")
 	}
 	instance := out.DBInstances[0]
 	observed := ObservedState{
@@ -348,7 +349,7 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 
 // IsNotFound returns true if the AWS error indicates the instance does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "DBInstanceNotFound")
+	return awserr.HasCode(err, "DBInstanceNotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsAlreadyExists returns true if a CreateDBInstance call failed because

@@ -259,6 +259,7 @@ func toolApplyTemplate(ctx restate.Context, argsJSON string, session SessionStat
 		Workspace     string         `json:"workspace"`
 		Targets       []string       `json:"targets"`
 		Replace       []string       `json:"replace"`
+		AllowReplace  bool           `json:"allowReplace"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -283,6 +284,7 @@ func toolApplyTemplate(ctx restate.Context, argsJSON string, session SessionStat
 		Workspace:     workspace,
 		Targets:       args.Targets,
 		Replace:       args.Replace,
+		AllowReplace:  args.AllowReplace,
 	})
 	if err != nil {
 		return fmt.Sprintf("Apply failed: %s", err.Error()), nil

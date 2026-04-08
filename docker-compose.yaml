@@ -32,6 +32,7 @@ services:
       - "4566:4566"
     environment:
       - MOTO_PORT=4566
+      - MOTO_IAM_LOAD_MANAGED_POLICIES=true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/moto-api/')"]
       interval: 5s
@@ -47,37 +48,16 @@ services:
     depends_on:
       moto:
         condition: service_healthy
+    volumes:
+      - "./moto-init/setup.sh:/setup.sh:ro"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        set -eu
         export AWS_ENDPOINT_URL=http://moto:4566
         export AWS_DEFAULT_REGION=us-east-1
         export AWS_ACCESS_KEY_ID=test
         export AWS_SECRET_ACCESS_KEY=test
-
-        echo "=== Praxis Moto init ==="
-
-        aws ssm put-parameter \
-          --name "/praxis/dev/db-password" \
-          --value "test-password-dev" \
-          --type "SecureString" \
-          --overwrite
-
-        aws ssm put-parameter \
-          --name "/praxis/prod/db-password" \
-          --value "test-password-prod" \
-          --type "SecureString" \
-          --overwrite
-
-        echo "=== Praxis Moto init complete ==="
-
-        aws ec2 describe-vpcs \
-          --filters Name=isDefault,Values=true \
-          --query 'Vpcs[0].VpcId' --output text \
-          || aws ec2 create-default-vpc
-
-        echo "=== Praxis Moto VPC ready ==="
+        /bin/bash /setup.sh
     restart: "no"
 
   restate:

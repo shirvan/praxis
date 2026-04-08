@@ -88,7 +88,7 @@ func (r *realIGWAPI) DescribeInternetGateway(ctx context.Context, internetGatewa
 		return ObservedState{}, err
 	}
 	if len(out.InternetGateways) == 0 {
-		return ObservedState{}, fmt.Errorf("internet gateway %s not found", internetGatewayID)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("internet gateway %s not found", internetGatewayID))
 	}
 
 	gw := out.InternetGateways[0]
@@ -242,7 +242,7 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 
 // IsNotFound returns true when the IGW does not exist in AWS.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidInternetGatewayID.NotFound")
+	return awserr.HasCode(err, "InvalidInternetGatewayID.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsDependencyViolation returns true when the IGW cannot be deleted

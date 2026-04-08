@@ -515,7 +515,7 @@ resources: {
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `preventDestroy` | `bool` | `false` | If `true`, the orchestrator refuses to delete this resource. Also blocks `--replace`. |
+| `preventDestroy` | `bool` | `false` | If `true`, the orchestrator refuses to delete this resource. Also blocks `--replace` and `--allow-replace`. Use `praxis delete --force` to override. |
 | `ignoreChanges` | `[...string]` | `[]` | Dot-separated spec field paths to ignore during plan diff and reconciliation. |
 
 Lifecycle rules are validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state. The orchestrator and plan diff engine enforce them.
@@ -710,6 +710,7 @@ Output expressions are resolved at dispatch time as resource outputs become avai
 
 - **Template time:** The DAG parser extracts `${resources.<name>.outputs.<field>}` patterns from JSON specs and records them as dependency edges. The expressions remain as literal strings in the spec.
 - **Dispatch time:** When a dependency completes and its outputs are available, `HydrateExprs` resolves each expression by walking the dot path through the output map and writes the **typed** result back into the JSON document — strings stay strings, integers stay integers, booleans stay booleans.
+- **Plan time:** For accurate diffs, the plan pipeline resolves expressions using outputs stored from the previous deployment. This allows `praxis plan` to call the adapter's `Plan()` method with a fully hydrated spec, producing real create/update/noop diffs instead of showing all expression-bearing resources as `create`. On first deploy (no prior state), expression-bearing resources are shown as `create`.
 
 This split exists because resource outputs only exist after provisioning. Variable values are known at evaluation time and are resolved by CUE interpolation (`\(variables.name)`).
 

@@ -87,7 +87,7 @@ func (r *realLayerAPI) GetLatestLayerVersion(ctx context.Context, layerName stri
 		return ObservedState{}, err
 	}
 	if len(versions) == 0 {
-		return ObservedState{}, fmt.Errorf("layer %s not found", layerName)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("layer %s not found", layerName))
 	}
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, err
@@ -382,7 +382,7 @@ func validateCode(code CodeSpec) error {
 
 // IsNotFound returns true if the layer or version does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "ResourceNotFoundException")
+	return awserr.HasCode(err, "ResourceNotFoundException") || awserr.IsNotFoundErr(err)
 }
 
 // IsInvalidParameter returns true if a parameter value is invalid.

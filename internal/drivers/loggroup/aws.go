@@ -8,10 +8,12 @@ package loggroup
 
 import (
 	"context"
-	"github.com/shirvan/praxis/internal/drivers"
+	"fmt"
 	"maps"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	cloudwatchlogs "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
@@ -100,6 +102,14 @@ func (r *realLogGroupAPI) DescribeLogGroup(ctx context.Context, logGroupName str
 			if days > 0 {
 				observed.RetentionInDays = aws.Int32(days)
 			}
+		}
+		// AWS DescribeLogGroups does not return tags; fetch them separately.
+		if observed.ARN != "" {
+			tags, tagErr := r.ListTagsForResource(ctx, observed.ARN)
+			if tagErr != nil {
+				return ObservedState{}, false, fmt.Errorf("list tags for %s: %w", observed.ARN, tagErr)
+			}
+			observed.Tags = tags
 		}
 		return observed, true, nil
 	}

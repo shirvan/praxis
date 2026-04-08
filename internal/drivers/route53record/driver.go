@@ -155,9 +155,15 @@ func (d *RecordDriver) Delete(ctx restate.ObjectContext) error {
 	if state.Mode == types.ModeObserved {
 		return restate.TerminalError(fmt.Errorf("cannot delete Route53 record %s %s: resource is in Observed mode; re-import with --mode managed to allow deletion", state.Outputs.FQDN, state.Outputs.Type), 409)
 	}
-	identity, identityErr := parseRecordIdentity(restate.Key(ctx))
-	if identityErr != nil {
-		return restate.TerminalError(identityErr, 400)
+	// Derive identity from stored outputs (which contain resolved values from
+	// provisioning) rather than parsing restate.Key(ctx), because the key may
+	// contain unresolved ${resources.X.outputs.Y} expressions that were never
+	// substituted at key-build time.
+	identity := identityFromOutputs(state.Outputs)
+	if identity.HostedZoneId == "" || identity.Name == "" || identity.Type == "" {
+		// Never successfully provisioned — nothing to delete in AWS.
+		restate.Set(ctx, drivers.StateKey, RecordState{Status: types.StatusDeleted})
+		return nil
 	}
 	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
@@ -226,9 +232,9 @@ func (d *RecordDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResu
 		restate.Set(ctx, drivers.StateKey, state)
 		return types.ReconcileResult{}, nil
 	}
-	identity, err := parseRecordIdentity(restate.Key(ctx))
-	if err != nil {
-		return types.ReconcileResult{}, restate.TerminalError(err, 400)
+	identity := identityFromOutputs(state.Outputs)
+	if identity.HostedZoneId == "" || identity.Name == "" || identity.Type == "" {
+		return types.ReconcileResult{Error: "no outputs stored; cannot reconcile"}, nil
 	}
 	now, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
 		return time.Now().UTC().Format(time.RFC3339), nil
@@ -354,6 +360,10 @@ func (d *RecordDriver) apiForAccount(ctx restate.ObjectContext, account string) 
 
 func identityFromSpec(spec RecordSpec) RecordIdentity {
 	return RecordIdentity{HostedZoneId: spec.HostedZoneId, Name: spec.Name, Type: spec.Type, SetIdentifier: spec.SetIdentifier}
+}
+
+func identityFromOutputs(out RecordOutputs) RecordIdentity {
+	return RecordIdentity{HostedZoneId: out.HostedZoneId, Name: out.FQDN, Type: out.Type, SetIdentifier: out.SetIdentifier}
 }
 
 // parseRecordIdentity splits the Restate object key (hostedZoneId~name~type~setIdentifier)

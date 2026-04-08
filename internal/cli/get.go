@@ -26,6 +26,14 @@ import (
 //	praxis get Deployment/my-webapp -o json
 //	praxis get S3Bucket/my-bucket
 func newGetCmd(flags *rootFlags) *cobra.Command {
+	var (
+		showDeps    bool
+		showInputs  bool
+		showOutputs bool
+		showErrors  bool
+		showAll     bool
+	)
+
 	cmd := &cobra.Command{
 		Use:   "get <Kind>/<Key>",
 		Short: "Show deployment or resource details",
@@ -35,6 +43,12 @@ For deployments, it shows the overall status plus a per-resource breakdown
 with any outputs collected during provisioning:
 
     praxis get Deployment/my-webapp
+
+By default only metadata and the resource table are shown. Use flags to
+include additional sections:
+
+    praxis get Deployment/my-webapp --deps --outputs
+    praxis get Deployment/my-webapp --all
 
 For individual resources, it shows the driver-level status and outputs:
 
@@ -69,13 +83,25 @@ discover available deployment keys.`,
 			case "sink":
 				return getSinkDetail(flags, key)
 			case "Deployment":
-				return getDeployment(ctx, client, key, flags.outputFormat())
+				sections := deploymentSections{
+					Deps:    showDeps || showAll,
+					Inputs:  showInputs || showAll,
+					Outputs: showOutputs || showAll,
+					Errors:  showErrors || showAll,
+				}
+				return getDeployment(ctx, client, key, flags.outputFormat(), sections)
 			default:
 				key = flags.resolveResourceKey(kind, key)
 				return getResource(ctx, client, kind, key, flags.outputFormat())
 			}
 		},
 	}
+
+	cmd.Flags().BoolVar(&showDeps, "deps", false, "Show resource dependency graph")
+	cmd.Flags().BoolVar(&showInputs, "inputs", false, "Show resource input specs")
+	cmd.Flags().BoolVar(&showOutputs, "outputs", false, "Show resource outputs")
+	cmd.Flags().BoolVar(&showErrors, "errors", false, "Show full resource error details")
+	cmd.Flags().BoolVar(&showAll, "all", false, "Show all sections (deps, inputs, outputs, errors)")
 
 	// Add meta-resource subcommands for types that don't use Kind/Key syntax.
 	cmd.AddCommand(
@@ -281,7 +307,7 @@ func getConfigValue(flags *rootFlags, path, workspaceName string) error {
 // getConciergeStatus shows the concierge session status.
 func getConciergeStatus(flags *rootFlags, session string) error {
 	if session == "" {
-		session = "default"
+		session = resolveSessionID()
 	}
 
 	client := flags.newClient()
@@ -346,17 +372,27 @@ func parseKindKey(arg string) (kind, key string, err error) {
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
 		return "", "", fmt.Errorf("invalid argument %q: expected Kind/Key (e.g., Deployment/my-webapp)", arg)
 	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
+	return normalizeKind(strings.TrimSpace(parts[0])), strings.TrimSpace(parts[1]), nil
 }
 
 // --------------------------------------------------------------------------
 // Deployment get
 // --------------------------------------------------------------------------
 
+// deploymentSections controls which optional sections are rendered for
+// `praxis get Deployment/<key>`. By default only the metadata header and
+// resource table are shown.
+type deploymentSections struct {
+	Deps    bool
+	Inputs  bool
+	Outputs bool
+	Errors  bool
+}
+
 // getDeployment retrieves and displays a full deployment detail record.
-// For each resource, it also fetches the desired input spec from the driver
-// to give operators full troubleshooting visibility.
-func getDeployment(ctx context.Context, client *Client, key string, format OutputFormat) error {
+// When Inputs is requested, it also fetches the desired input spec from
+// each driver for troubleshooting visibility.
+func getDeployment(ctx context.Context, client *Client, key string, format OutputFormat, sections deploymentSections) error {
 	renderer := defaultRenderer()
 	detail, err := client.GetDeployment(ctx, key)
 	if err != nil {
@@ -366,13 +402,15 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 		return fmt.Errorf("deployment %q not found", key)
 	}
 
-	// Fetch inputs for each resource from drivers. These are best-effort;
-	// a resource that has never been provisioned may not have inputs yet.
-	resourceInputs := make(map[string]map[string]any, len(detail.Resources))
-	for _, r := range detail.Resources {
-		inputs, inputErr := client.GetResourceInputs(ctx, r.Kind, r.Key)
-		if inputErr == nil && inputs != nil {
-			resourceInputs[r.Name] = inputs
+	// Fetch inputs for each resource from drivers only when needed.
+	var resourceInputs map[string]map[string]any
+	if sections.Inputs || format == OutputJSON {
+		resourceInputs = make(map[string]map[string]any, len(detail.Resources))
+		for _, r := range detail.Resources {
+			inputs, inputErr := client.GetResourceInputs(ctx, r.Kind, r.Key)
+			if inputErr == nil && inputs != nil {
+				resourceInputs[r.Name] = inputs
+			}
 		}
 	}
 
@@ -384,7 +422,7 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 		return printJSON(result)
 	}
 
-	printDeploymentDetail(renderer, detail, resourceInputs)
+	printDeploymentDetail(renderer, detail, sections, resourceInputs)
 	return nil
 }
 

@@ -28,6 +28,7 @@ func newDeleteCmd(flags *rootFlags) *cobra.Command {
 		yes      bool
 		wait     bool
 		rollback bool
+		force    bool
 		timeout  time.Duration
 		session  string
 	)
@@ -66,7 +67,7 @@ Use --yes / -y to skip the confirmation prompt.`,
 
 			switch kind {
 			case "Deployment":
-				return deleteDeployment(flags, renderer, key, yes, wait, rollback, timeout)
+				return deleteDeployment(flags, renderer, key, yes, wait, rollback, force, timeout)
 			case "workspace":
 				return deleteWorkspace(flags, key)
 			case "template":
@@ -85,6 +86,7 @@ Use --yes / -y to skip the confirmation prompt.`,
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for deletion to complete")
 	cmd.Flags().BoolVar(&rollback, "rollback", false, "Delete only resources proven ready by the event store for a failed or cancelled deployment")
+	cmd.Flags().BoolVar(&force, "force", false, "Override lifecycle.preventDestroy protection on resources")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait for completion (0 for no limit)")
 	cmd.Flags().StringVar(&session, "session", "", "Concierge session ID for delete concierge (default: key value)")
 
@@ -92,7 +94,27 @@ Use --yes / -y to skip the confirmation prompt.`,
 }
 
 // deleteDeployment handles the Deployment teardown flow.
-func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wait, rollback bool, timeout time.Duration) error {
+func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wait, rollback, force bool, timeout time.Duration) error {
+	client := flags.newClient()
+	ctx := context.Background()
+
+	// Fetch the current deployment state to show a destroy plan before
+	// prompting for confirmation. This mirrors Terraform's plan-before-destroy
+	// behavior: users see exactly what will be removed before committing.
+	if !rollback {
+		detail, err := client.GetDeployment(ctx, key)
+		if err != nil {
+			return err
+		}
+		if detail == nil {
+			return fmt.Errorf("deployment %q not found", key)
+		}
+		if flags.outputFormat() != OutputJSON {
+			printDestroyPlan(renderer, detail)
+			_, _ = fmt.Fprintln(renderer.out)
+		}
+	}
+
 	if !yes {
 		_, _ = fmt.Fprintf(renderer.out, "%s ", renderer.renderPrompt(fmt.Sprintf("Delete deployment %q and all its resources? [y/N]:", key)))
 		var confirm string
@@ -102,17 +124,14 @@ func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wai
 		}
 	}
 
-	client := flags.newClient()
-	ctx := context.Background()
-
 	var (
 		resp *types.DeleteDeploymentResponse
 		err  error
 	)
 	if rollback {
-		resp, err = client.RollbackDeployment(ctx, key)
+		resp, err = client.RollbackDeployment(ctx, key, force)
 	} else {
-		resp, err = client.DeleteDeployment(ctx, key)
+		resp, err = client.DeleteDeployment(ctx, key, force)
 	}
 	if err != nil {
 		return err
@@ -205,7 +224,7 @@ func deleteSink(flags *rootFlags, name string) error {
 // deleteConciergeSession clears a concierge session.
 func deleteConciergeSession(flags *rootFlags, sessionID string) error {
 	if sessionID == "" {
-		sessionID = "default"
+		sessionID = resolveSessionID()
 	}
 	client := flags.newClient()
 	if err := client.ConciergeReset(context.Background(), sessionID); err != nil {

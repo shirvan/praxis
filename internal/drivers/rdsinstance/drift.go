@@ -1,9 +1,10 @@
 package rdsinstance
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level change between desired and observed.
@@ -44,9 +45,6 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 	if desired.StorageType != observed.StorageType || desired.IOPS != observed.IOPS || desired.StorageThroughput != observed.StorageThroughput {
 		return true
 	}
-	if desired.StorageEncrypted != observed.StorageEncrypted || desired.KMSKeyId != observed.KMSKeyId {
-		return true
-	}
 	if desired.DBSubnetGroupName != observed.DBSubnetGroupName || desired.ParameterGroupName != observed.ParameterGroupName {
 		return true
 	}
@@ -56,7 +54,13 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 	if desired.MultiAZ != observed.MultiAZ || desired.PubliclyAccessible != observed.PubliclyAccessible {
 		return true
 	}
-	if desired.BackupRetentionPeriod != observed.BackupRetentionPeriod || desired.PreferredBackupWindow != observed.PreferredBackupWindow || desired.PreferredMaintenanceWindow != observed.PreferredMaintenanceWindow {
+	if desired.BackupRetentionPeriod != observed.BackupRetentionPeriod {
+		return true
+	}
+	if desired.PreferredBackupWindow != "" && desired.PreferredBackupWindow != observed.PreferredBackupWindow {
+		return true
+	}
+	if desired.PreferredMaintenanceWindow != "" && desired.PreferredMaintenanceWindow != observed.PreferredMaintenanceWindow {
 		return true
 	}
 	if desired.DeletionProtection != observed.DeletionProtection || desired.AutoMinorVersionUpgrade != observed.AutoMinorVersionUpgrade {
@@ -96,7 +100,9 @@ func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldD
 	appendIfDifferent("spec.iops", observed.IOPS, desired.IOPS)
 	appendIfDifferent("spec.storageThroughput", observed.StorageThroughput, desired.StorageThroughput)
 	appendIfDifferent("spec.storageEncrypted (immutable, ignored)", observed.StorageEncrypted, desired.StorageEncrypted)
-	appendIfDifferent("spec.kmsKeyId (immutable, ignored)", observed.KMSKeyId, desired.KMSKeyId)
+	if desired.KMSKeyId != "" {
+		appendIfDifferent("spec.kmsKeyId (immutable, ignored)", observed.KMSKeyId, desired.KMSKeyId)
+	}
 	appendIfDifferent("spec.dbSubnetGroupName", observed.DBSubnetGroupName, desired.DBSubnetGroupName)
 	appendIfDifferent("spec.parameterGroupName", observed.ParameterGroupName, desired.ParameterGroupName)
 	if !stringSliceEqual(desired.VpcSecurityGroupIds, observed.VpcSecurityGroupIds) {
@@ -105,15 +111,23 @@ func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldD
 	appendIfDifferent("spec.multiAZ", observed.MultiAZ, desired.MultiAZ)
 	appendIfDifferent("spec.publiclyAccessible", observed.PubliclyAccessible, desired.PubliclyAccessible)
 	appendIfDifferent("spec.backupRetentionPeriod", observed.BackupRetentionPeriod, desired.BackupRetentionPeriod)
-	appendIfDifferent("spec.preferredBackupWindow", observed.PreferredBackupWindow, desired.PreferredBackupWindow)
-	appendIfDifferent("spec.preferredMaintenanceWindow", observed.PreferredMaintenanceWindow, desired.PreferredMaintenanceWindow)
+	if desired.PreferredBackupWindow != "" {
+		appendIfDifferent("spec.preferredBackupWindow", observed.PreferredBackupWindow, desired.PreferredBackupWindow)
+	}
+	if desired.PreferredMaintenanceWindow != "" {
+		appendIfDifferent("spec.preferredMaintenanceWindow", observed.PreferredMaintenanceWindow, desired.PreferredMaintenanceWindow)
+	}
 	appendIfDifferent("spec.deletionProtection", observed.DeletionProtection, desired.DeletionProtection)
 	appendIfDifferent("spec.autoMinorVersionUpgrade", observed.AutoMinorVersionUpgrade, desired.AutoMinorVersionUpgrade)
 	appendIfDifferent("spec.monitoringInterval", observed.MonitoringInterval, desired.MonitoringInterval)
 	appendIfDifferent("spec.monitoringRoleArn", observed.MonitoringRoleArn, desired.MonitoringRoleArn)
 	appendIfDifferent("spec.performanceInsightsEnabled", observed.PerformanceInsightsEnabled, desired.PerformanceInsightsEnabled)
-	appendIfDifferent("spec.engine (immutable, ignored)", observed.Engine, desired.Engine)
-	appendIfDifferent("spec.masterUsername (immutable, ignored)", observed.MasterUsername, desired.MasterUsername)
+	if desired.Engine != "" {
+		appendIfDifferent("spec.engine (immutable, ignored)", observed.Engine, desired.Engine)
+	}
+	if desired.MasterUsername != "" {
+		appendIfDifferent("spec.masterUsername (immutable, ignored)", observed.MasterUsername, desired.MasterUsername)
+	}
 	appendIfDifferent("spec.dbClusterIdentifier (immutable, ignored)", observed.DBClusterIdentifier, desired.DBClusterIdentifier)
 	for key, value := range drivers.FilterPraxisTags(desired.Tags) {
 		if current, ok := drivers.FilterPraxisTags(observed.Tags)[key]; !ok {

@@ -97,7 +97,8 @@ apply only when the root command forwards to the concierge:
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--session` | | auto-generated | Session ID for conversation continuity |
+| `--session` | | auto-resolved | Switch to a specific session ID (env: PRAXIS_SESSION) |
+| `--new-session` | | `false` | Start a new session (ignores saved session) |
 | `--file` | `-f` | | Attach file, directory, or glob to the prompt |
 | `--account` | | env | Override AWS account |
 | `--workspace` | | | Override workspace |
@@ -127,7 +128,7 @@ Session IDs are resolved in this order:
 2. State file at `~/.praxis/session`
 3. Auto-generated random hex ID
 
-After every `ask` invocation, the active session ID is saved to `~/.praxis/session` so subsequent commands in any shell reuse the same session automatically. To start a fresh session, pass `--session <new-id>` or delete `~/.praxis/session`.
+After every `ask` invocation, the active session ID is saved to `~/.praxis/session` so subsequent commands in any shell reuse the same session automatically. To start a fresh session, pass `--new-session`. The active session ID is printed to stderr at the start of each invocation.
 
 When the concierge container is not running, unrecognised arguments print a
 helpful setup message instead of an error.
@@ -193,6 +194,9 @@ praxis deploy <template-name-or-file.cue> [flags]
 | `--wait`          | false   | Poll until deployment reaches a terminal state     |
 | `--dry-run`       | false   | Preview changes without provisioning (runs PlanDeploy) |
 | `--show-rendered` | false   | Display the fully-evaluated template JSON (with `--dry-run`) |
+| `--target`        | —       | Limit to named resource and its dependencies (repeatable) |
+| `--replace`       | —       | Force delete and re-provision of named resource (repeatable) |
+| `--allow-replace` | false   | Automatically replace resources that fail due to immutable field changes (WARNING: destroys and recreates affected resources) |
 | `--poll-interval` | 2s      | Polling interval when `--wait` is set              |
 | `--timeout`       | 5m      | Maximum wait time (0 for no limit)                 |
 
@@ -223,6 +227,15 @@ praxis deploy stack1 --var name=orders-api --key orders-prod --wait
 # Preview changes without provisioning
 praxis deploy stack1 --var name=orders-api --dry-run
 
+# Deploy only a specific resource (and its dependencies)
+praxis deploy stack1 --var name=orders-api --target web-sg
+
+# Force-replace a resource (destroy + recreate)
+praxis deploy stack1 --var name=orders-api --replace web-sg
+
+# Auto-replace on immutable field conflicts
+praxis deploy stack1 --var name=orders-api --allow-replace
+
 # JSON output for scripting
 praxis deploy stack1 --var name=orders-api -o json
 ```
@@ -234,6 +247,8 @@ When the argument is a CUE file path (`*.cue`), deploy evaluates it as an inline
 Without `--wait`, the command returns immediately with the deployment key and status. With `--wait`, the CLI polls until a terminal state or `--timeout` is reached.
 
 The `--dry-run` flag runs the full evaluation pipeline but does not submit a workflow — it shows a plan diff of what would change, identical to `praxis plan` output.
+
+When the plan detects immutable field changes (e.g., VPC CIDR block), it shows a note with `--replace` and `--allow-replace` hints. `--replace` targets specific resources for destroy-then-recreate; `--allow-replace` does so automatically for any resource that fails with a 409 immutable-field conflict during provisioning. Resources with `lifecycle.preventDestroy` are still protected.
 
 When a template contains data sources, `plan` and `deploy --dry-run` also print a `Data sources:` section showing each resolved lookup and its outputs. In JSON mode, the same information is returned in the `dataSources` field.
 
@@ -254,7 +269,11 @@ praxis plan <template-name-or-file.cue> [flags]
 | Flag              | Default | Description                                     |
 |-------------------|---------|-------------------------------------------------|
 | `--var key=value` | —       | Template variable (repeatable)                  |
+| `-f, --file`      | —       | JSON file containing template variables         |
 | `--account`       | env     | AWS account name                                |
+| `--target`        | —       | Limit to named resource and its dependencies (repeatable) |
+| `--key`           | —       | Deployment key for comparing against prior state |
+| `--graph`         | false   | Display the resource dependency graph           |
 | `--show-rendered` | false   | Display the fully-evaluated template JSON       |
 
 **Examples:**
@@ -265,6 +284,9 @@ praxis plan webapp.cue
 
 # With variables
 praxis plan webapp.cue --var env=staging
+
+# Compare against a specific deployment
+praxis plan webapp.cue --key my-deployment
 
 # Debug template evaluation
 praxis plan webapp.cue --show-rendered
@@ -278,20 +300,45 @@ praxis plan webapp.cue -o json
 The plan displays each resource with a change symbol and field-level diffs:
 
 ```text
-+ my-bucket (S3Bucket)
-    + bucket_name = "my-bucket"
-    + tags = {"env": "staging"}
+Praxis will perform the following actions:
 
-~ web-sg (SecurityGroup)
-    ~ description: "old desc" => "new desc"
+  # S3Bucket "my-bucket" will be created
+  + resource "S3Bucket" "my-bucket" {
+      + bucketName = "my-bucket"
+      + tags {
+          + env = "staging"
+        }
+    }
 
-- old-resource (S3Bucket)
-    - bucket_name = "old-resource"
+  # SecurityGroup "vpc-0abc123~web-sg" will be updated in-place
+  ~ resource "SecurityGroup" "vpc-0abc123~web-sg" {
+      ~ description = "old desc" => "new desc"
+      - sslPolicy   = "ELBSecurityPolicy-2016-08"
+    }
+
+  # S3Bucket "old-resource" will be destroyed
+  - resource "S3Bucket" "old-resource" {
+      - bucketName = "old-resource"
+    }
+
+Plan: 1 to create, 1 to update, 1 to delete, 0 unchanged.
 ```
 
-Symbols: `+` create, `~` update, `-` delete. A summary line follows with the total counts.
+Symbols: `+` create, `~` update, `-` delete. Within an update block, fields whose value changes to empty (empty string, zero, false, empty list, or empty map) are displayed as deletions with the `-` prefix. A summary line follows with the total counts.
 
 Resources with `lifecycle.ignoreChanges` have matching diffs filtered from the plan. If all diffs are ignored, the resource shows as unchanged. Resources with `lifecycle.preventDestroy: true` that would be deleted are flagged as protected in the summary.
+
+**Expression-bearing resources:**
+
+Resources that reference other resources via `${resources.X.outputs.Y}` expressions are resolved at plan time using **live output collection**. As each resource is planned in topological order, its outputs are read from the driver's virtual-object state and used to hydrate downstream expression-bearing resources. This produces accurate create/update/noop diffs for expression-bearing resources, just like non-expression resources — without depending on a prior deployment record.
+
+The plan also resolves expression-bearing resource keys for display. For example, a security group keyed by `${resources.vpc.outputs.vpcId}~web-sg` is displayed with the resolved VPC ID (e.g., `vpc-0abc123~web-sg`).
+
+When a referenced resource has not been provisioned yet (first deploy), expression-bearing resources are shown as `create`. The `--key` flag can optionally specify a deployment whose prior outputs are used as a fallback seed; when omitted, the deployment key is auto-derived from the template.
+
+**Field-level deletions:**
+
+Within an update, fields whose value changes to empty (empty string, zero, false, empty list, or empty map) are displayed as deletions with a `-` prefix showing only the old value, rather than as an update to an empty value.
 
 ---
 
@@ -315,7 +362,7 @@ The argument uses `Kind/Key` format for deployments and cloud resources. Meta-re
 
 Supported kinds:
 
-- `Deployment/<key>` — Full deployment status with per-resource breakdown and outputs
+- `Deployment/<key>` — Full deployment status with per-resource breakdown
 - `S3Bucket/<key>` — Single S3 bucket resource status
 - `SecurityGroup/<key>` — Single security group status
 - `EC2Instance/<key>` — Single EC2 instance status
@@ -325,18 +372,36 @@ Supported kinds:
 - `EBSVolume/<key>` — Single EBS volume status
 - `InternetGateway/<key>` — Single Internet Gateway status
 
+**Deployment Flags:**
+
+| Flag         | Default | Description                                        |
+|--------------|---------|----------------------------------------------------|
+| `--deps`     | false   | Show resource dependency graph                     |
+| `--inputs`   | false   | Show resource input specs (fetched from drivers)   |
+| `--outputs`  | false   | Show resource outputs                              |
+| `--errors`   | false   | Show full resource error details                   |
+| `--all`      | false   | Show all optional sections (deps, inputs, outputs, errors) |
+
+By default only metadata and the resource table are shown. Use flags to include additional sections.
+
 **Examples:**
 
 ```bash
-# Deployment overview
+# Deployment overview (metadata + resource table only)
 praxis get Deployment/my-webapp
+
+# Include dependency graph and outputs
+praxis get Deployment/my-webapp --deps --outputs
+
+# Show everything
+praxis get Deployment/my-webapp --all
 
 # Individual resource
 praxis get S3Bucket/my-bucket
 praxis get SecurityGroup/vpc-123~web-sg
 praxis get EC2Instance/us-east-1~web-server
 
-# JSON for scripting
+# JSON for scripting (always includes all sections)
 praxis get Deployment/my-webapp -o json
 ```
 
@@ -353,7 +418,11 @@ RESOURCE      KIND            STATUS    ERROR
 --------      ----            ------    -----
 my-bucket     S3Bucket        Ready     -
 web-sg        SecurityGroup   Ready     -
+```
 
+With `--all` (or `--outputs`), the outputs section is appended:
+
+```text
 Outputs:
   my-bucket.arn = arn:aws:s3:::my-bucket
   web-sg.group_id = sg-0abc123
@@ -416,9 +485,9 @@ praxis get concierge [--session <id>]
 
 **Flags:**
 
-| Flag        | Default     | Description    |
-|-------------|-------------|----------------|
-| `--session` | `"default"` | Session ID     |
+| Flag        | Default         | Description    |
+|-------------|-----------------|----------------|
+| `--session` | auto-resolved   | Session ID     |
 
 ### get notifications
 
@@ -466,7 +535,7 @@ Accepted values: `deployments` (aliases: `deployment`, `deploy`), `templates`, `
 | `--severity`     | —       | Filter events by severity (info, warn, error)       |
 | `--resource`     | —       | Filter events by resource name                      |
 | `--limit`        | 100     | Maximum events to return                            |
-| `--session`      | —       | Concierge session ID (default: "default")           |
+| `--session`      | —       | Concierge session ID (default: auto-resolved)       |
 
 **Examples:**
 
@@ -533,6 +602,7 @@ Supported kinds: `Deployment`, `workspace`, `template`, `sink`, `concierge`, or 
 | `--wait`       | false   | Block until deletion completes            |
 | `--timeout`    | 5m      | Maximum wait time (0 for no limit)        |
 | `--rollback`   | false   | Delete only resources for a failed/cancelled deployment |
+| `--force`      | false   | Override `lifecycle.preventDestroy` protection on resources |
 
 **Examples:**
 
@@ -545,6 +615,9 @@ praxis delete Deployment/my-webapp --yes
 
 # Wait for completion
 praxis delete Deployment/my-webapp --yes --wait
+
+# Force-delete protected resources
+praxis delete Deployment/my-webapp --force --yes
 
 # Delete a workspace
 praxis delete workspace/old-env
@@ -566,7 +639,11 @@ praxis delete concierge/my-session
 
 Without `--yes`, the command prompts for confirmation before proceeding. Deletion is asynchronous — use `--wait` to block until all resources have been removed!
 
-Resources with `lifecycle.preventDestroy: true` cannot be deleted. The delete workflow fails with a terminal error identifying the protected resource. To proceed, update the template to remove or disable `preventDestroy`, re-deploy, then retry the delete.
+Resources with `lifecycle.preventDestroy: true` cannot be deleted by default. The delete workflow fails with a terminal error identifying the protected resource. To proceed, either update the template to remove or disable `preventDestroy`, re-deploy, then retry the delete — or use `--force` to override the protection (an audit event is emitted for each overridden resource).
+
+When deleting a deployment that has a stuck apply workflow (e.g., hard-killed via the Restate admin API), the delete workflow waits up to 60 seconds for the apply to drain, then force-transitions the deployment to `Cancelled` and proceeds with teardown.
+
+Before prompting for confirmation, `praxis delete` now shows a **destroy plan** listing all resources that will be removed (in reverse topological order) and any that will be skipped.
 
 The same timeout behavior as `deploy --wait` applies: exit code **2** on timeout, with recovery commands printed to stderr.
 

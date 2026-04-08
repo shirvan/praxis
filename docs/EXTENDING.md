@@ -113,7 +113,7 @@ class DriverState(BaseModel):
     """Persisted in Restate's K/V store."""
     desired: DNSRecordSpec | None = None
     outputs: DNSRecordOutputs | None = None
-    status: str = "Pending"        # Pending | Provisioning | Ready | Error | Deleting | Deleted
+    status: str = "Pending"        # Pending | Provisioning | Updating | Ready | Error | Deleting | Deleted
     error: str = ""
 
 class ReconcileResult(TypedDict):

@@ -145,18 +145,28 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		}
 
 		if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
-			policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, item.Name, resource.Kind, "rollback")
+			if !req.Force {
+				policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, item.Name, resource.Kind, "rollback")
+				if eventErr != nil {
+					return DeploymentResult{}, eventErr
+				}
+				if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+					return DeploymentResult{}, err
+				}
+				if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind,
+					fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to rollback", item.Name)); err != nil {
+					return DeploymentResult{}, err
+				}
+				continue
+			}
+			// Force override: emit an audit event noting that protection was bypassed.
+			overrideEvent, eventErr := NewForceDeleteOverrideEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, item.Name, resource.Kind, "rollback")
 			if eventErr != nil {
 				return DeploymentResult{}, eventErr
 			}
-			if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+			if err := EmitCloudEvent(ctx, overrideEvent); err != nil {
 				return DeploymentResult{}, err
 			}
-			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind,
-				fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to rollback", item.Name)); err != nil {
-				return DeploymentResult{}, err
-			}
-			continue
 		}
 
 		adapter, err := w.providers.Get(resource.Kind)

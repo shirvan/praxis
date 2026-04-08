@@ -9,8 +9,9 @@ package targetgroup
 
 import (
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired
@@ -127,8 +128,13 @@ func stickinessEqual(a, b *Stickiness) bool {
 	if a == nil && b == nil {
 		return true
 	}
-	if a == nil || b == nil {
-		return false
+	// Treat nil as equivalent to disabled stickiness (AWS returns disabled
+	// stickiness with default type/duration even when not configured).
+	if a == nil {
+		return !b.Enabled
+	}
+	if b == nil {
+		return !a.Enabled
 	}
 	return *a == *b
 }

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -25,24 +26,42 @@ const (
 
 // conciergeAskOpts bundles the parameters for a concierge ask invocation.
 type conciergeAskOpts struct {
-	Client    *Client
-	Renderer  *Renderer
-	Session   string
-	Prompt    string
-	Account   string
-	Workspace string
-	JSON      bool
+	Client     *Client
+	Renderer   *Renderer
+	Session    string
+	NewSession bool
+	Prompt     string
+	Account    string
+	Workspace  string
+	JSON       bool
 }
 
 // runConciergeAsk sends a prompt to the concierge, polls for live progress,
 // and renders the response. It returns the raw response for callers that need
 // to inspect it (e.g. JSON encoding).
 func runConciergeAsk(ctx context.Context, opts conciergeAskOpts) (*conciergeAskResponse, error) {
-	if opts.Session == "" {
+	newlyCreated := false
+	switch {
+	case opts.NewSession:
+		opts.Session = generateSessionID()
+		newlyCreated = true
+	case opts.Session != "":
+		// Explicit --session flag; use as-is.
+	default:
 		opts.Session = resolveSessionID()
 	}
 	// Persist the active session so the next invocation reuses it automatically.
 	saveSessionID(opts.Session)
+
+	// Inform the user which session is active.
+	if !opts.JSON {
+		r := opts.Renderer
+		if newlyCreated {
+			_, _ = fmt.Fprintf(r.errOut, "New session: %s\n", opts.Session)
+		} else {
+			_, _ = fmt.Fprintf(r.errOut, "Session: %s\n", opts.Session)
+		}
+	}
 
 	req := conciergeAskRequest{
 		Prompt:    opts.Prompt,
@@ -132,7 +151,7 @@ func resolveSessionID() string {
 		return v
 	}
 	if v, err := os.ReadFile(sessionStatePath()); err == nil {
-		if s := string(v); s != "" {
+		if s := strings.TrimSpace(string(v)); s != "" {
 			return s
 		}
 	}

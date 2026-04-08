@@ -12,7 +12,7 @@ package sns
 	spec: {
 		region: string
 
-		topicArn: string & =~"^arn:aws:sns:[a-z0-9-]+:[0-9]{12}:.+$"
+		topicArn: string & (=~"^arn:aws:sns:[a-z0-9-]+:[0-9]{12}:.+$" | =~"^\\$\\{resources\\..+\\}$")
 
 		protocol: "http" | "https" | "email" | "email-json" | "sms" | "sqs" | "lambda" | "firehose" | "application"
 

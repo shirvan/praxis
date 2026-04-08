@@ -140,6 +140,8 @@ func eventSchemaForType(eventType string) (string, string, bool) {
 		return "events/command.cue", "#CommandCancelData", true
 	case EventTypePolicyPreventedDestroy:
 		return "events/policy.cue", "#PolicyPreventedDestroyData", true
+	case EventTypeForceDeleteOverride:
+		return "events/policy.cue", "#ForceDeleteOverrideData", true
 	case EventTypeDriftDetected:
 		return "events/drift.cue", "#DriftDetectedData", true
 	case EventTypeDriftCorrected:
@@ -148,6 +150,8 @@ func eventSchemaForType(eventType string) (string, string, bool) {
 		return "events/drift.cue", "#DriftExternalDeleteData", true
 	case EventTypeResourceReplaceStarted:
 		return "events/lifecycle.cue", "#ResourceReplaceStartedData", true
+	case EventTypeResourceAutoReplaceStarted:
+		return "events/lifecycle.cue", "#ResourceAutoReplaceStartedData", true
 	case EventTypeResourceDispatched:
 		return "events/lifecycle.cue", "#ResourceDispatchedData", true
 	case EventTypeResourceReady:

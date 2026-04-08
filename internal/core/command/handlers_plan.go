@@ -16,7 +16,6 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	corediff "github.com/shirvan/praxis/internal/core/diff"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -42,55 +41,20 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 		return PlanResponse{}, err
 	}
 
+	// Look up prior deployment state so expression-bearing resources can be
+	// compared against cloud state rather than blindly shown as "create".
+	priorOutputs, warnings, err := s.fetchPriorOutputs(ctx, req.DeploymentKey, compiled.Specs)
+	if err != nil {
+		return PlanResponse{}, err
+	}
+
 	// Walk the plan resources in topological order and compute per-resource
 	// diffs. Each adapter.Plan call makes a read-only API call to the cloud
 	// provider (wrapped in restate.Run inside the adapter) to compare the
 	// desired spec against the current state.
-	plan := corediff.NewPlanResult()
-	for i := range compiled.PlanResources {
-		resource := &compiled.PlanResources[i]
-
-		// Resources with dispatch-time expressions (${resources.X.outputs.Y})
-		// contain unresolved placeholders, so their specs cannot be compared
-		// against cloud state. We still extract the known fields from the raw
-		// spec so the plan output shows what will be configured.
-		if len(resource.Expressions) > 0 {
-			fields := corediff.FieldDiffsFromJSON(resource.Spec)
-			corediff.Add(plan, resource.Kind, resource.Key, types.OpCreate, fields)
-			continue
-		}
-
-		adapter, err := s.providers.Get(resource.Kind)
-		if err != nil {
-			return PlanResponse{}, restate.TerminalError(err, 400)
-		}
-
-		// Decode the raw JSON spec into the adapter's typed Go struct so
-		// the adapter can do a structured comparison.
-		desiredSpec, err := adapter.DecodeSpec(resource.Spec)
-		if err != nil {
-			return PlanResponse{}, restate.TerminalError(err, 400)
-		}
-
-		// adapter.Plan returns the planned operation (create/update/noop)
-		// and the individual field-level diffs.
-		op, fields, err := adapter.Plan(ctx, resource.Key, account, desiredSpec)
-		if err != nil {
-			return PlanResponse{}, err
-		}
-
-		// Apply lifecycle.ignoreChanges: if the template declares that
-		// certain fields should not trigger updates (e.g., tags managed
-		// externally), remove those diffs. If all diffs are removed, the
-		// operation downgrades from Update to NoOp.
-		if resource.Lifecycle != nil && len(resource.Lifecycle.IgnoreChanges) > 0 {
-			fields = filterIgnoredFields(fields, resource.Lifecycle.IgnoreChanges)
-			if op == types.OpUpdate && len(fields) == 0 {
-				op = types.OpNoOp
-			}
-		}
-
-		corediff.Add(plan, resource.Kind, resource.Key, op, fields)
+	plan, err := s.computeResourceDiffs(ctx, compiled.PlanResources, account, priorOutputs)
+	if err != nil {
+		return PlanResponse{}, err
 	}
 
 	// Build a lightweight graph description for the response so the CLI
@@ -109,6 +73,7 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 		Rendered:    compiled.Rendered,
 		DataSources: compiled.DataSources,
 		Graph:       graphNodes,
+		Warnings:    warnings,
 	}, nil
 }
 

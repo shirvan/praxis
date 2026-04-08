@@ -94,7 +94,7 @@ func (r *realVPCAPI) DescribeVpc(ctx context.Context, vpcId string) (ObservedSta
 		return ObservedState{}, err
 	}
 	if len(out.Vpcs) == 0 {
-		return ObservedState{}, fmt.Errorf("VPC %s not found", vpcId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("VPC %s not found", vpcId))
 	}
 
 	v := out.Vpcs[0]
@@ -310,7 +310,7 @@ func (r *realVPCAPI) FindByTags(ctx context.Context, tags map[string]string) (st
 
 // IsNotFound returns true if the AWS error indicates the VPC does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidVpcID.NotFound", "InvalidVpcID.Malformed")
+	return awserr.HasCode(err, "InvalidVpcID.NotFound", "InvalidVpcID.Malformed") || awserr.IsNotFoundErr(err)
 }
 
 // IsDependencyViolation returns true if the VPC cannot be deleted because it

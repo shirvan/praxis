@@ -265,7 +265,7 @@ func TestDeleteWorkflow_ShouldSkipResourcesByStatus(t *testing.T) {
 		shouldSkip bool
 	}{
 		{"Pending resources are skipped", types.DeploymentResourcePending, true},
-		{"Skipped resources are skipped", types.DeploymentResourceSkipped, true},
+		{"Skipped resources are NOT skipped", types.DeploymentResourceSkipped, false},
 		{"Deleted resources are skipped", types.DeploymentResourceDeleted, true},
 		{"Ready resources are NOT skipped", types.DeploymentResourceReady, false},
 		{"Provisioning resources are NOT skipped", types.DeploymentResourceProvisioning, false},
@@ -324,4 +324,32 @@ func TestExecutionState_RollbackFailureSkipsDependencies(t *testing.T) {
 	assert.Equal(t, types.DeploymentResourceSkipped, exec.statuses["network"])
 	assert.Equal(t, "skipped because dependent api failed to rollback-delete", exec.errors["db"])
 	assert.Equal(t, "skipped because dependent api failed to rollback-delete", exec.errors["network"])
+}
+
+func TestExecutionState_ResetToPendingClearsFailure(t *testing.T) {
+	resources := []PlanResource{
+		testPlanResource("loggroup"),
+		testPlanResource("app", "loggroup"),
+	}
+
+	exec := newExecutionState(resources)
+	exec.markProvisioning("loggroup")
+	exec.markFailed("loggroup", "immutable field conflict")
+
+	// Verify resource is in failed state.
+	assert.Equal(t, types.DeploymentResourceError, exec.statuses["loggroup"])
+	assert.True(t, exec.failed["loggroup"])
+	assert.True(t, exec.dispatched["loggroup"])
+
+	// resetToPending should clear all failure tracking.
+	exec.resetToPending("loggroup")
+	assert.Equal(t, types.DeploymentResourcePending, exec.statuses["loggroup"])
+	assert.False(t, exec.dispatched["loggroup"])
+	assert.False(t, exec.failed["loggroup"])
+	assert.Empty(t, exec.errors["loggroup"])
+
+	// After reset, markProvisioning should work again.
+	exec.markProvisioning("loggroup")
+	assert.Equal(t, types.DeploymentResourceProvisioning, exec.statuses["loggroup"])
+	assert.True(t, exec.dispatched["loggroup"])
 }

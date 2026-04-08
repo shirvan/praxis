@@ -105,3 +105,38 @@ func TestLoadActiveWorkspace_TrimsConfigValue(t *testing.T) {
 	require.NoError(t, os.WriteFile(configPath, []byte(`{"activeWorkspace":"  dev  "}`), 0600))
 	assert.Equal(t, "dev", loadActiveWorkspace())
 }
+
+func TestNormalizeKind(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// Exact canonical forms.
+		{"Deployment", "Deployment"},
+		{"template", "template"},
+		{"sink", "sink"},
+		{"S3Bucket", "S3Bucket"},
+		// Case-insensitive matches.
+		{"deployment", "Deployment"},
+		{"DEPLOYMENT", "Deployment"},
+		{"Template", "template"},
+		{"TEMPLATE", "template"},
+		{"Sink", "sink"},
+		{"s3bucket", "S3Bucket"},
+		{"ec2instance", "EC2Instance"},
+		// Plural forms.
+		{"deployments", "Deployment"},
+		{"Deployments", "Deployment"},
+		{"templates", "template"},
+		{"Templates", "template"},
+		{"sinks", "sink"},
+		{"S3Buckets", "S3Bucket"},
+		// Unknown kinds pass through unchanged.
+		{"CustomThing", "CustomThing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.want, normalizeKind(tt.input))
+		})
+	}
+}

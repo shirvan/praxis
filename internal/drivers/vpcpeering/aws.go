@@ -102,7 +102,7 @@ func (r *realVPCPeeringAPI) DescribeVPCPeeringConnection(ctx context.Context, pe
 		return ObservedState{}, err
 	}
 	if len(out.VpcPeeringConnections) == 0 {
-		return ObservedState{}, fmt.Errorf("VPC peering connection %s not found", peeringID)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("VPC peering connection %s not found", peeringID))
 	}
 
 	conn := out.VpcPeeringConnections[0]
@@ -294,7 +294,7 @@ func firstCIDR(info *ec2types.VpcPeeringConnectionVpcInfo) string {
 
 // IsNotFound returns true when the peering connection does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidVpcPeeringConnectionID.NotFound", "InvalidVpcPeeringConnectionId.NotFound")
+	return awserr.HasCode(err, "InvalidVpcPeeringConnectionID.NotFound", "InvalidVpcPeeringConnectionId.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsVpcNotFound returns true when one of the VPCs in the peering request

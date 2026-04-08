@@ -72,18 +72,20 @@ const (
 
 	// --- Policy event types ---
 
-	EventTypePolicyPreventedDestroy = "dev.praxis.policy.prevented_destroy" // lifecycle.preventDestroy blocked a destroy
+	EventTypePolicyPreventedDestroy = "dev.praxis.policy.prevented_destroy"     // lifecycle.preventDestroy blocked a destroy
+	EventTypeForceDeleteOverride    = "dev.praxis.policy.force_delete_override" // force flag overrode lifecycle.preventDestroy
 
 	// --- Resource lifecycle event types ---
 
-	EventTypeResourceDispatched     = "dev.praxis.resource.dispatched"      // driver call dispatched
-	EventTypeResourceReady          = "dev.praxis.resource.ready"           // resource provisioned successfully
-	EventTypeResourceError          = "dev.praxis.resource.error"           // resource provisioning failed
-	EventTypeResourceSkipped        = "dev.praxis.resource.skipped"         // skipped due to dep failure / cancellation
-	EventTypeResourceDeleteStarted  = "dev.praxis.resource.delete.started"  // resource delete dispatched
-	EventTypeResourceDeleted        = "dev.praxis.resource.deleted"         // resource deleted successfully
-	EventTypeResourceDeleteError    = "dev.praxis.resource.delete.error"    // resource delete failed
-	EventTypeResourceReplaceStarted = "dev.praxis.resource.replace.started" // force-replace: delete before re-provision
+	EventTypeResourceDispatched         = "dev.praxis.resource.dispatched"           // driver call dispatched
+	EventTypeResourceReady              = "dev.praxis.resource.ready"                // resource provisioned successfully
+	EventTypeResourceError              = "dev.praxis.resource.error"                // resource provisioning failed
+	EventTypeResourceSkipped            = "dev.praxis.resource.skipped"              // skipped due to dep failure / cancellation
+	EventTypeResourceDeleteStarted      = "dev.praxis.resource.delete.started"       // resource delete dispatched
+	EventTypeResourceDeleted            = "dev.praxis.resource.deleted"              // resource deleted successfully
+	EventTypeResourceDeleteError        = "dev.praxis.resource.delete.error"         // resource delete failed
+	EventTypeResourceReplaceStarted     = "dev.praxis.resource.replace.started"      // force-replace: delete before re-provision
+	EventTypeResourceAutoReplaceStarted = "dev.praxis.resource.auto_replace.started" // auto-replace: 409 immutable conflict triggered delete+re-provision
 
 	// --- Drift event types ---
 

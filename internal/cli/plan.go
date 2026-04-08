@@ -27,12 +27,13 @@ import (
 //	praxis plan webapp.cue --show-rendered
 func newPlanCmd(flags *rootFlags) *cobra.Command {
 	var (
-		vars         []string
-		varsFile     string
-		showRendered bool
-		showGraph    bool
-		account      string
-		targets      []string
+		vars          []string
+		varsFile      string
+		showRendered  bool
+		showGraph     bool
+		account       string
+		targets       []string
+		deploymentKey string
 	)
 	account = flags.account
 
@@ -59,9 +60,9 @@ which is useful for debugging variable resolution and output expressions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source := args[0]
 			if isFilePath(source) {
-				return planFromFile(flags, source, vars, varsFile, account, targets, showRendered, showGraph)
+				return planFromFile(flags, source, vars, varsFile, account, targets, deploymentKey, showRendered, showGraph)
 			}
-			return planFromTemplate(flags, source, vars, varsFile, account, targets, showRendered, showGraph)
+			return planFromTemplate(flags, source, vars, varsFile, account, targets, deploymentKey, showRendered, showGraph)
 		},
 	}
 
@@ -71,11 +72,12 @@ which is useful for debugging variable resolution and output expressions.`,
 	cmd.Flags().BoolVar(&showRendered, "show-rendered", false, "Also display the fully-evaluated template JSON")
 	cmd.Flags().BoolVar(&showGraph, "graph", false, "Display the resource dependency graph")
 	cmd.Flags().StringArrayVar(&targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
+	cmd.Flags().StringVar(&deploymentKey, "key", "", "Deployment key for comparing against prior state")
 
 	return cmd
 }
 
-func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile, account string, targets []string, showRendered, showGraph bool) error {
+func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile, account string, targets []string, deploymentKey string, showRendered, showGraph bool) error {
 	renderer := flags.renderer()
 	workspace := flags.activeWorkspace()
 
@@ -93,12 +95,13 @@ func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile
 	ctx := context.Background()
 
 	resp, err := client.Plan(ctx, types.PlanRequest{
-		Template:     string(content),
-		Variables:    variables,
-		Account:      account,
-		Workspace:    workspace,
-		Targets:      targets,
-		TemplatePath: templatePath,
+		Template:      string(content),
+		Variables:     variables,
+		Account:       account,
+		Workspace:     workspace,
+		Targets:       targets,
+		TemplatePath:  templatePath,
+		DeploymentKey: deploymentKey,
 	})
 	if err != nil {
 		return err
@@ -108,6 +111,7 @@ func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile
 		return printJSON(resp)
 	}
 
+	printWarnings(renderer, resp.Warnings)
 	printDataSources(renderer, resp.DataSources)
 	printPlan(renderer, resp.Plan)
 
@@ -127,7 +131,7 @@ func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile
 	return nil
 }
 
-func planFromTemplate(flags *rootFlags, templateName string, vars []string, varsFile, account string, targets []string, showRendered, showGraph bool) error {
+func planFromTemplate(flags *rootFlags, templateName string, vars []string, varsFile, account string, targets []string, deploymentKey string, showRendered, showGraph bool) error {
 	renderer := flags.renderer()
 	workspace := flags.activeWorkspace()
 
@@ -140,11 +144,12 @@ func planFromTemplate(flags *rootFlags, templateName string, vars []string, vars
 	ctx := context.Background()
 
 	resp, err := client.PlanDeploy(ctx, types.PlanDeployRequest{
-		Template:  templateName,
-		Variables: variables,
-		Account:   account,
-		Workspace: workspace,
-		Targets:   targets,
+		Template:      templateName,
+		Variables:     variables,
+		Account:       account,
+		Workspace:     workspace,
+		Targets:       targets,
+		DeploymentKey: deploymentKey,
 	})
 	if err != nil {
 		return err
@@ -154,6 +159,7 @@ func planFromTemplate(flags *rootFlags, templateName string, vars []string, vars
 		return printJSON(resp)
 	}
 
+	printWarnings(renderer, resp.Warnings)
 	printDataSources(renderer, resp.DataSources)
 	printPlan(renderer, resp.Plan)
 

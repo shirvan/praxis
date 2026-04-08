@@ -9,10 +9,11 @@ package targetgroup
 import (
 	"context"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -106,7 +107,7 @@ func (r *realTargetGroupAPI) DescribeTargetGroup(ctx context.Context, id string)
 		return ObservedState{}, err
 	}
 	if len(out.TargetGroups) == 0 {
-		return ObservedState{}, fmt.Errorf("target group %s not found", id)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("target group %s not found", id))
 	}
 	group := out.TargetGroups[0]
 	attrState, err := r.describeAttributeState(ctx, aws.ToString(group.TargetGroupArn))
@@ -165,13 +166,18 @@ func (r *realTargetGroupAPI) UpdateAttributes(ctx context.Context, arn string, s
 	attributes := []elbv2types.TargetGroupAttribute{{Key: aws.String("deregistration_delay.timeout_seconds"), Value: aws.String(strconv.Itoa(spec.DeregistrationDelay))}}
 	stickiness := spec.Stickiness
 	if stickiness == nil {
-		stickiness = &Stickiness{Enabled: false, Type: "lb_cookie", Duration: 86400}
+		stickiness = &Stickiness{Enabled: false, Type: defaultStickinessType(spec.Protocol), Duration: 86400}
 	}
 	attributes = append(attributes,
 		elbv2types.TargetGroupAttribute{Key: aws.String("stickiness.enabled"), Value: aws.String(strconv.FormatBool(stickiness.Enabled))},
 		elbv2types.TargetGroupAttribute{Key: aws.String("stickiness.type"), Value: aws.String(stickiness.Type)},
-		elbv2types.TargetGroupAttribute{Key: aws.String("stickiness.lb_cookie.duration_seconds"), Value: aws.String(strconv.Itoa(stickiness.Duration))},
 	)
+	// lb_cookie.duration_seconds is only valid for ALB (HTTP/HTTPS) target groups.
+	if stickiness.Type == "lb_cookie" || stickiness.Type == "app_cookie" {
+		attributes = append(attributes,
+			elbv2types.TargetGroupAttribute{Key: aws.String("stickiness.lb_cookie.duration_seconds"), Value: aws.String(strconv.Itoa(stickiness.Duration))},
+		)
+	}
 	_, err := r.client.ModifyTargetGroupAttributes(ctx, &elbv2sdk.ModifyTargetGroupAttributesInput{TargetGroupArn: aws.String(arn), Attributes: attributes})
 	return err
 }
@@ -279,6 +285,25 @@ func (r *realTargetGroupAPI) describeAttributeState(ctx context.Context, arn str
 	return state, nil
 }
 
+// isNLBProtocol returns true for protocols used with Network Load Balancers
+// (TCP, UDP, TLS, TCP_UDP) which only support source_ip stickiness.
+func isNLBProtocol(protocol string) bool {
+	switch strings.ToUpper(protocol) {
+	case "TCP", "UDP", "TLS", "TCP_UDP":
+		return true
+	}
+	return false
+}
+
+// defaultStickinessType returns the appropriate default stickiness type
+// based on the target group protocol.
+func defaultStickinessType(protocol string) string {
+	if isNLBProtocol(protocol) {
+		return "source_ip"
+	}
+	return "lb_cookie"
+}
+
 func (r *realTargetGroupAPI) describeTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -383,6 +408,9 @@ func healthCheckWithDefaults(hc HealthCheck) HealthCheck {
 	if (hc.Protocol == "HTTP" || hc.Protocol == "HTTPS") && hc.Path == "" {
 		hc.Path = "/"
 	}
+	if (hc.Protocol == "HTTP" || hc.Protocol == "HTTPS") && hc.Matcher == "" {
+		hc.Matcher = "200"
+	}
 	return hc
 }
 
@@ -421,7 +449,7 @@ func diffTargets(desired, observed []Target) (add []Target, remove []Target) {
 
 // IsNotFound returns true if the AWS error indicates the AWS ELBv2 Target Group does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "TargetGroupNotFound")
+	return awserr.HasCode(err, "TargetGroupNotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsDuplicate returns true if the AWS error indicates a naming conflict.

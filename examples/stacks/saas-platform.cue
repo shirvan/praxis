@@ -1,75 +1,43 @@
 import "encoding/json"
 
-// saas-platform.cue — Production-grade SaaS platform infrastructure.
+// saas-platform.cue — A realistic multi-tier SaaS platform deployment.
 //
-// A comprehensive demo showcasing the full power of Praxis: declarative
-// infrastructure-as-code with dependency graphs, for-loop comprehensions,
-// conditional resources, data sources, lifecycle protection, reusable
-// definitions, and policy-compatible tagging — all in a single template.
+// This template provisions the core infrastructure for a typical SaaS
+// application: VPC networking, an internet-facing ALB, EC2 application
+// servers behind an auto-scaling-friendly instance profile, an RDS
+// PostgreSQL database, S3 storage, IAM roles, TLS via ACM, DNS via
+// Route 53, and CloudWatch logging.
 //
-// ┌───────────────────────────────────────────────────────────────────┐
-// │                        ARCHITECTURE                               │
-// │                                                                   │
-// │  VPC (10.0.0.0/16) — Multi-AZ, DNS-enabled                        │
-// │  ├── Internet Gateway                                             │
-// │  ├── Public Subnets (AZ-a, AZ-b)                                  │
-// │  │   ├── Route Table → IGW                                        │
-// │  │   ├── NAT Gateway + Elastic IP                                 │
-// │  │   └── ALB (HTTPS) → Target Group                               │
-// │  ├── App Subnets (AZ-a, AZ-b)                                     │
-// │  │   ├── Route Table → NAT                                        │
-// │  │   ├── App Security Group (8080 from ALB SG)                    │
-// │  │   ├── App Servers (one per AZ, via for-loop)                   │
-// │  │   └── Lambda (async worker)                                    │
-// │  ├── Data Subnets (AZ-a, AZ-b)                                    │
-// │  │   ├── Route Table → NAT                                        │
-// │  │   ├── DB Subnet Group                                          │
-// │  │   ├── Data Security Group (5432 from App SG CIDR)              │
-// │  │   └── RDS PostgreSQL (Multi-AZ in prod)                        │
-// │  ├── Network ACL (defense-in-depth on public subnets)             │
-// │  ├── ACM Certificate + DNS Validation Record                      │
-// │  ├── SNS Alert Topic + SQS Dead-Letter Queue                      │
-// │  ├── CloudWatch Log Group + Metric Alarm                          │
-// │  ├── IAM Role + Policy (app execution role)                       │
-// │  └── S3 Buckets (dynamic from list: assets, uploads, backups)     │
-// │      └── Conditional: S3 log-aggregator bucket                    │
-// └───────────────────────────────────────────────────────────────────┘
-//
-// DAG (abridged):
-//   hostedZone → validationRecord, appDnsRecord
-//   vpc → igw, subnets (×6), nacl, securityGroups
-//   publicSubnets → natEip → natgw → appRT, dataRT
-//   igw → publicRT
-//   albSg → alb → targetGroup → httpsListener ← cert
-//   cert → validationRecord
-//   appSg → appServers (for-loop), lambda
-//   dataSg → dbSubnetGroup → database
-//   snsAlertTopic → sqsDlq, alarm
-//   iamRole → iamPolicy → lambda
-//
-// Features demonstrated:
-//   ✓ Variables — typed, constrained (regex, enum, defaults, lists, bools)
-//   ✓ For-loop comprehensions — app servers + S3 buckets from lists
-//   ✓ Conditional resources — log bucket, monitoring toggle, NAT in prod
-//   ✓ CUE definitions (#) — reusable tag blocks
-//   ✓ Hidden helpers (_) — naming prefix
-//   ✓ Data sources — see examples/stacks/data-source-*.cue for data source demos
-//   ✓ Output expressions — full DAG wiring across 30+ resources
-//   ✓ Lifecycle rules — preventDestroy on database + ignoreChanges
-//   ✓ Environment-aware logic — Multi-AZ RDS, monitoring, instance sizing
-//   ✓ 15+ resource kinds — VPC, Subnet, IGW, NAT, EIP, RT, SG, NACL,
-//     EC2, S3, RDS, ALB, TG, Listener, ACM, DNS, Lambda, SNS, SQS,
-//     CloudWatch, IAM Role, IAM Policy
+// ┌──────────────────────────────────────────────────────────────────┐
+// │                        ARCHITECTURE                              │
+// │                                                                  │
+// │  VPC (10.0.0.0/16) — Multi-AZ, DNS-enabled                       │
+// │  ├── Internet Gateway                                            │
+// │  ├── Public Subnets (AZ-a, AZ-b)                                 │
+// │  │   ├── Route Table → IGW                                       │
+// │  │   ├── NAT Gateway + Elastic IP                                │
+// │  │   └── ALB (HTTPS) → Target Group                              │
+// │  │       └── HTTP→HTTPS redirect listener                        │
+// │  ├── App Subnets (AZ-a, AZ-b)                                    │
+// │  │   ├── Route Table → NAT                                       │
+// │  │   ├── Security Group (8080 from VPC CIDR)                     │
+// │  │   ├── SSH Key Pair                                            │
+// │  │   └── App Servers (per AZ, for-loop + Instance Profile)       │
+// │  ├── Data Subnets (AZ-a, AZ-b)                                   │
+// │  │   ├── DB Subnet Group + Parameter Group                       │
+// │  │   ├── Security Group (5432 from app subnets)                  │
+// │  │   └── RDS PostgreSQL (Multi-AZ in prod)                       │
+// │  ├── ACM Certificate + DNS Validation Record                     │
+// │  ├── Route 53 Hosted Zone + A-record → ALB                       │
+// │  ├── CloudWatch Log Group                                        │
+// │  ├── IAM Role + Policy + Instance Profile                        │
+// │  └── S3 Buckets (dynamic from list)                              │
+// └──────────────────────────────────────────────────────────────────┘
 //
 // Usage:
 //   praxis template register examples/stacks/saas-platform.cue \
-//     --description "Production SaaS platform — multi-AZ, ALB, RDS, Lambda, monitoring"
+//     --description "Multi-tier SaaS platform — VPC, ALB, EC2, RDS, S3"
 //
-//   # Dry-run to preview the execution plan
-//   praxis deploy saas-platform --account local \
-//     -f examples/stacks/saas-platform.vars.json --dry-run
-//
-//   # Deploy
 //   praxis deploy saas-platform --account local \
 //     -f examples/stacks/saas-platform.vars.json --key acme-prod --wait
 
@@ -81,19 +49,16 @@ variables: {
 	name:         string & =~"^[a-z][a-z0-9-]{2,40}$"
 	environment:  "dev" | "staging" | "prod"
 	instanceType: string | *"t3.small"
-	imageId:      string | *"ami-0885b1f6bd170450c" // Amazon Linux 2 (us-east-1)
+	imageId:      string | *"ami-0885b1f6bd170450c"
 	domainName:   string & =~"^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,})$"
 
 	// Database
 	dbInstanceClass: string | *"db.t3.small"
 	dbEngineVersion: string | *"15.3"
-
-	// Feature flags
-	enableLogging:    bool | *true
-	enableMonitoring: bool | *true
+	dbFamily:        string | *"postgres15"
 
 	// Dynamic bucket generation
-	storageBuckets: [...string] | *["assets", "uploads", "backups"]
+	storageBuckets: [...string] | *["assets", "uploads"]
 
 	// Multi-AZ configuration
 	availabilityZones: [...string] | *["us-east-1a", "us-east-1b"]
@@ -115,29 +80,15 @@ _naming: {
 }
 
 #DataTags: #StandardTags & {tier: "data"}
-#AppTags: #StandardTags & {tier: "app"}
-
-#WebTags: #StandardTags & {tier: "web"}
+#AppTags:  #StandardTags & {tier: "app"}
+#WebTags:  #StandardTags & {tier: "web"}
 
 // ═══════════════════════════════════════════════════════════════════════
 // RESOURCES
 // ═══════════════════════════════════════════════════════════════════════
 
 resources: {
-	// ═══════════════════════════════════════════════════
-	// 1. NETWORKING — VPC + Multi-AZ Subnets
-	// ═══════════════════════════════════════════════════
-
-	// Route 53 hosted zone for DNS records (cert validation + app A-record).
-	hostedZone: {
-		apiVersion: "praxis.io/v1"
-		kind:       "Route53HostedZone"
-		metadata: name: variables.domainName
-		spec: {
-			comment: "\(_naming.prefix) platform zone"
-			tags:    #StandardTags
-		}
-	}
+	// ─── Networking ─────────────────────────────────────
 
 	vpc: {
 		apiVersion: "praxis.io/v1"
@@ -163,7 +114,7 @@ resources: {
 		}
 	}
 
-	// ── Public Subnets (web tier) ───────────────────────
+	// ── Public Subnets ──────────────────────────────────
 
 	publicSubnetA: {
 		apiVersion: "praxis.io/v1"
@@ -193,7 +144,7 @@ resources: {
 		}
 	}
 
-	// ── App Subnets (application tier) ──────────────────
+	// ── App Subnets ─────────────────────────────────────
 
 	appSubnetA: {
 		apiVersion: "praxis.io/v1"
@@ -221,7 +172,7 @@ resources: {
 		}
 	}
 
-	// ── Data Subnets (database tier) ────────────────────
+	// ── Data Subnets ────────────────────────────────────
 
 	dataSubnetA: {
 		apiVersion: "praxis.io/v1"
@@ -249,9 +200,7 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 2. GATEWAYS & ROUTING
-	// ═══════════════════════════════════════════════════
+	// ─── Gateways & Routing ─────────────────────────────
 
 	natEip: {
 		apiVersion: "praxis.io/v1"
@@ -334,36 +283,7 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 3. NETWORK ACLS — defense-in-depth
-	// ═══════════════════════════════════════════════════
-
-	publicNacl: {
-		apiVersion: "praxis.io/v1"
-		kind:       "NetworkACL"
-		metadata: name: "\(_naming.prefix)-public-nacl"
-		spec: {
-			region: _naming.region
-			vpcId:  "${resources.vpc.outputs.vpcId}"
-			ingressRules: [
-				{ruleNumber: 100, protocol: "tcp", ruleAction: "allow", cidrBlock: "0.0.0.0/0", fromPort: 80, toPort: 80},
-				{ruleNumber: 110, protocol: "tcp", ruleAction: "allow", cidrBlock: "0.0.0.0/0", fromPort: 443, toPort: 443},
-				{ruleNumber: 200, protocol: "tcp", ruleAction: "allow", cidrBlock: "0.0.0.0/0", fromPort: 1024, toPort: 65535},
-			]
-			egressRules: [
-				{ruleNumber: 100, protocol: "-1", ruleAction: "allow", cidrBlock: "0.0.0.0/0"},
-			]
-			subnetAssociations: [
-				"${resources.publicSubnetA.outputs.subnetId}",
-				"${resources.publicSubnetB.outputs.subnetId}",
-			]
-			tags: #WebTags
-		}
-	}
-
-	// ═══════════════════════════════════════════════════
-	// 4. SECURITY GROUPS
-	// ═══════════════════════════════════════════════════
+	// ─── Security Groups ────────────────────────────────
 
 	albSg: {
 		apiVersion: "praxis.io/v1"
@@ -418,9 +338,17 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 5. TLS CERTIFICATE + DNS VALIDATION
-	// ═══════════════════════════════════════════════════
+	// ─── TLS Certificate + DNS ──────────────────────────
+
+	hostedZone: {
+		apiVersion: "praxis.io/v1"
+		kind:       "Route53HostedZone"
+		metadata: name: variables.domainName
+		spec: {
+			comment: "\(_naming.prefix) platform zone"
+			tags:    #StandardTags
+		}
+	}
 
 	cert: {
 		apiVersion: "praxis.io/v1"
@@ -431,9 +359,7 @@ resources: {
 			domainName:       variables.domainName
 			validationMethod: "DNS"
 			keyAlgorithm:     "RSA_2048"
-			subjectAlternativeNames: [
-				"*.\(variables.domainName)",
-			]
+			subjectAlternativeNames: ["*.\(variables.domainName)"]
 			options: certificateTransparencyLoggingPreference: "ENABLED"
 			tags: #StandardTags
 		}
@@ -454,8 +380,6 @@ resources: {
 		}
 	}
 
-	// ── DNS A-record pointing to ALB ────────────────────
-
 	appDnsRecord: {
 		apiVersion: "praxis.io/v1"
 		kind:       "Route53Record"
@@ -472,9 +396,7 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 6. LOAD BALANCER
-	// ═══════════════════════════════════════════════════
+	// ─── Load Balancer ──────────────────────────────────
 
 	alb: {
 		apiVersion: "praxis.io/v1"
@@ -558,11 +480,19 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 7. COMPUTE — App Servers (for-loop comprehension)
-	// ═══════════════════════════════════════════════════
+	// ─── Compute ────────────────────────────────────────
 
-	// Generate one app server per availability zone
+	sshKeyPair: {
+		apiVersion: "praxis.io/v1"
+		kind:       "KeyPair"
+		metadata: name: "\(_naming.prefix)-ssh"
+		spec: {
+			region:  _naming.region
+			keyType: "ed25519"
+			tags:    #AppTags
+		}
+	}
+
 	for idx, az in variables.availabilityZones {
 		let _az = az
 		"appServer-\(idx)": {
@@ -575,7 +505,8 @@ resources: {
 				instanceType: variables.instanceType
 				subnetId:     "${resources.appSubnet\(["A", "B"][idx]).outputs.subnetId}"
 				securityGroupIds: ["${resources.appSg.outputs.groupId}"]
-				// Enable detailed monitoring in production
+				keyName:            "${resources.sshKeyPair.outputs.keyName}"
+				iamInstanceProfile: "${resources.appInstanceProfile.outputs.instanceProfileName}"
 				monitoring: variables.environment == "prod"
 				rootVolume: {
 					sizeGiB:    30
@@ -590,53 +521,7 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 8. DATABASE — RDS PostgreSQL
-	// ═══════════════════════════════════════════════════
-
-	dbSubnetGroup: {
-		apiVersion: "praxis.io/v1"
-		kind:       "DBSubnetGroup"
-		metadata: name: "\(_naming.prefix)-db-subnets"
-		spec: {
-			region:      _naming.region
-			description: "Database subnet group for \(_naming.prefix)"
-			subnetIds: [
-				"${resources.dataSubnetA.outputs.subnetId}",
-				"${resources.dataSubnetB.outputs.subnetId}",
-			]
-			tags: #DataTags
-		}
-	}
-
-	database: {
-		apiVersion: "praxis.io/v1"
-		kind:       "RDSInstance"
-		metadata: name: "\(_naming.prefix)-db"
-		spec: {
-			region:            _naming.region
-			allocatedStorage:  100
-			storageType:       "gp3"
-			engine:            "postgres"
-			engineVersion:     variables.dbEngineVersion
-			instanceClass:     variables.dbInstanceClass
-			masterUsername:    "admin"
-			multiAZ:             variables.environment == "prod"
-			dbSubnetGroupName: "${resources.dbSubnetGroup.outputs.groupName}"
-			vpcSecurityGroupIds: ["${resources.dataSg.outputs.groupId}"]
-			tags: #DataTags
-		}
-		// Production databases are protected from accidental deletion
-		// and cost-center tag changes are ignored during drift detection.
-		lifecycle: {
-			preventDestroy: variables.environment == "prod"
-			ignoreChanges: ["tags.CostCenter"]
-		}
-	}
-
-	// ═══════════════════════════════════════════════════
-	// 9. IAM — App Execution Role + Policy
-	// ═══════════════════════════════════════════════════
+	// ─── IAM ────────────────────────────────────────────
 
 	appRole: {
 		apiVersion: "praxis.io/v1"
@@ -648,7 +533,7 @@ resources: {
 				Version: "2012-10-17"
 				Statement: [{
 					Effect:    "Allow"
-					Principal: Service: ["ec2.amazonaws.com", "lambda.amazonaws.com"]
+					Principal: Service: "ec2.amazonaws.com"
 					Action: "sts:AssumeRole"
 				}]
 			})
@@ -668,36 +553,13 @@ resources: {
 					{
 						Sid:    "S3Access"
 						Effect: "Allow"
-						Action: [
-							"s3:GetObject",
-							"s3:PutObject",
-							"s3:ListBucket",
-						]
+						Action: ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
 						Resource: "*"
-					},
-					{
-						Sid:    "SQSAccess"
-						Effect: "Allow"
-						Action: [
-							"sqs:SendMessage",
-							"sqs:ReceiveMessage",
-							"sqs:DeleteMessage",
-						]
-						Resource: "arn:aws:sqs:\(_naming.region):*:\(_naming.prefix)-dlq"
-					},
-					{
-						Sid:    "SNSPublish"
-						Effect: "Allow"
-						Action: ["sns:Publish"]
-						Resource: "arn:aws:sns:\(_naming.region):*:\(_naming.prefix)-alerts"
 					},
 					{
 						Sid:    "CloudWatchLogs"
 						Effect: "Allow"
-						Action: [
-							"logs:CreateLogStream",
-							"logs:PutLogEvents",
-						]
+						Action: ["logs:CreateLogStream", "logs:PutLogEvents"]
 						Resource: "arn:aws:logs:\(_naming.region):*:log-group:/praxis/\(_naming.prefix)/app:*"
 					},
 				]
@@ -706,70 +568,78 @@ resources: {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 10. LAMBDA — Async Worker
-	// ═══════════════════════════════════════════════════
-
-	worker: {
+	appInstanceProfile: {
 		apiVersion: "praxis.io/v1"
-		kind:       "LambdaFunction"
-		metadata: name: "\(_naming.prefix)-worker"
+		kind:       "IAMInstanceProfile"
+		metadata: name: "\(_naming.prefix)-app-profile"
 		spec: {
-			region:  _naming.region
-			runtime: "provided.al2023"
-			handler: "bootstrap"
-			role:    "${resources.appRole.outputs.roleArn}"
-			code: zipFile: "bootstrap-placeholder"
-			memorySize:   256
-			timeout:      60
-			environment: {
-				DB_HOST:     "${resources.database.outputs.endpoint}"
-				QUEUE_URL:   "${resources.dlq.outputs.queueUrl}"
-				LOG_GROUP:   "${resources.appLogGroup.outputs.logGroupName}"
-				ALERT_TOPIC: "${resources.alertTopic.outputs.topicArn}"
+			path:     "/app/"
+			roleName: "${resources.appRole.outputs.roleName}"
+			tags:     #AppTags
+		}
+	}
+
+	// ─── Database ───────────────────────────────────────
+
+	dbSubnetGroup: {
+		apiVersion: "praxis.io/v1"
+		kind:       "DBSubnetGroup"
+		metadata: name: "\(_naming.prefix)-db-subnets"
+		spec: {
+			region:      _naming.region
+			description: "Database subnet group for \(_naming.prefix)"
+			subnetIds: [
+				"${resources.dataSubnetA.outputs.subnetId}",
+				"${resources.dataSubnetB.outputs.subnetId}",
+			]
+			tags: #DataTags
+		}
+	}
+
+	dbParamGroup: {
+		apiVersion: "praxis.io/v1"
+		kind:       "DBParameterGroup"
+		metadata: name: "\(_naming.prefix)-db-params"
+		spec: {
+			region:      _naming.region
+			family:      variables.dbFamily
+			description: "PostgreSQL parameters for \(_naming.prefix)"
+			parameters: {
+				"shared_buffers":             "256MB"
+				"max_connections":            "200"
+				"log_statement":              "all"
+				"log_min_duration_statement": "500"
 			}
-			vpcConfig: {
-				subnetIds: [
-					"${resources.appSubnetA.outputs.subnetId}",
-					"${resources.appSubnetB.outputs.subnetId}",
-				]
-				securityGroupIds: ["${resources.appSg.outputs.groupId}"]
-			}
-			tags: #AppTags & {purpose: "async-worker"}
+			tags: #DataTags
 		}
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 11. MESSAGING — SNS + SQS Dead-Letter Queue
-	// ═══════════════════════════════════════════════════
-
-	alertTopic: {
+	database: {
 		apiVersion: "praxis.io/v1"
-		kind:       "SNSTopic"
-		metadata: name: "\(_naming.prefix)-alerts"
+		kind:       "RDSInstance"
+		metadata: name: "\(_naming.prefix)-db"
 		spec: {
-			region:    _naming.region
-			topicName: "\(_naming.prefix)-alerts"
-			tags: #StandardTags & {purpose: "alerting"}
+			region:              _naming.region
+			allocatedStorage:    100
+			storageType:         "gp3"
+			engine:              "postgres"
+			engineVersion:       variables.dbEngineVersion
+			instanceClass:       variables.dbInstanceClass
+			masterUsername:      "admin"
+			masterUserPassword:  "ssm:///praxis/\(variables.environment)/db-password?sensitive=true"
+			multiAZ:             variables.environment == "prod"
+			dbSubnetGroupName:   "${resources.dbSubnetGroup.outputs.groupName}"
+			parameterGroupName:  "${resources.dbParamGroup.outputs.groupName}"
+			vpcSecurityGroupIds: ["${resources.dataSg.outputs.groupId}"]
+			tags: #DataTags
+		}
+		lifecycle: {
+			preventDestroy: variables.environment == "prod"
+			ignoreChanges: ["tags.CostCenter"]
 		}
 	}
 
-	dlq: {
-		apiVersion: "praxis.io/v1"
-		kind:       "SQSQueue"
-		metadata: name: "\(_naming.prefix)-dlq"
-		spec: {
-			region:                   _naming.region
-			queueName:              "\(_naming.prefix)-dlq"
-			messageRetentionPeriod: 1209600 // 14 days
-			visibilityTimeout:      300
-			tags: #StandardTags & {purpose: "dead-letter-queue"}
-		}
-	}
-
-	// ═══════════════════════════════════════════════════
-	// 12. OBSERVABILITY — CloudWatch Logs + Alarm
-	// ═══════════════════════════════════════════════════
+	// ─── Observability ──────────────────────────────────
 
 	appLogGroup: {
 		apiVersion: "praxis.io/v1"
@@ -782,34 +652,8 @@ resources: {
 		}
 	}
 
-	// Conditional: CloudWatch alarm only when monitoring is enabled
-	if variables.enableMonitoring {
-		highErrorAlarm: {
-			apiVersion: "praxis.io/v1"
-			kind:       "MetricAlarm"
-			metadata: name: "\(_naming.prefix)-high-5xx-errors"
-			spec: {
-				region:             _naming.region
-				alarmDescription:   "ALB 5xx error rate exceeds threshold"
-				namespace:          "AWS/ApplicationELB"
-				metricName:         "HTTPCode_ELB_5XX_Count"
-				statistic:          "Sum"
-				period:             300
-				evaluationPeriods:  2
-				threshold:          50
-				comparisonOperator: "GreaterThanThreshold"
-				alarmActions: ["${resources.alertTopic.outputs.topicArn}"]
-				dimensions: LoadBalancer: "${resources.alb.outputs.loadBalancerArn}"
-				tags: #StandardTags & {purpose: "monitoring"}
-			}
-		}
-	}
+	// ─── Storage ────────────────────────────────────────
 
-	// ═══════════════════════════════════════════════════
-	// 13. STORAGE — Dynamic S3 Buckets (for-loop)
-	// ═══════════════════════════════════════════════════
-
-	// Generate one S3 bucket per entry in storageBuckets
 	for _, suffix in variables.storageBuckets {
 		"bucket-\(suffix)": {
 			apiVersion: "praxis.io/v1"
@@ -823,32 +667,9 @@ resources: {
 					enabled:   true
 					algorithm: "AES256"
 				}
-				tags: #StandardTags & {
-					purpose: suffix
-				}
+				tags: #StandardTags & {purpose: suffix}
 			}
 			lifecycle: preventDestroy: variables.environment == "prod"
-		}
-	}
-
-	// Conditional: log-aggregator bucket (only when logging is enabled)
-	if variables.enableLogging {
-		"log-aggregator": {
-			apiVersion: "praxis.io/v1"
-			kind:       "S3Bucket"
-			metadata: name: "\(_naming.prefix)-logs"
-			spec: {
-				region:     _naming.region
-				versioning: false
-				acl:        "private"
-				encryption: {
-					enabled:   true
-					algorithm: "AES256"
-				}
-				tags: #StandardTags & {
-					purpose: "log-aggregation"
-				}
-			}
 		}
 	}
 }

@@ -295,6 +295,30 @@ func NewPolicyPreventedDestroyEvent(deploymentKey, workspace string, generation 
 	)
 }
 
+// NewForceDeleteOverrideEvent creates the event emitted when --force overrides
+// lifecycle.preventDestroy protection during a delete or rollback operation.
+func NewForceDeleteOverrideEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind, operation string) (cloudevents.Event, error) {
+	return newPraxisCloudEvent(
+		EventTypeForceDeleteOverride,
+		deploymentKey,
+		workspace,
+		generation,
+		occurredAt,
+		resourceName,
+		resourceKind,
+		EventCategoryPolicy,
+		EventSeverityWarn,
+		policyEventPayload{
+			Message:      fmt.Sprintf("lifecycle.preventDestroy overridden by --force for %s", resourceName),
+			Policy:       "lifecycle.preventDestroy",
+			Operation:    strings.TrimSpace(operation),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+			Error:        fmt.Sprintf("resource %s had lifecycle.preventDestroy enabled; force-deleted via --force", resourceName),
+		},
+	)
+}
+
 // --- Drift event builders ---
 
 // NewDriftDetectedEvent creates the event emitted when a driver detects that
@@ -435,6 +459,22 @@ func NewResourceReplaceStartedEvent(deploymentKey, workspace string, generation 
 		resourceKind,
 		EventSeverityInfo,
 		resourceEventPayload{Message: fmt.Sprintf("force-replacing %s: deleting before re-provision", resourceName), Status: string(types.DeploymentRunning), ResourceName: resourceName, ResourceKind: resourceKind},
+	)
+}
+
+// NewResourceAutoReplaceStartedEvent creates the event emitted when an
+// auto-replace is triggered by a 409 immutable-field conflict.
+func NewResourceAutoReplaceStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind, reason string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceAutoReplaceStarted,
+		deploymentKey,
+		workspace,
+		generation,
+		occurredAt,
+		resourceName,
+		resourceKind,
+		EventSeverityWarn,
+		resourceEventPayload{Message: fmt.Sprintf("WARNING: auto-replacing %s due to immutable field conflict: %s — the resource will be destroyed and recreated", resourceName, reason), Status: string(types.DeploymentRunning), ResourceName: resourceName, ResourceKind: resourceKind},
 	)
 }
 

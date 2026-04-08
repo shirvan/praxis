@@ -34,7 +34,41 @@ func HasDrift(desired ACMCertificateSpec, observed ObservedState) bool {
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
 func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []FieldDiffEntry {
-	diffs := make([]FieldDiffEntry, 0, 4)
+	diffs := make([]FieldDiffEntry, 0, 8)
+
+	// Immutable fields — these cannot be updated in-place and require replacement.
+	normDesired := applyDefaults(desired)
+	normObserved := normalizeObservedState(observed)
+	if normObserved.DomainName != "" && normDesired.DomainName != normObserved.DomainName {
+		diffs = append(diffs, FieldDiffEntry{
+			Path:     "spec.domainName (immutable, requires replacement)",
+			OldValue: normObserved.DomainName,
+			NewValue: normDesired.DomainName,
+		})
+	}
+	if normObserved.DomainName != "" && !slicesEqual(normDesired.SubjectAlternativeNames, normObserved.SubjectAlternativeNames) {
+		diffs = append(diffs, FieldDiffEntry{
+			Path:     "spec.subjectAlternativeNames (immutable, requires replacement)",
+			OldValue: normObserved.SubjectAlternativeNames,
+			NewValue: normDesired.SubjectAlternativeNames,
+		})
+	}
+	if normObserved.ValidationMethod != "" && normDesired.ValidationMethod != "" && normDesired.ValidationMethod != normObserved.ValidationMethod {
+		diffs = append(diffs, FieldDiffEntry{
+			Path:     "spec.validationMethod (immutable, requires replacement)",
+			OldValue: normObserved.ValidationMethod,
+			NewValue: normDesired.ValidationMethod,
+		})
+	}
+	if normObserved.KeyAlgorithm != "" && normDesired.KeyAlgorithm != "" && normDesired.KeyAlgorithm != normObserved.KeyAlgorithm {
+		diffs = append(diffs, FieldDiffEntry{
+			Path:     "spec.keyAlgorithm (immutable, requires replacement)",
+			OldValue: normObserved.KeyAlgorithm,
+			NewValue: normDesired.KeyAlgorithm,
+		})
+	}
+
+	// Mutable fields.
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "options.certificateTransparencyLoggingPreference",
@@ -43,6 +77,19 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 		})
 	}
 	return append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
+}
+
+// slicesEqual compares two string slices for equality.
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {

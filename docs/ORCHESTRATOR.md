@@ -168,14 +168,18 @@ The scheduler achieves maximum parallelism limited only by the dependency graph.
 The `DeploymentDeleteWorkflow` handles deployment teardown:
 
 1. Read current DeploymentState
-2. Reconstruct the dependency graph from stored resource metadata
-3. Compute reverse topological order
-4. For each resource in reverse order:
-   - **Check `lifecycle.preventDestroy`** — if `true`, fail immediately with a terminal error
+2. **Drain wait**: If an apply workflow is still running, poll every 2 seconds until it reaches a terminal state. After 60 seconds of draining, the delete workflow force-transitions the deployment to `Cancelled` and proceeds — this handles hard-killed apply workflows that left the deployment stuck at `Running` or `Pending`.
+3. Reconstruct the dependency graph from stored resource metadata
+4. Compute reverse topological order
+5. For each resource in reverse order:
+   - **Check `lifecycle.preventDestroy`** — if `true`, fail immediately with a terminal error (unless `--force` is used)
+   - Skip resources that were never provisioned (`Pending`) or already deleted (`Deleted`)
    - Delete the resource via the driver
-5. On failure: mark the resource's dependencies as Skipped (they may still be referenced)
-6. Independent branches continue in parallel
-7. Finalize deployment as Deleted or Failed
+6. On failure: mark the resource's dependencies as Skipped (they may still be referenced). When `--force` is set, dependency skipping is bypassed — every resource is attempted for deletion regardless of upstream failures.
+7. Independent branches continue in parallel
+8. Finalize deployment as Deleted or Failed
+
+Note: Resources in `Skipped` status (bypassed due to a prior dependency failure) are **not** skipped on subsequent delete attempts — they are retried because they were never actually deleted.
 
 Delete is a separate workflow from apply because:
 
@@ -207,9 +211,13 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> Pending
     Pending --> Provisioning
+    Pending --> Updating
     Provisioning --> Ready
     Provisioning --> Error
     Provisioning --> Skipped
+    Updating --> Ready
+    Updating --> Error
+    Updating --> Skipped
     Ready --> Deleting
     Error --> Deleting
     Deleting --> Deleted
@@ -217,7 +225,8 @@ stateDiagram-v2
 ```
 
 - **Pending** — queued, dependencies not yet met
-- **Provisioning** — driver Provision call dispatched
+- **Provisioning** — driver Provision call dispatched (new resource)
+- **Updating** — driver Provision call dispatched (resource existed in prior generation)
 - **Ready** — driver returned success and outputs
 - **Error** — driver returned an error
 - **Skipped** — a dependency failed, this resource was never dispatched
@@ -390,15 +399,27 @@ Lifecycle rules protect resources from accidental deletion and allow selective d
 
 When `lifecycle.preventDestroy: true` is set on a resource:
 
-- The **delete workflow** checks the flag before calling `adapter.Delete()`. If set, the resource is marked as failed with a terminal error and the workflow does not retry.
-- The **apply workflow** checks the flag before force-replacing a resource (`--replace`). Protected resources cannot be recreated.
+- The **delete workflow** checks the flag before calling `adapter.Delete()`. If set, the resource is marked as failed with a terminal error and the workflow does not retry. When `--force` is used, the protection is overridden and an audit event (`dev.praxis.policy.force_delete_override`) is emitted.
+- The **apply workflow** checks the flag before force-replacing a resource (`--replace` or `--allow-replace`). Protected resources cannot be recreated even with auto-replace.
 - The error message is explicit:
 
 ```text
 lifecycle.preventDestroy enabled; refusing to delete resource "prod-db" (RDSInstance)
 ```
 
-To delete a protected resource, update the template to set `preventDestroy: false` (or remove it), re-apply, then delete.
+To delete a protected resource, either update the template to set `preventDestroy: false` (or remove it), re-apply, then delete — or use `praxis delete --force` as an escape hatch.
+
+### Auto-Replace (Immutable Field Conflicts)
+
+When `--allow-replace` is set on a deploy command, the workflow automatically handles 409 immutable-field conflicts from drivers:
+
+1. The driver returns a 409 error (immutable field change detected).
+2. The workflow checks `lifecycle.preventDestroy` — if set, the resource fails without replacement.
+3. An `auto_replace.started` event is emitted for audit visibility.
+4. The existing resource is deleted via `adapter.Delete()`.
+5. A new resource is provisioned with the updated spec.
+
+This is functionally identical to `--replace <resource>` but triggered automatically by the 409 error code. It is a destructive operation — the resource is fully destroyed and recreated, which may cause downtime and data loss.
 
 ### ignoreChanges
 
@@ -409,3 +430,57 @@ When `lifecycle.ignoreChanges: ["path1", "path2"]` is set on a resource:
 - Non-ignored fields are still diffed and corrected normally.
 
 This allows external systems (billing tools, compliance scanners, other IaC) to manage specific fields without Praxis fighting for control.
+
+---
+
+## Plan-Time Expression Resolution
+
+The `plan` and `deploy --dry-run` commands compute accurate diffs for all resources, including those with `${resources.X.outputs.Y}` expressions. This requires resolving expressions before calling each driver's `Plan` method — but at plan time, no deployment workflow has run, so no dispatch-time hydration occurs.
+
+### Live Output Collection
+
+The plan diff engine solves this by collecting **live outputs** from driver virtual objects as it walks resources in topological order:
+
+```mermaid
+flowchart TD
+    A["Walk resources in topological order"] --> B{"Has expressions?"}
+    B -->|No| C["Call adapter.Plan(key, spec)"]
+    B -->|Yes| D["Hydrate spec with accumulated outputs"]
+    C --> E{"Referenced by downstream?"}
+    D --> F["Call adapter.Plan(key, hydratedSpec)"]
+    F --> E
+    E -->|Yes| G["Call adapter.GetOutputs(key)\nStore in liveOutputs map"]
+    E -->|No| H["Record diff result"]
+    G --> H
+    H --> A
+```
+
+1. **Non-expression resources** are planned first (they have no unresolved dependencies). After planning, if downstream resources reference them, their outputs are read from the driver's virtual-object state via `GetOutputs`.
+
+2. **Expression-bearing resources** are planned after their dependencies. `HydrateExprs` resolves each `${resources.<name>.outputs.<field>}` placeholder using the accumulated `liveOutputs` map, producing a fully hydrated spec for the driver's `Plan` method.
+
+3. **Resolved keys for display.** Expression-bearing resources may have keys containing placeholders (e.g., `${resources.vpc.outputs.vpcId}~web-sg`). The plan engine calls `adapter.BuildKey(hydratedSpec)` to compute the resolved key for display (e.g., `vpc-0abc123~web-sg`), while using the original unresolved key for driver lookups.
+
+### Why the Original Key for Driver Lookups
+
+The deployment workflow provisions driver virtual objects at the **original unresolved key** — the key built from the raw template spec before expression hydration. This is because `buildResourceNodes` runs before any outputs are available, so expression-containing keys are stored literally (e.g., `${resources.vpc.outputs.vpcId}~web-sg`).
+
+The plan engine must use the same key when calling `adapter.Plan` and `GetOutputs`, or the driver won't find its stored state. The resolved key from `BuildKey(hydratedSpec)` is used exclusively for human-readable display.
+
+### Fallback to Prior Deployment Outputs
+
+As a fallback, `fetchPriorOutputs` optionally seeds the `liveOutputs` map with outputs from a prior deployment. This covers edge cases where a driver's virtual-object state is unavailable (e.g., the driver service was restarted and state was lost). The `--key` flag allows specifying which deployment to use; when omitted, the key is auto-derived from the template.
+
+### Field-Level Deletion Display
+
+Within an update diff, fields whose new value is zero/empty (empty string, `0`, `false`, empty list, or empty map) are rendered as deletions with a `-` prefix showing only the old value:
+
+```text
+  # Listener "us-east-1~my-listener" will be updated in-place
+  ~ resource "Listener" "us-east-1~my-listener" {
+      ~ port      = 443 => 8443
+      - sslPolicy = "ELBSecurityPolicy-2016-08"
+    }
+```
+
+This makes it clear that `sslPolicy` is being removed rather than changed to an empty string.

@@ -26,6 +26,18 @@ import (
 // delete workflow.
 const deleteResourceTimeout = 5 * time.Minute
 
+// applyDrainInterval is the poll cadence used while waiting for an in-progress
+// apply workflow to reach a terminal state before deletion begins.
+const applyDrainInterval = 2 * time.Second
+
+// applyDrainMaxPolls is the maximum number of applyDrainInterval polls the
+// delete workflow will wait for an apply workflow to finish. After this many
+// iterations the apply workflow is presumed hard-killed (e.g. cancelled via the
+// Restate admin API) before it could call finalizeDeployment, leaving the
+// deployment state stuck at Running or Pending. The delete workflow
+// force-transitions the state to Cancelled so teardown can proceed.
+const applyDrainMaxPolls = 30 // 30 × 2 s ≈ 60 s
+
 // DeploymentDeleteWorkflow runs one asynchronous deployment-wide delete flow.
 //
 // Delete stays separate from apply so both operations remain durable, observable
@@ -69,8 +81,32 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	// before dispatching us, so the apply should already be draining. We
 	// poll until the deployment reaches a terminal or deletable state to
 	// avoid concurrent mutation of resources.
+	//
+	// A hard-kill of the apply workflow via the Restate admin API leaves the
+	// state permanently at Running or Pending because the workflow exits before
+	// it can call finalizeDeployment. After applyDrainMaxPolls iterations we
+	// assume that scenario, force-transition the state to Cancelled, and
+	// proceed. This allows operators to flush stuck deployments by deleting them.
+	drainPolls := 0
 	for state.Status == types.DeploymentRunning || state.Status == types.DeploymentPending {
-		_ = restate.Sleep(ctx, 2*time.Second)
+		if drainPolls >= applyDrainMaxPolls {
+			// Apply workflow is presumed dead. Force the state out of the
+			// transient status so the delete can proceed safely.
+			now, nowErr := currentTime(ctx)
+			if nowErr != nil {
+				return DeploymentResult{}, nowErr
+			}
+			if err := setDeploymentStatus(ctx, req.DeploymentKey, StatusUpdate{
+				Status:    types.DeploymentCancelled,
+				UpdatedAt: now,
+			}); err != nil {
+				return DeploymentResult{}, err
+			}
+			state.Status = types.DeploymentCancelled
+			break
+		}
+		_ = restate.Sleep(ctx, applyDrainInterval)
+		drainPolls++
 		state, err = getDeploymentState(ctx, req.DeploymentKey)
 		if err != nil {
 			return DeploymentResult{}, err
@@ -157,24 +193,36 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 
 		// Respect lifecycle.preventDestroy: if the template declared this
 		// resource as undestroyable, emit a policy event and mark it failed.
+		// When Force is set, override the protection and proceed with deletion,
+		// emitting a warning event for audit purposes.
 		if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
-			policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
+			if !req.Force {
+				policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
+				if eventErr != nil {
+					return DeploymentResult{}, eventErr
+				}
+				if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+					return DeploymentResult{}, err
+				}
+				if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind,
+					fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name), false); err != nil {
+					return DeploymentResult{}, err
+				}
+				continue
+			}
+			// Force override: emit an audit event noting that protection was bypassed.
+			overrideEvent, eventErr := NewForceDeleteOverrideEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
 			if eventErr != nil {
 				return DeploymentResult{}, eventErr
 			}
-			if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+			if err := EmitCloudEvent(ctx, overrideEvent); err != nil {
 				return DeploymentResult{}, err
 			}
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind,
-				fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name)); err != nil {
-				return DeploymentResult{}, err
-			}
-			continue
 		}
 
 		adapter, err := w.providers.Get(resource.Kind)
 		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error()); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
@@ -197,7 +245,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 
 		invocation, err := adapter.Delete(ctx, resource.Key)
 		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("failed to dispatch delete: %v", err)); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("failed to dispatch delete: %v", err), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
@@ -209,19 +257,19 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		timeout := restate.After(ctx, deleteResourceTimeout)
 		first, err := restate.WaitFirst(ctx, invocation.Future(), timeout)
 		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete wait error: %v", err)); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete wait error: %v", err), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
 		}
 		if first == timeout {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete timed out after %s", deleteResourceTimeout)); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete timed out after %s", deleteResourceTimeout), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
 		}
 		if err := invocation.Done(); err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error()); err != nil {
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
@@ -301,6 +349,9 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 // skips the resource's direct dependencies (not dependents). During deletion,
 // if a dependent fails to delete, its *dependencies* are skipped because they
 // may still be referenced by the failed (still-existing) dependent.
+//
+// When force is true, dependency skipping is bypassed: every resource is
+// attempted for deletion regardless of upstream failures.
 func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	ctx restate.WorkflowContext,
 	deploymentKey string,
@@ -310,6 +361,7 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	resourceName string,
 	resourceKind string,
 	errMsg string,
+	force bool,
 ) error {
 	exec.markFailed(resourceName, errMsg)
 	if err := updateDeploymentResource(ctx, deploymentKey, ResourceUpdate{
@@ -325,6 +377,12 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	}
 	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
 		return err
+	}
+
+	// When force is set, do not skip dependencies — attempt to delete every
+	// resource regardless of upstream failures.
+	if force {
+		return nil
 	}
 
 	skipped := exec.skipDependencies(resourceName, fmt.Sprintf("skipped because dependent %s failed to delete", resourceName))
@@ -352,9 +410,13 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 // the resource was never successfully provisioned or is already deleted.
 // These resources should be skipped during the delete workflow to avoid
 // spurious driver calls against resources that don't exist in the cloud.
+//
+// Note: Skipped resources are NOT included here. A resource in Skipped state
+// was never actually deleted (it was bypassed due to a dependency failure) and
+// must be retried on subsequent delete attempts.
 func shouldSkipDeleteByStatus(status types.DeploymentResourceStatus) bool {
 	switch status {
-	case types.DeploymentResourcePending, types.DeploymentResourceSkipped, types.DeploymentResourceDeleted:
+	case types.DeploymentResourcePending, types.DeploymentResourceDeleted:
 		return true
 	default:
 		return false

@@ -11,7 +11,7 @@ package sqs
 
 	spec: {
 		region:    string
-		queueName: string & =~"^[a-zA-Z0-9_-]{1,80}(\\.fifo)?$"
+		queueName: string & (=~"^[a-zA-Z0-9_-]{1,80}(\\.fifo)?$" | =~"^\\$\\{resources\\..+\\}$")
 		policy: {
 			Version: "2012-10-17" | "2008-10-17" | *"2012-10-17"
 			Id?:     string

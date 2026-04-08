@@ -1,6 +1,7 @@
 package concierge
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -189,13 +190,34 @@ func (a *ConciergeSession) Ask(ctx restate.ObjectContext, req AskRequest) (AskRe
 		// is journaled — on replay, Restate returns the cached result instead
 		// of calling the LLM again. This prevents duplicate API calls and costs.
 		llmResp, err := restate.Run(ctx, func(rc restate.RunContext) (LLMResponse, error) {
-			return provider.ChatCompletion(rc, ChatRequest{
+			resp, err := provider.ChatCompletion(rc, ChatRequest{
 				Messages:    state.Messages,
 				Tools:       tools,
 				Temperature: cfg.Temperature,
 			})
+			if err != nil {
+				var llmErr *LLMError
+				if errors.As(err, &llmErr) && !llmErr.IsRetryable() {
+					return resp, restate.TerminalError(err)
+				}
+			}
+			return resp, err
 		})
 		if err != nil {
+			var llmErr *LLMError
+			if errors.As(err, &llmErr) {
+				state.LastActiveAt = now
+				restate.Set(ctx, "state", state)
+				return AskResponse{
+					Response:   fmt.Sprintf("**LLM Error**: %s\n\nCheck your concierge configuration with `praxis concierge status`.", llmErr.Message),
+					SessionID:  sessionID,
+					TurnCount:  state.TurnCount,
+					ToolLog:    toolLog,
+					Model:      cfg.Model,
+					Provider:   cfg.Provider,
+					DurationMs: time.Since(askStart).Milliseconds(),
+				}, nil
+			}
 			return AskResponse{}, err
 		}
 

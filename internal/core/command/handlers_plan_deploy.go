@@ -17,7 +17,6 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
-	corediff "github.com/shirvan/praxis/internal/core/diff"
 	"github.com/shirvan/praxis/internal/core/registry"
 	"github.com/shirvan/praxis/internal/core/template"
 	"github.com/shirvan/praxis/pkg/types"
@@ -69,49 +68,23 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 		return PlanDeployResponse{}, err
 	}
 
-	// Per-resource diff loop — identical to Plan (handlers_plan.go).
-	plan := corediff.NewPlanResult()
-	for i := range compiled.PlanResources {
-		resource := &compiled.PlanResources[i]
+	// Look up prior deployment state so expression-bearing resources can be
+	// compared against cloud state rather than blindly shown as "create".
+	priorOutputs, warnings, err := s.fetchPriorOutputs(ctx, req.DeploymentKey, compiled.Specs)
+	if err != nil {
+		return PlanDeployResponse{}, err
+	}
 
-		// Resources with dispatch-time expressions (${resources.X.outputs.Y})
-		// contain unresolved placeholders, so their specs cannot be compared
-		// against cloud state. We still extract the known fields from the raw
-		// spec so the plan output shows what will be configured.
-		if len(resource.Expressions) > 0 {
-			fields := corediff.FieldDiffsFromJSON(resource.Spec)
-			corediff.Add(plan, resource.Kind, resource.Key, types.OpCreate, fields)
-			continue
-		}
-
-		adapter, err := s.providers.Get(resource.Kind)
-		if err != nil {
-			return PlanDeployResponse{}, restate.TerminalError(err, 400)
-		}
-
-		desiredSpec, err := adapter.DecodeSpec(resource.Spec)
-		if err != nil {
-			return PlanDeployResponse{}, restate.TerminalError(err, 400)
-		}
-
-		op, fields, err := adapter.Plan(ctx, resource.Key, account, desiredSpec)
-		if err != nil {
-			return PlanDeployResponse{}, err
-		}
-
-		if resource.Lifecycle != nil && len(resource.Lifecycle.IgnoreChanges) > 0 {
-			fields = filterIgnoredFields(fields, resource.Lifecycle.IgnoreChanges)
-			if op == types.OpUpdate && len(fields) == 0 {
-				op = types.OpNoOp
-			}
-		}
-
-		corediff.Add(plan, resource.Kind, resource.Key, op, fields)
+	// Per-resource diff loop with expression resolution from prior state.
+	plan, err := s.computeResourceDiffs(ctx, compiled.PlanResources, account, priorOutputs)
+	if err != nil {
+		return PlanDeployResponse{}, err
 	}
 
 	return PlanDeployResponse{
 		Plan:        plan,
 		Rendered:    compiled.Rendered,
 		DataSources: compiled.DataSources,
+		Warnings:    warnings,
 	}, nil
 }

@@ -8,11 +8,12 @@ package metricalarm
 
 import (
 	"context"
-	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	cloudwatch "github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -135,6 +136,12 @@ func (r *realMetricAlarmAPI) DescribeAlarm(ctx context.Context, alarmName string
 		StateValue:              string(alarm.StateValue),
 		StateReason:             aws.ToString(alarm.StateReason),
 		Tags:                    map[string]string{},
+	}
+	// AWS DescribeAlarms does not return tags; fetch them separately.
+	if observed.AlarmArn != "" {
+		if tags, tagErr := r.ListTagsForResource(ctx, observed.AlarmArn); tagErr == nil {
+			observed.Tags = tags
+		}
 	}
 	return normalizeObserved(observed), true, nil
 }

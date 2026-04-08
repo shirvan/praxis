@@ -120,7 +120,7 @@ func permissionStatementFromPolicy(policyJSON string, statementID string) (polic
 			return stmt, nil
 		}
 	}
-	return policyStatement{}, fmt.Errorf("statement %s not found", statementID)
+	return policyStatement{}, awserr.NotFound(fmt.Sprintf("statement %s not found", statementID))
 }
 
 // observedFromStatement converts a parsed IAM policy statement to ObservedState.
@@ -187,7 +187,7 @@ func extractConditionValue(condition any, key string) string {
 
 // IsNotFound returns true if the function or policy does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "ResourceNotFoundException")
+	return awserr.HasCode(err, "ResourceNotFoundException") || awserr.IsNotFoundErr(err)
 }
 
 // IsConflict returns true if the statement already exists.

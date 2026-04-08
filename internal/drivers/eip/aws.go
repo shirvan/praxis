@@ -96,7 +96,7 @@ func (r *realEIPAPI) DescribeAddress(ctx context.Context, allocationID string) (
 		return ObservedState{}, err
 	}
 	if len(out.Addresses) == 0 {
-		return ObservedState{}, fmt.Errorf("elastic IP %s not found", allocationID)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("elastic IP %s not found", allocationID))
 	}
 	addr := out.Addresses[0]
 
@@ -215,7 +215,7 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 
 // IsNotFound returns true if the EIP does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidAllocationID.NotFound", "InvalidAddressID.NotFound")
+	return awserr.HasCode(err, "InvalidAllocationID.NotFound", "InvalidAddressID.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsAssociationExists returns true if the EIP is still associated (cannot release).

@@ -21,7 +21,7 @@ func TestSpecFromObserved(t *testing.T) {
 		VpcId:               "vpc-123",
 		TargetType:          "instance",
 		ProtocolVersion:     "HTTP1",
-		HealthCheck:         HealthCheck{Protocol: "HTTP", Path: "/health", Port: "traffic-port", HealthyThreshold: 5, UnhealthyThreshold: 2, Interval: 30, Timeout: 5},
+		HealthCheck:         HealthCheck{Protocol: "HTTP", Path: "/health", Port: "traffic-port", HealthyThreshold: 5, UnhealthyThreshold: 2, Interval: 30, Timeout: 5, Matcher: "200"},
 		DeregistrationDelay: 300,
 		Stickiness:          &Stickiness{Enabled: true, Type: "lb_cookie", Duration: 3600},
 		Targets:             []Target{{ID: "i-123", Port: 8080}},
@@ -67,9 +67,30 @@ func TestApplyDefaults(t *testing.T) {
 }
 
 func TestApplyDefaults_StickinessDefaults(t *testing.T) {
-	spec := applyDefaults(TargetGroupSpec{Stickiness: &Stickiness{Enabled: true}})
+	spec := applyDefaults(TargetGroupSpec{Protocol: "HTTP", Stickiness: &Stickiness{Enabled: true}})
 	assert.Equal(t, "lb_cookie", spec.Stickiness.Type)
 	assert.Equal(t, 86400, spec.Stickiness.Duration)
+}
+
+func TestApplyDefaults_StickinessDefaults_TCP(t *testing.T) {
+	spec := applyDefaults(TargetGroupSpec{Protocol: "TCP", Stickiness: &Stickiness{Enabled: true}})
+	assert.Equal(t, "source_ip", spec.Stickiness.Type)
+	assert.Equal(t, 86400, spec.Stickiness.Duration)
+}
+
+func TestApplyDefaults_StickinessDefaults_TLS(t *testing.T) {
+	spec := applyDefaults(TargetGroupSpec{Protocol: "TLS", Stickiness: &Stickiness{Enabled: true}})
+	assert.Equal(t, "source_ip", spec.Stickiness.Type)
+}
+
+func TestApplyDefaults_StickinessDefaults_UDP(t *testing.T) {
+	spec := applyDefaults(TargetGroupSpec{Protocol: "UDP", Stickiness: &Stickiness{Enabled: true}})
+	assert.Equal(t, "source_ip", spec.Stickiness.Type)
+}
+
+func TestApplyDefaults_StickinessDefaults_ExplicitType(t *testing.T) {
+	spec := applyDefaults(TargetGroupSpec{Protocol: "TCP", Stickiness: &Stickiness{Enabled: true, Type: "source_ip"}})
+	assert.Equal(t, "source_ip", spec.Stickiness.Type)
 }
 
 func TestValidateSpec(t *testing.T) {

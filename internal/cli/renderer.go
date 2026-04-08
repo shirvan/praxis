@@ -110,7 +110,7 @@ func (r *Renderer) renderStatus(status string) string {
 	switch strings.ToLower(status) {
 	case "ready", "complete", "deleted", "success":
 		style = r.theme.StatusReady
-	case "pending", "running", "provisioning", "applying", "deleting":
+	case "pending", "running", "provisioning", "updating", "applying", "deleting":
 		style = r.theme.StatusPending
 	case "failed", "error":
 		style = r.theme.StatusError

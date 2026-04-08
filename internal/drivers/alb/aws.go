@@ -9,10 +9,11 @@ package alb
 import (
 	"context"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -113,7 +114,7 @@ func (r *realALBAPI) DescribeALB(ctx context.Context, id string) (ObservedState,
 		return ObservedState{}, err
 	}
 	if len(out.LoadBalancers) == 0 {
-		return ObservedState{}, fmt.Errorf("ALB %s not found", id)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("ALB %s not found", id))
 	}
 	lb := out.LoadBalancers[0]
 	arn := aws.ToString(lb.LoadBalancerArn)
@@ -363,7 +364,7 @@ func subnetsToMappings(subnets []string) []SubnetMapping {
 // Error classification
 
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "LoadBalancerNotFound")
+	return awserr.HasCode(err, "LoadBalancerNotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsDuplicate returns true if the AWS error indicates a naming conflict.

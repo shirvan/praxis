@@ -492,8 +492,11 @@ func (r *realLogGroupAPI) DescribeLogGroup(ctx context.Context, logGroupName str
 ```
 
 **Note**: `DescribeLogGroups` does NOT return tags. Tags must be fetched separately
-via `ListTagsForResource` using the log group ARN. The driver calls both in sequence
-during observe/reconcile.
+via `ListTagsForResource` using the log group ARN. `DescribeLogGroup` in `aws.go`
+calls both in sequence and propagates `ListTagsForResource` errors — if tag
+fetching fails, the entire Describe returns an error rather than silently
+returning empty tags. This ensures the Plan adapter gets complete data or a
+clear error.
 
 ---
 

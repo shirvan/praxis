@@ -87,6 +87,18 @@ func (s *executionState) markProvisioning(name string) {
 	s.dispatched[name] = true
 }
 
+// resetToPending clears dispatch/failure tracking for a resource so it can be
+// re-dispatched. Used by auto-replace when a 409 immutable-field conflict
+// triggers a delete+re-provision cycle.
+func (s *executionState) resetToPending(name string) {
+	s.statuses[name] = types.DeploymentResourcePending
+	delete(s.dispatched, name)
+	delete(s.completed, name)
+	delete(s.failed, name)
+	delete(s.skipped, name)
+	delete(s.errors, name)
+}
+
 // markDeleting transitions a resource to Deleting and records it as dispatched.
 func (s *executionState) markDeleting(name string) {
 	s.statuses[name] = types.DeploymentResourceDeleting

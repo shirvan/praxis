@@ -3,9 +3,10 @@ package dbsubnetgroup
 import (
 	"context"
 	"errors"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
@@ -77,7 +78,7 @@ func (r *realDBSubnetGroupAPI) DescribeDBSubnetGroup(ctx context.Context, groupN
 		return ObservedState{}, err
 	}
 	if len(out.DBSubnetGroups) == 0 {
-		return ObservedState{}, errors.New("db subnet group not found")
+		return ObservedState{}, awserr.NotFound("db subnet group not found")
 	}
 	group := out.DBSubnetGroups[0]
 	observed := ObservedState{
@@ -215,7 +216,7 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 
 // IsNotFound returns true if the DB subnet group does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "DBSubnetGroupNotFoundFault")
+	return awserr.HasCode(err, "DBSubnetGroupNotFoundFault") || awserr.IsNotFoundErr(err)
 }
 
 // IsAlreadyExists returns true if a subnet group with the same name exists.

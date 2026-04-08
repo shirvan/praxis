@@ -449,7 +449,24 @@ intended.
 | `tags` | Map equality |
 
 Immutable fields (`name`, `protocol`, `port`, `vpcId`, `targetType`,
-`protocolVersion`) are not compared for drift.
+`protocolVersion`) are reported as immutable diffs that require replacement.
+
+### Default Value Normalization
+
+`applyDefaults()` normalizes the desired spec before comparison:
+
+| Field | Default When Empty/Zero | Notes |
+|---|---|---|
+| `protocolVersion` | `"HTTP1"` | For HTTP/HTTPS protocols only |
+| `healthCheck.matcher` | `"200"` | For HTTP/HTTPS health checks only |
+| `deregistrationDelay` | `300` | AWS default |
+| `stickiness` (nil) | Treated as `{enabled: false}` | Prevents false diff vs AWS-returned disabled stickiness |
+
+### Stickiness Nil Handling
+
+`stickinessEqual()` treats a nil `Stickiness` pointer (not configured) as
+equivalent to `&Stickiness{Enabled: false}`. This prevents false diffs when
+the user omits stickiness config but AWS returns the default disabled state.
 
 ### Target Normalization
 

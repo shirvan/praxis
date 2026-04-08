@@ -5,7 +5,10 @@
 // reported as diffs but cannot be corrected in-place — they require a new publish.
 package lambdalayer
 
-import "slices"
+import (
+	"slices"
+	"sort"
+)
 
 // FieldDiffEntry represents a single field difference with JSON path and old/new values.
 type FieldDiffEntry struct {
@@ -30,10 +33,10 @@ func ComputeFieldDiffs(desired LambdaLayerSpec, observed ObservedState, outputs 
 	if desired.Description != observed.Description {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
-	if !slices.Equal(desired.CompatibleRuntimes, observed.CompatibleRuntimes) {
+	if !sortedSlicesEqual(desired.CompatibleRuntimes, observed.CompatibleRuntimes) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.compatibleRuntimes", OldValue: observed.CompatibleRuntimes, NewValue: desired.CompatibleRuntimes})
 	}
-	if !slices.Equal(desired.CompatibleArchitectures, observed.CompatibleArchitectures) {
+	if !sortedSlicesEqual(desired.CompatibleArchitectures, observed.CompatibleArchitectures) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.compatibleArchitectures", OldValue: observed.CompatibleArchitectures, NewValue: desired.CompatibleArchitectures})
 	}
 	if desired.LicenseInfo != observed.LicenseInfo {
@@ -48,4 +51,17 @@ func ComputeFieldDiffs(desired LambdaLayerSpec, observed ObservedState, outputs 
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.permissions", OldValue: observedPerms, NewValue: desiredPerms})
 	}
 	return diffs
+}
+
+// sortedSlicesEqual compares two string slices for equality after sorting copies,
+// so that order differences (e.g. [arm64, x86_64] vs [x86_64, arm64]) do not produce false diffs.
+func sortedSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	ac := append([]string(nil), a...)
+	bc := append([]string(nil), b...)
+	sort.Strings(ac)
+	sort.Strings(bc)
+	return slices.Equal(ac, bc)
 }

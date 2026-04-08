@@ -3,9 +3,10 @@ package dbparametergroup
 import (
 	"context"
 	"errors"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
@@ -96,7 +97,7 @@ func (r *realDBParameterGroupAPI) DescribeParameterGroup(ctx context.Context, gr
 			return ObservedState{}, err
 		}
 		if len(out.DBClusterParameterGroups) == 0 {
-			return ObservedState{}, errors.New("cluster parameter group not found")
+			return ObservedState{}, awserr.NotFound("cluster parameter group not found")
 		}
 		group := out.DBClusterParameterGroups[0]
 		observed.ARN = aws.ToString(group.DBClusterParameterGroupArn)
@@ -113,7 +114,7 @@ func (r *realDBParameterGroupAPI) DescribeParameterGroup(ctx context.Context, gr
 			return ObservedState{}, err
 		}
 		if len(out.DBParameterGroups) == 0 {
-			return ObservedState{}, errors.New("parameter group not found")
+			return ObservedState{}, awserr.NotFound("parameter group not found")
 		}
 		group := out.DBParameterGroups[0]
 		observed.ARN = aws.ToString(group.DBParameterGroupArn)
@@ -325,7 +326,7 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 
 // IsNotFound returns true if the parameter group does not exist (DB or Cluster).
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "DBParameterGroupNotFoundFault", "DBClusterParameterGroupNotFoundFault")
+	return awserr.HasCode(err, "DBParameterGroupNotFoundFault", "DBClusterParameterGroupNotFoundFault") || awserr.IsNotFoundErr(err)
 }
 
 // IsAlreadyExists returns true if a parameter group with the same name exists.

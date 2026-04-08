@@ -74,7 +74,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **Dependency-Aware Orchestration.** Templates declare cross-resource dependencies via output expressions (`${resources.<name>.outputs.<field>}`). The orchestrator builds a DAG and dispatches resources with maximum parallelism as dependencies complete.
 
-**Plan Before Apply.** Preview exactly what would change before committing — per-field diffs for every resource, just like `terraform plan`.
+**Plan Before Apply.** Preview exactly what would change before committing — per-field diffs for every resource, including those with cross-resource expression references. Expression-bearing resources are resolved at plan time using live driver state, just like `terraform plan`.
 
 **Import Existing Resources.** Adopt cloud resources already running in your account. Praxis captures their current state as a baseline and begins managing or observing them.
 
@@ -230,6 +230,30 @@ praxis concierge ask "show me what would change if I update the VPC CIDR"
 
 The Concierge runs as a separate container (`praxis-concierge`). Bring your own LLM — it supports OpenAI-compatible APIs (OpenAI, Ollama, Together, Groq, Azure OpenAI) and Anthropic Claude. Destructive actions require explicit human approval before executing.
 
+##### Using a Local LLM
+
+No API keys or cloud services required — run the Concierge against a local model with [Ollama](https://ollama.com/):
+
+```bash
+# Pull the model
+ollama pull gemma4:26b
+
+# Point the Concierge at your local Ollama instance
+praxis concierge configure \
+  --provider openai \
+  --base-url http://localhost:11434/v1 \
+  --model gemma4:26b
+
+# Start chatting
+praxis "what changed in prod since yesterday?"
+praxis "migrate my entire terraform modules/ directory to praxis" --file modules/
+praxis "compare the staging and prod VPC configs and explain the differences"
+praxis "find all resources with drift and show me what changed"
+praxis "plan a blue-green cutover for the orders API"
+```
+
+When running the full stack in Docker Compose, use `http://ollama:11434/v1` as the base URL instead (assuming Ollama is a service in the same Compose network).
+
 For Slack teams, the [Slack Gateway](docs/SLACK_GATEWAY.md) connects the Concierge as a bot user — DM conversations, event-watch threads with AI-powered analysis, and approval buttons.
 
 See the [Concierge documentation](docs/CONCIERGE.md) for setup and capabilities.
@@ -239,14 +263,26 @@ See the [Concierge documentation](docs/CONCIERGE.md) for setup and capabilities.
 ```text
 Praxis will perform the following actions:
 
-  # S3Bucket "my-bucket" will be updated in-place
-  ~ resource "S3Bucket" "my-bucket" {
-      ~ spec.versioning: false -> true
-      ~ tags.env: "staging" -> "prod"
+  # S3Bucket "my-bucket" will be created
+  + resource "S3Bucket" "my-bucket" {
+      + bucketName  = "my-bucket"
+      + region      = "us-east-1"
+      + versioning  = true
+      + tags {
+          + env = "staging"
+        }
     }
 
-Plan: 0 to create, 1 to update, 0 to delete, 2 unchanged.
+  # SecurityGroup "vpc-0abc123~web-sg" will be updated in-place
+  ~ resource "SecurityGroup" "vpc-0abc123~web-sg" {
+      ~ description = "old desc" => "new desc"
+      - sslPolicy  = "ELBSecurityPolicy-2016-08"
+    }
+
+Plan: 1 to create, 1 to update, 0 to delete, 2 unchanged.
 ```
+
+Symbols: `+` create, `~` update, `-` delete. Fields within an update that change to empty are shown as deletions with the `-` prefix.
 
 ---
 

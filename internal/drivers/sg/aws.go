@@ -61,7 +61,7 @@ func (r *realSGAPI) DescribeSecurityGroup(ctx context.Context, groupId string) (
 		return ObservedState{}, err
 	}
 	if len(out.SecurityGroups) == 0 {
-		return ObservedState{}, fmt.Errorf("security group %s not found", groupId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("security group %s not found", groupId))
 	}
 
 	sg := out.SecurityGroups[0]
@@ -126,7 +126,7 @@ func (r *realSGAPI) FindSecurityGroup(ctx context.Context, groupName, vpcId stri
 		return ObservedState{}, err
 	}
 	if len(out.SecurityGroups) == 0 {
-		return ObservedState{}, fmt.Errorf("security group %s in VPC %s not found", groupName, vpcId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("security group %s in VPC %s not found", groupName, vpcId))
 	}
 
 	return r.DescribeSecurityGroup(ctx, aws.ToString(out.SecurityGroups[0].GroupId))
@@ -270,7 +270,7 @@ func (r *realSGAPI) UpdateTags(ctx context.Context, groupId string, tags map[str
 		return err
 	}
 	if len(out.SecurityGroups) == 0 {
-		return fmt.Errorf("security group %s not found", groupId)
+		return awserr.NotFound(fmt.Sprintf("security group %s not found", groupId))
 	}
 
 	// Delete existing tags
@@ -367,7 +367,7 @@ func denormalizeProtocol(p string) string {
 
 // IsNotFound returns true if the AWS error indicates the security group does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidGroup.NotFound", "InvalidGroupId.Malformed")
+	return awserr.HasCode(err, "InvalidGroup.NotFound", "InvalidGroupId.Malformed") || awserr.IsNotFoundErr(err)
 }
 
 // IsDuplicate returns true if the error indicates a duplicate security group name.

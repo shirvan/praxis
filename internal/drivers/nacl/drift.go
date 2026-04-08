@@ -2,9 +2,10 @@ package nacl
 
 import (
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field difference between desired and observed state.
@@ -183,8 +184,25 @@ func ruleEqual(a, b NetworkACLRule) bool {
 }
 
 func normalizeRule(rule NetworkACLRule) NetworkACLRule {
-	rule.Protocol = strings.TrimSpace(strings.ToLower(rule.Protocol))
+	rule.Protocol = normalizeProtocolForDrift(strings.TrimSpace(strings.ToLower(rule.Protocol)))
 	rule.RuleAction = strings.TrimSpace(strings.ToLower(rule.RuleAction))
 	rule.CidrBlock = strings.TrimSpace(rule.CidrBlock)
 	return rule
+}
+
+// normalizeProtocolForDrift maps protocol names to IANA numbers so that
+// user-friendly names ("tcp") match AWS-returned numbers ("6") during drift comparison.
+func normalizeProtocolForDrift(protocol string) string {
+	switch protocol {
+	case "", "all", "-1":
+		return "-1"
+	case "tcp":
+		return "6"
+	case "udp":
+		return "17"
+	case "icmp":
+		return "1"
+	default:
+		return protocol
+	}
 }

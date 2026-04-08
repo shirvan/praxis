@@ -37,6 +37,7 @@ func startTestEnv(t *testing.T, llmServerURL string) (*restatetest.TestEnvironme
 		restate.Reflect(session),
 		restate.Reflect(ConciergeConfig{}),
 		restate.Reflect(ApprovalRelay{}),
+		restate.Reflect(ConciergeProgress{}),
 	)
 
 	// Configure the concierge with the mock LLM.
@@ -166,6 +167,7 @@ func TestSessionNotConfigured(t *testing.T) {
 		restate.Reflect(session),
 		restate.Reflect(ConciergeConfig{}),
 		restate.Reflect(ApprovalRelay{}),
+		restate.Reflect(ConciergeProgress{}),
 	)
 
 	_, err := ingress.Object[AskRequest, AskResponse](

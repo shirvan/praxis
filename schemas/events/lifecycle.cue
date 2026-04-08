@@ -27,6 +27,7 @@
 #DeploymentDeleteFailedData: #DeploymentEventData & {status: "Failed"}
 
 #ResourceReplaceStartedData: #ResourceEventData & {status: "Running"}
+#ResourceAutoReplaceStartedData: #ResourceEventData & {status: "Running"}
 #ResourceDispatchedData: #ResourceEventData & {status: "Running"}
 #ResourceReadyData: #ResourceEventData & {status: "Running"}
 #ResourceErrorData: #ResourceEventData & {status: "Running" | "Deleting", error: string}

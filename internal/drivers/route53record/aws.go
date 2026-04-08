@@ -65,7 +65,7 @@ func (r *realRecordAPI) DescribeRecord(ctx context.Context, identity RecordIdent
 			}
 		}
 	}
-	return ObservedState{}, fmt.Errorf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId)
+	return ObservedState{}, awserr.NotFound(fmt.Sprintf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId))
 }
 
 func (r *realRecordAPI) DeleteRecord(ctx context.Context, observed ObservedState) error {
@@ -142,7 +142,7 @@ func fromRoute53RecordSet(hostedZoneID string, recordSet route53types.ResourceRe
 }
 
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidInput")
+	return awserr.HasCode(err, "InvalidInput") || awserr.IsNotFoundErr(err)
 }
 
 func IsConflict(err error) bool {

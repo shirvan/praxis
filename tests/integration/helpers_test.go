@@ -9,11 +9,14 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/stretchr/testify/require"
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
@@ -80,4 +83,19 @@ func localstackAWSConfig(t *testing.T) aws.Config {
 
 	cfg.BaseEndpoint = aws.String(localstackEndpoint)
 	return cfg
+}
+
+// resetMoto resets all Moto state via the /moto-api/reset endpoint.
+// This clears stale idempotency tokens (e.g. ACM RequestCertificate) that
+// survive certificate deletion and cause 500 errors on re-deploy.
+func resetMoto(t *testing.T) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		fmt.Sprintf("%s/moto-api/reset", localstackEndpoint), nil)
+	require.NoError(t, err, "building moto reset request")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err, "resetting moto state")
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "moto reset should return 200")
+	t.Log("Moto state reset")
 }

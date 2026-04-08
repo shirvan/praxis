@@ -11,7 +11,7 @@ package ecr
 
 	spec: {
 		region:         string
-		repositoryName: string & =~"^[a-z0-9][a-z0-9/_.-]{1,255}$"
+		repositoryName: string & (=~"^[a-z0-9][a-z0-9/_.-]{1,255}$" | =~"^\\$\\{resources\\..+\\}$")
 
 		lifecyclePolicyText: string & =~"^\\s*\\{"
 	}

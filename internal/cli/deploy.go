@@ -27,6 +27,7 @@ type deployOpts struct {
 	yes           bool
 	targets       []string
 	replace       []string
+	allowReplace  bool
 }
 
 // newDeployCmd builds the `praxis deploy` subcommand.
@@ -74,6 +75,7 @@ Examples:
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().StringArrayVar(&opts.targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
 	cmd.Flags().StringArrayVar(&opts.replace, "replace", nil, "Force delete and re-provision of named resource (repeatable)")
+	cmd.Flags().BoolVar(&opts.allowReplace, "allow-replace", false, "Automatically replace resources that fail due to immutable field changes (WARNING: destroys and recreates affected resources)")
 
 	return cmd
 }
@@ -96,12 +98,13 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 	ctx := context.Background()
 
 	planResp, err := client.Plan(ctx, types.PlanRequest{
-		Template:     string(content),
-		Variables:    variables,
-		Account:      opts.account,
-		Workspace:    workspace,
-		Targets:      opts.targets,
-		TemplatePath: templatePath,
+		Template:      string(content),
+		Variables:     variables,
+		Account:       opts.account,
+		Workspace:     workspace,
+		Targets:       opts.targets,
+		TemplatePath:  templatePath,
+		DeploymentKey: opts.deploymentKey,
 	})
 	if err != nil {
 		return err
@@ -111,6 +114,7 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 		if flags.outputFormat() == OutputJSON {
 			return printJSON(planResp)
 		}
+		printWarnings(renderer, planResp.Warnings)
 		printPlan(renderer, planResp.Plan)
 		if opts.showRendered && planResp.Rendered != "" {
 			_, _ = fmt.Fprintln(renderer.out)
@@ -121,6 +125,7 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 	}
 
 	if flags.outputFormat() != OutputJSON {
+		printWarnings(renderer, planResp.Warnings)
 		printPlan(renderer, planResp.Plan)
 	}
 
@@ -143,6 +148,7 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 		Workspace:     workspace,
 		Targets:       opts.targets,
 		Replace:       opts.replace,
+		AllowReplace:  opts.allowReplace,
 		TemplatePath:  templatePath,
 	})
 	if err != nil {
@@ -165,11 +171,12 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 	ctx := context.Background()
 
 	planResp, err := client.PlanDeploy(ctx, types.PlanDeployRequest{
-		Template:  templateName,
-		Variables: variables,
-		Account:   opts.account,
-		Workspace: workspace,
-		Targets:   opts.targets,
+		Template:      templateName,
+		Variables:     variables,
+		Account:       opts.account,
+		Workspace:     workspace,
+		Targets:       opts.targets,
+		DeploymentKey: opts.deploymentKey,
 	})
 	if err != nil {
 		return err
@@ -179,6 +186,7 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 		if flags.outputFormat() == OutputJSON {
 			return printJSON(planResp)
 		}
+		printWarnings(renderer, planResp.Warnings)
 		printDataSources(renderer, planResp.DataSources)
 		printPlan(renderer, planResp.Plan)
 		if opts.showRendered && planResp.Rendered != "" {
@@ -190,6 +198,7 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 	}
 
 	if flags.outputFormat() != OutputJSON {
+		printWarnings(renderer, planResp.Warnings)
 		printDataSources(renderer, planResp.DataSources)
 		printPlan(renderer, planResp.Plan)
 	}
@@ -213,6 +222,7 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 		Workspace:     workspace,
 		Targets:       opts.targets,
 		Replace:       opts.replace,
+		AllowReplace:  opts.allowReplace,
 	})
 	if err != nil {
 		return err
@@ -344,7 +354,12 @@ func pollDeployment(ctx context.Context, client *Client, key string, interval ti
 			if format == OutputJSON {
 				return printJSON(detail)
 			}
-			printDeploymentDetail(renderer, detail)
+			printDeploymentDetail(renderer, detail, deploymentSections{
+				Deps:    true,
+				Inputs:  true,
+				Outputs: true,
+				Errors:  true,
+			})
 			return nil
 		}
 

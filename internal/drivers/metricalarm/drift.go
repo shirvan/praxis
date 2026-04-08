@@ -9,8 +9,9 @@ package metricalarm
 
 import (
 	"cmp"
-	"github.com/shirvan/praxis/internal/drivers"
 	"slices"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift compares the desired MetricAlarm spec against the observed
@@ -91,7 +92,7 @@ func ComputeFieldDiffs(desired MetricAlarmSpec, observed ObservedState) []FieldD
 	appendIfDiff("spec.extendedStatistic", observed.ExtendedStatistic, desired.ExtendedStatistic, desired.ExtendedStatistic != observed.ExtendedStatistic)
 	appendIfDiff("spec.period", observed.Period, desired.Period, desired.Period != observed.Period)
 	appendIfDiff("spec.evaluationPeriods", observed.EvaluationPeriods, desired.EvaluationPeriods, desired.EvaluationPeriods != observed.EvaluationPeriods)
-	appendIfDiff("spec.datapointsToAlarm", observed.DatapointsToAlarm, effectiveDatapoints(desired.DatapointsToAlarm, desired.EvaluationPeriods), !datapointsMatch(desired.DatapointsToAlarm, observed.DatapointsToAlarm, desired.EvaluationPeriods))
+	appendIfDiff("spec.datapointsToAlarm", effectiveObservedDatapoints(observed.DatapointsToAlarm, observed.EvaluationPeriods), effectiveDatapoints(desired.DatapointsToAlarm, desired.EvaluationPeriods), !datapointsMatch(desired.DatapointsToAlarm, observed.DatapointsToAlarm, desired.EvaluationPeriods))
 	appendIfDiff("spec.threshold", observed.Threshold, desired.Threshold, desired.Threshold != observed.Threshold)
 	appendIfDiff("spec.comparisonOperator", observed.ComparisonOperator, desired.ComparisonOperator, desired.ComparisonOperator != observed.ComparisonOperator)
 	appendIfDiff("spec.treatMissingData", observed.TreatMissingData, desired.TreatMissingData, desired.TreatMissingData != observed.TreatMissingData)
@@ -130,7 +131,7 @@ func dimensionsMatch(a, b map[string]string) bool {
 }
 
 func datapointsMatch(desired *int32, observed int32, evaluationPeriods int32) bool {
-	return effectiveDatapoints(desired, evaluationPeriods) == observed
+	return effectiveDatapoints(desired, evaluationPeriods) == effectiveObservedDatapoints(observed, evaluationPeriods)
 }
 
 func effectiveDatapoints(desired *int32, evaluationPeriods int32) int32 {
@@ -138,6 +139,15 @@ func effectiveDatapoints(desired *int32, evaluationPeriods int32) int32 {
 		return evaluationPeriods
 	}
 	return *desired
+}
+
+// effectiveObservedDatapoints normalizes the observed value: AWS may return 0
+// when DatapointsToAlarm was not explicitly set, meaning it defaults to EvaluationPeriods.
+func effectiveObservedDatapoints(observed int32, evaluationPeriods int32) int32 {
+	if observed == 0 {
+		return evaluationPeriods
+	}
+	return observed
 }
 
 func sliceEqual(a, b []string) bool {

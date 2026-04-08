@@ -105,7 +105,7 @@ func (r *realNLBAPI) DescribeNLB(ctx context.Context, id string) (ObservedState,
 		return ObservedState{}, err
 	}
 	if len(out.LoadBalancers) == 0 {
-		return ObservedState{}, fmt.Errorf("NLB %s not found: LoadBalancerNotFound", id)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("NLB %s not found", id))
 	}
 	lb := out.LoadBalancers[0]
 	if lb.Type != elbv2types.LoadBalancerTypeEnumNetwork {
@@ -331,7 +331,7 @@ func resolveSubnets(spec NLBSpec) []string {
 
 // IsNotFound returns true if the AWS error indicates the AWS Network Load Balancer (NLB) does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "LoadBalancerNotFound")
+	return awserr.HasCode(err, "LoadBalancerNotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsDuplicate returns true if the AWS error indicates a naming conflict.

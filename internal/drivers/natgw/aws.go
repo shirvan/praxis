@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"strings"
 	"time"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -93,7 +94,7 @@ func (r *realNATGatewayAPI) DescribeNATGateway(ctx context.Context, natGatewayId
 		return ObservedState{}, err
 	}
 	if len(out.NatGateways) == 0 {
-		return ObservedState{}, fmt.Errorf("nat gateway %s not found", natGatewayId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("nat gateway %s not found", natGatewayId))
 	}
 
 	gw := out.NatGateways[0]

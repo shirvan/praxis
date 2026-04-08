@@ -54,6 +54,8 @@ internal/
       service.go               # Service registration
       handlers_apply.go        # Apply handler
       handlers_plan.go         # Plan handler
+      handlers_plan_deploy.go  # PlanDeploy handler (registered templates)
+      plan_diff.go             # Shared plan diff logic (live output collection, expression hydration, key resolution)
       handlers_resource.go     # Delete + Import handlers
       handlers_template.go     # Template registry handlers
       handlers_policy.go       # Policy registry handlers
@@ -259,7 +261,7 @@ just docker-build
 ### Running Tests
 
 ```bash
-# Unit tests (no Docker needed)
+# Unit tests (no Docker needed — packages run serially to avoid port contention)
 just test
 
 # Scoped unit tests — Core
@@ -335,8 +337,17 @@ just lint
 # Integration tests (requires Docker — Testcontainers)
 just test-integration
 
+# Core integration tests (Restate + Moto — deploys, plans, deletes, events)
+just test-core-integration
+
+# Full lifecycle tests (all 45 drivers, saas-platform.cue — requires Docker)
+just test-lifecycle
+
 # Full local CI (lint → unit → integration)
 just ci
+
+# Reset Moto state and re-seed (useful after stale idempotency tokens)
+just reset-moto
 ```
 
 ### Testing Strategy

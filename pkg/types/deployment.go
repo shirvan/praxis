@@ -69,6 +69,12 @@ const (
 	// resource to its driver and is waiting for the result.
 	DeploymentResourceProvisioning DeploymentResourceStatus = "Provisioning"
 
+	// DeploymentResourceUpdating means the orchestrator has dispatched the
+	// resource to its driver for an update (the resource existed in the prior
+	// generation). This is semantically identical to Provisioning but provides
+	// user-facing clarity that the resource is being updated, not created.
+	DeploymentResourceUpdating DeploymentResourceStatus = "Updating"
+
 	// DeploymentResourceReady means the resource completed successfully for the
 	// current deployment operation.
 	DeploymentResourceReady DeploymentResourceStatus = "Ready"

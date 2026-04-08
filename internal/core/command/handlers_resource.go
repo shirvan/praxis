@@ -56,9 +56,13 @@ func (s *PraxisCommandService) DeleteDeployment(ctx restate.Context, req DeleteD
 	if state.Status == types.DeploymentDeleting {
 		return DeleteDeploymentResponse{DeploymentKey: deploymentKey, Status: types.DeploymentDeleting}, nil
 	}
-	// State guard: conflict if already deleted.
+	// State guard: conflict if already deleted — unless --force is set,
+	// which allows re-running deletion to clean up resources that were
+	// skipped during a previous delete (e.g. due to dependency failures).
 	if state.Status == types.DeploymentDeleted {
-		return DeleteDeploymentResponse{}, restate.TerminalError(fmt.Errorf("deployment %q is already deleted", deploymentKey), 409)
+		if !req.Force {
+			return DeleteDeploymentResponse{}, restate.TerminalError(fmt.Errorf("deployment %q is already deleted", deploymentKey), 409)
+		}
 	}
 
 	// If the deployment is currently provisioning (Running or Pending),
@@ -84,12 +88,14 @@ func (s *PraxisCommandService) DeleteDeployment(ctx restate.Context, req DeleteD
 		return DeleteDeploymentResponse{}, err
 	}
 
-	// Dispatch the async delete workflow. The workflow ID is deterministic
-	// so repeated calls for the same deployment are idempotent (Restate
-	// deduplicates by workflow ID).
-	workflowID := deploymentKey + "-delete"
+	// Dispatch the async delete workflow. The workflow ID includes the
+	// state's UpdatedAt timestamp so that retries after a failed delete
+	// (e.g. switching from non-force to --force) get a fresh workflow
+	// execution. Concurrent calls to DeleteDeployment for the same
+	// deployment see the same UpdatedAt and are still deduplicated.
+	workflowID := fmt.Sprintf("%s-delete-%d", deploymentKey, state.UpdatedAt.UnixNano())
 	restate.WorkflowSend(ctx, orchestrator.DeploymentDeleteWorkflowServiceName, workflowID, "Run").Send(
-		orchestrator.DeleteRequest{DeploymentKey: deploymentKey},
+		orchestrator.DeleteRequest{DeploymentKey: deploymentKey, Force: req.Force},
 		restate.WithIdempotencyKey(workflowID),
 	)
 
@@ -141,13 +147,13 @@ func (s *PraxisCommandService) RollbackDeployment(ctx restate.Context, req Delet
 
 	// Unlike Delete, Rollback calls the workflow synchronously (Request
 	// instead of Send) because the caller needs the final state to know
-	// whether the rollback succeeded. Using restate.Workflow with a
-	// deterministic workflow ID ensures idempotent dispatch — repeated
-	// rollback calls for the same deployment are deduplicated by Restate.
-	workflowID := deploymentKey + "-rollback"
+	// whether the rollback succeeded. The workflow ID includes UpdatedAt
+	// so that retries after a failed rollback get a fresh execution, while
+	// concurrent calls for the same deployment are still deduplicated.
+	workflowID := fmt.Sprintf("%s-rollback-%d", deploymentKey, state.UpdatedAt.UnixNano())
 	_, err = restate.WithRequestType[orchestrator.DeleteRequest, restate.Void](
 		restate.Workflow[restate.Void](ctx, orchestrator.DeploymentRollbackWorkflowServiceName, workflowID, "Run"),
-	).Request(orchestrator.DeleteRequest{DeploymentKey: deploymentKey})
+	).Request(orchestrator.DeleteRequest{DeploymentKey: deploymentKey, Force: req.Force})
 	if err != nil {
 		return DeleteDeploymentResponse{}, err
 	}

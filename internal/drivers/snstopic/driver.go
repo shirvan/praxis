@@ -198,13 +198,13 @@ func (d *SNSTopicDriver) convergeAttributes(ctx restate.ObjectContext, api Topic
 	if desired.DisplayName != previous.DisplayName {
 		updates = append(updates, attrUpdate{"DisplayName", desired.DisplayName})
 	}
-	if desired.Policy != previous.Policy {
+	if desired.Policy != "" && desired.Policy != previous.Policy {
 		updates = append(updates, attrUpdate{"Policy", desired.Policy})
 	}
-	if desired.DeliveryPolicy != previous.DeliveryPolicy {
+	if desired.DeliveryPolicy != "" && desired.DeliveryPolicy != previous.DeliveryPolicy {
 		updates = append(updates, attrUpdate{"DeliveryPolicy", desired.DeliveryPolicy})
 	}
-	if desired.KmsMasterKeyId != previous.KmsMasterKeyId {
+	if desired.KmsMasterKeyId != "" && desired.KmsMasterKeyId != previous.KmsMasterKeyId {
 		updates = append(updates, attrUpdate{"KmsMasterKeyId", desired.KmsMasterKeyId})
 	}
 	if desired.ContentBasedDeduplication != previous.ContentBasedDeduplication {

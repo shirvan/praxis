@@ -5,8 +5,9 @@
 package lambda
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"slices"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field difference with JSON path and old/new values.
@@ -129,17 +130,19 @@ func deadLetterTarget(spec *DeadLetterConfigSpec) string {
 }
 
 // tracingMode extracts the mode from a possibly-nil config.
+// Returns "PassThrough" when nil, matching the AWS default.
 func tracingMode(spec *TracingConfigSpec) string {
 	if spec == nil {
-		return ""
+		return "PassThrough"
 	}
 	return spec.Mode
 }
 
 // ephemeralSize extracts the size from a possibly-nil config.
+// Returns 512 when nil, matching the AWS default (512 MB).
 func ephemeralSize(spec *EphemeralStorageSpec) int32 {
 	if spec == nil {
-		return 0
+		return 512
 	}
 	return spec.Size
 }

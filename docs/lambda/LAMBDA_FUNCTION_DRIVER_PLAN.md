@@ -623,6 +623,16 @@ attachment can take 30-60 seconds.
 - **Concurrency settings**: Out of scope for this driver.
 - **Aliases and versions**: Out of scope for this driver.
 
+### Default Value Normalization
+
+When the spec leaves certain fields unset (nil/zero), drift detection normalizes
+them to the AWS defaults before comparison to avoid false diffs:
+
+| Field | Default When Nil/Zero | AWS Behaviour |
+|---|---|---|
+| `ephemeralStorage` | `512` MB | AWS always returns 512 if not explicitly set |
+| `tracingConfig` | `"PassThrough"` | AWS returns PassThrough when tracing is not enabled |
+
 ### HasDrift
 
 ```go

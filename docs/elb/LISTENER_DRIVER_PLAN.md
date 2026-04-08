@@ -426,13 +426,28 @@ additional API call is needed.
 |---|---|
 | `port` | Integer equality |
 | `protocol` | String equality (case-insensitive) |
-| `sslPolicy` | String equality (if HTTPS/TLS) |
-| `certificateArn` | String equality (if HTTPS/TLS) |
+| `sslPolicy` | String equality — **only compared when protocol requires SSL** |
+| `certificateArn` | String equality — **only compared when protocol requires SSL** |
 | `alpnPolicy` | String equality (if TLS) |
 | `defaultActions` | Deep comparison of action type + config |
 | `tags` | Map equality |
 
 Immutable fields (`loadBalancerArn`) are not compared for drift.
+
+### SSL Field Guards
+
+Both `HasDrift` and `ComputeFieldDiffs` guard `sslPolicy` and `certificateArn`
+comparisons with `requiresSSL(protocol)`, which returns true only for HTTPS and
+TLS protocols. This prevents false diffs for HTTP listeners where AWS returns
+a default `sslPolicy` (e.g. `"ELBSecurityPolicy-2016-08"`) that the user never
+specified.
+
+### Default SSL Policy
+
+When a user omits `sslPolicy` for an HTTPS/TLS listener, `effectiveSslPolicy()`
+defaults it to `"ELBSecurityPolicy-2016-08"` (the AWS default) before comparison.
+This prevents false diffs when the user didn't specify a policy but AWS returns
+the default.
 
 ### Action Comparison
 

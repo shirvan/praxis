@@ -6,14 +6,6 @@
 
 ---
 
-## Dependency Visualization
-
-Render the resource dependency DAG as a visual graph so users can understand provisioning order and debug dependency issues.
-
-**Technical approach:** Export the DAG (computed from expression parsing) as DOT, Mermaid, or JSON. `praxis plan --graph` outputs a Mermaid diagram. Nodes show resource kind + name; edges show which output feeds which input.
-
----
-
 ## Kubernetes Integration
 
 A Kubernetes driver service that manages Deployments, Services, and Ingresses in a target cluster.

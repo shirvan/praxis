@@ -8,8 +8,9 @@
 package loggroup
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift compares the desired LogGroup spec against the observed
@@ -33,7 +34,7 @@ func HasDrift(desired LogGroupSpec, observed ObservedState) bool {
 // display, and audit logging. Immutable field changes are clearly annotated.
 func ComputeFieldDiffs(desired LogGroupSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
-	if desired.LogGroupClass != "" && observed.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
+	if desired.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.logGroupClass (immutable, requires replacement)",
 			OldValue: observed.LogGroupClass,

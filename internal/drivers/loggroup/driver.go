@@ -117,6 +117,21 @@ func (d *LogGroupDriver) Provision(ctx restate.ObjectContext, spec LogGroupSpec)
 			restate.Set(ctx, drivers.StateKey, state)
 			return LogGroupOutputs{}, err
 		}
+		// Re-observe after create to get ARN and found=true for convergeMutableFields.
+		observed, found, err = d.observeLogGroup(ctx, api, spec.LogGroupName)
+		if err != nil {
+			state.Status = types.StatusError
+			state.Error = err.Error()
+			restate.Set(ctx, drivers.StateKey, state)
+			return LogGroupOutputs{}, err
+		}
+		if !found {
+			err := fmt.Errorf("log group %s was not found after creation", spec.LogGroupName)
+			state.Status = types.StatusError
+			state.Error = err.Error()
+			restate.Set(ctx, drivers.StateKey, state)
+			return LogGroupOutputs{}, err
+		}
 	} else if spec.LogGroupClass != observed.LogGroupClass {
 		err := fmt.Errorf("logGroupClass is immutable for %s: current=%s desired=%s", spec.LogGroupName, observed.LogGroupClass, spec.LogGroupClass)
 		state.Status = types.StatusError

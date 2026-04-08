@@ -44,7 +44,11 @@ func (r *RestateSSMResolver) Resolve(
 
 	return r.resolveWithFetcher(rawSpecs, func(paths []string) (map[string]string, error) {
 		return restate.Run(ctx, func(runCtx restate.RunContext) (map[string]string, error) {
-			return r.inner.batchFetchMap(runCtx, paths)
+			result, err := r.inner.batchFetchMap(runCtx, paths)
+			if err != nil {
+				return nil, restate.TerminalError(err, 500)
+			}
+			return result, nil
 		})
 	})
 }

@@ -17,7 +17,8 @@ test_heartbeat_seconds := "30"
 # Restate after the infra becomes reachable.
 up:
     just ensure-env
-    docker compose up -d --build
+    docker compose build --no-cache
+    docker compose up -d
     just wait-stack
     just register
     @echo "✓ Stack is up. Restate admin: http://localhost:9070"
@@ -67,7 +68,8 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose up -d --build praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge praxis-slack
+    docker compose build --no-cache praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge praxis-slack
+    docker compose up -d praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge praxis-slack
     just wait-stack
     just register
 
@@ -231,9 +233,9 @@ docker-build:
 
 # ─── Test ───────────────────────────────────────────────────
 
-# Run all unit tests (no Docker needed)
+# Run all unit tests (serialise packages to avoid Docker/port contention)
 test:
-    go test ./internal/... ./pkg/... -v -count=1 -race
+    go test ./internal/... ./pkg/... -v -count=1 -race -p 1
 
 # Run Core unit tests (command service + DAG + orchestrator)
 test-core:
@@ -541,6 +543,18 @@ test-core-integration:
     done
     wait "$pid"
 
+# Run full lifecycle tests (requires Docker — all 45 drivers, saas-platform.cue)
+test-lifecycle:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    go test ./tests/integration/ -run TestLifecycle -v -count=1 -tags=integration -timeout=20m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-lifecycle] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
 # Run SG integration tests (requires Docker — Testcontainers + LocalStack)
 test-sg-integration:
     #!/bin/sh
@@ -805,6 +819,16 @@ ci: lint test test-integration
     @echo "CI passed."
 
 # ─── Moto Helpers ───────────────────────────────────────────
+
+# Reset Moto state and re-run the seed script to restore pre-seeded data.
+# Useful after delete/re-deploy cycles that leave stale idempotency tokens.
+reset-moto:
+    @echo "Resetting Moto state..."
+    @curl -fsS -X POST http://localhost:4566/moto-api/reset >/dev/null
+    @echo "✓ Moto state cleared"
+    @echo "Re-seeding Moto..."
+    @docker compose run --rm moto-init
+    @echo "✓ Moto reset and re-seeded"
 
 # List S3 buckets in Moto
 ls-s3:

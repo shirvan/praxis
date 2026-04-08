@@ -3,10 +3,11 @@ package auroracluster
 import (
 	"context"
 	"errors"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
@@ -119,7 +120,7 @@ func (r *realAuroraClusterAPI) DescribeDBCluster(ctx context.Context, clusterIde
 		return ObservedState{}, err
 	}
 	if len(out.DBClusters) == 0 {
-		return ObservedState{}, errors.New("db cluster not found")
+		return ObservedState{}, awserr.NotFound("db cluster not found")
 	}
 	cluster := out.DBClusters[0]
 	observed := ObservedState{
@@ -284,7 +285,7 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 
 // IsNotFound returns true if the cluster does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "DBClusterNotFoundFault")
+	return awserr.HasCode(err, "DBClusterNotFoundFault") || awserr.IsNotFoundErr(err)
 }
 
 // IsAlreadyExists returns true if a cluster with the same identifier exists.

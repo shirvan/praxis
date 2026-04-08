@@ -107,10 +107,10 @@ func (c *Client) Plan(ctx context.Context, req types.PlanRequest) (*types.PlanRe
 
 // DeleteDeployment starts an asynchronous deletion of all resources in a
 // deployment, in reverse dependency order.
-func (c *Client) DeleteDeployment(ctx context.Context, key string) (*types.DeleteDeploymentResponse, error) {
+func (c *Client) DeleteDeployment(ctx context.Context, key string, force bool) (*types.DeleteDeploymentResponse, error) {
 	resp, err := ingress.Service[types.DeleteDeploymentRequest, types.DeleteDeploymentResponse](
 		c.rc, commandServiceName, "DeleteDeployment",
-	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key})
+	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key, Force: force})
 	if err != nil {
 		return nil, err
 	}
@@ -119,10 +119,10 @@ func (c *Client) DeleteDeployment(ctx context.Context, key string) (*types.Delet
 
 // RollbackDeployment starts a rollback that deletes only the resources proven
 // ready by the CloudEvents store for a failed or cancelled deployment.
-func (c *Client) RollbackDeployment(ctx context.Context, key string) (*types.DeleteDeploymentResponse, error) {
+func (c *Client) RollbackDeployment(ctx context.Context, key string, force bool) (*types.DeleteDeploymentResponse, error) {
 	resp, err := ingress.Service[types.DeleteDeploymentRequest, types.DeleteDeploymentResponse](
 		c.rc, commandServiceName, "RollbackDeployment",
-	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key})
+	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key, Force: force})
 	if err != nil {
 		return nil, err
 	}

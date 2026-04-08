@@ -1,9 +1,10 @@
 package auroracluster
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field difference between desired and observed state.
@@ -23,16 +24,22 @@ func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 	if desired.EngineVersion != observed.EngineVersion || desired.Port != observed.Port {
 		return true
 	}
-	if desired.DBSubnetGroupName != observed.DBSubnetGroupName || desired.DBClusterParameterGroupName != observed.DBClusterParameterGroupName {
+	if desired.DBSubnetGroupName != observed.DBSubnetGroupName {
+		return true
+	}
+	if desired.DBClusterParameterGroupName != "" && desired.DBClusterParameterGroupName != observed.DBClusterParameterGroupName {
 		return true
 	}
 	if !stringSliceEqual(desired.VpcSecurityGroupIds, observed.VpcSecurityGroupIds) {
 		return true
 	}
-	if desired.StorageEncrypted != observed.StorageEncrypted || desired.KMSKeyId != observed.KMSKeyId {
+	if desired.BackupRetentionPeriod != observed.BackupRetentionPeriod {
 		return true
 	}
-	if desired.BackupRetentionPeriod != observed.BackupRetentionPeriod || desired.PreferredBackupWindow != observed.PreferredBackupWindow || desired.PreferredMaintenanceWindow != observed.PreferredMaintenanceWindow {
+	if desired.PreferredBackupWindow != "" && desired.PreferredBackupWindow != observed.PreferredBackupWindow {
+		return true
+	}
+	if desired.PreferredMaintenanceWindow != "" && desired.PreferredMaintenanceWindow != observed.PreferredMaintenanceWindow {
 		return true
 	}
 	if desired.DeletionProtection != observed.DeletionProtection {
@@ -58,22 +65,38 @@ func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []Fiel
 	appendIfDifferent("spec.engineVersion", observed.EngineVersion, desired.EngineVersion)
 	appendIfDifferent("spec.port", observed.Port, desired.Port)
 	appendIfDifferent("spec.dbSubnetGroupName", observed.DBSubnetGroupName, desired.DBSubnetGroupName)
-	appendIfDifferent("spec.dbClusterParameterGroupName", observed.DBClusterParameterGroupName, desired.DBClusterParameterGroupName)
+	if desired.DBClusterParameterGroupName != "" {
+		appendIfDifferent("spec.dbClusterParameterGroupName", observed.DBClusterParameterGroupName, desired.DBClusterParameterGroupName)
+	}
 	if !stringSliceEqual(desired.VpcSecurityGroupIds, observed.VpcSecurityGroupIds) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcSecurityGroupIds", OldValue: observed.VpcSecurityGroupIds, NewValue: desired.VpcSecurityGroupIds})
 	}
-	appendIfDifferent("spec.storageEncrypted (immutable, ignored)", observed.StorageEncrypted, desired.StorageEncrypted)
-	appendIfDifferent("spec.kmsKeyId (immutable, ignored)", observed.KMSKeyId, desired.KMSKeyId)
+	if desired.StorageEncrypted != observed.StorageEncrypted {
+		appendIfDifferent("spec.storageEncrypted (immutable, ignored)", observed.StorageEncrypted, desired.StorageEncrypted)
+	}
+	if desired.KMSKeyId != "" {
+		appendIfDifferent("spec.kmsKeyId (immutable, ignored)", observed.KMSKeyId, desired.KMSKeyId)
+	}
 	appendIfDifferent("spec.backupRetentionPeriod", observed.BackupRetentionPeriod, desired.BackupRetentionPeriod)
-	appendIfDifferent("spec.preferredBackupWindow", observed.PreferredBackupWindow, desired.PreferredBackupWindow)
-	appendIfDifferent("spec.preferredMaintenanceWindow", observed.PreferredMaintenanceWindow, desired.PreferredMaintenanceWindow)
+	if desired.PreferredBackupWindow != "" {
+		appendIfDifferent("spec.preferredBackupWindow", observed.PreferredBackupWindow, desired.PreferredBackupWindow)
+	}
+	if desired.PreferredMaintenanceWindow != "" {
+		appendIfDifferent("spec.preferredMaintenanceWindow", observed.PreferredMaintenanceWindow, desired.PreferredMaintenanceWindow)
+	}
 	appendIfDifferent("spec.deletionProtection", observed.DeletionProtection, desired.DeletionProtection)
 	if !stringSliceEqual(desired.EnabledCloudwatchLogsExports, observed.EnabledCloudwatchLogsExports) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.enabledCloudwatchLogsExports", OldValue: observed.EnabledCloudwatchLogsExports, NewValue: desired.EnabledCloudwatchLogsExports})
 	}
-	appendIfDifferent("spec.engine (immutable, ignored)", observed.Engine, desired.Engine)
-	appendIfDifferent("spec.masterUsername (immutable, ignored)", observed.MasterUsername, desired.MasterUsername)
-	appendIfDifferent("spec.databaseName (immutable, ignored)", observed.DatabaseName, desired.DatabaseName)
+	if desired.Engine != "" {
+		appendIfDifferent("spec.engine (immutable, ignored)", observed.Engine, desired.Engine)
+	}
+	if desired.MasterUsername != "" {
+		appendIfDifferent("spec.masterUsername (immutable, ignored)", observed.MasterUsername, desired.MasterUsername)
+	}
+	if desired.DatabaseName != "" {
+		appendIfDifferent("spec.databaseName (immutable, ignored)", observed.DatabaseName, desired.DatabaseName)
+	}
 	for key, value := range drivers.FilterPraxisTags(desired.Tags) {
 		if current, ok := drivers.FilterPraxisTags(observed.Tags)[key]; !ok {
 			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})

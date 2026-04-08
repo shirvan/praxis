@@ -597,6 +597,14 @@ func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
        desired.DBClusterParameterGroupName != observed.DBClusterParameterGroupName {
         return true
     }
+    if desired.PreferredBackupWindow != "" &&
+       desired.PreferredBackupWindow != observed.PreferredBackupWindow {
+        return true
+    }
+    if desired.PreferredMaintenanceWindow != "" &&
+       desired.PreferredMaintenanceWindow != observed.PreferredMaintenanceWindow {
+        return true
+    }
     if !securityGroupIdsEqual(desired.VpcSecurityGroupIds, observed.VpcSecurityGroupIds) {
         return true
     }
@@ -608,17 +616,26 @@ func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 }
 ```
 
-**`ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []FieldDiffEntry`**
+### Skip-When-Empty Pattern
 
-Produces human-readable diffs:
+Several fields where AWS assigns defaults (and the user doesn't explicitly
+configure them) are skipped during drift comparison when the desired value is
+empty. This prevents false diffs against AWS-assigned values:
 
-- Immutable fields: `engine`, `masterUsername`, `databaseName`, `storageEncrypted`,
-  `kmsKeyId` — reported with "(immutable, ignored)" suffix.
-- Mutable fields: `engineVersion`, `backupRetentionPeriod`, `deletionProtection`,
-  `port`, `dbClusterParameterGroupName`, `vpcSecurityGroupIds`,
-  `enabledCloudwatchLogsExports`, `tags`.
-- Write-only fields: `masterUserPassword` — reported as "(write-only, drift not
-  detectable)".
+| Field | AWS Default | Guard |
+|---|---|---|
+| `dbClusterParameterGroupName` | `"default.aurora-postgresql*"` | Skip if desired is `""` |
+| `preferredBackupWindow` | Auto-assigned (e.g. `"07:27-07:57"`) | Skip if desired is `""` |
+| `preferredMaintenanceWindow` | Auto-assigned (e.g. `"fri:08:42-fri:09:12"`) | Skip if desired is `""` |
+| `kmsKeyId` | AWS-managed key ARN | Skip if desired is `""` |
+
+### Immutable Fields
+
+Immutable fields (`engine`, `masterUsername`, `databaseName`, `storageEncrypted`,
+`kmsKeyId`) are not compared in `HasDrift` (they cannot be modified after
+creation). In `ComputeFieldDiffs`, they are reported with an "(immutable)"
+suffix for informational purposes only, and only when the desired value is
+non-empty.
 
 ### CloudWatch Logs Export Comparison
 

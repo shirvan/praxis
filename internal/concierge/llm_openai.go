@@ -134,7 +134,16 @@ func (o *OpenAIProvider) ChatCompletion(ctx context.Context, req ChatRequest) (L
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return LLMResponse{}, fmt.Errorf("openai returned status %d: %s", resp.StatusCode, string(respBody))
+		msg := fmt.Sprintf("returned status %d", resp.StatusCode)
+		var errResp openAIResponse
+		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != nil {
+			msg = errResp.Error.Message
+		}
+		return LLMResponse{}, &LLMError{
+			StatusCode: resp.StatusCode,
+			Provider:   "openai",
+			Message:    msg,
+		}
 	}
 
 	var oaiResp openAIResponse

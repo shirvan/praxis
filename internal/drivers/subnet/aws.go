@@ -86,7 +86,7 @@ func (r *realSubnetAPI) DescribeSubnet(ctx context.Context, subnetId string) (Ob
 		return ObservedState{}, err
 	}
 	if len(out.Subnets) == 0 {
-		return ObservedState{}, fmt.Errorf("subnet %s not found", subnetId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("subnet %s not found", subnetId))
 	}
 
 	sub := out.Subnets[0]
@@ -241,7 +241,7 @@ func (r *realSubnetAPI) FindByTags(ctx context.Context, tags map[string]string) 
 
 // IsNotFound returns true when the subnet does not exist in AWS.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidSubnetID.NotFound", "InvalidSubnetID.Malformed")
+	return awserr.HasCode(err, "InvalidSubnetID.NotFound", "InvalidSubnetID.Malformed") || awserr.IsNotFoundErr(err)
 }
 
 // IsDependencyViolation returns true when the subnet cannot be deleted

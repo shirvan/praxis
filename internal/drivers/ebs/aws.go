@@ -119,7 +119,7 @@ func (r *realEBSAPI) DescribeVolume(ctx context.Context, volumeID string) (Obser
 		return ObservedState{}, err
 	}
 	if len(out.Volumes) == 0 {
-		return ObservedState{}, fmt.Errorf("volume %s not found", volumeID)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("volume %s not found", volumeID))
 	}
 	vol := out.Volumes[0]
 
@@ -274,7 +274,7 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 
 // IsNotFound returns true if the AWS error indicates the volume does not exist.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidVolume.NotFound")
+	return awserr.HasCode(err, "InvalidVolume.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsVolumeInUse returns true if a DeleteVolume call failed because the volume

@@ -84,10 +84,10 @@ func printTable(r *Renderer, headers []string, rows [][]string) {
 // --------------------------------------------------------------------------
 
 // printDeploymentDetail renders a full deployment record with per-resource
-// breakdown, inputs, and outputs. This is the main display for
-// `praxis get Deployment/<key>`. The optional resourceInputs map holds the
-// desired input spec per resource name, fetched from each driver.
-func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, resourceInputs ...map[string]map[string]any) {
+// breakdown. By default only metadata and the resource table are shown.
+// Optional sections (deps, inputs, outputs, errors) are displayed when the
+// corresponding field in sections is true.
+func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections deploymentSections, resourceInputs ...map[string]map[string]any) {
 	// Merge the variadic inputs into a single map for easy lookup.
 	var inputs map[string]map[string]any
 	if len(resourceInputs) > 0 {
@@ -131,25 +131,27 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, resourceInput
 		printTable(r, headers, rows)
 
 		// Print dependency graph info for resources that have dependencies.
-		hasDeps := false
-		for _, res := range d.Resources {
-			if len(res.DependsOn) > 0 {
-				hasDeps = true
-				break
+		if sections.Deps {
+			hasDeps := false
+			for _, res := range d.Resources {
+				if len(res.DependsOn) > 0 {
+					hasDeps = true
+					break
+				}
 			}
-		}
-		if hasDeps {
-			_, _ = fmt.Fprintln(r.out)
-			_, _ = fmt.Fprintln(r.out, r.renderSection("Dependencies:"))
-			for _, resource := range d.Resources {
-				if len(resource.DependsOn) > 0 {
-					_, _ = fmt.Fprintf(r.out, "  %s → %s\n", resource.Name, strings.Join(resource.DependsOn, ", "))
+			if hasDeps {
+				_, _ = fmt.Fprintln(r.out)
+				_, _ = fmt.Fprintln(r.out, r.renderSection("Dependencies:"))
+				for _, resource := range d.Resources {
+					if len(resource.DependsOn) > 0 {
+						_, _ = fmt.Fprintf(r.out, "  %s → %s\n", resource.Name, strings.Join(resource.DependsOn, ", "))
+					}
 				}
 			}
 		}
 
-		// Print inputs section if available.
-		if len(inputs) > 0 {
+		// Print inputs section if available and requested.
+		if sections.Inputs && len(inputs) > 0 {
 			_, _ = fmt.Fprintln(r.out)
 			_, _ = fmt.Fprintln(r.out, r.renderSection("Inputs:"))
 			for _, resource := range d.Resources {
@@ -169,24 +171,26 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, resourceInput
 		}
 
 		// Print outputs section for resources that have them.
-		hasOutputs := false
-		for _, r := range d.Resources {
-			if len(r.Outputs) > 0 {
-				hasOutputs = true
-				break
-			}
-		}
-		if hasOutputs {
-			_, _ = fmt.Fprintln(r.out)
-			_, _ = fmt.Fprintln(r.out, r.renderSection("Outputs:"))
-			for _, resource := range d.Resources {
-				keys := make([]string, 0, len(resource.Outputs))
-				for key := range resource.Outputs {
-					keys = append(keys, key)
+		if sections.Outputs {
+			hasOutputs := false
+			for _, r := range d.Resources {
+				if len(r.Outputs) > 0 {
+					hasOutputs = true
+					break
 				}
-				sort.Strings(keys)
-				for _, key := range keys {
-					_, _ = fmt.Fprintf(r.out, "  %s.%s = %v\n", resource.Name, key, resource.Outputs[key])
+			}
+			if hasOutputs {
+				_, _ = fmt.Fprintln(r.out)
+				_, _ = fmt.Fprintln(r.out, r.renderSection("Outputs:"))
+				for _, resource := range d.Resources {
+					keys := make([]string, 0, len(resource.Outputs))
+					for key := range resource.Outputs {
+						keys = append(keys, key)
+					}
+					sort.Strings(keys)
+					for _, key := range keys {
+						_, _ = fmt.Fprintf(r.out, "  %s.%s = %v\n", resource.Name, key, resource.Outputs[key])
+					}
 				}
 			}
 		}
@@ -194,18 +198,20 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, resourceInput
 		// Print full error details for any resource that has a non-empty error.
 		// The table above truncates errors to 60 chars; this section shows them
 		// in full so the user can diagnose failures without digging into logs.
-		var errorResources []types.DeploymentResource
-		for _, r := range d.Resources {
-			if r.Error != "" {
-				errorResources = append(errorResources, r)
+		if sections.Errors {
+			var errorResources []types.DeploymentResource
+			for _, r := range d.Resources {
+				if r.Error != "" {
+					errorResources = append(errorResources, r)
+				}
 			}
-		}
-		if len(errorResources) > 0 {
-			_, _ = fmt.Fprintln(r.out)
-			_, _ = fmt.Fprintln(r.out, r.renderSection("Errors:"))
-			for _, resource := range errorResources {
-				_, _ = fmt.Fprintf(r.out, "\n  %s (%s):\n", resource.Name, resource.Kind)
-				_, _ = fmt.Fprintf(r.out, "    %s\n", resource.Error)
+			if len(errorResources) > 0 {
+				_, _ = fmt.Fprintln(r.out)
+				_, _ = fmt.Fprintln(r.out, r.renderSection("Errors:"))
+				for _, resource := range errorResources {
+					_, _ = fmt.Fprintf(r.out, "\n  %s (%s):\n", resource.Name, resource.Kind)
+					_, _ = fmt.Fprintf(r.out, "    %s\n", resource.Error)
+				}
 			}
 		}
 	}
@@ -239,6 +245,89 @@ func printDeploymentSummaries(r *Renderer, summaries []types.DeploymentSummary) 
 }
 
 // --------------------------------------------------------------------------
+// Destroy plan
+// --------------------------------------------------------------------------
+
+// printDestroyPlan renders a Terraform-style destroy plan showing what
+// resources will be deleted and in what order. Resources are listed in the
+// reverse topological order the delete workflow will follow (dependents before
+// their dependencies). Resources that were never provisioned or are already
+// deleted are shown as "will be skipped".
+func printDestroyPlan(r *Renderer, detail *types.DeploymentDetail) {
+	if detail == nil || len(detail.Resources) == 0 {
+		_, _ = fmt.Fprintln(r.out, r.renderMuted("No resources to destroy."))
+		return
+	}
+
+	// Build a DAG from the deployment resources so we can show the
+	// reverse topological (destroy) order.
+	nodes := make([]*types.ResourceNode, 0, len(detail.Resources))
+	for _, res := range detail.Resources {
+		nodes = append(nodes, &types.ResourceNode{
+			Name:         res.Name,
+			Kind:         res.Kind,
+			Key:          res.Key,
+			Spec:         []byte(`{}`),
+			Dependencies: res.DependsOn,
+		})
+	}
+
+	// If the graph can't be reconstructed (shouldn't happen for stored
+	// deployments), fall back to the natural resource order.
+	order := make([]string, 0, len(detail.Resources))
+	graph, err := dag.NewGraph(nodes)
+	if err == nil {
+		order = graph.ReverseTopo()
+	} else {
+		for _, res := range detail.Resources {
+			order = append(order, res.Name)
+		}
+	}
+
+	// Index resources by name for lookup in topo order.
+	byName := make(map[string]types.DeploymentResource, len(detail.Resources))
+	for _, res := range detail.Resources {
+		byName[res.Name] = res
+	}
+
+	_, _ = fmt.Fprintln(r.out)
+	_, _ = fmt.Fprintln(r.out, r.renderSection("Destroy plan:"))
+	_, _ = fmt.Fprintln(r.out)
+
+	toDestroy := 0
+	toSkip := 0
+	for _, name := range order {
+		res := byName[name]
+		if isSkippedForDelete(res.Status) {
+			toSkip++
+			_, _ = fmt.Fprintln(r.out, r.renderMuted(fmt.Sprintf("  # %s %q will be skipped (%s)", res.Kind, res.Key, res.Status)))
+			continue
+		}
+		toDestroy++
+		_, _ = fmt.Fprintln(r.out, r.renderDiff(types.OpDelete, fmt.Sprintf("  - %s %q will be destroyed", res.Kind, res.Key)))
+	}
+
+	_, _ = fmt.Fprintln(r.out)
+	summary := fmt.Sprintf("Plan: %d to destroy", toDestroy)
+	if toSkip > 0 {
+		summary += fmt.Sprintf(", %d to skip", toSkip)
+	}
+	summary += "."
+	_, _ = fmt.Fprintln(r.out, r.renderSection(summary))
+}
+
+// isSkippedForDelete mirrors the delete workflow's shouldSkipDeleteByStatus:
+// resources that were never provisioned or are already deleted are skipped.
+func isSkippedForDelete(status types.DeploymentResourceStatus) bool {
+	switch status {
+	case types.DeploymentResourcePending, types.DeploymentResourceSkipped, types.DeploymentResourceDeleted:
+		return true
+	default:
+		return false
+	}
+}
+
+// --------------------------------------------------------------------------
 // Plan formatters
 // --------------------------------------------------------------------------
 
@@ -251,14 +340,37 @@ func printPlan(r *Renderer, plan *types.PlanResult) {
 		return
 	}
 
+	hasReplacement := false
+	var replacementResources []string
 	for _, rd := range plan.Resources {
 		if rd.Operation == types.OpNoOp {
 			continue
 		}
 		printResourceDiff(r, rd)
+		for _, fd := range rd.FieldDiffs {
+			if strings.Contains(fd.Path, "(immutable, requires replacement)") {
+				hasReplacement = true
+				replacementResources = append(replacementResources, rd.ResourceKey)
+				break
+			}
+		}
 	}
 
 	_, _ = fmt.Fprintln(r.out, r.renderSection(plan.Summary.String()))
+
+	if hasReplacement {
+		_, _ = fmt.Fprintln(r.out)
+		_, _ = fmt.Fprintln(r.out, r.renderPrompt("Note: Some resources have immutable field changes that require replacement (destroy + recreate)."))
+		_, _ = fmt.Fprintln(r.out, r.renderPrompt("Without replacement, these changes will fail during deploy."))
+		_, _ = fmt.Fprintln(r.out)
+		_, _ = fmt.Fprintln(r.out, r.renderMuted("  To replace specific resources:"))
+		for _, name := range replacementResources {
+			_, _ = fmt.Fprintf(r.out, "    praxis deploy ... --replace %s\n", name)
+		}
+		_, _ = fmt.Fprintln(r.out)
+		_, _ = fmt.Fprintln(r.out, r.renderMuted("  To automatically replace any resource that fails due to immutable changes:"))
+		_, _ = fmt.Fprintln(r.out, "    praxis deploy ... --allow-replace")
+	}
 }
 
 func printResourceDiff(r *Renderer, rd types.ResourceDiff) {
@@ -294,7 +406,6 @@ func printResourceDiff(r *Renderer, rd types.ResourceDiff) {
 }
 
 func printFieldNodes(r *Renderer, op types.DiffOperation, nodes []diff.FieldNode, indent int) {
-	symbol := operationSymbol(op)
 	pad := strings.Repeat(" ", indent)
 
 	maxKeyLen := 0
@@ -305,13 +416,22 @@ func printFieldNodes(r *Renderer, op types.DiffOperation, nodes []diff.FieldNode
 	}
 
 	for _, n := range nodes {
+		// For update operations, determine field-level operation: a field
+		// whose new value is zero/empty while old value is non-zero is
+		// effectively being deleted.
+		fieldOp := op
+		if op == types.OpUpdate && n.Diff != nil && isZeroValue(n.Diff.NewValue) && !isZeroValue(n.Diff.OldValue) {
+			fieldOp = types.OpDelete
+		}
+		symbol := operationSymbol(fieldOp)
+
 		if n.IsGroup {
-			_, _ = fmt.Fprintln(r.out, r.renderDiff(op, fmt.Sprintf("%s%s %-*s {", pad, symbol, maxKeyLen, n.Key)))
+			_, _ = fmt.Fprintln(r.out, r.renderDiff(fieldOp, fmt.Sprintf("%s%s %-*s {", pad, symbol, maxKeyLen, n.Key)))
 			printFieldNodes(r, op, n.Children, indent+4)
-			_, _ = fmt.Fprintln(r.out, r.renderDiff(op, fmt.Sprintf("%s  }", pad)))
+			_, _ = fmt.Fprintln(r.out, r.renderDiff(fieldOp, fmt.Sprintf("%s  }", pad)))
 		} else {
 			value := ""
-			switch op {
+			switch fieldOp {
 			case types.OpCreate:
 				value = formatPlanValue(n.Diff.NewValue)
 			case types.OpDelete:
@@ -319,8 +439,33 @@ func printFieldNodes(r *Renderer, op types.DiffOperation, nodes []diff.FieldNode
 			case types.OpUpdate:
 				value = fmt.Sprintf("%s => %s", formatPlanValue(n.Diff.OldValue), formatPlanValue(n.Diff.NewValue))
 			}
-			_, _ = fmt.Fprintln(r.out, r.renderDiff(op, fmt.Sprintf("%s%s %-*s = %s", pad, symbol, maxKeyLen, n.Key, value)))
+			_, _ = fmt.Fprintln(r.out, r.renderDiff(fieldOp, fmt.Sprintf("%s%s %-*s = %s", pad, symbol, maxKeyLen, n.Key, value)))
 		}
+	}
+}
+
+// isZeroValue returns true if v is nil or a zero value for its type.
+func isZeroValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch val := v.(type) {
+	case string:
+		return val == ""
+	case float64:
+		return val == 0
+	case bool:
+		return !val
+	case int:
+		return val == 0
+	case int64:
+		return val == 0
+	case []any:
+		return len(val) == 0
+	case map[string]any:
+		return len(val) == 0
+	default:
+		return false
 	}
 }
 
@@ -389,6 +534,17 @@ func shortKind(kind string) string {
 	// Collapse remaining "::" separators.
 	kind = strings.ReplaceAll(kind, "::", "")
 	return kind
+}
+
+// printWarnings displays non-fatal diagnostic warnings from the plan pipeline.
+func printWarnings(r *Renderer, warnings []string) {
+	if len(warnings) == 0 {
+		return
+	}
+	for _, w := range warnings {
+		_, _ = fmt.Fprintln(r.out, r.renderPrompt("Warning: "+w))
+	}
+	_, _ = fmt.Fprintln(r.out)
 }
 
 func printDataSources(r *Renderer, dataSources map[string]types.DataSourceResult) {

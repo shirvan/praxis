@@ -806,6 +806,14 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
     if desired.BackupRetentionPeriod != observed.BackupRetentionPeriod {
         return true
     }
+    if desired.PreferredBackupWindow != "" &&
+       desired.PreferredBackupWindow != observed.PreferredBackupWindow {
+        return true
+    }
+    if desired.PreferredMaintenanceWindow != "" &&
+       desired.PreferredMaintenanceWindow != observed.PreferredMaintenanceWindow {
+        return true
+    }
     if desired.DeletionProtection != observed.DeletionProtection {
         return true
     }
@@ -829,12 +837,30 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 }
 ```
 
+### Skip-When-Empty Pattern
+
+Several fields where AWS assigns defaults are skipped during drift comparison
+when the desired value is empty:
+
+| Field | AWS Default | Guard |
+|---|---|---|
+| `preferredBackupWindow` | Auto-assigned (e.g. `"07:27-07:57"`) | Skip if desired is `""` |
+| `preferredMaintenanceWindow` | Auto-assigned (e.g. `"fri:08:42-fri:09:12"`) | Skip if desired is `""` |
+| `kmsKeyId` | AWS-managed key ARN | Skip if desired is `""` |
+| `parameterGroupName` | `"default.aurora-postgresql*"` | Skip if desired is `""` |
+
+### Immutable Fields
+
+Immutable fields (`engine`, `masterUsername`) are not compared in `HasDrift`.
+In `ComputeFieldDiffs`, they are reported with an "(immutable)" suffix for
+informational purposes only, and only when the desired value is non-empty.
+
 **`ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldDiffEntry`**
 
 Produces human-readable diffs for the plan renderer:
 
 - Immutable fields: `engine`, `masterUsername`, `region` — reported with
-  "(immutable, ignored)" suffix.
+  "(immutable, ignored)" suffix, only when desired is non-empty.
 - Mutable fields: `instanceClass`, `engineVersion`, `allocatedStorage`, `storageType`,
   `iops`, `multiAZ`, `publiclyAccessible`, `backupRetentionPeriod`,
   `deletionProtection`, `parameterGroupName`, `vpcSecurityGroupIds`, `tags`.

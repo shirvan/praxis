@@ -107,7 +107,7 @@ func (r *realKeyPairAPI) DescribeKeyPair(ctx context.Context, keyName string) (O
 		return ObservedState{}, err
 	}
 	if len(out.KeyPairs) == 0 {
-		return ObservedState{}, fmt.Errorf("key pair %q not found", keyName)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("key pair %q not found", keyName))
 	}
 	kp := out.KeyPairs[0]
 
@@ -197,7 +197,7 @@ func toEC2Tags(tags map[string]string) []ec2types.Tag {
 
 // IsNotFound returns true if the error is an InvalidKeyPair.NotFound API error.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidKeyPair.NotFound")
+	return awserr.HasCode(err, "InvalidKeyPair.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsDuplicate returns true if a key pair with the same name already exists.

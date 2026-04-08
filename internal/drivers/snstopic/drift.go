@@ -10,8 +10,9 @@ package snstopic
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level change for plan output.
@@ -22,17 +23,19 @@ type FieldDiffEntry struct {
 }
 
 // HasDrift returns true if the desired spec and observed state differ on mutable fields.
+// Optional attributes (Policy, DeliveryPolicy, KmsMasterKeyId) are only checked when the
+// desired value is non-empty; an empty desired value means "not managed by Praxis".
 func HasDrift(desired SNSTopicSpec, observed ObservedState) bool {
 	if desired.DisplayName != observed.DisplayName {
 		return true
 	}
-	if !policiesEqual(desired.Policy, observed.Policy) {
+	if desired.Policy != "" && !policiesEqual(desired.Policy, observed.Policy) {
 		return true
 	}
-	if !policiesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
+	if desired.DeliveryPolicy != "" && !policiesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
 		return true
 	}
-	if desired.KmsMasterKeyId != observed.KmsMasterKeyId {
+	if desired.KmsMasterKeyId != "" && desired.KmsMasterKeyId != observed.KmsMasterKeyId {
 		return true
 	}
 	if desired.ContentBasedDeduplication != observed.ContentBasedDeduplication {
@@ -55,21 +58,21 @@ func ComputeFieldDiffs(desired SNSTopicSpec, observed ObservedState) []FieldDiff
 			NewValue: desired.DisplayName,
 		})
 	}
-	if !policiesEqual(desired.Policy, observed.Policy) {
+	if desired.Policy != "" && !policiesEqual(desired.Policy, observed.Policy) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.policy",
 			OldValue: observed.Policy,
 			NewValue: desired.Policy,
 		})
 	}
-	if !policiesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
+	if desired.DeliveryPolicy != "" && !policiesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.deliveryPolicy",
 			OldValue: observed.DeliveryPolicy,
 			NewValue: desired.DeliveryPolicy,
 		})
 	}
-	if desired.KmsMasterKeyId != observed.KmsMasterKeyId {
+	if desired.KmsMasterKeyId != "" && desired.KmsMasterKeyId != observed.KmsMasterKeyId {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.kmsMasterKeyId",
 			OldValue: observed.KmsMasterKeyId,

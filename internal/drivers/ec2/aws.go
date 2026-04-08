@@ -139,7 +139,7 @@ func (r *realEC2API) DescribeInstance(ctx context.Context, instanceId string) (O
 		return ObservedState{}, err
 	}
 	if len(out.Reservations) == 0 || len(out.Reservations[0].Instances) == 0 {
-		return ObservedState{}, fmt.Errorf("instance %s not found", instanceId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("instance %s not found", instanceId))
 	}
 	inst := out.Reservations[0].Instances[0]
 
@@ -389,7 +389,7 @@ func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (s
 // IsNotFound returns true if the error indicates the instance does not exist.
 // Matches both NotFound and Malformed instance ID error codes.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidInstanceID.NotFound", "InvalidInstanceID.Malformed")
+	return awserr.HasCode(err, "InvalidInstanceID.NotFound", "InvalidInstanceID.Malformed") || awserr.IsNotFoundErr(err)
 }
 
 // IsInvalidParam returns true if the error is due to invalid parameters in the request

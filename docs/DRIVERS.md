@@ -106,7 +106,7 @@ Each Virtual Object holds:
 | **Desired State** | The user's declared configuration (from template evaluation) |
 | **Observed State** | What actually exists in the cloud provider |
 | **Outputs** | Values produced after provisioning (ARNs, endpoints, IDs) |
-| **Status** | `Pending`, `Provisioning`, `Ready`, `Error`, `Deleting`, `Deleted` |
+| **Status** | `Pending`, `Provisioning`, `Updating`, `Ready`, `Error`, `Deleting`, `Deleted` |
 | **Mode** | `Managed` (full lifecycle) or `Observed` (read-only tracking) |
 | **Generation** | Counter incremented on each spec change |
 | **Last Reconcile** | Timestamp of the last drift detection run |

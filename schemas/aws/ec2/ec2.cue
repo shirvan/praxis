@@ -11,7 +11,7 @@ package ec2
 
 	spec: {
 		region:       string
-		imageId:      string & =~"^ami-[a-f0-9]{8,17}$"
+		imageId:      string & (=~"^ami-[a-f0-9]{8,17}$" | =~"^ssm:///")
 		instanceType: string
 		keyName?:     string
 		subnetId:     string

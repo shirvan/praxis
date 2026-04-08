@@ -121,6 +121,7 @@ When the concierge is running, you can also talk to Praxis directly:
 	// root RunE handles an unmatched prompt.
 	var (
 		conciergeSession     string
+		conciergeNewSession  bool
 		conciergeFile        string
 		conciergeWorkspace   string
 		conciergeAccount     string
@@ -128,7 +129,8 @@ When the concierge is running, you can also talk to Praxis directly:
 		conciergeJSON        bool
 	)
 
-	root.Flags().StringVar(&conciergeSession, "session", "", "Session ID for conversation continuity (env: PRAXIS_SESSION)")
+	root.Flags().StringVar(&conciergeSession, "session", "", "Switch to a specific session ID (env: PRAXIS_SESSION)")
+	root.Flags().BoolVar(&conciergeNewSession, "new-session", false, "Start a new session (ignores saved session)")
 	root.Flags().StringVarP(&conciergeFile, "file", "f", "", "Attach file(s), directory, or glob to the prompt (concierge mode)")
 	root.Flags().StringVar(&conciergeAccount, "account", "", "Override account (concierge mode)")
 	root.Flags().StringVar(&conciergeWorkspace, "workspace", "", "Override workspace (concierge mode)")
@@ -186,13 +188,14 @@ When the concierge is running, you can also talk to Praxis directly:
 		r := flags.renderer()
 
 		resp, err := runConciergeAsk(ctx, conciergeAskOpts{
-			Client:    client,
-			Renderer:  r,
-			Session:   conciergeSession,
-			Prompt:    prompt,
-			Account:   acct,
-			Workspace: workspace,
-			JSON:      conciergeJSON,
+			Client:     client,
+			Renderer:   r,
+			Session:    conciergeSession,
+			NewSession: conciergeNewSession,
+			Prompt:     prompt,
+			Account:    acct,
+			Workspace:  workspace,
+			JSON:       conciergeJSON,
 		})
 		if err != nil {
 			if isConciergeUnavailable(err) {
@@ -361,6 +364,46 @@ const (
 	scopeRegion
 	scopeCustom
 )
+
+// canonicalKinds maps lowercased kind names (and their plurals) to the
+// canonical form used internally. This lets users type "deployment",
+// "Deployment", "deployments", "template", "Templates", etc.
+var canonicalKinds = buildCanonicalKinds()
+
+func buildCanonicalKinds() map[string]string {
+	// All known kinds expressed in their canonical form.
+	known := []string{
+		// Meta-resource kinds (lowercase canonical).
+		"template", "sink", "workspace", "concierge",
+		// Core kinds.
+		"Deployment",
+		// Cloud resource kinds (added below from kindScopes).
+	}
+	// Append every kind registered in the scope map.
+	for k := range kindScopes {
+		known = append(known, k)
+	}
+
+	m := make(map[string]string, len(known)*2)
+	for _, k := range known {
+		low := strings.ToLower(k)
+		m[low] = k
+		// Also accept a trailing "s" plural.
+		m[low+"s"] = k
+	}
+	return m
+}
+
+// normalizeKind returns the canonical spelling for a user-supplied kind,
+// performing a case-insensitive lookup and stripping a trailing plural "s".
+// If the kind is not recognized, it is returned as-is so that unknown kinds
+// still pass through to the backend.
+func normalizeKind(kind string) string {
+	if canon, ok := canonicalKinds[strings.ToLower(kind)]; ok {
+		return canon
+	}
+	return kind
+}
 
 // kindScopes maps known resource kinds to their key scopes. The CLI uses this
 // to decide whether user-supplied names need a region prefix. Unknown kinds

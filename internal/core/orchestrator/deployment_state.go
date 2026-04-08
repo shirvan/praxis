@@ -64,13 +64,25 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		resource := &plan.Resources[i]
 		dependsOn := append([]string(nil), resource.Dependencies...)
 		sort.Strings(dependsOn)
+
+		// Mark resources that existed in the prior generation as PriorReady
+		// so the workflow can distinguish "Provisioning" (create) from
+		// "Updating" (re-apply of an existing resource).
+		priorReady := false
+		if existing != nil {
+			if prev, ok := existing.Resources[resource.Name]; ok {
+				priorReady = prev.Status == types.DeploymentResourceReady || prev.Status == types.DeploymentResourceError
+			}
+		}
+
 		resources[resource.Name] = &ResourceState{
-			Name:      resource.Name,
-			Kind:      resource.Kind,
-			Key:       resource.Key,
-			DependsOn: dependsOn,
-			Status:    types.DeploymentResourcePending,
-			Lifecycle: resource.Lifecycle,
+			Name:       resource.Name,
+			Kind:       resource.Kind,
+			Key:        resource.Key,
+			DependsOn:  dependsOn,
+			Status:     types.DeploymentResourcePending,
+			Lifecycle:  resource.Lifecycle,
+			PriorReady: priorReady,
 		}
 	}
 

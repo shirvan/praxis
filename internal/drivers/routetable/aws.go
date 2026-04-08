@@ -85,7 +85,7 @@ func (r *realRouteTableAPI) DescribeRouteTable(ctx context.Context, routeTableId
 		return ObservedState{}, err
 	}
 	if len(out.RouteTables) == 0 {
-		return ObservedState{}, fmt.Errorf("route table %s not found", routeTableId)
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("route table %s not found", routeTableId))
 	}
 	routeTable := out.RouteTables[0]
 	observed := ObservedState{
@@ -323,7 +323,7 @@ func applyRouteTargetToReplaceInput(input *ec2sdk.ReplaceRouteInput, route Route
 
 // IsNotFound returns true when the route table does not exist in AWS.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidRouteTableID.NotFound")
+	return awserr.HasCode(err, "InvalidRouteTableID.NotFound") || awserr.IsNotFoundErr(err)
 }
 
 // IsRouteNotFound returns true when a specific route entry does not exist.

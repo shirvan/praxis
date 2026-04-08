@@ -30,7 +30,11 @@
 //  8. Loop continues until LLM produces a final text response or turn limit is hit
 package concierge
 
-import "time"
+import (
+	"fmt"
+	"net/http"
+	"time"
+)
 
 // Restate service name constants. These are used when registering services with the
 // Restate runtime and when making cross-service calls via restate.Object() / restate.Service().
@@ -154,6 +158,24 @@ type AskUsage struct {
 	PromptTokens     int `json:"promptTokens"`
 	CompletionTokens int `json:"completionTokens"`
 	TotalTokens      int `json:"totalTokens"`
+}
+
+// LLMError is a structured error returned by LLM providers when the API call
+// fails. It carries the HTTP status code and a user-friendly message extracted
+// from the provider's error response.
+type LLMError struct {
+	StatusCode int
+	Provider   string
+	Message    string
+}
+
+func (e *LLMError) Error() string {
+	return fmt.Sprintf("%s error (HTTP %d): %s", e.Provider, e.StatusCode, e.Message)
+}
+
+// IsRetryable returns true for errors that may succeed on retry (rate limits, server errors).
+func (e *LLMError) IsRetryable() bool {
+	return e.StatusCode == http.StatusTooManyRequests || e.StatusCode >= 500
 }
 
 // ApprovalDecision is the payload delivered through a Restate awakeable when a

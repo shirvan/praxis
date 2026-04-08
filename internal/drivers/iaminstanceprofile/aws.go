@@ -87,16 +87,8 @@ func (r *realIAMInstanceProfileAPI) DescribeInstanceProfile(ctx context.Context,
 	if len(ip.Roles) > 0 {
 		observed.RoleName = aws.ToString(ip.Roles[0].RoleName)
 	}
-	if err := r.limiter.Wait(ctx); err != nil {
-		return ObservedState{}, err
-	}
-	tagsOut, err := r.client.ListInstanceProfileTags(ctx, &iamsdk.ListInstanceProfileTagsInput{
-		InstanceProfileName: aws.String(name),
-	})
-	if err == nil {
-		for _, tag := range tagsOut.Tags {
-			observed.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
-		}
+	for _, tag := range ip.Tags {
+		observed.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
 	return observed, nil
 }

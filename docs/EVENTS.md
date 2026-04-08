@@ -178,6 +178,7 @@ These events track the deployment and resource state machines. Emitted by `Deplo
 | `dev.praxis.resource.deleted` | info | `<resourceName>` | Resource deleted successfully |
 | `dev.praxis.resource.delete.error` | error | `<resourceName>` | Resource delete failed |
 | `dev.praxis.resource.replace.started` | info | `<resourceName>` | Force-replace: delete-before-reprovision started |
+| `dev.praxis.resource.auto_replace.started` | info | `<resourceName>` | Auto-replace: 409 immutable conflict triggered delete+re-provision |
 
 ### Drift Events (category: `drift`)
 
@@ -207,6 +208,7 @@ Emitted during deployment validation when lifecycle policies block destructive o
 | Type | Severity | Subject | Description |
 |------|----------|---------|-------------|
 | `dev.praxis.policy.prevented_destroy` | warn | `<resourceName>` | Destroy blocked by `lifecycle.preventDestroy` |
+| `dev.praxis.policy.force_delete_override` | warn | `<resourceName>` | `--force` overrode `lifecycle.preventDestroy` protection (audit trail) |
 
 ### System Events (category: `system`)
 
