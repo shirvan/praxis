@@ -2,6 +2,37 @@ package types
 
 import "encoding/json"
 
+// DeletionPolicy controls what happens to the underlying cloud resource when a
+// managed resource is removed from the deployment.
+type DeletionPolicy string
+
+const (
+	DeletionPolicyDelete DeletionPolicy = "Delete"
+	DeletionPolicyOrphan DeletionPolicy = "Orphan"
+)
+
+// RetryPolicy configures resource-level retry behavior.
+type RetryPolicy struct {
+	MaxRetries *int   `json:"maxRetries,omitempty"`
+	BaseDelay  string `json:"baseDelay,omitempty"`
+	MaxDelay   string `json:"maxDelay,omitempty"`
+}
+
+// ResourceTimeouts defines per-operation lifecycle timeouts. Duration values
+// are provided as strings so they can round-trip cleanly through rendered JSON.
+type ResourceTimeouts struct {
+	Create string `json:"create,omitempty"`
+	Update string `json:"update,omitempty"`
+	Delete string `json:"delete,omitempty"`
+}
+
+// ResourceWaitPolicy controls post-provision readiness polling.
+type ResourceWaitPolicy struct {
+	Enabled      *bool  `json:"enabled,omitempty"`
+	PollInterval string `json:"pollInterval,omitempty"`
+	MaxWait      string `json:"maxWait,omitempty"`
+}
+
 // LifecyclePolicy controls resource-level update and delete behavior.
 //
 // Templates declare an optional lifecycle block alongside spec. The command
@@ -21,6 +52,21 @@ type LifecyclePolicy struct {
 	// Paths use dot notation matching the FieldDiff.Path convention,
 	// for example "tags.lastModified" or "tags.updatedBy".
 	IgnoreChanges []string `json:"ignoreChanges,omitempty"`
+
+	// Retry overrides the deployment's default retry policy for this resource.
+	Retry *RetryPolicy `json:"retry,omitempty"`
+
+	// Timeouts overrides create/update/delete timeouts for this resource.
+	Timeouts *ResourceTimeouts `json:"timeouts,omitempty"`
+
+	// Finalizers declares optional pre/post-delete cleanup hooks.
+	Finalizers []string `json:"finalizers,omitempty"`
+
+	// DeletionPolicy controls whether deletion destroys or orphans the resource.
+	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
+
+	// Wait controls post-provision readiness polling.
+	Wait *ResourceWaitPolicy `json:"wait,omitempty"`
 }
 
 // ResourceNode represents a single node in the deployment dependency graph.

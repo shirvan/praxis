@@ -379,7 +379,7 @@ func (d *DashboardDriver) scheduleReconcile(ctx restate.ObjectContext, state *Da
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *DashboardDriver) apiForAccount(ctx restate.ObjectContext, account string) (DashboardAPI, string, error) {
@@ -425,5 +425,12 @@ func validateSpec(spec DashboardSpec) error {
 	if spec.DashboardBody == "" {
 		return fmt.Errorf("dashboardBody is required")
 	}
+	return nil
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *DashboardDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
 	return nil
 }

@@ -95,7 +95,7 @@ func (s *PraxisCommandService) DeleteDeployment(ctx restate.Context, req DeleteD
 	// deployment see the same UpdatedAt and are still deduplicated.
 	workflowID := fmt.Sprintf("%s-delete-%d", deploymentKey, state.UpdatedAt.UnixNano())
 	restate.WorkflowSend(ctx, orchestrator.DeploymentDeleteWorkflowServiceName, workflowID, "Run").Send(
-		orchestrator.DeleteRequest{DeploymentKey: deploymentKey, Force: req.Force},
+		orchestrator.DeleteRequest{DeploymentKey: deploymentKey, Force: req.Force, Orphan: req.Orphan, Parallelism: req.Parallelism},
 		restate.WithIdempotencyKey(workflowID),
 	)
 
@@ -153,7 +153,7 @@ func (s *PraxisCommandService) RollbackDeployment(ctx restate.Context, req Delet
 	workflowID := fmt.Sprintf("%s-rollback-%d", deploymentKey, state.UpdatedAt.UnixNano())
 	_, err = restate.WithRequestType[orchestrator.DeleteRequest, restate.Void](
 		restate.Workflow[restate.Void](ctx, orchestrator.DeploymentRollbackWorkflowServiceName, workflowID, "Run"),
-	).Request(orchestrator.DeleteRequest{DeploymentKey: deploymentKey, Force: req.Force})
+	).Request(orchestrator.DeleteRequest{DeploymentKey: deploymentKey, Force: req.Force, Orphan: req.Orphan, Parallelism: req.Parallelism})
 	if err != nil {
 		return DeleteDeploymentResponse{}, err
 	}

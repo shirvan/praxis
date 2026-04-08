@@ -69,6 +69,9 @@ type compiledTemplate struct {
 	// TemplatePath records the origin of the template source for audit
 	// purposes: "inline://template.cue" or "registry://<name>".
 	TemplatePath string
+	// TemplateHash is the SHA-256 digest of the template source used to build
+	// this compiled plan.
+	TemplateHash string
 	// Specs maps logical resource name → fully-resolved JSON spec after
 	// CUE evaluation, data source substitution, and SSM resolution.
 	Specs map[string]json.RawMessage
@@ -241,6 +244,7 @@ func (s *PraxisCommandService) compileTemplate(
 
 	return &compiledTemplate{
 		TemplatePath:  templatePath,
+		TemplateHash:  TemplateSourceHash(source),
 		Specs:         ssmResolvedSpecs,
 		DataSources:   dataSources,
 		Nodes:         nodes,
@@ -274,8 +278,44 @@ func (s *PraxisCommandService) submitDeployment(
 	workspace string,
 	variables map[string]any,
 	compiled *compiledTemplate,
+	removeMissing bool,
+	orphanRemoved bool,
 	forceReplace []string,
 	allowReplace bool,
+	maxParallelism int,
+	maxRetries *int,
+) (string, types.DeploymentStatus, error) {
+	return s.submitPlanResources(
+		ctx,
+		deploymentKey,
+		account,
+		workspace,
+		variables,
+		compiled.PlanResources,
+		compiled.TemplatePath,
+		removeMissing,
+		orphanRemoved,
+		forceReplace,
+		allowReplace,
+		maxParallelism,
+		maxRetries,
+	)
+}
+
+func (s *PraxisCommandService) submitPlanResources(
+	ctx restate.Context,
+	deploymentKey string,
+	account string,
+	workspace string,
+	variables map[string]any,
+	planResources []orchestrator.PlanResource,
+	templatePath string,
+	removeMissing bool,
+	orphanRemoved bool,
+	forceReplace []string,
+	allowReplace bool,
+	maxParallelism int,
+	maxRetries *int,
 ) (string, types.DeploymentStatus, error) {
 	// Guard: prevent submitting a new deployment while a delete is in progress.
 	// The user must wait for deletion to complete first.
@@ -288,6 +328,14 @@ func (s *PraxisCommandService) submitDeployment(
 	if existingState != nil {
 		if err := checkSubmitGuard(deploymentKey, existingState.Status); err != nil {
 			return "", "", err
+		}
+		if removeMissing {
+			removed := missingDeploymentResources(existingState, planResources)
+			if len(removed) > 0 {
+				if err := s.cleanupMissingResources(ctx, deploymentKey, removed, orphanRemoved); err != nil {
+					return "", "", err
+				}
+			}
 		}
 	}
 
@@ -302,9 +350,9 @@ func (s *PraxisCommandService) submitDeployment(
 
 	// Validate --replace resource names exist in the plan.
 	if len(forceReplace) > 0 {
-		planNames := make(map[string]bool, len(compiled.PlanResources))
-		for i := range compiled.PlanResources {
-			planNames[compiled.PlanResources[i].Name] = true
+		planNames := make(map[string]bool, len(planResources))
+		for i := range planResources {
+			planNames[planResources[i].Name] = true
 		}
 		for _, name := range forceReplace {
 			if !planNames[name] {
@@ -314,16 +362,27 @@ func (s *PraxisCommandService) submitDeployment(
 		}
 	}
 
+	retryConfig := (*orchestrator.RetryConfig)(nil)
+	if maxRetries != nil {
+		retryConfig = &orchestrator.RetryConfig{
+			MaxRetries: *maxRetries,
+			BaseDelay:  5 * time.Second,
+			MaxDelay:   2 * time.Minute,
+		}
+	}
+
 	plan := orchestrator.DeploymentPlan{
-		Key:          deploymentKey,
-		Account:      account,
-		Workspace:    workspace,
-		Resources:    compiled.PlanResources,
-		Variables:    variables,
-		CreatedAt:    createdAt,
-		TemplatePath: compiled.TemplatePath,
-		ForceReplace: forceReplace,
-		AllowReplace: allowReplace,
+		Key:            deploymentKey,
+		Account:        account,
+		Workspace:      workspace,
+		Resources:      planResources,
+		Variables:      variables,
+		CreatedAt:      createdAt,
+		TemplatePath:   templatePath,
+		ForceReplace:   forceReplace,
+		AllowReplace:   allowReplace,
+		MaxParallelism: maxParallelism,
+		RetryConfig:    retryConfig,
 	}
 
 	// Initialize the durable DeploymentStateObj. This is the central

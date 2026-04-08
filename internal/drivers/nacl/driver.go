@@ -655,7 +655,7 @@ func (d *NetworkACLDriver) scheduleReconcile(ctx restate.ObjectContext, state *N
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *NetworkACLDriver) apiForAccount(ctx restate.ObjectContext, account string) (NetworkACLAPI, string, error) {
@@ -815,4 +815,11 @@ func defaultNetworkACLImportMode(m types.Mode) types.Mode {
 
 func formatManagedKeyConflict(managedKey, networkAclID string) error {
 	return fmt.Errorf("network ACL name %q in this VPC is already managed by Praxis (networkAclId: %s); remove the existing resource or use a different metadata.name", managedKey, networkAclID)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *NetworkACLDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

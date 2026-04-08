@@ -262,6 +262,24 @@ func (a *EC2Adapter) Import(ctx restate.Context, key string, account string, ref
 	return types.StatusReady, outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for EC2 instances.
+func (a *EC2Adapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "10m", Update: "10m", Delete: "10m"}
+}
+
+// WaitReady checks whether the EC2 instance has reached the Running state.
+func (a *EC2Adapter) WaitReady(ctx restate.Context, key string) (WaitReadyResult, error) {
+	status, err := restate.Object[types.StatusResponse](ctx, a.ServiceName(), key, "GetStatus").Request(restate.Void{})
+	if err != nil {
+		return WaitReadyResult{}, err
+	}
+	if status.Status == types.StatusReady {
+		outputs, _ := fetchJSONMap(ctx, a.ServiceName(), key, "GetOutputs")
+		return WaitReadyResult{Ready: true, Message: "instance running", Outputs: outputs}, nil
+	}
+	return WaitReadyResult{Ready: false, Message: fmt.Sprintf("instance status: %s", status.Status)}, nil
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed EC2Instance spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

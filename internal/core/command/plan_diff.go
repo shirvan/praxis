@@ -37,6 +37,7 @@ func (s *PraxisCommandService) computeResourceDiffs(
 	resources []orchestrator.PlanResource,
 	account string,
 	priorOutputs map[string]map[string]any,
+	removed []orchestrator.ResourceState,
 ) (*types.PlanResult, error) {
 	plan := corediff.NewPlanResult()
 
@@ -105,6 +106,10 @@ func (s *PraxisCommandService) computeResourceDiffs(
 		if op != types.OpCreate && referenced[resource.Name] {
 			s.collectLiveOutputs(ctx, resource.Kind, resource.Name, resource.Key, liveOutputs)
 		}
+	}
+	for i := range removed {
+		resource := removed[i]
+		corediff.Add(plan, resource.Kind, resource.Key, types.OpDelete, nil)
 	}
 
 	return plan, nil
@@ -281,7 +286,7 @@ func (s *PraxisCommandService) fetchPriorOutputs(
 	ctx restate.Context,
 	deploymentKey string,
 	specs map[string]json.RawMessage,
-) (map[string]map[string]any, []string, error) {
+) (map[string]map[string]any, *orchestrator.DeploymentState, []string, error) {
 	var warnings []string
 
 	// Derive the deployment key if not explicitly provided.
@@ -292,7 +297,7 @@ func (s *PraxisCommandService) fetchPriorOutputs(
 			warnings = append(warnings, fmt.Sprintf(
 				"Could not derive deployment key from template: %v. Prior deployment outputs will not be used as fallback.",
 				err))
-			return nil, warnings, nil
+			return nil, nil, warnings, nil
 		}
 		deploymentKey = derived
 	}
@@ -307,23 +312,23 @@ func (s *PraxisCommandService) fetchPriorOutputs(
 		warnings = append(warnings, fmt.Sprintf(
 			"Failed to fetch prior deployment state for key %q: %v. Expression-bearing resources will show as create. Use --key to specify the correct deployment key.",
 			deploymentKey, err))
-		return nil, warnings, nil
+		return nil, nil, warnings, nil
 	}
 	if state == nil {
 		ctx.Log().Info("plan: no prior deployment state found", "deploymentKey", deploymentKey)
 		warnings = append(warnings, fmt.Sprintf(
 			"No prior deployment found for key %q (auto-derived). Expression-bearing resources will show as create. If this stack was deployed with --key, pass the same key to plan.",
 			deploymentKey))
-		return nil, warnings, nil
+		return nil, nil, warnings, nil
 	}
 	if len(state.Outputs) == 0 {
 		ctx.Log().Info("plan: prior deployment exists but has no resource outputs", "deploymentKey", deploymentKey, "status", state.Status)
 		warnings = append(warnings, fmt.Sprintf(
 			"Prior deployment %q exists (status: %s) but has no resource outputs. Expression-bearing resources will show as create.",
 			deploymentKey, state.Status))
-		return nil, warnings, nil
+		return nil, state, warnings, nil
 	}
 
 	ctx.Log().Info("plan: loaded prior deployment outputs", "deploymentKey", deploymentKey, "resourceCount", len(state.Outputs))
-	return state.Outputs, nil, nil
+	return state.Outputs, state, nil, nil
 }

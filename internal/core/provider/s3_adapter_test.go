@@ -61,6 +61,16 @@ func TestS3Adapter_Scope(t *testing.T) {
 	assert.Equal(t, KeyScopeGlobal, adapter.Scope())
 }
 
+func TestS3Adapter_ImplementsCleanupHooks(t *testing.T) {
+	adapter := NewS3AdapterWithAuth(nil)
+	_, ok := any(adapter).(PreDeleter)
+	assert.True(t, ok)
+
+	timeouts, ok := any(adapter).(TimeoutDefaultsProvider)
+	assert.True(t, ok)
+	assert.Equal(t, "10m", timeouts.DefaultTimeouts().Delete)
+}
+
 func TestS3Adapter_NormalizeOutputs_AllFields(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(s3drv.S3BucketOutputs{

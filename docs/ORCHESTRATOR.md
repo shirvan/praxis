@@ -484,3 +484,86 @@ Within an update diff, fields whose new value is zero/empty (empty string, `0`, 
 ```
 
 This makes it clear that `sslPolicy` is being removed rather than changed to an empty string.
+
+---
+
+## Resource Conditions
+
+Each resource in a deployment carries an array of structured conditions that describe specific aspects of its lifecycle. Conditions provide diagnostic detail beyond the single `Status` enum — a resource may be `Ready` but have `DriftFree=False`.
+
+### Standard Condition Types
+
+| Type | Set By | Meaning |
+|------|--------|---------|
+| `Ready` | Orchestrator | Resource is fully provisioned and outputs available |
+| `Provisioned` | Orchestrator | Provision/Update has been dispatched at least once |
+| `Healthy` | Driver (Reconcile) | AWS resource exists and is in expected state |
+| `DriftFree` | Driver (Reconcile) | No drift detected between spec and observed state |
+
+### Condition Model
+
+Each condition has `Type`, `Status` (True/False/Unknown), `Reason` (CamelCase one-word), `Message` (human-readable), and `LastTransitionTime`. This mirrors the Kubernetes `metav1.Condition` shape.
+
+### Condition Lifecycle
+
+| Event | Ready | Provisioned |
+|-------|-------|-------------|
+| Dispatched | Unknown | True (Dispatched) |
+| Ready | True (Succeeded) | True (Succeeded) |
+| Error | False (ProvisionFailed) | True (ProvisionFailed) |
+| Skipped | False (Skipped) | False (Skipped) |
+| Retrying | False (Retrying) | True (Retrying) |
+
+`Healthy` and `DriftFree` conditions are set by drivers during reconciliation and returned in `ReconcileResult.Conditions`.
+
+---
+
+## Resource Timeouts
+
+Each resource operation (create, update, delete) has a timeout resolved in priority order:
+
+1. **Template lifecycle** — `lifecycle.timeouts.create`, `.update`, `.delete` on the resource
+2. **Adapter default** — adapters that implement `TimeoutDefaultsProvider` return per-kind defaults (e.g., RDS=30m, EC2=10m)
+3. **System default** — 5 minutes for all operations
+
+When a resource operation exceeds its resolved timeout, the orchestrator marks it as an error and fires a `resource.timeout` event.
+
+---
+
+## Observe-Before-Act
+
+Before dispatching a provision call, the orchestrator optionally observes the resource's current state. Adapters that implement the `Observer` interface provide a fast `Observe()` path that checks whether the resource exists and is up-to-date.
+
+If the resource is observed as existing and up-to-date, the provision is skipped — its stored outputs are hydrated into dependents without an unnecessary API call. This reduces AWS API usage and speeds up re-apply operations.
+
+Adapters without `Observer` fall back to `ObserveStoredState()` which reads the driver's GetStatus/GetInputs/GetOutputs handlers.
+
+---
+
+## Retry and Backoff
+
+Failed resource operations are retried with exponential backoff and bounded jitter. The retry policy is resolved per-resource:
+
+1. **Resource lifecycle** — `lifecycle.maxRetries` and `lifecycle.retryConfig`
+2. **Deployment-wide config** — `retryConfig` from the deployment plan
+3. **System defaults** — defined in `ResolveRetryConfig`
+
+A resource is retried only if it has remaining attempts and the backoff timer has elapsed. Terminal errors (HTTP 400/409) are never retried.
+
+---
+
+## Wait Conditions
+
+After a resource is provisioned, adapters that implement `ReadyWaiter` are polled until the resource reports actual readiness. This handles slow-starting resources like RDS instances, EC2 instances, and Lambda functions where the provider API returns success before the resource is usable.
+
+Wait behavior is configurable per resource via `lifecycle.wait`:
+
+```yaml
+lifecycle:
+  wait:
+    enabled: true        # default: true
+    pollInterval: "10s"  # default: 5s
+    maxWait: "30m"       # default: uses the create timeout
+```
+
+If wait is disabled (`enabled: false`), the resource is marked ready immediately after the provision call succeeds.

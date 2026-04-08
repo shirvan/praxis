@@ -16,6 +16,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -43,7 +44,7 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 
 	// Look up prior deployment state so expression-bearing resources can be
 	// compared against cloud state rather than blindly shown as "create".
-	priorOutputs, warnings, err := s.fetchPriorOutputs(ctx, req.DeploymentKey, compiled.Specs)
+	priorOutputs, priorState, warnings, err := s.fetchPriorOutputs(ctx, req.DeploymentKey, compiled.Specs)
 	if err != nil {
 		return PlanResponse{}, err
 	}
@@ -52,9 +53,21 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 	// diffs. Each adapter.Plan call makes a read-only API call to the cloud
 	// provider (wrapped in restate.Run inside the adapter) to compare the
 	// desired spec against the current state.
-	plan, err := s.computeResourceDiffs(ctx, compiled.PlanResources, account, priorOutputs)
+	var removed []orchestrator.ResourceState
+	if len(req.Targets) == 0 {
+		removed = missingDeletionsForPlan(priorState, compiled.PlanResources)
+	}
+	plan, err := s.computeResourceDiffs(ctx, compiled.PlanResources, account, priorOutputs, removed)
 	if err != nil {
 		return PlanResponse{}, err
+	}
+
+	deploymentKey := strings.TrimSpace(req.DeploymentKey)
+	if deploymentKey == "" {
+		deploymentKey, err = deriveDeploymentKey(compiled.Specs)
+		if err != nil {
+			return PlanResponse{}, restate.TerminalError(err, 400)
+		}
 	}
 
 	// Build a lightweight graph description for the response so the CLI
@@ -69,11 +82,13 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 	}
 
 	return PlanResponse{
-		Plan:        plan,
-		Rendered:    compiled.Rendered,
-		DataSources: compiled.DataSources,
-		Graph:       graphNodes,
-		Warnings:    warnings,
+		Plan:          plan,
+		ExecutionPlan: executionPlanFromCompiled(compiled, deploymentKey, account, req.Workspace, mergedVars, req.Targets),
+		Rendered:      compiled.Rendered,
+		TemplateHash:  compiled.TemplateHash,
+		DataSources:   compiled.DataSources,
+		Graph:         graphNodes,
+		Warnings:      warnings,
 	}, nil
 }
 

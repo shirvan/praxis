@@ -314,7 +314,7 @@ func (d *ECRLifecyclePolicyDriver) scheduleReconcile(ctx restate.ObjectContext, 
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *ECRLifecyclePolicyDriver) apiForAccount(ctx restate.ObjectContext, account string) (LifecyclePolicyAPI, string, error) {
@@ -336,4 +336,11 @@ func validateProvisionSpec(spec ECRLifecyclePolicySpec) error {
 		return fmt.Errorf("repositoryName is required")
 	}
 	return validatePolicyJSON(spec.LifecyclePolicyText)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *ECRLifecyclePolicyDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

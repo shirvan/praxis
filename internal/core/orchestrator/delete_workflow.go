@@ -16,6 +16,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
+	"github.com/shirvan/praxis/internal/core/dag"
 	"github.com/shirvan/praxis/internal/core/provider"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -149,16 +150,11 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 
 	exec := newExecutionState(resources)
 	exec.loadOutputs(state.Outputs)
+	schedule := dag.NewSchedule(graph)
 
-	// Walk resources in reverse topological order: dependents before their
-	// dependencies. This guarantees that if resource B depends on resource A,
-	// B is deleted before A. If B's deletion fails, A (and its other deps)
-	// are skipped because B may still hold a live reference to A.
 	cancellationRequested := false
-	for _, name := range graph.ReverseTopo() {
-		if exec.skipped[name] {
-			continue
-		}
+	inFlight := make(map[string]*inFlightDelete)
+	for {
 
 		// Poll the cancellation flag. Once set, stop dispatching new deletes
 		// but honour resources already started. A cancelled delete finalizes
@@ -172,125 +168,223 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 				cancellationRequested = true
 			}
 		}
-		if cancellationRequested {
-			exec.markSkipped(name, "skipped: delete workflow cancelled")
-			continue
+
+		loopNow, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
 		}
 
-		// Skip resources that were never successfully provisioned or are
-		// already deleted. Only attempt to delete resources that reached
-		// Ready, or are in Provisioning/Deleting/Error-with-outputs state
-		// (may have been partially created). This prevents spurious delete
-		// calls against resources that never existed in the cloud provider.
-		if rs := state.Resources[name]; rs != nil {
-			if shouldSkipDeleteByStatus(rs.Status) {
-				exec.markDeleted(name)
-				continue
-			}
-		}
+		if !cancellationRequested {
+			ready := schedule.ReadyForDelete(completedForDelete(exec), exec.dispatched)
+			for _, name := range ready {
+				if req.Parallelism > 0 && len(inFlight) >= req.Parallelism {
+					break
+				}
+				if exec.skipped[name] {
+					continue
+				}
 
-		resource := exec.plan[name]
+				// Skip resources that were never successfully provisioned or are
+				// already deleted/orphaned.
+				if rs := state.Resources[name]; rs != nil {
+					if shouldSkipDeleteByStatus(rs.Status) {
+						exec.markDeleted(name)
+						continue
+					}
+				}
 
-		// Respect lifecycle.preventDestroy: if the template declared this
-		// resource as undestroyable, emit a policy event and mark it failed.
-		// When Force is set, override the protection and proceed with deletion,
-		// emitting a warning event for audit purposes.
-		if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
-			if !req.Force {
-				policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
+				resource := exec.plan[name]
+
+				deletionPolicy := types.DeletionPolicyDelete
+				if req.Orphan {
+					deletionPolicy = types.DeletionPolicyOrphan
+				} else if resource.Lifecycle != nil && resource.Lifecycle.DeletionPolicy != "" {
+					deletionPolicy = resource.Lifecycle.DeletionPolicy
+				}
+				if deletionPolicy == types.DeletionPolicyOrphan {
+					conditions := orphanedConditions(exec.conditionsFor(name), loopNow, "resource orphaned by deletion policy")
+					exec.markOrphaned(name)
+					exec.setConditions(name, conditions)
+					if err := updateDeploymentResource(ctx, req.DeploymentKey, ResourceUpdate{
+						Name:       name,
+						Status:     types.DeploymentResourceOrphaned,
+						Conditions: conditions,
+					}); err != nil {
+						return DeploymentResult{}, err
+					}
+					if err := removeResourceIndex(ctx, req.DeploymentKey, name); err != nil {
+						return DeploymentResult{}, err
+					}
+					continue
+				}
+
+				// Respect lifecycle.preventDestroy: if the template declared this
+				// resource as undestroyable, emit a policy event and mark it failed.
+				if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
+					if !req.Force {
+						policyEvent, eventErr := NewPolicyPreventedDestroyEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
+						if eventErr != nil {
+							return DeploymentResult{}, eventErr
+						}
+						if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+							return DeploymentResult{}, err
+						}
+						if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind,
+							fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name), false); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+					overrideEvent, eventErr := NewForceDeleteOverrideEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
+					if eventErr != nil {
+						return DeploymentResult{}, eventErr
+					}
+					if err := EmitCloudEvent(ctx, overrideEvent); err != nil {
+						return DeploymentResult{}, err
+					}
+				}
+
+				adapter, err := w.providers.Get(resource.Kind)
+				if err != nil {
+					if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
+						return DeploymentResult{}, err
+					}
+					continue
+				}
+
+				if preDeleter, ok := adapter.(provider.PreDeleter); ok {
+					if err := preDeleter.PreDelete(ctx, resource.Key); err != nil {
+						if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("pre-delete failed: %v", err), req.Force); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+				}
+
+				deleteTimeout, err := resolveDeleteTimeout(adapter, resource.Lifecycle)
+				if err != nil {
+					if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
+						return DeploymentResult{}, err
+					}
+					continue
+				}
+
+				exec.markDeleting(name)
+				conditions := deletingConditions(exec.conditionsFor(name), loopNow, "resource delete dispatched")
+				exec.setConditions(name, conditions)
+				if err := updateDeploymentResource(ctx, req.DeploymentKey, ResourceUpdate{
+					Name:       name,
+					Status:     types.DeploymentResourceDeleting,
+					Conditions: conditions,
+				}); err != nil {
+					return DeploymentResult{}, err
+				}
+				deleteEvent, eventErr := NewResourceDeleteStartedEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind)
 				if eventErr != nil {
 					return DeploymentResult{}, eventErr
 				}
-				if err := EmitCloudEvent(ctx, policyEvent); err != nil {
+				if err := EmitDeploymentCloudEvent(ctx, deleteEvent); err != nil {
 					return DeploymentResult{}, err
 				}
-				if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind,
-					fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name), false); err != nil {
-					return DeploymentResult{}, err
+
+				invocation, err := adapter.Delete(ctx, resource.Key)
+				if err != nil {
+					if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("failed to dispatch delete: %v", err), req.Force); err != nil {
+						return DeploymentResult{}, err
+					}
+					continue
 				}
-				continue
-			}
-			// Force override: emit an audit event noting that protection was bypassed.
-			overrideEvent, eventErr := NewForceDeleteOverrideEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind, "delete")
-			if eventErr != nil {
-				return DeploymentResult{}, eventErr
-			}
-			if err := EmitCloudEvent(ctx, overrideEvent); err != nil {
-				return DeploymentResult{}, err
+
+				inFlight[name] = &inFlightDelete{
+					invocation: invocation,
+					adapter:    adapter,
+					timeout:    deleteTimeout,
+				}
 			}
 		}
 
-		adapter, err := w.providers.Get(resource.Kind)
-		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
-				return DeploymentResult{}, err
+		if len(inFlight) == 0 {
+			if cancellationRequested {
+				break
+			}
+			if len(schedule.ReadyForDelete(completedForDelete(exec), exec.dispatched)) == 0 {
+				break
 			}
 			continue
 		}
 
-		exec.markDeleting(name)
-		if err := updateDeploymentResource(ctx, req.DeploymentKey, ResourceUpdate{
-			Name:   name,
-			Status: types.DeploymentResourceDeleting,
-		}); err != nil {
-			return DeploymentResult{}, err
-		}
-		deleteEvent, eventErr := NewResourceDeleteStartedEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind)
-		if eventErr != nil {
-			return DeploymentResult{}, eventErr
-		}
-		if err := EmitDeploymentCloudEvent(ctx, deleteEvent); err != nil {
-			return DeploymentResult{}, err
-		}
-
-		invocation, err := adapter.Delete(ctx, resource.Key)
+		resourceName, pending := nextInFlightDeleteCompletion(inFlight)
+		delete(inFlight, resourceName)
+		timeout := restate.After(ctx, pending.timeout)
+		first, err := restate.WaitFirst(ctx, pending.invocation.Future(), timeout)
 		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("failed to dispatch delete: %v", err), req.Force); err != nil {
-				return DeploymentResult{}, err
-			}
-			continue
-		}
-
-		// Await the delete with a timeout. If the sub-invocation exceeds
-		// deleteResourceTimeout, record a failure and continue to the next
-		// resource rather than blocking the entire workflow.
-		timeout := restate.After(ctx, deleteResourceTimeout)
-		first, err := restate.WaitFirst(ctx, invocation.Future(), timeout)
-		if err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete wait error: %v", err), req.Force); err != nil {
+			resource := exec.plan[resourceName]
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, fmt.Sprintf("delete wait error: %v", err), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
 		}
 		if first == timeout {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("delete timed out after %s", deleteResourceTimeout), req.Force); err != nil {
+			resource := exec.plan[resourceName]
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, fmt.Sprintf("delete timed out after %s", pending.timeout), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
 		}
-		if err := invocation.Done(); err != nil {
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
+		if err := pending.invocation.Done(); err != nil {
+			resource := exec.plan[resourceName]
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, err.Error(), req.Force); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue
 		}
 
-		exec.markDeleted(name)
+		resource := exec.plan[resourceName]
+		if postDeleter, ok := pending.adapter.(provider.PostDeleter); ok {
+			if err := postDeleter.PostDelete(ctx, resource.Key); err != nil {
+				ctx.Log().Warn("post-delete hook failed", "resource", resourceName, "kind", resource.Kind, "error", err.Error())
+			}
+		}
+
+		conditions := deletedConditions(exec.conditionsFor(resourceName), loopNow, "resource deleted")
+		exec.markDeleted(resourceName)
+		exec.setConditions(resourceName, conditions)
 		if err := updateDeploymentResource(ctx, req.DeploymentKey, ResourceUpdate{
-			Name:   name,
-			Status: types.DeploymentResourceDeleted,
+			Name:       resourceName,
+			Status:     types.DeploymentResourceDeleted,
+			Conditions: conditions,
 		}); err != nil {
 			return DeploymentResult{}, err
 		}
-		deletedEvent, eventErr := NewResourceDeletedEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, name, resource.Kind)
+		deletedEvent, eventErr := NewResourceDeletedEvent(req.DeploymentKey, state.Workspace, state.Generation, time.Time{}, resourceName, resource.Kind)
 		if eventErr != nil {
 			return DeploymentResult{}, eventErr
 		}
 		if err := EmitDeploymentCloudEvent(ctx, deletedEvent); err != nil {
 			return DeploymentResult{}, err
 		}
-		if err := removeResourceIndex(ctx, req.DeploymentKey, name); err != nil {
+		if err := removeResourceIndex(ctx, req.DeploymentKey, resourceName); err != nil {
 			return DeploymentResult{}, err
+		}
+	}
+
+	if cancellationRequested {
+		now, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		skipped := exec.skipPendingForCancellation()
+		for _, name := range skipped {
+			conditions := skippedConditions(exec.conditionsFor(name), now, exec.errors[name])
+			exec.setConditions(name, conditions)
+			if err := updateDeploymentResource(ctx, req.DeploymentKey, ResourceUpdate{
+				Name:       name,
+				Status:     types.DeploymentResourceSkipped,
+				Error:      exec.errors[name],
+				Conditions: conditions,
+			}); err != nil {
+				return DeploymentResult{}, err
+			}
 		}
 	}
 
@@ -388,10 +482,17 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	skipped := exec.skipDependencies(resourceName, fmt.Sprintf("skipped because dependent %s failed to delete", resourceName))
 	for _, name := range skipped {
 		resource := exec.plan[name]
+		now, err := currentTime(ctx)
+		if err != nil {
+			return err
+		}
+		conditions := skippedConditions(exec.conditionsFor(name), now, exec.errors[name])
+		exec.setConditions(name, conditions)
 		if err := updateDeploymentResource(ctx, deploymentKey, ResourceUpdate{
-			Name:   name,
-			Status: types.DeploymentResourceSkipped,
-			Error:  exec.errors[name],
+			Name:       name,
+			Status:     types.DeploymentResourceSkipped,
+			Error:      exec.errors[name],
+			Conditions: conditions,
 		}); err != nil {
 			return err
 		}
@@ -406,6 +507,21 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	return nil
 }
 
+func completedForDelete(exec *executionState) map[string]bool {
+	completed := make(map[string]bool, len(exec.completed)+len(exec.skipped))
+	for name, done := range exec.completed {
+		if done {
+			completed[name] = true
+		}
+	}
+	for name, skipped := range exec.skipped {
+		if skipped {
+			completed[name] = true
+		}
+	}
+	return completed
+}
+
 // shouldSkipDeleteByStatus returns true for resource statuses that indicate
 // the resource was never successfully provisioned or is already deleted.
 // These resources should be skipped during the delete workflow to avoid
@@ -417,6 +533,8 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 func shouldSkipDeleteByStatus(status types.DeploymentResourceStatus) bool {
 	switch status {
 	case types.DeploymentResourcePending, types.DeploymentResourceDeleted:
+		return true
+	case types.DeploymentResourceOrphaned:
 		return true
 	default:
 		return false

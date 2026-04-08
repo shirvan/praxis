@@ -365,7 +365,7 @@ func (d *HealthCheckDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *HealthCheckDriver) apiForAccount(ctx restate.ObjectContext, account string) (HealthCheckAPI, error) {
@@ -411,4 +411,11 @@ func defaultHealthCheckImportMode(mode types.Mode) types.Mode {
 		return types.ModeObserved
 	}
 	return mode
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *HealthCheckDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

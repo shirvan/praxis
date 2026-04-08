@@ -623,7 +623,7 @@ func (d *AMIDriver) scheduleReconcile(ctx restate.ObjectContext, state *AMIState
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials and creates an AMIAPI for the given Praxis account.
@@ -726,4 +726,11 @@ func defaultAMIImportMode(mode types.Mode) types.Mode {
 func looksLikeAMIID(value string) bool {
 	value = strings.TrimSpace(strings.ToLower(value))
 	return strings.HasPrefix(value, "ami-")
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *AMIDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

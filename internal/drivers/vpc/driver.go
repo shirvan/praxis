@@ -246,6 +246,14 @@ func (d *VPCDriver) Provision(ctx restate.ObjectContext, spec VPCSpec) (VPCOutpu
 		return VPCOutputs{}, err
 	}
 
+	// --- Late initialization: merge server-defaulted values into spec ---
+	if !state.LateInitDone {
+		if updatedSpec, changed := LateInitVPC(state.Desired, observed); changed {
+			state.Desired = updatedSpec
+		}
+		state.LateInitDone = true
+	}
+
 	// --- Build outputs ---
 	outputs := VPCOutputs{
 		VpcId:              vpcId,
@@ -327,6 +335,7 @@ func (d *VPCDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (VPCO
 	state.Status = types.StatusReady
 	state.Mode = mode
 	state.Error = ""
+	state.LateInitDone = true
 	restate.Set(ctx, drivers.StateKey, state)
 
 	d.scheduleReconcile(ctx, &state)
@@ -617,7 +626,7 @@ func (d *VPCDriver) reportDriftEvent(ctx restate.ObjectContext, eventType, error
 }
 
 // scheduleReconcile sends a delayed self-invocation to Reconcile after
-// drivers.ReconcileInterval (5 min). The ReconcileScheduled flag prevents
+// drivers.ReconcileIntervalForKind (per-resource interval). The ReconcileScheduled flag prevents
 // duplicate scheduling across handler invocations.
 func (d *VPCDriver) scheduleReconcile(ctx restate.ObjectContext, state *VPCState) {
 	if state.ReconcileScheduled {
@@ -626,7 +635,7 @@ func (d *VPCDriver) scheduleReconcile(ctx restate.ObjectContext, state *VPCState
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials for the given account alias and
@@ -640,4 +649,11 @@ func (d *VPCDriver) apiForAccount(ctx restate.ObjectContext, account string) (VP
 		return nil, "", fmt.Errorf("resolve VPC account %q: %w", account, err)
 	}
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *VPCDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

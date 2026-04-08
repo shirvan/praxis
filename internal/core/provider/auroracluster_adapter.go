@@ -212,6 +212,24 @@ func (a *AuroraClusterAdapter) Import(ctx restate.Context, key string, account s
 	return types.StatusReady, outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for Aurora clusters.
+func (a *AuroraClusterAdapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "30m", Update: "30m", Delete: "30m"}
+}
+
+// WaitReady checks whether the Aurora cluster has reached the available state.
+func (a *AuroraClusterAdapter) WaitReady(ctx restate.Context, key string) (WaitReadyResult, error) {
+	status, err := restate.Object[types.StatusResponse](ctx, a.ServiceName(), key, "GetStatus").Request(restate.Void{})
+	if err != nil {
+		return WaitReadyResult{}, err
+	}
+	if status.Status == types.StatusReady {
+		outputs, _ := fetchJSONMap(ctx, a.ServiceName(), key, "GetOutputs")
+		return WaitReadyResult{Ready: true, Message: "cluster available", Outputs: outputs}, nil
+	}
+	return WaitReadyResult{Ready: false, Message: fmt.Sprintf("cluster status: %s", status.Status)}, nil
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed AuroraCluster spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

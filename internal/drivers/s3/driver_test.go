@@ -87,3 +87,29 @@ func TestServiceName(t *testing.T) {
 	drv := NewS3BucketDriver(nil)
 	assert.Equal(t, "S3Bucket", drv.ServiceName())
 }
+
+func TestLateInitS3Bucket_FillsEncryptionAlgorithm(t *testing.T) {
+	spec := S3BucketSpec{
+		BucketName: "my-bucket",
+		Encryption: EncryptionSpec{Enabled: true},
+	}
+	observed := ObservedState{EncryptionAlgo: "AES256"}
+
+	updated, changed := LateInitS3Bucket(spec, observed)
+
+	assert.True(t, changed)
+	assert.Equal(t, "AES256", updated.Encryption.Algorithm)
+}
+
+func TestLateInitS3Bucket_PreservesExplicitEncryptionAlgorithm(t *testing.T) {
+	spec := S3BucketSpec{
+		BucketName: "my-bucket",
+		Encryption: EncryptionSpec{Enabled: true, Algorithm: "aws:kms"},
+	}
+	observed := ObservedState{EncryptionAlgo: "AES256"}
+
+	updated, changed := LateInitS3Bucket(spec, observed)
+
+	assert.False(t, changed)
+	assert.Equal(t, "aws:kms", updated.Encryption.Algorithm)
+}

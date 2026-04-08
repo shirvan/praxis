@@ -6,6 +6,8 @@
 // for handler input/output serialization.
 package types
 
+import "time"
+
 // ApplyRequest is the payload accepted by PraxisCommandService.Apply.
 // Apply is the primary create/update entry point: it evaluates a CUE template,
 // builds a plan, and dispatches resources to drivers via the orchestrator.
@@ -45,6 +47,10 @@ type ApplyRequest struct {
 	// When empty, all resources in the template are applied.
 	Targets []string `json:"targets,omitempty"`
 
+	// OrphanRemoved keeps resources that disappeared from the template running in
+	// the provider and only removes them from Praxis management state.
+	OrphanRemoved bool `json:"orphanRemoved,omitempty"`
+
 	// Replace forces a destroy-then-recreate cycle on the named resources.
 	// This is useful when immutable fields have changed and an in-place
 	// update is not possible (e.g., VPC CIDR block change).
@@ -62,6 +68,12 @@ type ApplyRequest struct {
 	// When set, it replaces the default "inline://template.cue" in
 	// deployment audit records. Only meaningful for inline templates.
 	TemplatePath string `json:"templatePath,omitempty"`
+
+	// MaxParallelism limits concurrent resource operations. Zero means unlimited.
+	MaxParallelism int `json:"maxParallelism,omitempty"`
+
+	// MaxRetries overrides the deployment-wide default resource retry count.
+	MaxRetries *int `json:"maxRetries,omitempty"`
 }
 
 // ApplyResponse is returned immediately after an apply request is accepted.
@@ -122,9 +134,17 @@ type PlanResponse struct {
 	// Plan holds the resource-level diffs and summary counts.
 	Plan *PlanResult `json:"plan"`
 
+	// ExecutionPlan is the workflow-ready deployment plan that can be saved and
+	// later applied without re-evaluating the template.
+	ExecutionPlan *ExecutionPlan `json:"executionPlan,omitempty"`
+
 	// Rendered is the pretty-printed, sensitivity-masked template output.
 	// Displayed by `praxis plan` to show the user what the template evaluates to.
 	Rendered string `json:"rendered"`
+
+	// TemplateHash is the SHA-256 digest of the template source used to build
+	// this plan.
+	TemplateHash string `json:"templateHash,omitempty"`
 
 	// DataSources maps data source names to their resolved outputs.
 	// Data sources are read-only lookups (e.g., "find the VPC with tag X")
@@ -177,6 +197,13 @@ type DeleteDeploymentRequest struct {
 	// This is a release valve for stuck deployments where the normal
 	// workflow of disabling preventDestroy via a re-deploy is impractical.
 	Force bool `json:"force,omitempty"`
+
+	// Orphan leaves resources running in the provider and only removes Praxis
+	// management state when the workflow supports it.
+	Orphan bool `json:"orphan,omitempty"`
+
+	// Parallelism limits concurrent delete operations. Zero means unlimited.
+	Parallelism int `json:"parallelism,omitempty"`
 }
 
 // DeleteDeploymentResponse confirms that the deletion workflow has been
@@ -418,6 +445,10 @@ type DeployRequest struct {
 	// Targets limits deployment to named resources plus their transitive dependencies.
 	Targets []string `json:"targets,omitempty"`
 
+	// OrphanRemoved keeps resources that disappeared from the template running in
+	// the provider and only removes them from Praxis management state.
+	OrphanRemoved bool `json:"orphanRemoved,omitempty"`
+
 	// Replace forces a destroy-then-recreate cycle on the named resources.
 	Replace []string `json:"replace,omitempty"`
 
@@ -426,6 +457,12 @@ type DeployRequest struct {
 	// WARNING: this destroys and recreates the resource, which may cause
 	// downtime and data loss.
 	AllowReplace bool `json:"allowReplace,omitempty"`
+
+	// MaxParallelism limits concurrent resource operations. Zero means unlimited.
+	MaxParallelism int `json:"maxParallelism,omitempty"`
+
+	// MaxRetries overrides the deployment-wide default resource retry count.
+	MaxRetries *int `json:"maxRetries,omitempty"`
 }
 
 // DeployResponse is returned after a deploy request is accepted.
@@ -468,8 +505,16 @@ type PlanDeployResponse struct {
 	// Plan holds resource-level diffs and summary counts.
 	Plan *PlanResult `json:"plan"`
 
+	// ExecutionPlan is the workflow-ready deployment plan that can be saved and
+	// later applied without re-evaluating the template.
+	ExecutionPlan *ExecutionPlan `json:"executionPlan,omitempty"`
+
 	// Rendered is the fully-evaluated, sensitivity-masked template output.
 	Rendered string `json:"rendered"`
+
+	// TemplateHash is the SHA-256 digest of the template source used to build
+	// this plan.
+	TemplateHash string `json:"templateHash,omitempty"`
 
 	// DataSources maps data source names to their resolved outputs.
 	DataSources map[string]DataSourceResult `json:"dataSources,omitempty"`
@@ -512,6 +557,34 @@ type StateMvResponse struct {
 
 	// NewName is the new template-local resource name.
 	NewName string `json:"newName"`
+}
+
+// ApplySavedPlanRequest submits a previously saved execution plan directly to
+// the command service without re-evaluating template source.
+type ApplySavedPlanRequest struct {
+	Plan ExecutionPlan `json:"plan"`
+
+	// OrphanRemoved keeps resources that disappeared from the template running in
+	// the provider and only removes them from Praxis management state.
+	OrphanRemoved bool `json:"orphanRemoved,omitempty"`
+
+	// MaxParallelism limits concurrent resource operations. Zero means unlimited.
+	MaxParallelism int `json:"maxParallelism,omitempty"`
+
+	// MaxRetries overrides the deployment-wide default resource retry count.
+	MaxRetries *int `json:"maxRetries,omitempty"`
+}
+
+// SavedPlan captures a workflow-ready execution plan plus the dry-run diff and
+// integrity metadata used for plan file workflows.
+type SavedPlan struct {
+	Version      int           `json:"version"`
+	Plan         ExecutionPlan `json:"plan"`
+	Diff         *PlanResult   `json:"diff,omitempty"`
+	ContentHash  string        `json:"contentHash"`
+	Signature    string        `json:"signature,omitempty"`
+	CreatedAt    time.Time     `json:"createdAt"`
+	TemplateHash string        `json:"templateHash,omitempty"`
 }
 
 // ResourceStatusResponse holds the status returned by a driver's GetStatus

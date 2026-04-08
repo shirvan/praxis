@@ -423,3 +423,11 @@ func defaultImportMode(m types.Mode) types.Mode {
 	}
 	return m
 }
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *SQSQueuePolicyDriver) ClearState(ctx restate.ObjectContext) error {
+	shared.ClearAllState(ctx)
+	return nil
+
+}

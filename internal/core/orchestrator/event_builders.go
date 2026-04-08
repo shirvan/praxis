@@ -591,6 +591,161 @@ func NewResourceDeleteErrorEvent(deploymentKey, workspace string, generation int
 	)
 }
 
+// --- Resource retry event builders ---
+
+// NewResourceRetryingEvent creates the event emitted when a resource is
+// retried after a transient failure.
+func NewResourceRetryingEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, attempt int, delay time.Duration, errMsg string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceRetrying, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityWarn,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("resource %s retrying (attempt %d, next in %s): %s", resourceName, attempt, delay.Round(time.Second), errMsg),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+			Error:        errMsg,
+		},
+	)
+}
+
+// --- Resource observe event builders ---
+
+// NewResourceObserveSkippedEvent creates the event emitted when a resource
+// is already up-to-date and provisioning is skipped.
+func NewResourceObserveSkippedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceObserveSkipped, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("resource %s already up-to-date, skipping provision", resourceName),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+		},
+	)
+}
+
+// --- Resource timeout event builders ---
+
+// NewResourceTimeoutEvent creates the event emitted when a resource operation
+// exceeds its configured timeout.
+func NewResourceTimeoutEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, timeout time.Duration) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceTimeout, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityError,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("resource %s timed out after %s", resourceName, timeout),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+			Error:        fmt.Sprintf("operation timed out after %s", timeout),
+		},
+	)
+}
+
+// --- Resource wait event builders ---
+
+// NewResourceWaitingEvent creates the event emitted when the orchestrator
+// starts polling for post-provision readiness.
+func NewResourceWaitingEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceWaiting, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("waiting for %s to become ready", resourceName),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+		},
+	)
+}
+
+// NewResourceWaitTimeoutEvent creates the event emitted when post-provision
+// readiness polling exceeds its deadline.
+func NewResourceWaitTimeoutEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, errMsg string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceWaitTimeout, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityError,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("resource %s readiness wait timed out: %s", resourceName, errMsg),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+			Error:        errMsg,
+		},
+	)
+}
+
+// --- Finalizer event builders ---
+
+// NewFinalizerStartedEvent creates the event emitted when a pre-delete hook begins.
+func NewFinalizerStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeFinalizerStarted, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("running pre-delete finalizer for %s", resourceName),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+		},
+	)
+}
+
+// NewFinalizerCompletedEvent creates the event emitted when a pre-delete hook completes.
+func NewFinalizerCompletedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeFinalizerCompleted, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("pre-delete finalizer completed for %s", resourceName),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+		},
+	)
+}
+
+// NewFinalizerErrorEvent creates the event emitted when a finalizer hook fails.
+func NewFinalizerErrorEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, errMsg string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeFinalizerError, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityError,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("finalizer error for %s: %s", resourceName, errMsg),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+			Error:        errMsg,
+		},
+	)
+}
+
+// --- Reconcile event builders ---
+
+// NewReconcileTriggeredEvent creates the event emitted when on-demand reconciliation
+// is fanned out to deployment resources.
+func NewReconcileTriggeredEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, triggered int) (cloudevents.Event, error) {
+	return newPraxisCloudEvent(
+		EventTypeReconcileTriggered, deploymentKey, workspace, generation, occurredAt,
+		"", "", EventCategoryLifecycle, EventSeverityInfo,
+		deploymentEventPayload{Message: fmt.Sprintf("reconciliation triggered for %d resources", triggered)},
+	)
+}
+
+// --- Orphan/Adopt event builders ---
+
+// NewResourceOrphanedEvent creates the event emitted when a resource is
+// orphaned from management.
+func NewResourceOrphanedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceOrphaned, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("resource %s orphaned — removed from management, cloud resource preserved", resourceName),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+		},
+	)
+}
+
+// NewResourceAdoptedEvent creates the event emitted when an existing resource
+// is adopted into a deployment.
+func NewResourceAdoptedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
+	return newResourceLifecycleEvent(
+		EventTypeResourceAdopted, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
+		resourceEventPayload{
+			Message:      fmt.Sprintf("resource %s adopted into deployment", resourceName),
+			ResourceName: resourceName,
+			ResourceKind: resourceKind,
+		},
+	)
+}
+
 // --- Core event construction ---
 
 // newPraxisCloudEvent is the internal factory that all builders delegate to.

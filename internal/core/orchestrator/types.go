@@ -138,6 +138,20 @@ type DeploymentPlan struct {
 	// conflict. The resource is deleted and then re-provisioned.
 	// Resources with lifecycle.preventDestroy are still protected.
 	AllowReplace bool `json:"allowReplace,omitempty"`
+
+	// MaxParallelism limits the number of concurrent resource operations.
+	// Zero means unlimited.
+	MaxParallelism int `json:"maxParallelism,omitempty"`
+
+	// RetryConfig is the deployment-wide default retry policy.
+	RetryConfig *RetryConfig `json:"retryConfig,omitempty"`
+}
+
+// RetryConfig is the deployment-wide default resource retry policy.
+type RetryConfig struct {
+	MaxRetries int           `json:"maxRetries"`
+	BaseDelay  time.Duration `json:"baseDelay"`
+	MaxDelay   time.Duration `json:"maxDelay"`
 }
 
 // PlanResource is one resource entry inside a deployment plan.
@@ -196,14 +210,16 @@ type DeploymentState struct {
 // ResourceState is the deployment-scoped view of one resource during
 // orchestration.
 type ResourceState struct {
-	Name       string                         `json:"name"`
-	Kind       string                         `json:"kind"`
-	Key        string                         `json:"key"`
-	DependsOn  []string                       `json:"dependsOn,omitempty"`
-	Status     types.DeploymentResourceStatus `json:"status"`
-	Error      string                         `json:"error,omitempty"`
-	Lifecycle  *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
-	PriorReady bool                           `json:"priorReady,omitempty"`
+	Name          string                         `json:"name"`
+	Kind          string                         `json:"kind"`
+	DriverService string                         `json:"driverService,omitempty"`
+	Key           string                         `json:"key"`
+	DependsOn     []string                       `json:"dependsOn,omitempty"`
+	Status        types.DeploymentResourceStatus `json:"status"`
+	Error         string                         `json:"error,omitempty"`
+	Lifecycle     *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
+	PriorReady    bool                           `json:"priorReady,omitempty"`
+	Conditions    []types.Condition              `json:"conditions,omitempty"`
 }
 
 // DeploymentResult is the final workflow output returned from both apply and
@@ -219,10 +235,11 @@ type DeploymentResult struct {
 
 // ResourceUpdate updates one resource entry inside DeploymentState.
 type ResourceUpdate struct {
-	Name    string                         `json:"name"`
-	Status  types.DeploymentResourceStatus `json:"status"`
-	Error   string                         `json:"error,omitempty"`
-	Outputs map[string]any                 `json:"outputs,omitempty"`
+	Name       string                         `json:"name"`
+	Status     types.DeploymentResourceStatus `json:"status"`
+	Error      string                         `json:"error,omitempty"`
+	Outputs    map[string]any                 `json:"outputs,omitempty"`
+	Conditions []types.Condition              `json:"conditions,omitempty"`
 }
 
 // StatusUpdate moves the deployment as a whole into a new lifecycle phase such
@@ -258,6 +275,25 @@ type DeleteRequest struct {
 
 	// Force overrides lifecycle.preventDestroy protection on resources.
 	Force bool `json:"force,omitempty"`
+
+	// Orphan leaves resources running in the provider and only removes Praxis
+	// management state when supported by lifecycle deletion policies.
+	Orphan bool `json:"orphan,omitempty"`
+
+	// Parallelism limits concurrent delete operations. Zero means unlimited.
+	Parallelism int `json:"parallelism,omitempty"`
+}
+
+// ReconcileAllRequest triggers reconciliation for every resource in a
+// deployment.
+type ReconcileAllRequest struct {
+	Force bool `json:"force,omitempty"`
+}
+
+// ReconcileAllResponse reports how many resource reconcile requests were sent.
+type ReconcileAllResponse struct {
+	Triggered int      `json:"triggered"`
+	Skipped   []string `json:"skipped,omitempty"`
 }
 
 // RollbackResource identifies a single resource that was successfully provisioned

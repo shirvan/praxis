@@ -64,6 +64,23 @@ const lifecycleCUE = `{
 	lifecycle?: {
 		preventDestroy?: bool
 		ignoreChanges?: [...string]
+		retry?: {
+			maxRetries?: int & >=0
+			baseDelay?: string
+			maxDelay?: string
+		}
+		timeouts?: {
+			create?: string
+			update?: string
+			delete?: string
+		}
+		finalizers?: [...string]
+		deletionPolicy?: *"Delete" | "Orphan"
+		wait?: {
+			enabled?: bool
+			pollInterval?: string
+			maxWait?: string
+		}
 	}
 }`
 

@@ -79,7 +79,7 @@ func (s *PraxisCommandService) Deploy(ctx restate.Context, req DeployRequest) (D
 
 	// Submit the deployment — from this point forward the path is identical
 	// to Apply: init state, update index, emit events, send workflow.
-	key, status, err := s.submitDeployment(ctx, deploymentKey, account, req.Workspace, mergedVars, compiled, req.Replace, req.AllowReplace)
+	key, status, err := s.submitDeployment(ctx, deploymentKey, account, req.Workspace, mergedVars, compiled, len(req.Targets) == 0, req.OrphanRemoved, req.Replace, req.AllowReplace, req.MaxParallelism, req.MaxRetries)
 	if err != nil {
 		return DeployResponse{}, err
 	}

@@ -84,3 +84,28 @@ func TestScheduleAffectedByFailure_ReturnsTransitiveDependents(t *testing.T) {
 	assert.Equal(t, []string{"api", "frontend"}, schedule.AffectedByFailure("db"))
 	assert.Empty(t, schedule.AffectedByFailure("frontend"))
 }
+
+func TestScheduleReadyForDelete_UsesReverseDependencyOrder(t *testing.T) {
+	g := newTestGraph(t,
+		newNode("frontend", "api", "assets"),
+		newNode("api", "db"),
+		newNode("assets", "network"),
+		newNode("db", "network"),
+		newNode("network"),
+	)
+	schedule := NewSchedule(g)
+
+	assert.Equal(t, []string{"frontend"}, schedule.ReadyForDelete(map[string]bool{}, map[string]bool{}))
+	assert.Equal(t, []string{"api", "assets"}, schedule.ReadyForDelete(
+		map[string]bool{"frontend": true},
+		map[string]bool{"frontend": true},
+	))
+	assert.Equal(t, []string{"db"}, schedule.ReadyForDelete(
+		map[string]bool{"frontend": true, "api": true, "assets": true},
+		map[string]bool{"frontend": true, "api": true, "assets": true},
+	))
+	assert.Equal(t, []string{"network"}, schedule.ReadyForDelete(
+		map[string]bool{"frontend": true, "api": true, "assets": true, "db": true},
+		map[string]bool{"frontend": true, "api": true, "assets": true, "db": true},
+	))
+}

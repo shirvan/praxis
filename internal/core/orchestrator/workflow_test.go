@@ -353,3 +353,33 @@ func TestExecutionState_ResetToPendingClearsFailure(t *testing.T) {
 	assert.Equal(t, types.DeploymentResourceProvisioning, exec.statuses["loggroup"])
 	assert.True(t, exec.dispatched["loggroup"])
 }
+
+func TestExecutionState_ReadyAtExcludesCoolingDownResources(t *testing.T) {
+	resources := []PlanResource{
+		testPlanResource("network"),
+		testPlanResource("db", "network"),
+	}
+
+	exec := newExecutionState(resources)
+	graph, err := graphFromPlanResources(resources)
+	require.NoError(t, err)
+	schedule := dag.NewSchedule(graph)
+
+	exec.markReady("network", map[string]any{"id": "net-1"})
+	exec.markRetrying("db", "retrying after throttle", time.Now().Add(30*time.Second))
+
+	assert.Empty(t, exec.readyAt(schedule, time.Now()))
+	assert.Equal(t, []string{"db"}, exec.readyAt(schedule, time.Now().Add(31*time.Second)))
+}
+
+func TestExecutionState_MarkRetryingIncrementsAttempts(t *testing.T) {
+	exec := newExecutionState([]PlanResource{testPlanResource("bucket")})
+	attempt := exec.markRetrying("bucket", "retrying after eventual consistency", time.Now().Add(5*time.Second))
+	assert.Equal(t, 1, attempt)
+	assert.Equal(t, 1, exec.retryCount("bucket"))
+	assert.Equal(t, types.DeploymentResourcePending, exec.statuses["bucket"])
+	assert.False(t, exec.dispatched["bucket"])
+	assert.Contains(t, exec.errors["bucket"], "retrying")
+	_, ok := exec.nextRetryAt()
+	assert.True(t, ok)
+}

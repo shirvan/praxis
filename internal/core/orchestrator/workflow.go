@@ -9,7 +9,6 @@ package orchestrator
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	restate "github.com/restatedev/sdk-go"
@@ -156,7 +155,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	// inFlight tracks resources currently being provisioned by their driver.
 	// Each entry maps resource name → ProvisionInvocation, which wraps a
 	// Restate future for the async driver call.
-	inFlight := make(map[string]provider.ProvisionInvocation)
+	inFlight := make(map[string]*inFlightProvision)
 	cancellationRequested := false
 
 	// ---------------------------------------------------------------
@@ -196,10 +195,18 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			}
 		}
 
+		loopNow, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+
 		// --- Step 4b: Dispatch ready resources ---
 		if !cancellationRequested {
-			ready := exec.ready(schedule)
+			ready := exec.readyAt(schedule, loopNow)
 			for _, name := range ready {
+				if plan.MaxParallelism > 0 && len(inFlight) >= plan.MaxParallelism {
+					break
+				}
 				resource := exec.plan[name]
 
 				// Expression hydration: resolve cross-resource output references.
@@ -237,6 +244,52 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					continue
 				}
 
+				if !replaceSet[name] {
+					var (
+						observeResult provider.ObserveResult
+						observeErr    error
+					)
+					if observer, ok := adapter.(provider.Observer); ok {
+						observeResult, observeErr = observer.Observe(ctx, resource.Key, plan.Account, decodedSpec)
+					} else {
+						observeResult, observeErr = provider.ObserveStoredState(ctx, adapter, resource.Key, decodedSpec)
+					}
+					if observeErr != nil {
+						ctx.Log().Warn("observe-before-act failed; falling back to provision", "resource", name, "kind", resource.Kind, "error", observeErr.Error())
+					} else if observeResult.Exists && observeResult.UpToDate {
+						conditions := readyConditions(exec.conditionsFor(name), loopNow, "resource already up to date")
+						exec.markReady(name, observeResult.Outputs)
+						exec.setConditions(name, conditions)
+						if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
+							Name:       name,
+							Status:     types.DeploymentResourceReady,
+							Outputs:    observeResult.Outputs,
+							Conditions: conditions,
+						}); err != nil {
+							return DeploymentResult{}, err
+						}
+						readyEvent, eventErr := NewResourceReadyEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, name, resource.Kind, observeResult.Outputs)
+						if eventErr != nil {
+							return DeploymentResult{}, eventErr
+						}
+						if err := EmitDeploymentCloudEvent(ctx, readyEvent); err != nil {
+							return DeploymentResult{}, err
+						}
+						if err := upsertResourceIndex(ctx, ResourceIndexEntry{
+							Kind:          resource.Kind,
+							Key:           resource.Key,
+							DeploymentKey: plan.Key,
+							ResourceName:  name,
+							Workspace:     plan.Workspace,
+							Status:        string(types.DeploymentResourceReady),
+							CreatedAt:     plan.CreatedAt,
+						}); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+				}
+
 				// Force replacement: delete the existing resource before re-provisioning.
 				if replaceSet[name] {
 					if resource.Lifecycle != nil && resource.Lifecycle.PreventDestroy {
@@ -262,6 +315,14 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						return DeploymentResult{}, err
 					}
 
+					replaceDeleteTimeout, timeoutErr := resolveDeleteTimeout(adapter, resource.Lifecycle)
+					if timeoutErr != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, timeoutErr.Error()); err != nil {
+							return DeploymentResult{}, err
+						}
+						continue
+					}
+
 					delInvocation, err := adapter.Delete(ctx, resource.Key)
 					if err != nil {
 						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete dispatch failed: %v", err)); err != nil {
@@ -271,7 +332,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					}
 					// Use a timeout to prevent a stuck force-replace delete from
 					// blocking the entire dispatch loop.
-					delTimeout := restate.After(ctx, forceReplaceDeleteTimeout)
+					delTimeout := restate.After(ctx, replaceDeleteTimeout)
 					delFirst, delErr := restate.WaitFirst(ctx, delInvocation.Future(), delTimeout)
 					if delErr != nil {
 						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete wait error: %v", delErr)); err != nil {
@@ -280,7 +341,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						continue
 					}
 					if delFirst == delTimeout {
-						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete timed out after %s", forceReplaceDeleteTimeout)); err != nil {
+						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete timed out after %s", replaceDeleteTimeout)); err != nil {
 							return DeploymentResult{}, err
 						}
 						continue
@@ -297,6 +358,14 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				// invocation to the driver service and returns a future. The driver
 				// call runs independently; the workflow awaits it in the WaitFirst
 				// block below.
+				provisionTimeout, err := resolveProvisionTimeout(adapter, resource.Lifecycle, state.Resources[name] != nil && state.Resources[name].PriorReady)
+				if err != nil {
+					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, err.Error()); err != nil {
+						return DeploymentResult{}, err
+					}
+					continue
+				}
+
 				invocation, err := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to dispatch driver call: %v", err)); err != nil {
@@ -306,15 +375,23 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				}
 
 				exec.markProvisioning(name)
-				inFlight[name] = invocation
+				conditions := dispatchedConditions(exec.conditionsFor(name), loopNow, "resource operation dispatched")
+				exec.setConditions(name, conditions)
+				inFlight[name] = &inFlightProvision{
+					invocation: invocation,
+					adapter:    adapter,
+					timeout:    provisionTimeout,
+					startedAt:  loopNow,
+				}
 
 				dispatchStatus := types.DeploymentResourceProvisioning
 				if rs := state.Resources[name]; rs != nil && rs.PriorReady {
 					dispatchStatus = types.DeploymentResourceUpdating
 				}
 				if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
-					Name:   name,
-					Status: dispatchStatus,
+					Name:       name,
+					Status:     dispatchStatus,
+					Conditions: conditions,
 				}); err != nil {
 					return DeploymentResult{}, err
 				}
@@ -332,7 +409,13 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			if cancellationRequested {
 				break
 			}
-			if len(exec.ready(schedule)) == 0 {
+			if nextRetryAt, ok := exec.nextRetryAt(); ok {
+				if loopNow.Before(nextRetryAt) {
+					_ = restate.Sleep(ctx, nextRetryAt.Sub(loopNow))
+				}
+				continue
+			}
+			if len(exec.readyAt(schedule, loopNow)) == 0 {
 				break
 			}
 		}
@@ -352,16 +435,65 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		// replay, the SDK may resolve a different future first, causing
 		// a journal mismatch (code 570). Sorted-order await eliminates
 		// this class of non-determinism entirely.
-		resourceName, invocation := nextInFlightCompletion(inFlight)
+		resourceName, pending := nextInFlightCompletion(inFlight)
 		delete(inFlight, resourceName)
+		waitTimeout := restate.After(ctx, pending.timeout)
+		first, err := restate.WaitFirst(ctx, pending.invocation.Future(), waitTimeout)
+		if err != nil {
+			resource := exec.plan[resourceName]
+			if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, fmt.Sprintf("provision wait error: %v", err)); recErr != nil {
+				return DeploymentResult{}, recErr
+			}
+			continue
+		}
+		if first == waitTimeout {
+			resource := exec.plan[resourceName]
+			if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, fmt.Sprintf("resource timed out after %s", pending.timeout)); recErr != nil {
+				return DeploymentResult{}, recErr
+			}
+			continue
+		}
 
 		// Retrieve the resource outputs from the completed driver call.
 		// If the driver returned an error, this is a resource-level failure
 		// (not a workflow infrastructure error). The resource is marked Error,
 		// and all transitive dependents are marked Skipped.
-		outputs, err := invocation.Outputs()
+		outputs, err := pending.invocation.Outputs()
 		if err != nil {
 			resource := exec.plan[resourceName]
+
+			if retryable, ok := types.IsRetryable(err); ok {
+				retryConfig, cfgErr := resolveRetryConfig(plan, resource.Lifecycle)
+				if cfgErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, cfgErr.Error()); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+				nextAttempt := exec.retryCount(resourceName) + 1
+				if nextAttempt <= retryConfig.MaxRetries {
+					retryDelay := nextRetryDelay(resourceName, nextAttempt, retryConfig, retryable.RetryAfter)
+					retryAt, timeErr := currentTime(ctx)
+					if timeErr != nil {
+						return DeploymentResult{}, timeErr
+					}
+					retryAt = retryAt.Add(retryDelay)
+					message := fmt.Sprintf("retry %d/%d scheduled after %s: %s", nextAttempt, retryConfig.MaxRetries, retryDelay, err.Error())
+					exec.markRetrying(resourceName, message, retryAt)
+					conditions := retryingConditions(exec.conditionsFor(resourceName), retryAt, message)
+					exec.setConditions(resourceName, conditions)
+					if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
+						Name:       resourceName,
+						Status:     types.DeploymentResourcePending,
+						Error:      message,
+						Conditions: conditions,
+					}); err != nil {
+						return DeploymentResult{}, err
+					}
+					continue
+				}
+				err = fmt.Errorf("retry limit exceeded after %d attempt(s): %w", exec.retryCount(resourceName), err)
+			}
 
 			// Auto-replace: if the driver returned a 409 immutable-field
 			// conflict and the plan has AllowReplace enabled, delete the
@@ -398,6 +530,14 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				}
 
 				// Delete the existing resource (same timeout as force-replace).
+				replaceDeleteTimeout, timeoutErr := resolveDeleteTimeout(adapter, resource.Lifecycle)
+				if timeoutErr != nil {
+					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, timeoutErr.Error()); recErr != nil {
+						return DeploymentResult{}, recErr
+					}
+					continue
+				}
+
 				delInvocation, delErr := adapter.Delete(ctx, resource.Key)
 				if delErr != nil {
 					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
@@ -406,7 +546,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					}
 					continue
 				}
-				delTimeout := restate.After(ctx, forceReplaceDeleteTimeout)
+				delTimeout := restate.After(ctx, replaceDeleteTimeout)
 				delFirst, delWaitErr := restate.WaitFirst(ctx, delInvocation.Future(), delTimeout)
 				if delWaitErr != nil {
 					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
@@ -417,7 +557,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				}
 				if delFirst == delTimeout {
 					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
-						fmt.Sprintf("auto-replace delete timed out after %s", forceReplaceDeleteTimeout)); recErr != nil {
+						fmt.Sprintf("auto-replace delete timed out after %s", replaceDeleteTimeout)); recErr != nil {
 						return DeploymentResult{}, recErr
 					}
 					continue
@@ -460,7 +600,18 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				// Put the re-provisioned resource back in flight.
 				exec.resetToPending(resourceName)
 				exec.markProvisioning(resourceName)
-				inFlight[resourceName] = reProvInvocation
+				dispatchTime, timeErr := currentTime(ctx)
+				if timeErr != nil {
+					return DeploymentResult{}, timeErr
+				}
+				conditions := dispatchedConditions(exec.conditionsFor(resourceName), dispatchTime, "resource operation re-dispatched after replacement")
+				exec.setConditions(resourceName, conditions)
+				inFlight[resourceName] = &inFlightProvision{
+					invocation: reProvInvocation,
+					adapter:    adapter,
+					timeout:    pending.timeout,
+					startedAt:  dispatchTime,
+				}
 				continue
 			}
 
@@ -470,17 +621,47 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			continue
 		}
 
+		resource := exec.plan[resourceName]
+		if waiter, ok := pending.adapter.(provider.ReadyWaiter); ok && waitEnabled(resource.Lifecycle) {
+			finishTime, timeErr := currentTime(ctx)
+			if timeErr != nil {
+				return DeploymentResult{}, timeErr
+			}
+			remainingTimeout := pending.timeout
+			if !pending.startedAt.IsZero() {
+				elapsed := finishTime.Sub(pending.startedAt)
+				if elapsed >= pending.timeout {
+					remainingTimeout = 0
+				} else {
+					remainingTimeout = pending.timeout - elapsed
+				}
+			}
+			outputs, err = waitForResourceReady(ctx, waiter, resource.Key, outputs, remainingTimeout, resource.Lifecycle)
+			if err != nil {
+				if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, err.Error()); recErr != nil {
+					return DeploymentResult{}, recErr
+				}
+				continue
+			}
+		}
+
 		// Record the successful outputs in execution state. These outputs
 		// become available for hydrating downstream resource expressions.
+		readyAt, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		conditions := readyConditions(exec.conditionsFor(resourceName), readyAt, "resource ready")
 		exec.markReady(resourceName, outputs)
+		exec.setConditions(resourceName, conditions)
 		if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
-			Name:    resourceName,
-			Status:  types.DeploymentResourceReady,
-			Outputs: outputs,
+			Name:       resourceName,
+			Status:     types.DeploymentResourceReady,
+			Outputs:    outputs,
+			Conditions: conditions,
 		}); err != nil {
 			return DeploymentResult{}, err
 		}
-		resource := exec.plan[resourceName]
 		readyEvent, eventErr := NewResourceReadyEvent(plan.Key, plan.Workspace, state.Generation, time.Time{}, resourceName, resource.Kind, outputs)
 		if eventErr != nil {
 			return DeploymentResult{}, eventErr
@@ -510,10 +691,13 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		pending := exec.skipPendingForCancellation()
 		for _, name := range pending {
 			resource := exec.plan[name]
+			conditions := skippedConditions(exec.conditionsFor(name), now, exec.errors[name])
+			exec.setConditions(name, conditions)
 			if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
-				Name:   name,
-				Status: types.DeploymentResourceSkipped,
-				Error:  exec.errors[name],
+				Name:       name,
+				Status:     types.DeploymentResourceSkipped,
+				Error:      exec.errors[name],
+				Conditions: conditions,
 			}); err != nil {
 				return DeploymentResult{}, err
 			}
@@ -602,11 +786,18 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 	resourceKind string,
 	errMsg string,
 ) error {
+	now, err := currentTime(ctx)
+	if err != nil {
+		return err
+	}
+	conditions := failedConditions(exec.conditionsFor(resourceName), now, types.ReasonProvisionFailed, errMsg)
 	exec.markFailed(resourceName, errMsg)
+	exec.setConditions(resourceName, conditions)
 	if err := updateDeploymentResource(ctx, deploymentKey, ResourceUpdate{
-		Name:   resourceName,
-		Status: types.DeploymentResourceError,
-		Error:  errMsg,
+		Name:       resourceName,
+		Status:     types.DeploymentResourceError,
+		Error:      errMsg,
+		Conditions: conditions,
 	}); err != nil {
 		return err
 	}
@@ -621,10 +812,13 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 	skipped := exec.skipAffectedDependents(schedule, resourceName, fmt.Sprintf("skipped because dependency %s failed", resourceName))
 	for _, name := range skipped {
 		resource := exec.plan[name]
+		skippedConditions := skippedConditions(exec.conditionsFor(name), now, exec.errors[name])
+		exec.setConditions(name, skippedConditions)
 		if err := updateDeploymentResource(ctx, deploymentKey, ResourceUpdate{
-			Name:   name,
-			Status: types.DeploymentResourceSkipped,
-			Error:  exec.errors[name],
+			Name:       name,
+			Status:     types.DeploymentResourceSkipped,
+			Error:      exec.errors[name],
+			Conditions: skippedConditions,
 		}); err != nil {
 			return err
 		}
@@ -637,20 +831,4 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 		}
 	}
 	return nil
-}
-
-// nextInFlightCompletion picks the alphabetically-first in-flight resource and
-// returns its name and invocation. The caller then blocks on invocation.Outputs()
-// which suspends the Restate workflow until that specific driver call completes.
-//
-// This is intentionally deterministic: sorting by name gives Restate a stable
-// journal sequence regardless of Go map iteration order or the real-time
-// completion order of parallel driver calls.
-func nextInFlightCompletion(inFlight map[string]provider.ProvisionInvocation) (string, provider.ProvisionInvocation) {
-	names := make([]string, 0, len(inFlight))
-	for name := range inFlight {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names[0], inFlight[names[0]]
 }

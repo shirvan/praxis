@@ -190,6 +190,15 @@ func (g *Graph) Dependents(resource string) []string {
 	return append([]string(nil), dependents...)
 }
 
+// Dependencies returns the direct dependencies of a resource in sorted order.
+func (g *Graph) Dependencies(resource string) []string {
+	dependencies := g.edges[resource]
+	if len(dependencies) == 0 {
+		return nil
+	}
+	return append([]string(nil), dependencies...)
+}
+
 // ReverseTopo returns the exact reverse of the graph's topological order. This
 // is the ordering used by delete and rollback flows, where dependents must be
 // torn down before their dependencies. For example, an EC2 instance must be
@@ -325,12 +334,6 @@ func (g *Graph) NodeNames() []string {
 // Node returns the ResourceNode for the given name, or nil if not present.
 func (g *Graph) Node(name string) *types.ResourceNode {
 	return g.nodes[name]
-}
-
-// Dependencies returns the direct dependencies of a resource (sorted).
-// Returns nil if the resource does not exist in the graph.
-func (g *Graph) Dependencies(name string) []string {
-	return g.edges[name]
 }
 
 // Levels assigns each node to a depth level based on the longest path from

@@ -271,6 +271,52 @@ func (a *SecurityGroupAdapter) Lookup(ctx restate.Context, account string, filte
 	return outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for Security Groups.
+func (a *SecurityGroupAdapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "5m", Update: "5m", Delete: "5m"}
+}
+
+// Observe performs a lightweight live check to determine whether the Security
+// Group exists and matches the desired spec. Implements the Observer interface.
+func (a *SecurityGroupAdapter) Observe(ctx restate.Context, key string, account string, spec any) (ObserveResult, error) {
+	desired, err := castSpec[sg.SecurityGroupSpec](spec)
+	if err != nil {
+		return ObserveResult{}, err
+	}
+	outputs, getErr := restate.Object[sg.SecurityGroupOutputs](ctx, a.ServiceName(), key, "GetOutputs").
+		Request(restate.Void{})
+	if getErr != nil || outputs.GroupId == "" {
+		return ObserveResult{Exists: false}, nil
+	}
+	api, err := a.planningAPI(ctx, account)
+	if err != nil {
+		return ObserveResult{}, err
+	}
+	type describeResult struct {
+		State sg.ObservedState
+		Found bool
+	}
+	result, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
+		obs, descErr := api.DescribeSecurityGroup(rc, outputs.GroupId)
+		if descErr != nil {
+			if sg.IsNotFound(descErr) {
+				return describeResult{Found: false}, nil
+			}
+			return describeResult{}, descErr
+		}
+		return describeResult{State: obs, Found: true}, nil
+	})
+	if err != nil {
+		return ObserveResult{}, err
+	}
+	if !result.Found {
+		return ObserveResult{Exists: false}, nil
+	}
+	upToDate := !sg.HasDrift(desired, result.State)
+	normalizedOutputs, _ := a.NormalizeOutputs(outputs)
+	return ObserveResult{Exists: true, UpToDate: upToDate, Outputs: normalizedOutputs}, nil
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed SecurityGroup spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

@@ -344,7 +344,7 @@ func (d *RecordDriver) scheduleReconcile(ctx restate.ObjectContext, state *Recor
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *RecordDriver) apiForAccount(ctx restate.ObjectContext, account string) (RecordAPI, error) {
@@ -397,4 +397,11 @@ func defaultRecordImportMode(mode types.Mode) types.Mode {
 		return types.ModeObserved
 	}
 	return mode
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *RecordDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

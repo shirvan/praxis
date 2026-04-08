@@ -438,7 +438,7 @@ func (d *ElasticIPDriver) scheduleReconcile(ctx restate.ObjectContext, state *El
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials and creates an API client for the given account.
@@ -521,4 +521,11 @@ func applyDefaults(spec ElasticIPSpec) ElasticIPSpec {
 // formatManagedKeyConflict returns an error when a managed-key is already in use.
 func formatManagedKeyConflict(managedKey, allocationID string) error {
 	return fmt.Errorf("elastic IP name %q in this region is already managed by Praxis (allocationId: %s); remove the existing resource or use a different metadata.name", managedKey, allocationID)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *ElasticIPDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

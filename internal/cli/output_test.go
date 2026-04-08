@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/shirvan/praxis/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -215,4 +216,42 @@ func TestPrintDestroyPlan_EmptyDeployment(t *testing.T) {
 
 	text := out.String()
 	assert.Contains(t, text, "No resources to destroy.")
+}
+
+func TestPrintDeploymentDetail_Conditions(t *testing.T) {
+	var out bytes.Buffer
+	renderer := newRendererWithWriters(false, &out, &bytes.Buffer{})
+	now := time.Date(2024, time.January, 15, 10, 30, 22, 0, time.UTC)
+
+	detail := &types.DeploymentDetail{
+		Key:       "my-stack",
+		Status:    types.DeploymentComplete,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Resources: []types.DeploymentResource{
+			{
+				Name:   "bucket",
+				Kind:   "S3Bucket",
+				Key:    "my-bucket",
+				Status: types.DeploymentResourceReady,
+				Conditions: []types.Condition{
+					{Type: types.ConditionReady, Status: types.ConditionTrue, Reason: types.ReasonSucceeded, Message: "resource ready", LastTransitionTime: now},
+					{Type: types.ConditionDriftFree, Status: types.ConditionFalse, Reason: types.ReasonDriftDetected, Message: "spec mismatch detected", LastTransitionTime: now},
+				},
+			},
+		},
+	}
+
+	printDeploymentDetail(renderer, detail, deploymentSections{})
+
+	text := out.String()
+	assert.Contains(t, text, "CONDITIONS")
+	assert.Contains(t, text, "Ready=True(Succeeded), DriftFree=False(DriftDetected)")
+	assert.Contains(t, text, "Conditions:")
+	assert.Contains(t, text, "bucket (S3Bucket):")
+	assert.Contains(t, text, "Ready:")
+	assert.Contains(t, text, "True (Succeeded) - resource ready")
+	assert.Contains(t, text, "DriftFree:")
+	assert.Contains(t, text, "False (DriftDetected) - spec mismatch detected")
+	assert.Contains(t, text, "Last transition: 2024-01-15T10:30:22Z")
 }

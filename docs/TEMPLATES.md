@@ -517,6 +517,40 @@ resources: {
 |-------|------|---------|-------------|
 | `preventDestroy` | `bool` | `false` | If `true`, the orchestrator refuses to delete this resource. Also blocks `--replace` and `--allow-replace`. Use `praxis delete --force` to override. |
 | `ignoreChanges` | `[...string]` | `[]` | Dot-separated spec field paths to ignore during plan diff and reconciliation. |
+| `orphanPolicy` | `string` | `"delete"` | What to do when a resource is removed from the template: `"delete"` (default) destroys it, `"orphan"` detaches it from management without deletion. |
+| `maxRetries` | `int` | (deployment default) | Maximum number of retry attempts for this resource before marking it as failed. Set to `0` to disable retries. |
+| `timeouts` | `object` | (adapter defaults) | Per-operation timeout overrides. See Timeouts below. |
+| `wait` | `object` | `{enabled: true}` | Post-provision readiness polling configuration. See Wait below. |
+
+#### Timeouts
+
+Override the default operation timeout per resource:
+
+```cue
+lifecycle: {
+    timeouts: {
+        create: "30m"  // provision timeout
+        update: "15m"  // update timeout
+        delete: "10m"  // delete timeout
+    }
+}
+```
+
+The orchestrator resolves timeouts in priority order: template lifecycle > adapter default > system default (5m).
+
+#### Wait
+
+Control post-provision readiness polling. For adapters that implement `ReadyWaiter`, the orchestrator polls the resource after provision until it reports ready:
+
+```cue
+lifecycle: {
+    wait: {
+        enabled: true        // default: true — disable to skip readiness checks
+        pollInterval: "10s"  // how often to poll — default: 5s
+        maxWait: "30m"       // maximum wait — default: uses the create timeout
+    }
+}
+```
 
 Lifecycle rules are validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state. The orchestrator and plan diff engine enforce them.
 

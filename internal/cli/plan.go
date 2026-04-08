@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shirvan/praxis/internal/core/command"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -34,6 +36,7 @@ func newPlanCmd(flags *rootFlags) *cobra.Command {
 		account       string
 		targets       []string
 		deploymentKey string
+		outFile       string
 	)
 	account = flags.account
 
@@ -60,9 +63,9 @@ which is useful for debugging variable resolution and output expressions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source := args[0]
 			if isFilePath(source) {
-				return planFromFile(flags, source, vars, varsFile, account, targets, deploymentKey, showRendered, showGraph)
+				return planFromFile(flags, source, vars, varsFile, account, targets, deploymentKey, showRendered, showGraph, outFile)
 			}
-			return planFromTemplate(flags, source, vars, varsFile, account, targets, deploymentKey, showRendered, showGraph)
+			return planFromTemplate(flags, source, vars, varsFile, account, targets, deploymentKey, showRendered, showGraph, outFile)
 		},
 	}
 
@@ -73,11 +76,12 @@ which is useful for debugging variable resolution and output expressions.`,
 	cmd.Flags().BoolVar(&showGraph, "graph", false, "Display the resource dependency graph")
 	cmd.Flags().StringArrayVar(&targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
 	cmd.Flags().StringVar(&deploymentKey, "key", "", "Deployment key for comparing against prior state")
+	cmd.Flags().StringVar(&outFile, "out", "", "Save the workflow-ready plan to a file")
 
 	return cmd
 }
 
-func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile, account string, targets []string, deploymentKey string, showRendered, showGraph bool) error {
+func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile, account string, targets []string, deploymentKey string, showRendered, showGraph bool, outFile string) error {
 	renderer := flags.renderer()
 	workspace := flags.activeWorkspace()
 
@@ -106,6 +110,11 @@ func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile
 	if err != nil {
 		return err
 	}
+	if outFile != "" {
+		if err := writeSavedPlan(outFile, resp.ExecutionPlan, resp.Plan, resp.TemplateHash); err != nil {
+			return err
+		}
+	}
 
 	if flags.outputFormat() == OutputJSON {
 		return printJSON(resp)
@@ -127,11 +136,17 @@ func planFromFile(flags *rootFlags, templatePath string, vars []string, varsFile
 		_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Rendered template:"))
 		_, _ = fmt.Fprintln(renderer.out, resp.Rendered)
 	}
+	if outFile != "" {
+		renderer.writeLabelValue("Saved plan", 11, outFile)
+		if os.Getenv("PRAXIS_PLAN_SIGNING_KEY") == "" {
+			renderer.writeLabelValue("Warning", 11, "Saved plan is unsigned; set PRAXIS_PLAN_SIGNING_KEY to enable tamper detection")
+		}
+	}
 
 	return nil
 }
 
-func planFromTemplate(flags *rootFlags, templateName string, vars []string, varsFile, account string, targets []string, deploymentKey string, showRendered, showGraph bool) error {
+func planFromTemplate(flags *rootFlags, templateName string, vars []string, varsFile, account string, targets []string, deploymentKey string, showRendered, showGraph bool, outFile string) error {
 	renderer := flags.renderer()
 	workspace := flags.activeWorkspace()
 
@@ -154,6 +169,11 @@ func planFromTemplate(flags *rootFlags, templateName string, vars []string, vars
 	if err != nil {
 		return err
 	}
+	if outFile != "" {
+		if err := writeSavedPlan(outFile, resp.ExecutionPlan, resp.Plan, resp.TemplateHash); err != nil {
+			return err
+		}
+	}
 
 	if flags.outputFormat() == OutputJSON {
 		return printJSON(resp)
@@ -174,6 +194,34 @@ func planFromTemplate(flags *rootFlags, templateName string, vars []string, vars
 		_, _ = fmt.Fprintln(renderer.out, renderer.renderSection("Rendered template:"))
 		_, _ = fmt.Fprintln(renderer.out, resp.Rendered)
 	}
+	if outFile != "" {
+		renderer.writeLabelValue("Saved plan", 11, outFile)
+		if os.Getenv("PRAXIS_PLAN_SIGNING_KEY") == "" {
+			renderer.writeLabelValue("Warning", 11, "Saved plan is unsigned; set PRAXIS_PLAN_SIGNING_KEY to enable tamper detection")
+		}
+	}
 
 	return nil
+}
+
+func writeSavedPlan(path string, executionPlan *types.ExecutionPlan, diff *types.PlanResult, templateHash string) error {
+	if executionPlan == nil {
+		return fmt.Errorf("plan response did not include an execution plan")
+	}
+	contentHash, err := command.ComputeSavedPlanHash(*executionPlan)
+	if err != nil {
+		return err
+	}
+	saved := types.SavedPlan{
+		Version:      command.SavedPlanVersion,
+		Plan:         *executionPlan,
+		Diff:         diff,
+		ContentHash:  contentHash,
+		CreatedAt:    time.Now().UTC(),
+		TemplateHash: templateHash,
+	}
+	if signingKey := os.Getenv("PRAXIS_PLAN_SIGNING_KEY"); signingKey != "" {
+		saved.Signature = command.SignSavedPlanHash(saved.ContentHash, []byte(signingKey))
+	}
+	return command.WriteSavedPlanFile(path, saved)
 }

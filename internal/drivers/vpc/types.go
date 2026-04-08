@@ -72,4 +72,5 @@ type VPCState struct {
 	Generation         int64                `json:"generation"`              // Monotonically increasing counter, bumped on each Provision/Import.
 	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of the last reconcile run.
 	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Guards against scheduling duplicate delayed Reconcile messages.
+	LateInitDone       bool                 `json:"lateInitDone,omitempty"`  // Whether late initialization has been applied.
 }

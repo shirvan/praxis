@@ -136,6 +136,61 @@ func (a *S3Adapter) Delete(ctx restate.Context, key string) (DeleteInvocation, e
 	}, nil
 }
 
+// PreDelete runs bucket cleanup before the delete workflow issues Delete.
+func (a *S3Adapter) PreDelete(ctx restate.Context, key string) error {
+	_, err := restate.WithRequestType[restate.Void, restate.Void](
+		restate.Object[restate.Void](ctx, a.ServiceName(), key, "PreDelete"),
+	).Request(restate.Void{})
+	return err
+}
+
+// DefaultTimeouts provides a longer delete timeout for bucket emptying.
+func (a *S3Adapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Delete: "10m"}
+}
+
+// Observe performs a lightweight live check against AWS to determine whether
+// the S3 bucket exists and matches the desired spec. This implements the
+// Observer interface for the observe-before-act pattern.
+func (a *S3Adapter) Observe(ctx restate.Context, key string, account string, spec any) (ObserveResult, error) {
+	desired, err := castSpec[s3.S3BucketSpec](spec)
+	if err != nil {
+		return ObserveResult{}, err
+	}
+	api, err := a.planningAPI(ctx, account)
+	if err != nil {
+		return ObserveResult{}, err
+	}
+	type describeResult struct {
+		State s3.ObservedState
+		Found bool
+	}
+	result, err := restate.Run(ctx, func(rc restate.RunContext) (describeResult, error) {
+		obs, descErr := api.DescribeBucket(rc, desired.BucketName)
+		if descErr != nil {
+			if s3.IsNotFound(descErr) {
+				return describeResult{Found: false}, nil
+			}
+			return describeResult{}, descErr
+		}
+		return describeResult{State: obs, Found: true}, nil
+	})
+	if err != nil {
+		return ObserveResult{}, err
+	}
+	if !result.Found {
+		return ObserveResult{Exists: false}, nil
+	}
+	upToDate := !s3.HasDrift(desired, result.State)
+	outputs, _ := a.NormalizeOutputs(s3.S3BucketOutputs{
+		ARN:        fmt.Sprintf("arn:aws:s3:::%s", desired.BucketName),
+		BucketName: desired.BucketName,
+		Region:     desired.Region,
+		DomainName: fmt.Sprintf("%s.s3.%s.amazonaws.com", desired.BucketName, desired.Region),
+	})
+	return ObserveResult{Exists: true, UpToDate: upToDate, Outputs: outputs}, nil
+}
+
 // NormalizeOutputs converts the typed S3Bucket driver output struct into
 // the generic map[string]any used by deployment state, CLI display,
 // and cross-resource expression interpolation.

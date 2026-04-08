@@ -737,3 +737,76 @@ Manages AWS CloudWatch Dashboards. Spec fields: `region`, `dashboardName`, `dash
 Outputs: `dashboardArn`, `dashboardName`.
 
 Key: `<region>~<name>`. Scope: Region.
+
+---
+
+## Driver Extension Points
+
+### Reporting Conditions
+
+During Reconcile, drivers return structured conditions in `ReconcileResult.Conditions` to report health state. At minimum, set the `Healthy` and `DriftFree` conditions:
+
+```go
+return types.ReconcileResult{
+    Conditions: []types.Condition{
+        {Type: types.ConditionHealthy, Status: types.ConditionTrue, Reason: "Exists"},
+        {Type: types.ConditionDriftFree, Status: types.ConditionTrue, Reason: "InSync"},
+    },
+}, nil
+```
+
+When drift is detected: `DriftFree` status is `False` with reason `DriftDetected`. When the resource is externally deleted: `Healthy` is `False` with reason `NotFound`.
+
+### Late Initialization
+
+Late initialization merges server-defaulted field values from the observed AWS state into the desired spec after first provision. This prevents false drift on fields that AWS auto-populates (e.g., root volume type defaults to `gp2`).
+
+Pattern: implement a `LateInit<Kind>(spec, observed) (spec, bool)` function. Call it after the first successful Describe, guarded by `state.LateInitDone`. Set `LateInitDone = true` after applying.
+
+Drivers with late init: S3 (encryption algorithm), EC2 (root volume type and size), VPC (instance tenancy).
+
+### ClearState
+
+Every driver exposes a `ClearState(ctx restate.ObjectContext) error` handler that resets all Restate K/V state for the Virtual Object instance. This supports orphan cleanup — when a resource is removed from management, its state must be wiped so re-adoption starts clean.
+
+### DefaultTimeouts
+
+Adapters may implement `TimeoutDefaultsProvider` to declare per-kind operation timeouts. The orchestrator uses these when no template-level timeout is specified:
+
+| Kind | Create | Update | Delete |
+|------|--------|--------|--------|
+| EC2Instance | 10m | 10m | 10m |
+| RDSInstance | 30m | 30m | 30m |
+| AuroraCluster | 30m | 30m | 30m |
+| Lambda | 5m | 5m | 5m |
+| ALB / NLB | 10m | 10m | 10m |
+| NATGateway | 10m | 10m | 10m |
+| EBS | 10m | 10m | 10m |
+| VPC | 5m | 5m | 10m |
+| SecurityGroup | 5m | 5m | 5m |
+| S3Bucket | — | — | 10m |
+
+All other resource kinds fall back to the system default of 5 minutes.
+
+### Observer
+
+Adapters may implement the `Observer` interface for a fast observe-before-act path. The `Observe` method checks whether the resource exists and is up-to-date without modifying it. If up-to-date, the orchestrator skips provision.
+
+Observers implemented: S3, VPC, SecurityGroup.
+
+### PreDelete / PostDelete
+
+Adapters may implement `PreDeleter` to run cleanup before the driver's Delete handler. Examples:
+
+- **S3**: empties all objects from the bucket before deletion
+- **ECR Repository**: sets `ForceDelete = true` in the driver state so delete removes all images
+- **IAM Role**: detaches managed policies, deletes inline policies, removes instance profile associations
+
+### WaitReady
+
+Adapters may implement `ReadyWaiter` to poll the driver's status after provision completes and before marking the resource as ready. This handles slow-starting resources:
+
+- **EC2**: polls until instance status is Ready
+- **RDS**: polls until DB instance is available
+- **Lambda**: polls until function state is Active
+- **AuroraCluster**: polls until cluster status is Ready

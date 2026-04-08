@@ -322,7 +322,7 @@ func (d *LambdaLayerDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials and creates a LayerAPI for the given Praxis account.
@@ -415,4 +415,11 @@ func desiredPermissions(spec LambdaLayerSpec) PermissionsSpec {
 		return PermissionsSpec{}
 	}
 	return normalizePermissions(*spec.Permissions)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *LambdaLayerDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

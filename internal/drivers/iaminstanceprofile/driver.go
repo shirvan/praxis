@@ -460,7 +460,7 @@ func (d *IAMInstanceProfileDriver) scheduleReconcile(ctx restate.ObjectContext, 
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *IAMInstanceProfileDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMInstanceProfileAPI, error) {
@@ -521,4 +521,11 @@ func diffTags(desired, observed map[string]string) (map[string]string, []string)
 	}
 	sort.Strings(remove)
 	return add, remove
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *IAMInstanceProfileDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

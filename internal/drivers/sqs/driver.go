@@ -590,3 +590,10 @@ func jsonMarshal(policy *RedrivePolicy) (string, error) {
 	}
 	return string(payload), nil
 }
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *SQSQueueDriver) ClearState(ctx restate.ObjectContext) error {
+	shared.ClearAllState(ctx)
+	return nil
+}

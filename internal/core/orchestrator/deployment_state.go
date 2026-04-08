@@ -76,13 +76,14 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		}
 
 		resources[resource.Name] = &ResourceState{
-			Name:       resource.Name,
-			Kind:       resource.Kind,
-			Key:        resource.Key,
-			DependsOn:  dependsOn,
-			Status:     types.DeploymentResourcePending,
-			Lifecycle:  resource.Lifecycle,
-			PriorReady: priorReady,
+			Name:          resource.Name,
+			Kind:          resource.Kind,
+			DriverService: resource.DriverService,
+			Key:           resource.Key,
+			DependsOn:     dependsOn,
+			Status:        types.DeploymentResourcePending,
+			Lifecycle:     resource.Lifecycle,
+			PriorReady:    priorReady,
 		}
 	}
 
@@ -176,6 +177,9 @@ func (DeploymentStateObj) UpdateResource(ctx restate.ObjectContext, update Resou
 
 	resource.Status = update.Status
 	resource.Error = update.Error
+	if update.Conditions != nil {
+		resource.Conditions = append([]types.Condition(nil), update.Conditions...)
+	}
 	if update.Outputs != nil {
 		state.Outputs[update.Name] = update.Outputs
 	}
@@ -305,6 +309,43 @@ func (DeploymentStateObj) IsCancelled(ctx restate.ObjectSharedContext, _ restate
 		return false, nil
 	}
 	return state.Cancelled, nil
+}
+
+// ReconcileAll fans out Reconcile calls to every eligible resource in the
+// deployment.
+func (DeploymentStateObj) ReconcileAll(ctx restate.ObjectContext, req ReconcileAllRequest) (ReconcileAllResponse, error) {
+	state, err := restate.Get[*DeploymentState](ctx, "state")
+	if err != nil {
+		return ReconcileAllResponse{}, err
+	}
+	if state == nil {
+		return ReconcileAllResponse{}, restate.TerminalError(fmt.Errorf("deployment %q not found", restate.Key(ctx)), 404)
+	}
+
+	var (
+		triggered int
+		skipped   []string
+	)
+	for name, resource := range state.Resources {
+		if resource == nil {
+			continue
+		}
+		if !req.Force {
+			switch resource.Status {
+			case types.DeploymentResourcePending, types.DeploymentResourceSkipped, types.DeploymentResourceDeleted, types.DeploymentResourceOrphaned:
+				skipped = append(skipped, name)
+				continue
+			}
+		}
+		serviceName := resource.DriverService
+		if serviceName == "" {
+			serviceName = resource.Kind
+		}
+		restate.ObjectSend(ctx, serviceName, resource.Key, "Reconcile").Send(restate.Void{})
+		triggered++
+	}
+	sort.Strings(skipped)
+	return ReconcileAllResponse{Triggered: triggered, Skipped: skipped}, nil
 }
 
 // MoveResource renames a resource within this deployment. The deployment must
@@ -514,13 +555,14 @@ func stateResourcesToPublic(state *DeploymentState) []types.DeploymentResource {
 	for _, name := range names {
 		resource := state.Resources[name]
 		resources = append(resources, types.DeploymentResource{
-			Name:      resource.Name,
-			Kind:      resource.Kind,
-			Key:       resource.Key,
-			Status:    resource.Status,
-			Outputs:   state.Outputs[name],
-			Error:     resource.Error,
-			DependsOn: append([]string(nil), resource.DependsOn...),
+			Name:       resource.Name,
+			Kind:       resource.Kind,
+			Key:        resource.Key,
+			Status:     resource.Status,
+			Outputs:    state.Outputs[name],
+			Error:      resource.Error,
+			DependsOn:  append([]string(nil), resource.DependsOn...),
+			Conditions: append([]types.Condition(nil), resource.Conditions...),
 		})
 	}
 	return resources

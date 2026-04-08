@@ -109,4 +109,8 @@ type S3BucketState struct {
 	// own successor, leading to exponentially growing timers. At most one pending
 	// reconcile exists per object at any time.
 	ReconcileScheduled bool `json:"reconcileScheduled"`
+
+	// LateInitDone is set after the driver has merged server-defaulted values
+	// back into Desired following the first successful provision.
+	LateInitDone bool `json:"lateInitDone,omitempty"`
 }

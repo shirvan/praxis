@@ -1,5 +1,7 @@
 package dag
 
+import "sort"
+
 // ---------------------------------------------------------------------------
 // Schedule — runtime dispatch queries over a validated Graph
 // ---------------------------------------------------------------------------
@@ -66,6 +68,42 @@ func (s *Schedule) Ready(completed, dispatched map[string]bool) []string {
 		}
 	}
 	return ready
+}
+
+// ReadyForDelete returns resources whose dependents have all been processed and
+// which are not already completed or in-flight. This is the reverse scheduling
+// predicate used by delete and rollback flows.
+func (s *Schedule) ReadyForDelete(completed, dispatched map[string]bool) []string {
+	if s == nil || s.graph == nil {
+		return nil
+	}
+
+	ready := make([]string, 0)
+	for _, name := range s.graph.ReverseTopo() {
+		if completed[name] || dispatched[name] {
+			continue
+		}
+		allDependentsDone := true
+		for _, dependent := range s.graph.Dependents(name) {
+			if !completed[dependent] {
+				allDependentsDone = false
+				break
+			}
+		}
+		if allDependentsDone {
+			ready = append(ready, name)
+		}
+	}
+	sort.Strings(ready)
+	return ready
+}
+
+// DependenciesOf returns the direct dependencies of a resource.
+func (s *Schedule) DependenciesOf(name string) []string {
+	if s == nil || s.graph == nil {
+		return nil
+	}
+	return s.graph.Dependencies(name)
 }
 
 // AffectedByFailure returns all resources that transitively depend on the failed

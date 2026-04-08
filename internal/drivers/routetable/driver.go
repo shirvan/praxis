@@ -491,7 +491,7 @@ func (d *RouteTableDriver) scheduleReconcile(ctx restate.ObjectContext, state *R
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // applyDesiredState converges routes, associations, and tags to match the
@@ -693,4 +693,11 @@ func (d *RouteTableDriver) apiForAccount(ctx restate.ObjectContext, account stri
 		return nil, "", fmt.Errorf("resolve RouteTable account %q: %w", account, err)
 	}
 	return d.apiFactory(awsCfg), awsCfg.Region, nil
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *RouteTableDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

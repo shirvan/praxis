@@ -93,6 +93,10 @@ const (
 
 	// DeploymentResourceDeleted means the resource has been removed.
 	DeploymentResourceDeleted DeploymentResourceStatus = "Deleted"
+
+	// DeploymentResourceOrphaned means the resource was intentionally removed
+	// from Praxis management while left running in the provider.
+	DeploymentResourceOrphaned DeploymentResourceStatus = "Orphaned"
 )
 
 // DeploymentResource represents a single resource inside a deployment view.
@@ -129,6 +133,9 @@ type DeploymentResource struct {
 	// DependsOn lists template-local resource names that must complete before
 	// this resource can be dispatched.
 	DependsOn []string `json:"dependsOn,omitempty"`
+
+	// Conditions carries structured lifecycle details beyond the coarse status.
+	Conditions []Condition `json:"conditions,omitempty"`
 }
 
 // DeploymentSummary is the compact list item returned by deployment-list APIs.

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -18,9 +20,10 @@ import (
 //	praxis reconcile EC2Instance/us-east-1~web-server
 //	praxis reconcile SecurityGroup/vpc-123~web-sg -o json
 func newReconcileCmd(flags *rootFlags) *cobra.Command {
+	var force bool
 	cmd := &cobra.Command{
-		Use:   "reconcile <Kind>/<Key>",
-		Short: "Trigger on-demand drift detection and correction for a resource",
+		Use:   "reconcile <Kind>/<Key> | <deployment>",
+		Short: "Trigger on-demand drift detection and correction",
 		Long: `Reconcile checks whether a managed resource has drifted from its desired
 state by querying the cloud provider and comparing the actual configuration
 against the stored spec.
@@ -36,18 +39,27 @@ console, or to diagnose why a resource is in Error status.
     praxis reconcile S3Bucket/my-bucket
     praxis reconcile SecurityGroup/vpc-123~web-sg
     praxis reconcile EC2Instance/us-east-1~web-server
+    praxis reconcile my-deployment
+    praxis reconcile Deployment/my-deployment
     praxis reconcile S3Bucket/my-bucket -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			client := flags.newClient()
+			ctx := context.Background()
+
+			if !strings.Contains(args[0], "/") {
+				return reconcileDeployment(flags, client, ctx, args[0], force)
+			}
+
 			kind, key, err := parseKindKey(args[0])
 			if err != nil {
 				return err
 			}
+			if kind == "Deployment" {
+				return reconcileDeployment(flags, client, ctx, key, force)
+			}
 
 			key = flags.resolveResourceKey(kind, key)
-
-			client := flags.newClient()
-			ctx := context.Background()
 
 			result, err := client.ReconcileResource(ctx, kind, key)
 			if err != nil {
@@ -81,6 +93,27 @@ console, or to diagnose why a resource is in Error status.
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&force, "force", false, "Include pending, skipped, deleted, or orphaned resources when reconciling a deployment")
 
 	return cmd
+}
+
+func reconcileDeployment(flags *rootFlags, client *Client, ctx context.Context, deploymentKey string, force bool) error {
+	result, err := client.ReconcileDeployment(ctx, deploymentKey, force)
+	if err != nil {
+		return err
+	}
+	if flags.outputFormat() == OutputJSON {
+		return printJSON(result)
+	}
+	renderer := flags.renderer()
+	renderer.writeLabelValue("Deployment", 11, deploymentKey)
+	renderer.writeLabelValue("Triggered", 11, fmt.Sprintf("%d", result.Triggered))
+	if len(result.Skipped) > 0 {
+		renderer.writeLabelValue("Skipped", 11, strings.Join(result.Skipped, ", "))
+	}
+	if result.Triggered == 0 {
+		renderer.writeLabelValue("Result", 11, "No eligible resources to reconcile")
+	}
+	return nil
 }

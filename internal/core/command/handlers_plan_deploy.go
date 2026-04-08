@@ -17,6 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/core/registry"
 	"github.com/shirvan/praxis/internal/core/template"
 	"github.com/shirvan/praxis/pkg/types"
@@ -70,21 +71,35 @@ func (s *PraxisCommandService) PlanDeploy(ctx restate.Context, req PlanDeployReq
 
 	// Look up prior deployment state so expression-bearing resources can be
 	// compared against cloud state rather than blindly shown as "create".
-	priorOutputs, warnings, err := s.fetchPriorOutputs(ctx, req.DeploymentKey, compiled.Specs)
+	priorOutputs, priorState, warnings, err := s.fetchPriorOutputs(ctx, req.DeploymentKey, compiled.Specs)
 	if err != nil {
 		return PlanDeployResponse{}, err
 	}
 
 	// Per-resource diff loop with expression resolution from prior state.
-	plan, err := s.computeResourceDiffs(ctx, compiled.PlanResources, account, priorOutputs)
+	var removed []orchestrator.ResourceState
+	if len(req.Targets) == 0 {
+		removed = missingDeletionsForPlan(priorState, compiled.PlanResources)
+	}
+	plan, err := s.computeResourceDiffs(ctx, compiled.PlanResources, account, priorOutputs, removed)
 	if err != nil {
 		return PlanDeployResponse{}, err
 	}
 
+	deploymentKey := strings.TrimSpace(req.DeploymentKey)
+	if deploymentKey == "" {
+		deploymentKey, err = deriveDeploymentKey(compiled.Specs)
+		if err != nil {
+			return PlanDeployResponse{}, restate.TerminalError(err, 400)
+		}
+	}
+
 	return PlanDeployResponse{
-		Plan:        plan,
-		Rendered:    compiled.Rendered,
-		DataSources: compiled.DataSources,
-		Warnings:    warnings,
+		Plan:          plan,
+		ExecutionPlan: executionPlanFromCompiled(compiled, deploymentKey, account, req.Workspace, mergedVars, req.Targets),
+		Rendered:      compiled.Rendered,
+		TemplateHash:  compiled.TemplateHash,
+		DataSources:   compiled.DataSources,
+		Warnings:      warnings,
 	}, nil
 }

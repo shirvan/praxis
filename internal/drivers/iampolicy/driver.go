@@ -434,7 +434,7 @@ func (d *IAMPolicyDriver) scheduleReconcile(ctx restate.ObjectContext, state *IA
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *IAMPolicyDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMPolicyAPI, error) {
@@ -470,4 +470,11 @@ func specFromObserved(obs ObservedState) IAMPolicySpec {
 
 func outputsFromObserved(obs ObservedState) IAMPolicyOutputs {
 	return IAMPolicyOutputs{Arn: obs.Arn, PolicyId: obs.PolicyId, PolicyName: obs.PolicyName}
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *IAMPolicyDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

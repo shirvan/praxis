@@ -256,6 +256,11 @@ func (a *EBSAdapter) Import(ctx restate.Context, key string, account string, ref
 	return types.StatusReady, outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for EBS volumes.
+func (a *EBSAdapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "10m", Update: "10m", Delete: "10m"}
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed EBSVolume spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

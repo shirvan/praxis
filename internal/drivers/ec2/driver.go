@@ -245,6 +245,14 @@ func (d *EC2InstanceDriver) Provision(ctx restate.ObjectContext, spec EC2Instanc
 		return EC2InstanceOutputs{}, err
 	}
 
+	// --- Late initialization: merge server-defaulted values into spec ---
+	if !state.LateInitDone {
+		if updatedSpec, changed := LateInitEC2Instance(state.Desired, observed); changed {
+			state.Desired = updatedSpec
+		}
+		state.LateInitDone = true
+	}
+
 	outputs := EC2InstanceOutputs{
 		InstanceId:       instanceId,
 		PrivateIpAddress: observed.PrivateIpAddress,
@@ -333,6 +341,7 @@ func (d *EC2InstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	state.Status = types.StatusReady
 	state.Mode = mode
 	state.Error = ""
+	state.LateInitDone = true
 	restate.Set(ctx, drivers.StateKey, state)
 
 	d.scheduleReconcile(ctx, &state)
@@ -394,7 +403,7 @@ func (d *EC2InstanceDriver) Delete(ctx restate.ObjectContext) error {
 }
 
 // Reconcile is the periodic drift-detection and correction loop.
-// It is invoked as a delayed Restate message (typically every 5 minutes via drivers.ReconcileInterval).
+// It is invoked as a delayed Restate message (typically every 5 minutes via drivers.ReconcileIntervalForKind(ServiceName)).
 //
 // Flow:
 //  1. Load state; skip if not in Ready or Error status, or if no instance ID.
@@ -596,7 +605,7 @@ func (d *EC2InstanceDriver) GetInputs(ctx restate.ObjectSharedContext) (EC2Insta
 
 // scheduleReconcile enqueues a delayed Reconcile message via Restate's durable timer.
 // The ReconcileScheduled flag prevents duplicate timers from stacking up.
-// The delay is drivers.ReconcileInterval (typically 5 minutes).
+// The delay is drivers.ReconcileIntervalForKind (per-resource interval).
 func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *EC2InstanceState) {
 	if state.ReconcileScheduled {
 		return
@@ -604,7 +613,7 @@ func (d *EC2InstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials for the given account alias and constructs an EC2API.
@@ -642,4 +651,11 @@ func defaultEC2ImportMode(m types.Mode) types.Mode {
 		return types.ModeObserved
 	}
 	return m
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *EC2InstanceDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

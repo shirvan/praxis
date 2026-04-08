@@ -2,9 +2,11 @@ package provider
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -32,6 +34,9 @@ func (h *provisionHandle[O]) Future() restate.Future {
 func (h *provisionHandle[O]) Outputs() (map[string]any, error) {
 	output, err := h.raw.Response()
 	if err != nil {
+		if retryable := decodeRetryableInvocationError(err); retryable != nil {
+			return nil, retryable
+		}
 		return nil, err
 	}
 	return h.normalize(output)
@@ -56,6 +61,28 @@ func (h *deleteHandle) Future() restate.Future {
 func (h *deleteHandle) Done() error {
 	_, err := h.raw.Response()
 	return err
+}
+
+func decodeRetryableInvocationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if retryable, ok := types.IsRetryable(err); ok {
+		return retryable
+	}
+	if code := restate.ErrorCode(err); code != 425 && code != 429 {
+		return nil
+	}
+
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		message = "retryable resource operation failed"
+	}
+	if !strings.Contains(strings.ToLower(message), "retryable") {
+		return nil
+	}
+
+	return types.NewRetryableError(errors.New(message))
 }
 
 // castSpec safely casts a generic spec (any) to the concrete driver input type T.

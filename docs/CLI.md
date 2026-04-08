@@ -179,7 +179,7 @@ The styling layer uses [Lip Gloss v2](https://github.com/charmbracelet/lipgloss)
 Deploy infrastructure from a CUE file path or a pre-registered template name.
 
 ```bash
-praxis deploy <template-name-or-file.cue> [flags]
+praxis deploy [<template-name-or-file.cue>] [flags]
 ```
 
 **Flags:**
@@ -195,8 +195,13 @@ praxis deploy <template-name-or-file.cue> [flags]
 | `--dry-run`       | false   | Preview changes without provisioning (runs PlanDeploy) |
 | `--show-rendered` | false   | Display the fully-evaluated template JSON (with `--dry-run`) |
 | `--target`        | —       | Limit to named resource and its dependencies (repeatable) |
+| `--orphan-removed` | false  | Detach resources removed from the template instead of deleting them |
 | `--replace`       | —       | Force delete and re-provision of named resource (repeatable) |
 | `--allow-replace` | false   | Automatically replace resources that fail due to immutable field changes (WARNING: destroys and recreates affected resources) |
+| `--parallelism`   | 0       | Maximum number of concurrent resource operations (0 = unlimited) |
+| `--max-retries`   | default | Maximum number of transient retries per resource |
+| `--plan`          | —       | Apply a previously saved plan file instead of re-evaluating the template |
+| `--max-plan-age`  | 1h      | Maximum allowed age for a saved plan (0 = no limit) |
 | `--poll-interval` | 2s      | Polling interval when `--wait` is set              |
 | `--timeout`       | 5m      | Maximum wait time (0 for no limit)                 |
 
@@ -227,8 +232,14 @@ praxis deploy stack1 --var name=orders-api --key orders-prod --wait
 # Preview changes without provisioning
 praxis deploy stack1 --var name=orders-api --dry-run
 
+# Apply an existing saved plan file
+praxis deploy --plan saved-plan.json
+
 # Deploy only a specific resource (and its dependencies)
 praxis deploy stack1 --var name=orders-api --target web-sg
+
+# Keep removed resources running when they disappear from the template
+praxis deploy stack1 --var name=orders-api --orphan-removed
 
 # Force-replace a resource (destroy + recreate)
 praxis deploy stack1 --var name=orders-api --replace web-sg
@@ -247,6 +258,8 @@ When the argument is a CUE file path (`*.cue`), deploy evaluates it as an inline
 Without `--wait`, the command returns immediately with the deployment key and status. With `--wait`, the CLI polls until a terminal state or `--timeout` is reached.
 
 The `--dry-run` flag runs the full evaluation pipeline but does not submit a workflow — it shows a plan diff of what would change, identical to `praxis plan` output.
+
+The `--plan` flag skips template evaluation and applies a saved plan created by `praxis plan --out`. Praxis verifies the plan content hash, optional HMAC signature, and plan age before applying it. If the source template has changed since the plan was created, the CLI emits a warning so operators can decide whether to regenerate the plan.
 
 When the plan detects immutable field changes (e.g., VPC CIDR block), it shows a note with `--replace` and `--allow-replace` hints. `--replace` targets specific resources for destroy-then-recreate; `--allow-replace` does so automatically for any resource that fails with a 409 immutable-field conflict during provisioning. Resources with `lifecycle.preventDestroy` are still protected.
 
@@ -275,6 +288,7 @@ praxis plan <template-name-or-file.cue> [flags]
 | `--key`           | —       | Deployment key for comparing against prior state |
 | `--graph`         | false   | Display the resource dependency graph           |
 | `--show-rendered` | false   | Display the fully-evaluated template JSON       |
+| `--out`           | —       | Save the workflow-ready execution plan to a file |
 
 **Examples:**
 
@@ -290,6 +304,9 @@ praxis plan webapp.cue --key my-deployment
 
 # Debug template evaluation
 praxis plan webapp.cue --show-rendered
+
+# Save a plan for later review and apply
+praxis plan webapp.cue --out saved-plan.json
 
 # Machine-readable diff
 praxis plan webapp.cue -o json
@@ -335,6 +352,8 @@ Resources that reference other resources via `${resources.X.outputs.Y}` expressi
 The plan also resolves expression-bearing resource keys for display. For example, a security group keyed by `${resources.vpc.outputs.vpcId}~web-sg` is displayed with the resolved VPC ID (e.g., `vpc-0abc123~web-sg`).
 
 When a referenced resource has not been provisioned yet (first deploy), expression-bearing resources are shown as `create`. The `--key` flag can optionally specify a deployment whose prior outputs are used as a fallback seed; when omitted, the deployment key is auto-derived from the template.
+
+When `--out` is set, the CLI writes a saved plan file containing the execution plan, diff, content hash, creation time, and template hash. If `PRAXIS_PLAN_SIGNING_KEY` is set, the saved plan also includes an HMAC signature; otherwise the CLI warns that the plan is unsigned.
 
 **Field-level deletions:**
 
@@ -414,11 +433,13 @@ Template:   webapp.cue
 Created:    2025-01-15 10:30:00 UTC
 Updated:    2025-01-15 10:31:45 UTC
 
-RESOURCE      KIND            STATUS    ERROR
---------      ----            ------    -----
-my-bucket     S3Bucket        Ready     -
-web-sg        SecurityGroup   Ready     -
+RESOURCE      KIND            STATUS    CONDITIONS                                        ERROR
+--------      ----            ------    ----------                                        -----
+my-bucket     S3Bucket        Ready     Ready=True, Healthy=True, DriftFree=True          -
+web-sg        SecurityGroup   Ready     Ready=True                                        -
 ```
+
+The **CONDITIONS** column summarizes each resource's condition array in `Type=Status` notation. When a condition is False, the reason is appended: `DriftFree=False(DriftDetected)`.
 
 With `--all` (or `--outputs`), the outputs section is appended:
 

@@ -36,30 +36,36 @@ import (
 // rollback) mutate this state as futures resolve and use it to build the
 // final DeploymentResult.
 type executionState struct {
-	order      []string
-	plan       map[string]PlanResource
-	statuses   map[string]types.DeploymentResourceStatus
-	errors     map[string]string
-	outputs    map[string]map[string]any
-	completed  map[string]bool
-	dispatched map[string]bool
-	failed     map[string]bool
-	skipped    map[string]bool
+	order       []string
+	plan        map[string]PlanResource
+	statuses    map[string]types.DeploymentResourceStatus
+	errors      map[string]string
+	outputs     map[string]map[string]any
+	conditions  map[string][]types.Condition
+	completed   map[string]bool
+	dispatched  map[string]bool
+	failed      map[string]bool
+	skipped     map[string]bool
+	retries     map[string]int
+	coolingDown map[string]time.Time
 }
 
 // newExecutionState initialises an executionState from a plan's resource list,
 // setting every resource to Pending status with empty outputs.
 func newExecutionState(resources []PlanResource) *executionState {
 	state := &executionState{
-		order:      make([]string, 0, len(resources)),
-		plan:       make(map[string]PlanResource, len(resources)),
-		statuses:   make(map[string]types.DeploymentResourceStatus, len(resources)),
-		errors:     make(map[string]string, len(resources)),
-		outputs:    make(map[string]map[string]any, len(resources)),
-		completed:  make(map[string]bool, len(resources)),
-		dispatched: make(map[string]bool, len(resources)),
-		failed:     make(map[string]bool, len(resources)),
-		skipped:    make(map[string]bool, len(resources)),
+		order:       make([]string, 0, len(resources)),
+		plan:        make(map[string]PlanResource, len(resources)),
+		statuses:    make(map[string]types.DeploymentResourceStatus, len(resources)),
+		errors:      make(map[string]string, len(resources)),
+		outputs:     make(map[string]map[string]any, len(resources)),
+		conditions:  make(map[string][]types.Condition, len(resources)),
+		completed:   make(map[string]bool, len(resources)),
+		dispatched:  make(map[string]bool, len(resources)),
+		failed:      make(map[string]bool, len(resources)),
+		skipped:     make(map[string]bool, len(resources)),
+		retries:     make(map[string]int, len(resources)),
+		coolingDown: make(map[string]time.Time, len(resources)),
 	}
 	for i := range resources {
 		state.order = append(state.order, resources[i].Name)
@@ -78,13 +84,40 @@ func (s *executionState) loadOutputs(outputs map[string]map[string]any) {
 // ready returns resource names whose dependencies are satisfied and that have
 // not yet been dispatched, delegating to the DAG scheduler.
 func (s *executionState) ready(schedule *dag.Schedule) []string {
-	return schedule.Ready(s.completed, s.dispatched)
+	return s.readyAt(schedule, time.Time{})
 }
+
+// readyAt returns resources whose dependencies are met and whose retry cooldown
+// has expired at the supplied timestamp.
+func (s *executionState) readyAt(schedule *dag.Schedule, now time.Time) []string {
+	ready := schedule.Ready(s.completed, s.dispatched)
+	if now.IsZero() || len(s.coolingDown) == 0 {
+		return ready
+	}
+	filtered := make([]string, 0, len(ready))
+	for _, name := range ready {
+		until, ok := s.coolingDown[name]
+		if !ok {
+			filtered = append(filtered, name)
+			continue
+		}
+		if now.Before(until) {
+			continue
+		}
+		delete(s.coolingDown, name)
+		filtered = append(filtered, name)
+	}
+	return filtered
+}
+
+// ready returns resource names whose dependencies are satisfied and that have
+// not yet been dispatched, delegating to the DAG scheduler.
 
 // markProvisioning transitions a resource to Provisioning and records it as dispatched.
 func (s *executionState) markProvisioning(name string) {
 	s.statuses[name] = types.DeploymentResourceProvisioning
 	s.dispatched[name] = true
+	delete(s.coolingDown, name)
 }
 
 // resetToPending clears dispatch/failure tracking for a resource so it can be
@@ -96,6 +129,7 @@ func (s *executionState) resetToPending(name string) {
 	delete(s.completed, name)
 	delete(s.failed, name)
 	delete(s.skipped, name)
+	delete(s.coolingDown, name)
 	delete(s.errors, name)
 }
 
@@ -103,6 +137,7 @@ func (s *executionState) resetToPending(name string) {
 func (s *executionState) markDeleting(name string) {
 	s.statuses[name] = types.DeploymentResourceDeleting
 	s.dispatched[name] = true
+	delete(s.coolingDown, name)
 }
 
 // markReady transitions a resource to Ready, stores its outputs, clears any
@@ -111,6 +146,7 @@ func (s *executionState) markReady(name string, outputs map[string]any) {
 	s.statuses[name] = types.DeploymentResourceReady
 	s.outputs[name] = outputs
 	s.completed[name] = true
+	delete(s.coolingDown, name)
 	delete(s.errors, name)
 	delete(s.failed, name)
 	delete(s.skipped, name)
@@ -120,6 +156,16 @@ func (s *executionState) markReady(name string, outputs map[string]any) {
 func (s *executionState) markDeleted(name string) {
 	s.statuses[name] = types.DeploymentResourceDeleted
 	s.completed[name] = true
+	delete(s.coolingDown, name)
+	delete(s.errors, name)
+	delete(s.failed, name)
+	delete(s.skipped, name)
+}
+
+func (s *executionState) markOrphaned(name string) {
+	s.statuses[name] = types.DeploymentResourceOrphaned
+	s.completed[name] = true
+	delete(s.coolingDown, name)
 	delete(s.errors, name)
 	delete(s.failed, name)
 	delete(s.skipped, name)
@@ -132,6 +178,21 @@ func (s *executionState) markFailed(name, errMsg string) {
 	s.errors[name] = errMsg
 	s.failed[name] = true
 	s.dispatched[name] = true
+	delete(s.coolingDown, name)
+}
+
+// markRetrying resets a resource back to Pending with a cooldown before the
+// next dispatch attempt.
+func (s *executionState) markRetrying(name, errMsg string, nextAt time.Time) int {
+	s.statuses[name] = types.DeploymentResourcePending
+	s.errors[name] = errMsg
+	delete(s.dispatched, name)
+	delete(s.failed, name)
+	delete(s.skipped, name)
+	delete(s.completed, name)
+	s.coolingDown[name] = nextAt
+	s.retries[name]++
+	return s.retries[name]
 }
 
 // markSkipped transitions a resource to Skipped status if it hasn't already
@@ -144,7 +205,41 @@ func (s *executionState) markSkipped(name, errMsg string) bool {
 	s.statuses[name] = types.DeploymentResourceSkipped
 	s.errors[name] = errMsg
 	s.skipped[name] = true
+	delete(s.coolingDown, name)
 	return true
+}
+
+func (s *executionState) nextRetryAt() (time.Time, bool) {
+	var next time.Time
+	for _, at := range s.coolingDown {
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
+	if next.IsZero() {
+		return time.Time{}, false
+	}
+	return next, true
+}
+
+func (s *executionState) retryCount(name string) int {
+	return s.retries[name]
+}
+
+func (s *executionState) setConditions(name string, conditions []types.Condition) {
+	if len(conditions) == 0 {
+		delete(s.conditions, name)
+		return
+	}
+	cloned := make([]types.Condition, len(conditions))
+	copy(cloned, conditions)
+	s.conditions[name] = cloned
+}
+
+func (s *executionState) conditionsFor(name string) []types.Condition {
+	cloned := make([]types.Condition, len(s.conditions[name]))
+	copy(cloned, s.conditions[name])
+	return cloned
 }
 
 // skipAffectedDependents marks all transitive dependents of a failed resource
@@ -230,13 +325,14 @@ func (s *executionState) publicResources() []types.DeploymentResource {
 		planResource := s.plan[name]
 		dependsOn := append([]string(nil), planResource.Dependencies...)
 		resources = append(resources, types.DeploymentResource{
-			Name:      name,
-			Kind:      planResource.Kind,
-			Key:       planResource.Key,
-			Status:    s.statuses[name],
-			Outputs:   s.outputs[name],
-			Error:     s.errors[name],
-			DependsOn: dependsOn,
+			Name:       name,
+			Kind:       planResource.Kind,
+			Key:        planResource.Key,
+			Status:     s.statuses[name],
+			Outputs:    s.outputs[name],
+			Error:      s.errors[name],
+			DependsOn:  dependsOn,
+			Conditions: s.conditionsFor(name),
 		})
 	}
 	return resources

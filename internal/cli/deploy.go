@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shirvan/praxis/internal/core/command"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -28,6 +29,11 @@ type deployOpts struct {
 	targets       []string
 	replace       []string
 	allowReplace  bool
+	parallelism   int
+	maxRetries    int
+	orphanRemoved bool
+	planFile      string
+	maxPlanAge    time.Duration
 }
 
 // newDeployCmd builds the `praxis deploy` subcommand.
@@ -35,7 +41,7 @@ func newDeployCmd(flags *rootFlags) *cobra.Command {
 	opts := deployOpts{account: flags.account}
 
 	cmd := &cobra.Command{
-		Use:   "deploy <file.cue | template-name>",
+		Use:   "deploy [<file.cue | template-name>]",
 		Short: "Provision infrastructure from a template source",
 		Long: `Deploy provisions infrastructure from either a local CUE file or a
 registered template name.
@@ -52,9 +58,24 @@ Examples:
     praxis deploy webapp.cue --var env=prod
     praxis deploy ./templates/webapp.cue -f variables.json
     praxis deploy stack1 --var name=orders-api --key orders-prod
-    praxis deploy stack1 --dry-run --show-rendered`,
-		Args: cobra.ExactArgs(1),
+	    praxis deploy stack1 --dry-run --show-rendered
+    praxis deploy --plan=plan.json`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if opts.planFile != "" {
+				if len(args) != 0 {
+					return fmt.Errorf("cannot specify a template argument with --plan")
+				}
+				return nil
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.orphanRemoved && len(opts.targets) > 0 {
+				return fmt.Errorf("cannot combine --orphan-removed with --target")
+			}
+			if opts.planFile != "" {
+				return deployFromSavedPlan(flags, opts)
+			}
 			source := args[0]
 			if isFilePath(source) {
 				return deployFromFile(flags, source, opts)
@@ -76,6 +97,11 @@ Examples:
 	cmd.Flags().StringArrayVar(&opts.targets, "target", nil, "Limit to named resource and its dependencies (repeatable)")
 	cmd.Flags().StringArrayVar(&opts.replace, "replace", nil, "Force delete and re-provision of named resource (repeatable)")
 	cmd.Flags().BoolVar(&opts.allowReplace, "allow-replace", false, "Automatically replace resources that fail due to immutable field changes (WARNING: destroys and recreates affected resources)")
+	cmd.Flags().IntVar(&opts.parallelism, "parallelism", 0, "Maximum number of concurrent resource operations (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.maxRetries, "max-retries", -1, "Maximum number of resource retries for transient failures (-1 = default)")
+	cmd.Flags().BoolVar(&opts.orphanRemoved, "orphan-removed", false, "Keep resources removed from the template running and only detach them from Praxis management")
+	cmd.Flags().StringVar(&opts.planFile, "plan", "", "Apply a previously saved plan file")
+	cmd.Flags().DurationVar(&opts.maxPlanAge, "max-plan-age", time.Hour, "Maximum allowed age for a saved plan (0 = no limit)")
 
 	return cmd
 }
@@ -141,15 +167,18 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 	}
 
 	resp, err := client.Apply(ctx, types.ApplyRequest{
-		Template:      string(content),
-		Variables:     variables,
-		DeploymentKey: opts.deploymentKey,
-		Account:       opts.account,
-		Workspace:     workspace,
-		Targets:       opts.targets,
-		Replace:       opts.replace,
-		AllowReplace:  opts.allowReplace,
-		TemplatePath:  templatePath,
+		Template:       string(content),
+		Variables:      variables,
+		DeploymentKey:  opts.deploymentKey,
+		Account:        opts.account,
+		Workspace:      workspace,
+		Targets:        opts.targets,
+		OrphanRemoved:  opts.orphanRemoved,
+		Replace:        opts.replace,
+		AllowReplace:   opts.allowReplace,
+		TemplatePath:   templatePath,
+		MaxParallelism: opts.parallelism,
+		MaxRetries:     optionalInt(opts.maxRetries),
 	})
 	if err != nil {
 		return err
@@ -215,20 +244,125 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 	}
 
 	resp, err := client.Deploy(ctx, types.DeployRequest{
-		Template:      templateName,
-		Variables:     variables,
-		DeploymentKey: opts.deploymentKey,
-		Account:       opts.account,
-		Workspace:     workspace,
-		Targets:       opts.targets,
-		Replace:       opts.replace,
-		AllowReplace:  opts.allowReplace,
+		Template:       templateName,
+		Variables:      variables,
+		DeploymentKey:  opts.deploymentKey,
+		Account:        opts.account,
+		Workspace:      workspace,
+		Targets:        opts.targets,
+		OrphanRemoved:  opts.orphanRemoved,
+		Replace:        opts.replace,
+		AllowReplace:   opts.allowReplace,
+		MaxParallelism: opts.parallelism,
+		MaxRetries:     optionalInt(opts.maxRetries),
 	})
 	if err != nil {
 		return err
 	}
 
 	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, opts.wait, opts.pollInterval, opts.timeout)
+}
+
+func deployFromSavedPlan(flags *rootFlags, opts deployOpts) error {
+	if len(opts.vars) > 0 || opts.varsFile != "" {
+		return fmt.Errorf("cannot use --var or --file with --plan")
+	}
+	if opts.dryRun {
+		return fmt.Errorf("cannot use --dry-run with --plan")
+	}
+	if opts.showRendered {
+		return fmt.Errorf("cannot use --show-rendered with --plan")
+	}
+	if opts.deploymentKey != "" {
+		return fmt.Errorf("cannot override --key when using --plan")
+	}
+	if len(opts.targets) > 0 {
+		return fmt.Errorf("cannot use --target with --plan")
+	}
+	if len(opts.replace) > 0 || opts.allowReplace {
+		return fmt.Errorf("cannot use replacement flags with --plan")
+	}
+
+	renderer := flags.renderer()
+	client := flags.newClient()
+	ctx := context.Background()
+
+	saved, err := command.ReadSavedPlanFile(opts.planFile)
+	if err != nil {
+		return err
+	}
+	if saved.Plan.Account != "" && opts.account != "" && saved.Plan.Account != opts.account {
+		return fmt.Errorf("saved plan was created for account %q but current account is %q", saved.Plan.Account, opts.account)
+	}
+	var signingKey []byte
+	if raw := os.Getenv("PRAXIS_PLAN_SIGNING_KEY"); raw != "" {
+		signingKey = []byte(raw)
+	}
+	if err := command.VerifySavedPlan(saved, signingKey); err != nil {
+		return err
+	}
+	warnings := make([]string, 0, 2)
+	if saved.Signature == "" {
+		warnings = append(warnings, "Saved plan is unsigned; set PRAXIS_PLAN_SIGNING_KEY to require HMAC verification")
+	}
+	if opts.maxPlanAge > 0 && time.Since(saved.CreatedAt) > opts.maxPlanAge {
+		return fmt.Errorf("saved plan is too old: created %s ago (max %s)", time.Since(saved.CreatedAt).Round(time.Second), opts.maxPlanAge)
+	}
+	if saved.TemplateHash != "" {
+		currentHash, err := currentTemplateHash(ctx, client, saved.Plan.TemplatePath)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("Could not verify current template hash: %v", err))
+		} else if currentHash != "" && currentHash != saved.TemplateHash {
+			warnings = append(warnings, "Template source has changed since this plan was created; regenerate the plan if you need strict source parity")
+		}
+	}
+	if flags.outputFormat() != OutputJSON {
+		for _, warning := range warnings {
+			renderer.writeLabelValue("Warning", 11, warning)
+		}
+	}
+
+	if flags.outputFormat() != OutputJSON && saved.Diff != nil {
+		printPlan(renderer, saved.Diff)
+	}
+	if saved.Diff == nil || !saved.Diff.Summary.HasChanges() {
+		if flags.outputFormat() == OutputJSON {
+			return printJSON(saved)
+		}
+		return nil
+	}
+	if !opts.yes && !confirmDeploy(renderer) {
+		return nil
+	}
+
+	resp, err := client.ApplySavedPlan(ctx, types.ApplySavedPlanRequest{
+		Plan:           saved.Plan,
+		OrphanRemoved:  opts.orphanRemoved,
+		MaxParallelism: opts.parallelism,
+		MaxRetries:     optionalInt(opts.maxRetries),
+	})
+	if err != nil {
+		return err
+	}
+	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, opts.wait, opts.pollInterval, opts.timeout)
+}
+
+func currentTemplateHash(ctx context.Context, client *Client, templatePath string) (string, error) {
+	if templatePath == "" || strings.HasPrefix(templatePath, "inline://") {
+		return "", nil
+	}
+	if strings.HasPrefix(templatePath, "registry://") {
+		source, err := client.GetTemplateSource(ctx, strings.TrimPrefix(templatePath, "registry://"))
+		if err != nil {
+			return "", err
+		}
+		return command.TemplateSourceHash(source), nil
+	}
+	content, err := os.ReadFile(templatePath) //nolint:gosec // G304: path is user-supplied plan content
+	if err != nil {
+		return "", err
+	}
+	return command.TemplateSourceHash(string(content)), nil
 }
 
 func confirmDeploy(renderer *Renderer) bool {
@@ -273,6 +407,13 @@ func finishDeployment(flags *rootFlags, ctx context.Context, client *Client, ren
 		os.Exit(2)
 	}
 	return err
+}
+
+func optionalInt(value int) *int {
+	if value < 0 {
+		return nil
+	}
+	return &value
 }
 
 func isFilePath(arg string) bool {

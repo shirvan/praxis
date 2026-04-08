@@ -165,6 +165,21 @@ func (d *S3BucketDriver) Provision(ctx restate.ObjectContext, spec S3BucketSpec)
 		)
 	}
 
+	if !state.LateInitDone {
+		observed, observeErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+			return api.DescribeBucket(rc, spec.BucketName)
+		})
+		if observeErr == nil {
+			state.Observed = observed
+			if updatedSpec, changed := LateInitS3Bucket(state.Desired, observed); changed {
+				state.Desired = updatedSpec
+			}
+			state.LateInitDone = true
+		} else {
+			ctx.Log().Warn("late initialization skipped", "bucket", spec.BucketName, "error", observeErr.Error())
+		}
+	}
+
 	// --- Build outputs ---
 	outputs := S3BucketOutputs{
 		ARN:        fmt.Sprintf("arn:aws:s3:::%s", spec.BucketName),
@@ -238,6 +253,7 @@ func (d *S3BucketDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) 
 	state.Status = types.StatusReady
 	state.Mode = mode
 	state.Error = ""
+	state.LateInitDone = true
 	restate.Set(ctx, drivers.StateKey, state)
 
 	d.scheduleReconcile(ctx, &state)
@@ -245,9 +261,39 @@ func (d *S3BucketDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) 
 	return outputs, nil
 }
 
-// Delete removes the S3 bucket. Fails terminally if the bucket is non-empty.
-// Praxis does not auto-empty buckets — automatically emptying a bucket is
-// destructive and can hide data-loss events behind routine infrastructure operations.
+// PreDelete empties the bucket so the standard Delete call can succeed even
+// when the bucket still contains objects.
+func (d *S3BucketDriver) PreDelete(ctx restate.ObjectContext) error {
+	state, err := restate.Get[S3BucketState](ctx, drivers.StateKey)
+	if err != nil {
+		return err
+	}
+	if state.Desired.BucketName == "" {
+		return nil
+	}
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
+	if err != nil {
+		return restate.TerminalError(err, 400)
+	}
+	_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+		if err := api.DeleteAllObjects(rc, state.Desired.BucketName); err != nil {
+			if IsNotFound(err) {
+				return restate.Void{}, nil
+			}
+			return restate.Void{}, err
+		}
+		return restate.Void{}, nil
+	})
+	if err != nil {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("failed to empty bucket %s before delete: %v", state.Desired.BucketName, err)
+		restate.Set(ctx, drivers.StateKey, state)
+		return err
+	}
+	return nil
+}
+
+// Delete removes the S3 bucket after any pre-delete cleanup has completed.
 //
 // After successful deletion, the driver sets status to Deleted as a tombstone.
 // Delete never schedules a reconciliation — this is an explicit invariant.
@@ -347,7 +393,15 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
 			drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
-			return types.ReconcileResult{Error: state.Error}, nil
+			now := time.Now()
+			return types.ReconcileResult{
+				Drift: true,
+				Error: state.Error,
+				Conditions: []types.Condition{
+					{Type: types.ConditionHealthy, Status: types.ConditionFalse, Reason: types.ReasonNotFound, Message: "resource not found in AWS", LastTransitionTime: now},
+					{Type: types.ConditionDriftFree, Status: types.ConditionFalse, Reason: types.ReasonExternalDelete, LastTransitionTime: now},
+				},
+			}, nil
 		}
 		// Transient AWS error — schedule retry, report error.
 		state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
@@ -369,6 +423,8 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 	}
 
+	now := time.Now()
+
 	// --- Ready + Managed + drift: correct ---
 	if drift && state.Mode == types.ModeManaged {
 		ctx.Log().Info("drift detected, correcting", "bucket", state.Desired.BucketName)
@@ -379,12 +435,22 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		if configErr != nil {
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Drift: true, Correcting: true, Error: configErr.Error()}, nil
+			return types.ReconcileResult{Drift: true, Correcting: true, Error: configErr.Error(),
+				Conditions: []types.Condition{
+					{Type: types.ConditionHealthy, Status: types.ConditionTrue, Reason: "Exists", LastTransitionTime: now},
+					{Type: types.ConditionDriftFree, Status: types.ConditionFalse, Reason: types.ReasonDriftDetected, Message: "spec mismatch detected", LastTransitionTime: now},
+				},
+			}, nil
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventCorrected, "")
-		return types.ReconcileResult{Drift: true, Correcting: true}, nil
+		return types.ReconcileResult{Drift: true, Correcting: true,
+			Conditions: []types.Condition{
+				{Type: types.ConditionHealthy, Status: types.ConditionTrue, Reason: "Exists", LastTransitionTime: now},
+				{Type: types.ConditionDriftFree, Status: types.ConditionFalse, Reason: types.ReasonDriftCorrected, Message: "drift corrected", LastTransitionTime: now},
+			},
+		}, nil
 	}
 
 	// --- Ready + Observed + drift: report only ---
@@ -393,13 +459,23 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
-		return types.ReconcileResult{Drift: true, Correcting: false}, nil
+		return types.ReconcileResult{Drift: true, Correcting: false,
+			Conditions: []types.Condition{
+				{Type: types.ConditionHealthy, Status: types.ConditionTrue, Reason: "Exists", LastTransitionTime: now},
+				{Type: types.ConditionDriftFree, Status: types.ConditionFalse, Reason: types.ReasonDriftDetected, Message: "spec mismatch detected", LastTransitionTime: now},
+			},
+		}, nil
 	}
 
 	// --- No drift ---
 	restate.Set(ctx, drivers.StateKey, state)
 	d.scheduleReconcile(ctx, &state)
-	return types.ReconcileResult{}, nil
+	return types.ReconcileResult{
+		Conditions: []types.Condition{
+			{Type: types.ConditionHealthy, Status: types.ConditionTrue, Reason: "Exists", LastTransitionTime: now},
+			{Type: types.ConditionDriftFree, Status: types.ConditionTrue, Reason: "InSync", LastTransitionTime: now},
+		},
+	}, nil
 }
 
 func (d *S3BucketDriver) apiForAccount(ctx restate.ObjectContext, account string) (S3API, error) {
@@ -466,7 +542,7 @@ func (d *S3BucketDriver) scheduleReconcile(ctx restate.ObjectContext, state *S3B
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // specFromObserved creates an S3BucketSpec from observed AWS state.
@@ -487,4 +563,11 @@ func specFromObserved(name string, obs ObservedState) S3BucketSpec {
 		},
 		Tags: obs.Tags,
 	}
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *S3BucketDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

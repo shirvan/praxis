@@ -230,6 +230,24 @@ func (a *LambdaAdapter) Import(ctx restate.Context, key string, account string, 
 	return types.StatusReady, outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for Lambda functions.
+func (a *LambdaAdapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "5m", Update: "5m", Delete: "5m"}
+}
+
+// WaitReady checks whether the Lambda function has reached the Active state.
+func (a *LambdaAdapter) WaitReady(ctx restate.Context, key string) (WaitReadyResult, error) {
+	status, err := restate.Object[types.StatusResponse](ctx, a.ServiceName(), key, "GetStatus").Request(restate.Void{})
+	if err != nil {
+		return WaitReadyResult{}, err
+	}
+	if status.Status == types.StatusReady {
+		outputs, _ := fetchJSONMap(ctx, a.ServiceName(), key, "GetOutputs")
+		return WaitReadyResult{Ready: true, Message: "function active", Outputs: outputs}, nil
+	}
+	return WaitReadyResult{Ready: false, Message: fmt.Sprintf("function status: %s", status.Status)}, nil
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed LambdaFunction spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

@@ -123,4 +123,5 @@ type EC2InstanceState struct {
 	Generation         int64                `json:"generation"`
 	LastReconcile      string               `json:"lastReconcile,omitempty"`
 	ReconcileScheduled bool                 `json:"reconcileScheduled"`
+	LateInitDone       bool                 `json:"lateInitDone,omitempty"`
 }

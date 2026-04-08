@@ -430,7 +430,7 @@ func (d *LogGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state *Log
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *LogGroupDriver) apiForAccount(ctx restate.ObjectContext, account string) (LogGroupAPI, string, error) {
@@ -545,5 +545,12 @@ func validateSpec(spec LogGroupSpec) error {
 	if spec.LogGroupClass != "STANDARD" && spec.LogGroupClass != "INFREQUENT_ACCESS" {
 		return fmt.Errorf("logGroupClass must be STANDARD or INFREQUENT_ACCESS")
 	}
+	return nil
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *LogGroupDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
 	return nil
 }

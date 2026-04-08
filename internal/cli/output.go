@@ -113,7 +113,7 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 	_, _ = fmt.Fprintln(r.out)
 
 	if len(d.Resources) > 0 {
-		headers := []string{"RESOURCE", "KIND", "KEY", "STATUS", "ERROR"}
+		headers := []string{"RESOURCE", "KIND", "KEY", "STATUS", "CONDITIONS", "ERROR"}
 		rows := make([][]string, 0, len(d.Resources))
 		for _, resource := range d.Resources {
 			errMsg := "-"
@@ -125,10 +125,42 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 				resource.Kind,
 				resource.Key,
 				renderResourceStatus(r, resource.Status),
+				truncate(summarizeConditions(resource.Conditions), 72),
 				errMsg,
 			})
 		}
 		printTable(r, headers, rows)
+
+		hasConditions := false
+		for _, resource := range d.Resources {
+			if len(resource.Conditions) > 0 {
+				hasConditions = true
+				break
+			}
+		}
+		if hasConditions {
+			_, _ = fmt.Fprintln(r.out)
+			_, _ = fmt.Fprintln(r.out, r.renderSection("Conditions:"))
+			for _, resource := range d.Resources {
+				if len(resource.Conditions) == 0 {
+					continue
+				}
+				_, _ = fmt.Fprintf(r.out, "\n  %s (%s):\n", resource.Name, resource.Kind)
+				for _, condition := range orderedConditions(resource.Conditions) {
+					line := fmt.Sprintf("    %-13s %s", condition.Type+":", condition.Status)
+					if condition.Reason != "" {
+						line += fmt.Sprintf(" (%s)", condition.Reason)
+					}
+					if condition.Message != "" {
+						line += fmt.Sprintf(" - %s", condition.Message)
+					}
+					_, _ = fmt.Fprintln(r.out, line)
+					if !condition.LastTransitionTime.IsZero() {
+						_, _ = fmt.Fprintf(r.out, "      Last transition: %s\n", condition.LastTransitionTime.Format(time.RFC3339))
+					}
+				}
+			}
+		}
 
 		// Print dependency graph info for resources that have dependencies.
 		if sections.Deps {
@@ -221,6 +253,50 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 // status string. Delegates to the renderer's generic renderStatus.
 func renderResourceStatus(r *Renderer, status types.DeploymentResourceStatus) string {
 	return r.renderStatus(string(status))
+}
+
+func summarizeConditions(conditions []types.Condition) string {
+	if len(conditions) == 0 {
+		return "-"
+	}
+	ordered := orderedConditions(conditions)
+	parts := make([]string, 0, len(ordered))
+	for _, condition := range ordered {
+		part := condition.Type + "=" + condition.Status
+		if condition.Reason != "" {
+			part += "(" + condition.Reason + ")"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func orderedConditions(conditions []types.Condition) []types.Condition {
+	if len(conditions) == 0 {
+		return nil
+	}
+	ordered := append([]types.Condition(nil), conditions...)
+	order := map[string]int{
+		types.ConditionReady:       0,
+		types.ConditionProvisioned: 1,
+		types.ConditionHealthy:     2,
+		types.ConditionDriftFree:   3,
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := order[ordered[i].Type]
+		right := order[ordered[j].Type]
+		leftKnown := left != 0 || ordered[i].Type == types.ConditionReady
+		rightKnown := right != 0 || ordered[j].Type == types.ConditionReady
+		switch {
+		case leftKnown && rightKnown && left != right:
+			return left < right
+		case leftKnown != rightKnown:
+			return leftKnown
+		default:
+			return ordered[i].Type < ordered[j].Type
+		}
+	})
+	return ordered
 }
 
 // printDeploymentSummaries renders a compact listing table for

@@ -72,6 +72,10 @@ type ReconcileResult struct {
 	// (e.g., AWS API returned an error during describe).
 	// This is a string, not error, because it must be JSON-serializable.
 	Error string `json:"error,omitempty"`
+
+	// Conditions carries structured status conditions from the driver back to
+	// the orchestrator. Standard condition types are Healthy and DriftFree.
+	Conditions []Condition `json:"conditions,omitempty"`
 }
 
 // StatusResponse is returned by the GetStatus shared handler.

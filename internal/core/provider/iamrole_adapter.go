@@ -130,6 +130,14 @@ func (a *IAMRoleAdapter) Delete(ctx restate.Context, key string) (DeleteInvocati
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// PreDelete detaches all policies and instance profiles before the role is deleted.
+func (a *IAMRoleAdapter) PreDelete(ctx restate.Context, key string) error {
+	_, err := restate.WithRequestType[restate.Void, restate.Void](
+		restate.Object[restate.Void](ctx, a.ServiceName(), key, "PreDelete"),
+	).Request(restate.Void{})
+	return err
+}
+
 // NormalizeOutputs converts the typed IAMRole driver output struct into
 // the generic map[string]any used by deployment state, CLI display,
 // and cross-resource expression interpolation.

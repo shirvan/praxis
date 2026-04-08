@@ -406,7 +406,7 @@ func (d *ECRRepositoryDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *ECRRepositoryDriver) apiForAccount(ctx restate.ObjectContext, account string) (RepositoryAPI, string, error) {
@@ -440,5 +440,27 @@ func validateProvisionSpec(spec ECRRepositorySpec) error {
 	if spec.EncryptionConfiguration != nil && spec.EncryptionConfiguration.EncryptionType == "KMS" && strings.TrimSpace(spec.EncryptionConfiguration.KmsKey) == "" {
 		return fmt.Errorf("encryptionConfiguration.kmsKey is required when encryptionType is KMS")
 	}
+	return nil
+}
+
+// PreDelete enables force-delete on the repository so the subsequent Delete
+// call can remove the repository even when it still contains images.
+func (d *ECRRepositoryDriver) PreDelete(ctx restate.ObjectContext) error {
+	state, err := restate.Get[ECRRepositoryState](ctx, drivers.StateKey)
+	if err != nil {
+		return err
+	}
+	if state.Desired.RepositoryName == "" {
+		return nil
+	}
+	state.Desired.ForceDelete = true
+	restate.Set(ctx, drivers.StateKey, state)
+	return nil
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *ECRRepositoryDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
 	return nil
 }

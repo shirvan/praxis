@@ -111,6 +111,14 @@ func (a *ECRRepositoryAdapter) Delete(ctx restate.Context, key string) (DeleteIn
 	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
 }
 
+// PreDelete enables force-delete on the repo so images are removed with the repository.
+func (a *ECRRepositoryAdapter) PreDelete(ctx restate.Context, key string) error {
+	_, err := restate.WithRequestType[restate.Void, restate.Void](
+		restate.Object[restate.Void](ctx, a.ServiceName(), key, "PreDelete"),
+	).Request(restate.Void{})
+	return err
+}
+
 // NormalizeOutputs converts the typed ECRRepository driver output struct into
 // the generic map[string]any used by deployment state, CLI display,
 // and cross-resource expression interpolation.

@@ -79,4 +79,7 @@ type (
 	PlanDeployRequest = types.PlanDeployRequest
 	// PlanDeployResponse mirrors PlanResponse for the Deploy path.
 	PlanDeployResponse = types.PlanDeployResponse
+
+	// ApplySavedPlanRequest submits a previously saved execution plan directly.
+	ApplySavedPlanRequest = types.ApplySavedPlanRequest
 )

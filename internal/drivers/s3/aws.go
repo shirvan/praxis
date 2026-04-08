@@ -42,6 +42,9 @@ type S3API interface {
 	// DeleteBucket removes a bucket. Fails if the bucket is not empty.
 	DeleteBucket(ctx context.Context, name string) error
 
+	// DeleteAllObjects removes all objects, versions, and delete markers from a bucket.
+	DeleteAllObjects(ctx context.Context, name string) error
+
 	// FindByTags returns the single bucket whose tags exactly match the provided selectors.
 	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 }
@@ -249,6 +252,98 @@ func (r *realS3API) DeleteBucket(ctx context.Context, name string) error {
 		Bucket: aws.String(name),
 	})
 	return err
+}
+
+func (r *realS3API) DeleteAllObjects(ctx context.Context, name string) error {
+	if err := r.deleteAllObjectVersions(ctx, name); err != nil {
+		return err
+	}
+	if err := r.deleteAllCurrentObjects(ctx, name); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *realS3API) deleteAllObjectVersions(ctx context.Context, name string) error {
+	pager := s3sdk.NewListObjectVersionsPaginator(r.client, &s3sdk.ListObjectVersionsInput{
+		Bucket: aws.String(name),
+	})
+	for pager.HasMorePages() {
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
+		out, err := pager.NextPage(ctx)
+		if err != nil {
+			if IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("list object versions: %w", err)
+		}
+		objects := make([]s3types.ObjectIdentifier, 0, len(out.Versions)+len(out.DeleteMarkers))
+		for _, version := range out.Versions {
+			objects = append(objects, s3types.ObjectIdentifier{Key: version.Key, VersionId: version.VersionId})
+		}
+		for _, marker := range out.DeleteMarkers {
+			objects = append(objects, s3types.ObjectIdentifier{Key: marker.Key, VersionId: marker.VersionId})
+		}
+		if len(objects) == 0 {
+			continue
+		}
+		if err := r.deleteObjectBatch(ctx, name, objects); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *realS3API) deleteAllCurrentObjects(ctx context.Context, name string) error {
+	pager := s3sdk.NewListObjectsV2Paginator(r.client, &s3sdk.ListObjectsV2Input{
+		Bucket: aws.String(name),
+	})
+	for pager.HasMorePages() {
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
+		out, err := pager.NextPage(ctx)
+		if err != nil {
+			if IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("list objects: %w", err)
+		}
+		objects := make([]s3types.ObjectIdentifier, 0, len(out.Contents))
+		for _, object := range out.Contents {
+			objects = append(objects, s3types.ObjectIdentifier{Key: object.Key})
+		}
+		if len(objects) == 0 {
+			continue
+		}
+		if err := r.deleteObjectBatch(ctx, name, objects); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *realS3API) deleteObjectBatch(ctx context.Context, name string, objects []s3types.ObjectIdentifier) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	out, err := r.client.DeleteObjects(ctx, &s3sdk.DeleteObjectsInput{
+		Bucket: aws.String(name),
+		Delete: &s3types.Delete{
+			Objects: objects,
+			Quiet:   aws.Bool(true),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("delete objects: %w", err)
+	}
+	if len(out.Errors) > 0 {
+		first := out.Errors[0]
+		return fmt.Errorf("delete objects: %s: %s", aws.ToString(first.Code), aws.ToString(first.Message))
+	}
+	return nil
 }
 
 func (r *realS3API) FindByTags(ctx context.Context, tags map[string]string) (string, error) {

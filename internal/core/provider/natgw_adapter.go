@@ -259,6 +259,11 @@ func (a *NATGatewayAdapter) Import(ctx restate.Context, key string, account stri
 	return types.StatusReady, outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for NAT Gateways.
+func (a *NATGatewayAdapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "10m", Update: "10m", Delete: "10m"}
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed NATGateway spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

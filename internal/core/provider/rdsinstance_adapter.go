@@ -212,6 +212,24 @@ func (a *RDSInstanceAdapter) Import(ctx restate.Context, key string, account str
 	return types.StatusReady, outputs, nil
 }
 
+// DefaultTimeouts provides per-kind default timeouts for RDS instances.
+func (a *RDSInstanceAdapter) DefaultTimeouts() types.ResourceTimeouts {
+	return types.ResourceTimeouts{Create: "30m", Update: "30m", Delete: "30m"}
+}
+
+// WaitReady checks whether the RDS instance has reached the available state.
+func (a *RDSInstanceAdapter) WaitReady(ctx restate.Context, key string) (WaitReadyResult, error) {
+	status, err := restate.Object[types.StatusResponse](ctx, a.ServiceName(), key, "GetStatus").Request(restate.Void{})
+	if err != nil {
+		return WaitReadyResult{}, err
+	}
+	if status.Status == types.StatusReady {
+		outputs, _ := fetchJSONMap(ctx, a.ServiceName(), key, "GetOutputs")
+		return WaitReadyResult{Ready: true, Message: "instance available", Outputs: outputs}, nil
+	}
+	return WaitReadyResult{Ready: false, Message: fmt.Sprintf("instance status: %s", status.Status)}, nil
+}
+
 // decodeSpec unmarshals the raw JSON spec from a resource document into
 // the typed RDSInstance spec struct, validates required fields, and applies
 // sensible defaults. The Account field is deliberately zeroed so that only

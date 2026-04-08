@@ -25,12 +25,14 @@ import (
 //	praxis delete concierge [--session <id>]
 func newDeleteCmd(flags *rootFlags) *cobra.Command {
 	var (
-		yes      bool
-		wait     bool
-		rollback bool
-		force    bool
-		timeout  time.Duration
-		session  string
+		yes         bool
+		wait        bool
+		rollback    bool
+		force       bool
+		orphan      bool
+		parallelism int
+		timeout     time.Duration
+		session     string
 	)
 
 	cmd := &cobra.Command{
@@ -67,7 +69,7 @@ Use --yes / -y to skip the confirmation prompt.`,
 
 			switch kind {
 			case "Deployment":
-				return deleteDeployment(flags, renderer, key, yes, wait, rollback, force, timeout)
+				return deleteDeployment(flags, renderer, key, yes, wait, rollback, force, orphan, parallelism, timeout)
 			case "workspace":
 				return deleteWorkspace(flags, key)
 			case "template":
@@ -87,6 +89,8 @@ Use --yes / -y to skip the confirmation prompt.`,
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for deletion to complete")
 	cmd.Flags().BoolVar(&rollback, "rollback", false, "Delete only resources proven ready by the event store for a failed or cancelled deployment")
 	cmd.Flags().BoolVar(&force, "force", false, "Override lifecycle.preventDestroy protection on resources")
+	cmd.Flags().BoolVar(&orphan, "orphan", false, "Leave resources running and remove them from the deployment when supported")
+	cmd.Flags().IntVar(&parallelism, "parallelism", 0, "Maximum number of concurrent delete operations (0 = unlimited)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait for completion (0 for no limit)")
 	cmd.Flags().StringVar(&session, "session", "", "Concierge session ID for delete concierge (default: key value)")
 
@@ -94,7 +98,7 @@ Use --yes / -y to skip the confirmation prompt.`,
 }
 
 // deleteDeployment handles the Deployment teardown flow.
-func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wait, rollback, force bool, timeout time.Duration) error {
+func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wait, rollback, force, orphan bool, parallelism int, timeout time.Duration) error {
 	client := flags.newClient()
 	ctx := context.Background()
 
@@ -129,9 +133,9 @@ func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wai
 		err  error
 	)
 	if rollback {
-		resp, err = client.RollbackDeployment(ctx, key, force)
+		resp, err = client.RollbackDeployment(ctx, key, force, orphan, parallelism)
 	} else {
-		resp, err = client.DeleteDeployment(ctx, key, force)
+		resp, err = client.DeleteDeployment(ctx, key, force, orphan, parallelism)
 	}
 	if err != nil {
 		return err

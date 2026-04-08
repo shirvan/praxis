@@ -563,7 +563,7 @@ func (d *IGWDriver) scheduleReconcile(ctx restate.ObjectContext, state *IGWState
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *IGWDriver) apiForAccount(ctx restate.ObjectContext, account string) (IGWAPI, string, error) {
@@ -606,4 +606,11 @@ func defaultIGWImportMode(m types.Mode) types.Mode {
 
 func formatManagedKeyConflict(managedKey, internetGatewayID string) error {
 	return fmt.Errorf("internet gateway name %q in this region is already managed by Praxis (internetGatewayId: %s); remove the existing resource or use a different metadata.name", managedKey, internetGatewayID)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *IGWDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

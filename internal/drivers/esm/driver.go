@@ -318,7 +318,7 @@ func (d *EventSourceMappingDriver) scheduleReconcile(ctx restate.ObjectContext, 
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials and creates an ESMAPI for the given Praxis account.
@@ -422,4 +422,11 @@ func boolPtr(value bool) *bool    { return &value }
 // EncodedEventSourceKey produces a URL-safe base64 encoding of the ARN for use as a Restate key.
 func EncodedEventSourceKey(eventSourceArn string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(eventSourceArn))
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *EventSourceMappingDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

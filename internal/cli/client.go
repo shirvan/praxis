@@ -45,15 +45,16 @@ import (
 // They are repeated here rather than importing the internal packages because
 // the CLI should depend only on stable contract strings.
 const (
-	commandServiceName         = "PraxisCommandService"
-	stateServiceName           = "DeploymentStateObj"
-	indexServiceName           = "DeploymentIndex"
-	cloudEventStoreName        = "DeploymentEventStore"
-	cloudEventIndexName        = "EventIndex"
-	notificationSinkConfigName = "NotificationSinkConfig"
-	sinkRouterServiceName      = "SinkRouter"
-	resourceIndexServiceName   = "ResourceIndex"
-	indexGlobalKey             = "global"
+	commandServiceName          = "PraxisCommandService"
+	stateServiceName            = "DeploymentStateObj"
+	indexServiceName            = "DeploymentIndex"
+	templateRegistryServiceName = "TemplateRegistry"
+	cloudEventStoreName         = "DeploymentEventStore"
+	cloudEventIndexName         = "EventIndex"
+	notificationSinkConfigName  = "NotificationSinkConfig"
+	sinkRouterServiceName       = "SinkRouter"
+	resourceIndexServiceName    = "ResourceIndex"
+	indexGlobalKey              = "global"
 )
 
 // --------------------------------------------------------------------------
@@ -93,6 +94,16 @@ func (c *Client) Apply(ctx context.Context, req types.ApplyRequest) (*types.Appl
 	return &resp, nil
 }
 
+// ApplySavedPlan submits a previously saved execution plan directly.
+func (c *Client) ApplySavedPlan(ctx context.Context, req types.ApplySavedPlanRequest) (*types.DeployResponse, error) {
+	resp, err := ingress.Service[types.ApplySavedPlanRequest, types.DeployResponse](c.rc, commandServiceName, "ApplySavedPlan").
+		Request(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Plan performs a dry-run evaluation of a CUE template. It returns the plan
 // result showing what would change if applied, without actually provisioning
 // any resources.
@@ -107,10 +118,10 @@ func (c *Client) Plan(ctx context.Context, req types.PlanRequest) (*types.PlanRe
 
 // DeleteDeployment starts an asynchronous deletion of all resources in a
 // deployment, in reverse dependency order.
-func (c *Client) DeleteDeployment(ctx context.Context, key string, force bool) (*types.DeleteDeploymentResponse, error) {
+func (c *Client) DeleteDeployment(ctx context.Context, key string, force bool, orphan bool, parallelism int) (*types.DeleteDeploymentResponse, error) {
 	resp, err := ingress.Service[types.DeleteDeploymentRequest, types.DeleteDeploymentResponse](
 		c.rc, commandServiceName, "DeleteDeployment",
-	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key, Force: force})
+	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key, Force: force, Orphan: orphan, Parallelism: parallelism})
 	if err != nil {
 		return nil, err
 	}
@@ -119,10 +130,10 @@ func (c *Client) DeleteDeployment(ctx context.Context, key string, force bool) (
 
 // RollbackDeployment starts a rollback that deletes only the resources proven
 // ready by the CloudEvents store for a failed or cancelled deployment.
-func (c *Client) RollbackDeployment(ctx context.Context, key string, force bool) (*types.DeleteDeploymentResponse, error) {
+func (c *Client) RollbackDeployment(ctx context.Context, key string, force bool, orphan bool, parallelism int) (*types.DeleteDeploymentResponse, error) {
 	resp, err := ingress.Service[types.DeleteDeploymentRequest, types.DeleteDeploymentResponse](
 		c.rc, commandServiceName, "RollbackDeployment",
-	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key, Force: force})
+	).Request(ctx, types.DeleteDeploymentRequest{DeploymentKey: key, Force: force, Orphan: orphan, Parallelism: parallelism})
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +163,17 @@ func (c *Client) GetDeployment(ctx context.Context, key string) (*types.Deployme
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, fmt.Errorf("get deployment %q: %w", key, err)
+	}
+	return resp, nil
+}
+
+// GetTemplateSource returns the raw source for a registered template.
+func (c *Client) GetTemplateSource(ctx context.Context, name string) (string, error) {
+	resp, err := ingress.Object[restate.Void, string](
+		c.rc, templateRegistryServiceName, name, "GetSource",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return "", fmt.Errorf("get template source %q: %w", name, err)
 	}
 	return resp, nil
 }
@@ -282,6 +304,17 @@ func (c *Client) ReconcileResource(ctx context.Context, kind, key string) (*type
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, fmt.Errorf("reconcile %s/%s: %w", kind, key, err)
+	}
+	return &resp, nil
+}
+
+// ReconcileDeployment triggers reconcile fan-out for all resources in a deployment.
+func (c *Client) ReconcileDeployment(ctx context.Context, deploymentKey string, force bool) (*orchestrator.ReconcileAllResponse, error) {
+	resp, err := ingress.Object[orchestrator.ReconcileAllRequest, orchestrator.ReconcileAllResponse](
+		c.rc, stateServiceName, deploymentKey, "ReconcileAll",
+	).Request(ctx, orchestrator.ReconcileAllRequest{Force: force})
+	if err != nil {
+		return nil, fmt.Errorf("reconcile deployment %q: %w", deploymentKey, err)
 	}
 	return &resp, nil
 }

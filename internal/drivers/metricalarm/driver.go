@@ -425,7 +425,7 @@ func (d *MetricAlarmDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *MetricAlarmDriver) apiForAccount(ctx restate.ObjectContext, account string) (MetricAlarmAPI, string, error) {
@@ -541,5 +541,12 @@ func validateSpec(spec MetricAlarmSpec) error {
 	if spec.ComparisonOperator == "" {
 		return fmt.Errorf("comparisonOperator is required")
 	}
+	return nil
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *MetricAlarmDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
 	return nil
 }

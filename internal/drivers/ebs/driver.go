@@ -519,7 +519,7 @@ func (d *EBSVolumeDriver) scheduleReconcile(ctx restate.ObjectContext, state *EB
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials for the given account and returns
@@ -641,4 +641,11 @@ func modificationSpec(desired EBSVolumeSpec, observed ObservedState) EBSVolumeSp
 		copy.SizeGiB = observed.SizeGiB
 	}
 	return copy
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *EBSVolumeDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

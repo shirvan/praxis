@@ -594,7 +594,7 @@ func (d *IAMRoleDriver) scheduleReconcile(ctx restate.ObjectContext, state *IAMR
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // apiForAccount resolves AWS credentials for the given account alias via the auth service
@@ -680,4 +680,67 @@ func diffStringSets(desired, observed []string) ([]string, []string) {
 		}
 	}
 	return sortedStrings(add), sortedStrings(remove)
+}
+
+// PreDelete detaches all managed policies, deletes inline policies,
+// removes the role from instance profiles, and deletes the permissions
+// boundary. This runs before Delete so the role can be cleanly removed.
+func (d *IAMRoleDriver) PreDelete(ctx restate.ObjectContext) error {
+	state, err := restate.Get[IAMRoleState](ctx, drivers.StateKey)
+	if err != nil {
+		return err
+	}
+	name := state.Desired.RoleName
+	if name == "" {
+		name = state.Outputs.RoleName
+	}
+	if name == "" {
+		return nil
+	}
+	api, err := d.apiForAccount(ctx, state.Desired.Account)
+	if err != nil {
+		return restate.TerminalError(err, 400)
+	}
+	_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+		observed, descErr := api.DescribeRole(rc, name)
+		if descErr != nil {
+			if IsNotFound(descErr) {
+				return restate.Void{}, nil
+			}
+			return restate.Void{}, descErr
+		}
+		profiles, listErr := api.ListInstanceProfilesForRole(rc, name)
+		if listErr != nil && !IsNotFound(listErr) {
+			return restate.Void{}, listErr
+		}
+		for _, profileName := range profiles {
+			if runErr := api.RemoveRoleFromInstanceProfile(rc, name, profileName); runErr != nil && !IsNotFound(runErr) {
+				return restate.Void{}, runErr
+			}
+		}
+		for _, policyArn := range observed.ManagedPolicyArns {
+			if runErr := api.DetachManagedPolicy(rc, name, policyArn); runErr != nil && !IsNotFound(runErr) {
+				return restate.Void{}, runErr
+			}
+		}
+		for policyName := range observed.InlinePolicies {
+			if runErr := api.DeleteInlinePolicy(rc, name, policyName); runErr != nil && !IsNotFound(runErr) {
+				return restate.Void{}, runErr
+			}
+		}
+		if observed.PermissionsBoundary != "" {
+			if runErr := api.DeletePermissionsBoundary(rc, name); runErr != nil && !IsNotFound(runErr) {
+				return restate.Void{}, runErr
+			}
+		}
+		return restate.Void{}, nil
+	})
+	return err
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *IAMRoleDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

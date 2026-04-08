@@ -410,7 +410,7 @@ func (d *SecurityGroupDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 // applyRuleDiff computes the rule diff between desired spec and observed state,
@@ -514,4 +514,11 @@ func extractCidr(target string) string {
 		return target[5:]
 	}
 	return target
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *SecurityGroupDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

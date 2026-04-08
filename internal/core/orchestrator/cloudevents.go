@@ -87,6 +87,38 @@ const (
 	EventTypeResourceReplaceStarted     = "dev.praxis.resource.replace.started"      // force-replace: delete before re-provision
 	EventTypeResourceAutoReplaceStarted = "dev.praxis.resource.auto_replace.started" // auto-replace: 409 immutable conflict triggered delete+re-provision
 
+	// --- Resource retry event types ---
+
+	EventTypeResourceRetrying = "dev.praxis.resource.retrying" // transient failure, retrying with backoff
+
+	// --- Resource observe event types ---
+
+	EventTypeResourceObserveSkipped = "dev.praxis.resource.observe.skipped" // resource already up-to-date, skipped provision
+
+	// --- Resource timeout event types ---
+
+	EventTypeResourceTimeout = "dev.praxis.resource.timeout" // resource operation exceeded deadline
+
+	// --- Resource wait event types ---
+
+	EventTypeResourceWaiting     = "dev.praxis.resource.waiting"      // post-provision readiness polling
+	EventTypeResourceWaitTimeout = "dev.praxis.resource.wait.timeout" // readiness polling timed out
+
+	// --- Finalizer event types ---
+
+	EventTypeFinalizerStarted   = "dev.praxis.resource.finalizer.started"   // pre-delete hook running
+	EventTypeFinalizerCompleted = "dev.praxis.resource.finalizer.completed" // pre-delete hook completed
+	EventTypeFinalizerError     = "dev.praxis.resource.finalizer.error"     // finalizer hook failed
+
+	// --- Reconcile event types ---
+
+	EventTypeReconcileTriggered = "dev.praxis.reconcile.triggered" // on-demand reconcile fan-out
+
+	// --- Orphan event types ---
+
+	EventTypeResourceOrphaned = "dev.praxis.resource.orphaned" // resource orphaned from management
+	EventTypeResourceAdopted  = "dev.praxis.resource.adopted"  // existing resource adopted into deployment
+
 	// --- Drift event types ---
 
 	EventTypeDriftDetected       = "dev.praxis.drift.detected"        // driver detected spec/real drift

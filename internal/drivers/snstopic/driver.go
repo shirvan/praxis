@@ -485,7 +485,7 @@ func (d *SNSTopicDriver) scheduleReconcile(ctx restate.ObjectContext, state *SNS
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *SNSTopicDriver) apiForAccount(ctx restate.Context, account string) (TopicAPI, error) {
@@ -518,4 +518,11 @@ func specFromObserved(obs ObservedState, ref types.ImportRef) SNSTopicSpec {
 		Tags:                      drivers.FilterPraxisTags(obs.Tags),
 	}
 	return spec
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *SNSTopicDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

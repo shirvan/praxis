@@ -419,7 +419,7 @@ func (d *ACMCertificateDriver) scheduleReconcile(ctx restate.ObjectContext, stat
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *ACMCertificateDriver) apiForAccount(ctx restate.ObjectContext, account string) (CertificateAPI, string, error) {
@@ -565,4 +565,11 @@ func validateImmutableFields(desired ACMCertificateSpec, observed ObservedState)
 
 func formatManagedKeyConflict(managedKey, certificateArn string) error {
 	return fmt.Errorf("ACM certificate name %q in this region is already managed by Praxis (certificateArn: %s); remove the existing resource or use a different metadata.name", managedKey, certificateArn)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *ACMCertificateDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }

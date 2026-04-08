@@ -546,7 +546,7 @@ func (d *NATGatewayDriver) scheduleReconcile(ctx restate.ObjectContext, state *N
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
 }
 
 func (d *NATGatewayDriver) waitUntilAvailable(ctx restate.ObjectContext, api NATGatewayAPI, natGatewayID string, spec NATGatewaySpec, state *NATGatewayState) error {
@@ -683,4 +683,11 @@ func failedStateError(observed ObservedState) error {
 
 func formatManagedKeyConflict(managedKey, natGatewayID string) error {
 	return fmt.Errorf("NAT gateway name %q in this region is already managed by Praxis (natGatewayId: %s); remove the existing resource or use a different metadata.name", managedKey, natGatewayID)
+}
+
+// ClearState clears all Virtual Object state for this resource.
+// Used by the Orphan deletion policy to release a resource from management.
+func (d *NATGatewayDriver) ClearState(ctx restate.ObjectContext) error {
+	drivers.ClearAllState(ctx)
+	return nil
 }
