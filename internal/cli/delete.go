@@ -14,7 +14,7 @@ import (
 // newDeleteCmd builds the `praxis delete` subcommand.
 //
 // Delete supports Deployment teardown (with --wait, --rollback), and deletion
-// of meta-resources: workspaces, templates, sinks, and concierge sessions.
+// of meta-resources: workspaces, templates, and sinks.
 //
 // Usage:
 //
@@ -22,7 +22,6 @@ import (
 //	praxis delete workspace/staging
 //	praxis delete template/webapp
 //	praxis delete sink/my-hook
-//	praxis delete concierge [--session <id>]
 func newDeleteCmd(flags *rootFlags) *cobra.Command {
 	var (
 		yes         bool
@@ -32,7 +31,6 @@ func newDeleteCmd(flags *rootFlags) *cobra.Command {
 		orphan      bool
 		parallelism int
 		timeout     time.Duration
-		session     string
 	)
 
 	cmd := &cobra.Command{
@@ -56,7 +54,6 @@ For meta-resources, it removes the configuration:
     praxis delete workspace/staging
     praxis delete template/webapp
     praxis delete sink/my-hook
-    praxis delete concierge            Delete the default concierge session
 
 Use --yes / -y to skip the confirmation prompt.`,
 		Args: cobra.ExactArgs(1),
@@ -76,8 +73,6 @@ Use --yes / -y to skip the confirmation prompt.`,
 				return deleteTemplate(flags, key)
 			case "sink":
 				return deleteSink(flags, key)
-			case "concierge":
-				return deleteConciergeSession(flags, key)
 			default:
 				// Cloud resource deletion (e.g. S3Bucket/my-bucket)
 				return deleteResource(flags, kind, key, yes)
@@ -92,7 +87,6 @@ Use --yes / -y to skip the confirmation prompt.`,
 	cmd.Flags().BoolVar(&orphan, "orphan", false, "Leave resources running and remove them from the deployment when supported")
 	cmd.Flags().IntVar(&parallelism, "parallelism", 0, "Maximum number of concurrent delete operations (0 = unlimited)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Maximum time to wait for completion (0 for no limit)")
-	cmd.Flags().StringVar(&session, "session", "", "Concierge session ID for delete concierge (default: key value)")
 
 	return cmd
 }
@@ -222,23 +216,6 @@ func deleteSink(flags *rootFlags, name string) error {
 		return printJSON(map[string]string{"removed": name})
 	}
 	flags.renderer().successLine(fmt.Sprintf("Notification sink %q removed.", name))
-	return nil
-}
-
-// deleteConciergeSession clears a concierge session.
-func deleteConciergeSession(flags *rootFlags, sessionID string) error {
-	if sessionID == "" {
-		sessionID = resolveSessionID()
-	}
-	client := flags.newClient()
-	if err := client.ConciergeReset(context.Background(), sessionID); err != nil {
-		if isConciergeUnavailable(err) {
-			fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
-			return nil
-		}
-		return fmt.Errorf("delete concierge: %w", err)
-	}
-	flags.renderer().successLine(fmt.Sprintf("Concierge session %q reset", sessionID))
 	return nil
 }
 

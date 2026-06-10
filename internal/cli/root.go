@@ -11,17 +11,15 @@
 //
 //   - deploy     — Provision resources from a CUE template or registered template
 //   - plan       — Preview what would change without provisioning
-//   - get        — Show deployment, resource, workspace, config, or concierge details
-//   - list       — List deployments, templates, workspaces, sinks, events, or concierge history
-//   - delete     — Tear down a deployment, workspace, template, sink, or session
+//   - get        — Show deployment, resource, workspace, or config details
+//   - list       — List deployments, templates, workspaces, sinks, or events
+//   - delete     — Tear down a deployment, workspace, template, or sink
 //   - create     — Create a workspace, template, or notification sink
-//   - set        — Set active workspace, config field, or concierge provider
+//   - set        — Set active workspace or config field
 //   - move       — Rename or move a resource between deployments
 //   - import     — Adopt an existing cloud resource
 //   - reconcile  — Trigger on-demand drift detection and correction
 //   - observe    — Watch any resource in real time
-//   - ask        — Send a natural language prompt to the concierge
-//   - approve    — Approve or reject a pending concierge action
 //   - test       — Test an integration (notification sinks)
 //   - fmt        — Format CUE template files
 //
@@ -35,12 +33,8 @@
 package cli
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -105,112 +99,18 @@ func NewRootCmd() *cobra.Command {
 Restate for durable execution instead of Kubernetes.
 
 Define your cloud resources in CUE templates, and Praxis handles provisioning,
-drift detection, dependency ordering, and lifecycle management.
-
-When the concierge is running, you can also talk to Praxis directly:
-
-  praxis "why did my deploy fail?"
-  praxis "convert this terraform to praxis" --file main.tf
-  praxis "deploy the orders API to staging"`,
+drift detection, dependency ordering, and lifecycle management.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
 	}
-
-	// Concierge-specific flags — registered on root so they apply when the
-	// root RunE handles an unmatched prompt.
-	var (
-		conciergeSession     string
-		conciergeNewSession  bool
-		conciergeFile        string
-		conciergeWorkspace   string
-		conciergeAccount     string
-		conciergeAutoApprove bool
-		conciergeJSON        bool
-	)
-
-	root.Flags().StringVar(&conciergeSession, "session", "", "Switch to a specific session ID (env: PRAXIS_SESSION)")
-	root.Flags().BoolVar(&conciergeNewSession, "new-session", false, "Start a new session (ignores saved session)")
-	root.Flags().StringVarP(&conciergeFile, "file", "f", "", "Attach file(s), directory, or glob to the prompt (concierge mode)")
-	root.Flags().StringVar(&conciergeAccount, "account", "", "Override account (concierge mode)")
-	root.Flags().StringVar(&conciergeWorkspace, "workspace", "", "Override workspace (concierge mode)")
-	root.Flags().BoolVar(&conciergeAutoApprove, "auto-approve", false, "Skip approval prompts (concierge mode)")
-	root.Flags().BoolVar(&conciergeJSON, "json", false, "Output AskResponse as JSON (concierge mode)")
 
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		// No arguments → show help.
 		if len(args) == 0 {
 			return cmd.Help()
 		}
-
-		// Concierge shorthand requires the prompt to be a single quoted
-		// string (e.g. praxis "show my buckets").  The shell strips the
-		// quotes, so a quoted prompt arrives as one arg that contains
-		// spaces.  Multiple bare args (e.g. praxis praxis template list)
-		// indicate a mistyped subcommand.
-		if len(args) > 1 || !strings.Contains(args[0], " ") {
-			return fmt.Errorf("unknown command %q for \"praxis\"\nRun 'praxis --help' for usage\nTip: use quotes for concierge — praxis \"your question here\"", args[0])
-		}
-
-		// Single quoted argument → treat as concierge prompt.
-		prompt := args[0]
-
-		// Attach file content if --file provided.
-		if conciergeFile != "" {
-			files, err := resolveFilePaths(conciergeFile)
-			if err != nil {
-				return fmt.Errorf("resolve %q: %w", conciergeFile, err)
-			}
-			var sb strings.Builder
-			sb.WriteString(prompt)
-			for _, f := range files {
-				content, err := os.ReadFile(f) //nolint:gosec // G304 file path from CLI flag is intentional
-				if err != nil {
-					return fmt.Errorf("read file %q: %w", f, err)
-				}
-				fmt.Fprintf(&sb, "\n\n--- %s ---\n```\n%s\n```", f, string(content))
-			}
-			prompt = sb.String()
-		}
-
-		acct := conciergeAccount
-		if acct == "" {
-			acct = flags.account
-		}
-
-		workspace := conciergeWorkspace
-		if workspace == "" {
-			workspace = flags.activeWorkspace()
-		}
-
-		client := flags.newClient()
-		ctx := context.Background()
-		r := flags.renderer()
-
-		resp, err := runConciergeAsk(ctx, conciergeAskOpts{
-			Client:     client,
-			Renderer:   r,
-			Session:    conciergeSession,
-			NewSession: conciergeNewSession,
-			Prompt:     prompt,
-			Account:    acct,
-			Workspace:  workspace,
-			JSON:       conciergeJSON,
-		})
-		if err != nil {
-			if isConciergeUnavailable(err) {
-				fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
-				return nil
-			}
-			return err
-		}
-
-		if conciergeJSON {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(resp)
-		}
-		return nil
+		return fmt.Errorf("unknown command %q for \"praxis\"\nRun 'praxis --help' for usage", args[0])
 	}
 
 	// Global flags available to every subcommand.
@@ -250,12 +150,7 @@ When the concierge is running, you can also talk to Praxis directly:
 		newImportCmd(flags),
 		newReconcileCmd(flags),
 		newObserveCmd(flags),
-		newAskCmd(flags),
-		newApproveCmd(flags),
 		newTestCmd(flags),
-
-		// Admin (exception — concierge slack stays nested)
-		newConciergeAdminCmd(flags),
 
 		// Utilities
 		newFmtCmd(),
@@ -308,50 +203,6 @@ func isTerminal(file *os.File) bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
-// resolveFilePaths expands a path into a list of individual file paths.
-// It supports a single file, a directory (walked recursively), or a glob pattern.
-func resolveFilePaths(path string) ([]string, error) {
-	// Try glob first — if the pattern contains no glob metacharacters,
-	// filepath.Glob simply returns the literal match (same as Stat).
-	if strings.ContainsAny(path, "*?[") {
-		matches, err := filepath.Glob(path)
-		if err != nil {
-			return nil, err
-		}
-		if len(matches) == 0 {
-			return nil, fmt.Errorf("no files matched %q", path)
-		}
-		return matches, nil
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() {
-		return []string{path}, nil
-	}
-
-	// Walk directory, collecting regular files.
-	var files []string
-	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			files = append(files, p)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no files found in %q", path)
-	}
-	return files, nil
-}
-
 // ---------------------------------------------------------------------------
 // Resource key scope resolution
 // ---------------------------------------------------------------------------
@@ -374,7 +225,7 @@ func buildCanonicalKinds() map[string]string {
 	// All known kinds expressed in their canonical form.
 	known := []string{
 		// Meta-resource kinds (lowercase canonical).
-		"template", "sink", "workspace", "concierge",
+		"template", "sink", "workspace",
 		// Core kinds.
 		"Deployment",
 		// Cloud resource kinds (added below from kindScopes).

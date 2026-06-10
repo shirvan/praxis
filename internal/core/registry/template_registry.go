@@ -112,8 +112,8 @@ func (TemplateRegistry) GetSource(ctx restate.ObjectSharedContext, _ restate.Voi
 }
 
 // GetMetadata returns the template's metadata (name, description, labels,
-// timestamps) without the full source or variable schema. Used by the
-// concierge to describe a template without loading the entire record.
+// timestamps) without the full source or variable schema. Lets clients
+// describe a template without loading the entire record.
 func (TemplateRegistry) GetMetadata(ctx restate.ObjectSharedContext, _ restate.Void) (types.TemplateMetadata, error) {
 	record, err := restate.Get[*types.TemplateRecord](ctx, stateKey)
 	if err != nil {
