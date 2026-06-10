@@ -3,14 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 // newSetCmd builds the `praxis set` verb command.
-// Subcommands: workspace, config, concierge.
+// Subcommands: workspace, config.
 func newSetCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <resource>",
@@ -20,14 +19,12 @@ func newSetCmd(flags *rootFlags) *cobra.Command {
 Supported resources:
 
     praxis set workspace <name>        Set the active workspace
-    praxis set config <path> <value>   Update workspace-scoped configuration
-    praxis set concierge               Configure the concierge LLM provider`,
+    praxis set config <path> <value>   Update workspace-scoped configuration`,
 	}
 
 	cmd.AddCommand(
 		newSetWorkspaceCmd(flags),
 		newSetConfigCmd(flags),
-		newSetConciergeCmd(flags),
 	)
 
 	return cmd
@@ -73,10 +70,7 @@ func newSetConfigCmd(flags *rootFlags) *cobra.Command {
 		newSetConfigRetentionCmd(flags, &workspaceName),
 		newSetConfigRetentionFieldCmd(flags, &workspaceName, "events.retention.max-age", configMutateMaxAge),
 		newSetConfigRetentionFieldCmd(flags, &workspaceName, "events.retention.max-events-per-deployment", configMutateMaxEvents),
-		newSetConfigRetentionFieldCmd(flags, &workspaceName, "events.retention.max-index-entries", configMutateMaxIndex),
 		newSetConfigRetentionFieldCmd(flags, &workspaceName, "events.retention.sweep-interval", configMutateSweepInterval),
-		newSetConfigRetentionFieldCmd(flags, &workspaceName, "events.retention.ship-before-delete", configMutateShipBeforeDelete),
-		newSetConfigRetentionFieldCmd(flags, &workspaceName, "events.retention.drain-sink", configMutateDrainSink),
 	)
 	return cmd
 }
@@ -144,49 +138,4 @@ func newSetConfigRetentionFieldCmd(flags *rootFlags, workspaceName *string, use 
 			return nil
 		},
 	}
-}
-
-// newSetConciergeCmd builds `praxis set concierge`.
-func newSetConciergeCmd(flags *rootFlags) *cobra.Command {
-	var (
-		provider string
-		model    string
-		apiKey   string
-		baseURL  string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "concierge",
-		Short: "Configure the concierge LLM provider",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if provider == "" {
-				return fmt.Errorf("--provider is required (openai or claude)")
-			}
-
-			client := flags.newClient()
-			req := conciergeConfigureRequest{
-				Provider: provider,
-				Model:    model,
-				APIKey:   apiKey,
-				BaseURL:  baseURL,
-			}
-
-			if err := client.ConciergeConfigure(context.Background(), req); err != nil {
-				if isConciergeUnavailable(err) {
-					fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
-					return nil
-				}
-				return fmt.Errorf("set concierge: %w", err)
-			}
-
-			flags.renderer().successLine("Concierge configured")
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&provider, "provider", "", "LLM provider: openai or claude (required)")
-	cmd.Flags().StringVar(&model, "model", "", "Model name (e.g. gpt-4o, claude-sonnet-4-20250514)")
-	cmd.Flags().StringVar(&apiKey, "api-key", "", "API key for the provider")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Custom API base URL")
-	return cmd
 }

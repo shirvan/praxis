@@ -218,108 +218,6 @@ func TestSetConfigRetentionFieldCmd_MaxAge(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// set concierge
-// ---------------------------------------------------------------------------
-
-func TestSetConciergeCmd_Success(t *testing.T) {
-	var gotReq conciergeConfigureRequest
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/ConciergeConfig/global/Configure", r.URL.Path)
-		_ = json.NewDecoder(r.Body).Decode(&gotReq)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{
-		"set", "concierge",
-		"--provider", "openai",
-		"--model", "gpt-4o",
-		"--api-key", "sk-test",
-	}, srv.URL)
-	require.NoError(t, err)
-	assert.Equal(t, "openai", gotReq.Provider)
-	assert.Equal(t, "gpt-4o", gotReq.Model)
-}
-
-func TestSetConciergeCmd_MissingProvider(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"set", "concierge"}, "http://unused")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--provider is required")
-}
-
-// ---------------------------------------------------------------------------
-// ask
-// ---------------------------------------------------------------------------
-
-func TestAskCmd_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(conciergeAskResponse{
-			Response: "Here's the status of your deployment",
-		})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"ask", "how do I deploy a VPC"}, srv.URL)
-	require.NoError(t, err)
-}
-
-func TestAskCmd_NoArgs(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"ask"}, "http://unused")
-	require.Error(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// approve
-// ---------------------------------------------------------------------------
-
-func TestApproveCmd_Success(t *testing.T) {
-	var gotReq conciergeApprovalRequest
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/ApprovalRelay/Resolve", r.URL.Path)
-		_ = json.NewDecoder(r.Body).Decode(&gotReq)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{
-		"approve",
-		"--awakeable-id", "awk-123",
-	}, srv.URL)
-	require.NoError(t, err)
-	assert.Equal(t, "awk-123", gotReq.AwakeableID)
-	assert.True(t, gotReq.Approved)
-}
-
-func TestApproveCmd_Reject(t *testing.T) {
-	var gotReq conciergeApprovalRequest
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotReq)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{
-		"approve",
-		"--awakeable-id", "awk-456",
-		"--reject",
-		"--reason", "too risky",
-	}, srv.URL)
-	require.NoError(t, err)
-	assert.False(t, gotReq.Approved)
-	assert.Equal(t, "too risky", gotReq.Reason)
-}
-
-func TestApproveCmd_MissingAwakeableID(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"approve"}, "http://unused")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--awakeable-id is required")
-}
-
-// ---------------------------------------------------------------------------
 // test sink
 // ---------------------------------------------------------------------------
 
@@ -438,27 +336,6 @@ func TestGetConfigCmd_VerbFirst_Success(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := executeCmd(t, []string{"get", "config", "events.retention"}, srv.URL)
-	require.NoError(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// get concierge (verb-first)
-// ---------------------------------------------------------------------------
-
-func TestGetConciergeCmd_Success(t *testing.T) {
-	t.Setenv("PRAXIS_SESSION", "test-session")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/ConciergeSession/test-session/GetStatus", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(conciergeSessionStatus{
-			Provider:  "openai",
-			Model:     "gpt-4o",
-			TurnCount: 5,
-		})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"get", "concierge"}, srv.URL)
 	require.NoError(t, err)
 }
 
@@ -624,16 +501,10 @@ func TestListSinksCmd_Aliases(t *testing.T) {
 // list events (verb-first)
 // ---------------------------------------------------------------------------
 
-func TestListEventsCmd_CrossDeployment(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/EventIndex/global/Query", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]orchestrator.SequencedCloudEvent{})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"list", "events"}, srv.URL)
-	require.NoError(t, err)
+func TestListEventsCmd_NoScope(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"list", "events"}, "http://unused")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a deployment scope")
 }
 
 func TestListEventsCmd_PerDeployment(t *testing.T) {
@@ -645,24 +516,6 @@ func TestListEventsCmd_PerDeployment(t *testing.T) {
 	defer srv.Close()
 
 	_, _, err := executeCmd(t, []string{"list", "events", "Deployment/my-app"}, srv.URL)
-	require.NoError(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// list concierge (verb-first)
-// ---------------------------------------------------------------------------
-
-func TestListConciergeCmd_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/ConciergeSession/default/GetHistory", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]conciergeMessage{
-			{Role: "user", Content: "hello", Timestamp: "2024-01-01T00:00:00Z"},
-		})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"list", "concierge"}, srv.URL)
 	require.NoError(t, err)
 }
 
@@ -720,24 +573,6 @@ func TestDeleteSinkCmd_Success(t *testing.T) {
 	_, _, err := executeCmd(t, []string{"delete", "sink/old-hook"}, srv.URL)
 	require.NoError(t, err)
 	assert.Equal(t, "/NotificationSinkConfig/global/Remove", gotPath)
-}
-
-// ---------------------------------------------------------------------------
-// delete concierge (verb-first)
-// ---------------------------------------------------------------------------
-
-func TestDeleteConciergeCmd_Success(t *testing.T) {
-	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"delete", "concierge/my-session"}, srv.URL)
-	require.NoError(t, err)
-	assert.Equal(t, "/ConciergeSession/my-session/Reset", gotPath)
 }
 
 // ---------------------------------------------------------------------------
