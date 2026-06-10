@@ -67,31 +67,8 @@ func configMutateMaxEvents(policy *workspace.EventRetentionPolicy, value string)
 	return nil
 }
 
-func configMutateMaxIndex(policy *workspace.EventRetentionPolicy, value string) error {
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fmt.Errorf("invalid integer %q", value)
-	}
-	policy.MaxIndexEntries = parsed
-	return nil
-}
-
 func configMutateSweepInterval(policy *workspace.EventRetentionPolicy, value string) error {
 	policy.SweepInterval = value
-	return nil
-}
-
-func configMutateShipBeforeDelete(policy *workspace.EventRetentionPolicy, value string) error {
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return fmt.Errorf("invalid bool %q", value)
-	}
-	policy.ShipBeforeDelete = parsed
-	return nil
-}
-
-func configMutateDrainSink(policy *workspace.EventRetentionPolicy, value string) error {
-	policy.DrainSink = value
 	return nil
 }
 
@@ -103,10 +80,5 @@ func printEventRetentionPolicy(r *Renderer, policy *workspace.EventRetentionPoli
 	}
 	r.writeLabelValue("Max Age", 28, policy.MaxAge)
 	r.writeLabelValue("Max Events/Deployment", 28, fmt.Sprintf("%d", policy.MaxEventsPerDeployment))
-	r.writeLabelValue("Max Index Entries", 28, fmt.Sprintf("%d", policy.MaxIndexEntries))
 	r.writeLabelValue("Sweep Interval", 28, policy.SweepInterval)
-	r.writeLabelValue("Ship Before Delete", 28, fmt.Sprintf("%t", policy.ShipBeforeDelete))
-	if policy.DrainSink != "" {
-		r.writeLabelValue("Drain Sink", 28, policy.DrainSink)
-	}
 }

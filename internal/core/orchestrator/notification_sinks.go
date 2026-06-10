@@ -12,8 +12,8 @@
 //     is wrapped in restate.Run for durable execution, with configurable retries
 //     and exponential backoff.
 //
-// Sink types: webhook (HTTP POST), structured_log (stdout), cloudevents_http
-// (HTTP POST with CE content-type), restate_rpc (Restate service-to-service).
+// Sink types: webhook (HTTP POST with CloudEvent JSON body) and restate_rpc
+// (Restate service-to-service send, the extension hook for custom consumers).
 //
 // Circuit breaker: after 3 consecutive failures, a sink enters "open" state
 // for 5 minutes. During this window, deliveries are silently skipped.
@@ -143,9 +143,6 @@ func sinkValidationInput(sink NotificationSink) map[string]any {
 	}
 	if sink.Retry.MaxAttempts > 0 || sink.Retry.BackoffMs > 0 {
 		input["retry"] = sink.Retry
-	}
-	if strings.TrimSpace(sink.ContentMode) != "" {
-		input["contentMode"] = sink.ContentMode
 	}
 	if hasSinkFilter(sink.Filter) {
 		input["filter"] = sink.Filter
@@ -308,37 +305,6 @@ func (SinkRouter) Deliver(ctx restate.Context, record SequencedCloudEvent) error
 	return nil
 }
 
-// DrainBatch delivers a batch of events to a specific named sink. Used by
-// the retention system to ship events to a drain sink before deletion.
-func (SinkRouter) DrainBatch(ctx restate.Context, req DrainBatchRequest) error {
-	if strings.TrimSpace(req.SinkName) == "" {
-		return restate.TerminalError(fmt.Errorf("sink name is required"), 400)
-	}
-	if len(req.Records) == 0 {
-		return nil
-	}
-	sink, err := restate.WithRequestType[string, *NotificationSink](
-		restate.Object[*NotificationSink](ctx, NotificationSinkConfigServiceName, NotificationSinkConfigGlobalKey, "Get"),
-	).Request(req.SinkName)
-	if err != nil {
-		return err
-	}
-	if sink == nil {
-		return restate.TerminalError(fmt.Errorf("sink %q not found", req.SinkName), 404)
-	}
-	now, err := currentTime(ctx)
-	if err != nil {
-		return err
-	}
-	if sinkCircuitOpen(*sink, now) {
-		return fmt.Errorf("drain sink %q circuit is open; aborting drain to prevent event loss", req.SinkName)
-	}
-	if err := deliverBatchWithRetry(ctx, *sink, req.Records); err != nil {
-		return restate.TerminalError(err, 502)
-	}
-	return nil
-}
-
 // Test sends a synthetic test event to a named sink to verify connectivity.
 // Returns an error if the sink's circuit is open or delivery fails.
 func (SinkRouter) Test(ctx restate.Context, sinkName string) error {
@@ -443,39 +409,6 @@ func deliverWithRetry(ctx restate.Context, sink NotificationSink, record Sequenc
 		result, err := restate.Run(ctx, func(restate.RunContext) (sinkDeliveryAttempt, error) {
 			if deliveryErr := deliverToSinkOnce(sink, headers, record); deliveryErr != nil {
 				return sinkDeliveryAttempt{Error: deliveryErr.Error()}, nil
-			}
-			return sinkDeliveryAttempt{}, nil
-		})
-		if err != nil {
-			return err
-		}
-		if result.Error == "" {
-			return nil
-		}
-		lastErr = errors.New(result.Error)
-		if attempt == policy.MaxAttempts {
-			break
-		}
-		if err := restate.Sleep(ctx, time.Duration(policy.BackoffMs*attempt)*time.Millisecond); err != nil {
-			return err
-		}
-	}
-	return lastErr
-}
-
-// deliverBatchWithRetry is the batch variant of deliverWithRetry, used by
-// DrainBatch for retention event shipping.
-func deliverBatchWithRetry(ctx restate.Context, sink NotificationSink, records []SequencedCloudEvent) error {
-	headers, err := resolveSinkHeaders(ctx, sink, eventStringExtension(records[0].Event, EventExtensionWorkspace))
-	if err != nil {
-		return err
-	}
-	policy := normalizeRetryPolicy(sink.Retry)
-	var lastErr error
-	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
-		result, err := restate.Run(ctx, func(restate.RunContext) (sinkDeliveryAttempt, error) {
-			if batchErr := deliverBatchToSink(sink, headers, records); batchErr != nil {
-				return sinkDeliveryAttempt{Error: batchErr.Error()}, nil
 			}
 			return sinkDeliveryAttempt{}, nil
 		})
@@ -625,9 +558,8 @@ func resolveSinkHeaders(ctx restate.Context, sink NotificationSink, workspaceNam
 	return decoded.Headers, nil
 }
 
-// deliverToSinkOnce performs a single delivery attempt to an HTTP-based sink.
-// Structured-log sinks write to stdout; webhook and cloudevents_http sinks
-// perform an HTTP POST with the appropriate content type.
+// deliverToSinkOnce performs a single delivery attempt to a webhook sink:
+// an HTTP POST with the CloudEvent serialized as a JSON body.
 func deliverToSinkOnce(sink NotificationSink, headers map[string]string, record SequencedCloudEvent) error {
 	payload, err := json.Marshal(record.Event)
 	if err != nil {
@@ -635,19 +567,12 @@ func deliverToSinkOnce(sink NotificationSink, headers map[string]string, record 
 	}
 
 	switch sink.Type {
-	case SinkTypeStructuredLog:
-		log.Print(string(payload))
-		return nil
-	case SinkTypeWebhook, SinkTypeCloudEventsHTTP:
-		contentType := "application/json"
-		if sink.Type == SinkTypeCloudEventsHTTP {
-			contentType = cloudevents.ApplicationCloudEventsJSON
-		}
+	case SinkTypeWebhook:
 		request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, sink.URL, bytes.NewReader(payload))
 		if err != nil {
 			return fmt.Errorf("deliver sink %q: build request: %w", sink.Name, err)
 		}
-		request.Header.Set("Content-Type", contentType)
+		request.Header.Set("Content-Type", "application/json")
 		for key, value := range headers {
 			request.Header.Set(key, value)
 		}
@@ -663,15 +588,4 @@ func deliverToSinkOnce(sink NotificationSink, headers map[string]string, record 
 	default:
 		return fmt.Errorf("unsupported sink type %q", sink.Type)
 	}
-}
-
-// deliverBatchToSink delivers a slice of events one at a time to a sink.
-// Used by the retention drain path.
-func deliverBatchToSink(sink NotificationSink, headers map[string]string, records []SequencedCloudEvent) error {
-	for _, record := range records {
-		if err := deliverToSinkOnce(sink, headers, record); err != nil {
-			return err
-		}
-	}
-	return nil
 }

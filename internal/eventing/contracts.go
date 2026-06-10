@@ -6,7 +6,7 @@
 //
 //	Driver (Reconcile detects drift)
 //	  → ReportDriftEvent() sends a one-way message to ResourceEventBridge
-//	    → ResourceEventBridge fans out to notification sinks (Slack, webhooks)
+//	    → ResourceEventBridge fans out to notification sinks (webhooks)
 //
 // ResourceEventOwner is a separate concern: it tracks which deployment/stream
 // owns a given resource key, so the event bridge can enrich events with

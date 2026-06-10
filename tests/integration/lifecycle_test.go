@@ -153,7 +153,6 @@ func setupFullStack(t *testing.T) *lifecycleTestEnv {
 		restate.Reflect(orchestrator.DeploymentIndex{}),
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
-		restate.Reflect(orchestrator.EventIndex{}),
 		restate.Reflect(orchestrator.ResourceEventOwnerObj{}),
 		restate.Reflect(orchestrator.ResourceEventBridge{}),
 		restate.Reflect(orchestrator.SinkRouter{}),

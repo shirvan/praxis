@@ -2,8 +2,8 @@
 //
 // The EventBus is the single entrypoint for all CloudEvent emission in the
 // orchestrator. It validates events against CUE schemas, delegates sequencing
-// to the per-deployment EventStore, updates the global EventIndex, and fans
-// out non-system events to the SinkRouter for external delivery.
+// to the per-deployment EventStore, and fans out non-system events to the
+// SinkRouter for external delivery.
 //
 // Using a Virtual Object (keyed by a global key) ensures single-writer
 // semantics: all event emissions are serialised, preventing race conditions
@@ -46,8 +46,7 @@ func (EventBus) ServiceName() string {
 //  2. Auto-fill the timestamp via currentTime (journaled by Restate).
 //  3. Validate the event payload against the CUE schema for its type.
 //  4. Append to the per-deployment EventStore (assigns a sequence number).
-//  5. Send to the global EventIndex for cross-deployment queries.
-//  6. If not a system event, fan out to the SinkRouter for external delivery.
+//  5. If not a system event, fan out to the SinkRouter for external delivery.
 //
 // Validation failures are terminal errors (HTTP 400) because they indicate
 // programming bugs, not transient infrastructure issues.
@@ -83,10 +82,8 @@ func (b EventBus) Emit(ctx restate.ObjectContext, event cloudevents.Event) error
 	if err != nil {
 		return err
 	}
-	// Fan out: index the event globally (for cross-deployment queries) and
-	// route to sinks (for external delivery). Both are fire-and-forget sends;
-	// failures in downstream processing don't block the event producer.
-	restate.ObjectSend(ctx, EventIndexServiceName, EventIndexGlobalKey, "Index").Send(record)
+	// Fan out to sinks for external delivery. Fire-and-forget send; failures
+	// in downstream processing don't block the event producer.
 	if !isSystemEventType(record.Event.Type()) {
 		restate.ServiceSend(ctx, SinkRouterServiceName, "Deliver").Send(record)
 	}
@@ -167,9 +164,7 @@ func eventSchemaForType(eventType string) (string, string, bool) {
 	case EventTypeResourceDeleteError:
 		return "events/lifecycle.cue", "#ResourceDeleteErrorData", true
 	case EventTypeSystemRetentionSweepStarted,
-		EventTypeSystemRetentionSweepCompleted,
-		EventTypeSystemRetentionShipFailed,
-		EventTypeSystemRetentionShipCompleted:
+		EventTypeSystemRetentionSweepCompleted:
 		return "events/system.cue", "#RetentionEventData", true
 	case EventTypeSystemSinkRegistered:
 		return "events/system.cue", "#SinkRegisteredData", true

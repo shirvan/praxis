@@ -33,7 +33,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/$defs/#DeploymentStatus"
+                    "$ref": "#/$defs/%23DeploymentStatus"
                 }
             },
             "required": [
@@ -53,7 +53,7 @@
             "const": "Deleting"
         }
     },
-    "$ref": "#/$defs/#ResourceEventData",
+    "$ref": "#/$defs/%23ResourceEventData",
     "required": [
         "error"
     ]

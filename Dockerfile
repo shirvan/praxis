@@ -3,7 +3,7 @@
 # A single build stage compiles every binary, sharing the module download and
 # Go build cache. Each service gets its own tiny final stage that docker-compose
 # selects via `target:`. This lets `docker compose up --build` run in parallel
-# without 9 redundant Go compilations fighting for CPU.
+# without redundant Go compilations fighting for CPU.
 
 # ── Shared build stage ──────────────────────────────────────────────────────
 
@@ -22,9 +22,6 @@ RUN CGO_ENABLED=0 go build -o /out/praxis-network        ./cmd/praxis-network
 RUN CGO_ENABLED=0 go build -o /out/praxis-compute        ./cmd/praxis-compute
 RUN CGO_ENABLED=0 go build -o /out/praxis-identity       ./cmd/praxis-identity
 RUN CGO_ENABLED=0 go build -o /out/praxis-monitoring     ./cmd/praxis-monitoring
-RUN CGO_ENABLED=0 go build -o /out/praxis-notifications  ./cmd/praxis-notifications
-RUN CGO_ENABLED=0 go build -o /out/praxis-concierge      ./cmd/praxis-concierge
-RUN CGO_ENABLED=0 go build -o /out/praxis-slack          ./cmd/praxis-slack
 
 # ── Per-service runtime stages ──────────────────────────────────────────────
 
@@ -52,16 +49,3 @@ ENTRYPOINT ["/praxis-identity"]
 FROM gcr.io/distroless/static-debian12:nonroot AS praxis-monitoring
 COPY --from=builder /out/praxis-monitoring /praxis-monitoring
 ENTRYPOINT ["/praxis-monitoring"]
-
-FROM gcr.io/distroless/static-debian12:nonroot AS praxis-notifications
-COPY --from=builder /out/praxis-notifications /praxis-notifications
-COPY schemas/ /schemas/
-ENTRYPOINT ["/praxis-notifications"]
-
-FROM gcr.io/distroless/static-debian12:nonroot AS praxis-concierge
-COPY --from=builder /out/praxis-concierge /praxis-concierge
-ENTRYPOINT ["/praxis-concierge"]
-
-FROM gcr.io/distroless/static-debian12:nonroot AS praxis-slack
-COPY --from=builder /out/praxis-slack /praxis-slack
-ENTRYPOINT ["/praxis-slack"]

@@ -3,10 +3,8 @@
 	workspace?:          string
 	deploymentKey?:      string
 	maxAge?:             string
-	shippedEvents?:      int & >=0
 	prunedEvents?:       int & >=0
 	prunedChunks?:       int & >=0
-	indexEntriesPruned?: int & >=0
 	deploymentsScanned?: int & >=0
 	deploymentsPruned?:  int & >=0
 	failedDeployments?: [...string]

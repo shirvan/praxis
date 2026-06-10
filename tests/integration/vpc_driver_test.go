@@ -63,7 +63,6 @@ func setupVPCDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 		restate.Reflect(driver),
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
-		restate.Reflect(orchestrator.EventIndex{}),
 		restate.Reflect(orchestrator.ResourceEventOwnerObj{}),
 		restate.Reflect(orchestrator.ResourceEventBridge{}),
 		restate.Reflect(orchestrator.SinkRouter{}),

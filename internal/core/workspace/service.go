@@ -116,7 +116,7 @@ func (WorkspaceService) Get(ctx restate.ObjectSharedContext, _ restate.Void) (Wo
 }
 
 // SetEventRetention stores the workspace retention policy after validating it
-// against the CUE schema and, when configured, ensuring the drain sink exists.
+// against the CUE schema.
 func (w *WorkspaceService) SetEventRetention(ctx restate.ObjectContext, policy EventRetentionPolicy) error {
 	cfg, err := restate.Get[*WorkspaceConfig](ctx, "config")
 	if err != nil {
@@ -129,17 +129,6 @@ func (w *WorkspaceService) SetEventRetention(ctx restate.ObjectContext, policy E
 	var normalized EventRetentionPolicy
 	if err := cuevalidate.DecodeFile(w.schemaDir, "notifications/retention.cue", "#RetentionPolicy", policy, &normalized); err != nil {
 		return restate.TerminalError(fmt.Errorf("invalid retention policy: %w", err), 400)
-	}
-	if normalized.ShipBeforeDelete {
-		sink, sinkErr := restate.WithRequestType[string, *orchestrator.NotificationSink](
-			restate.Object[*orchestrator.NotificationSink](ctx, orchestrator.NotificationSinkConfigServiceName, orchestrator.NotificationSinkConfigGlobalKey, "Get"),
-		).Request(normalized.DrainSink)
-		if sinkErr != nil {
-			return sinkErr
-		}
-		if sink == nil {
-			return restate.TerminalError(fmt.Errorf("drain sink %q is not registered", normalized.DrainSink), 400)
-		}
 	}
 
 	if cfg.Events == nil {

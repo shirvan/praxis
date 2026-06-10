@@ -12,7 +12,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/$defs/#DeploymentStatus"
+                    "$ref": "#/$defs/%23DeploymentStatus"
                 }
             },
             "required": [
@@ -38,5 +38,5 @@
             "const": "Cancelled"
         }
     },
-    "$ref": "#/$defs/#DeploymentEventData"
+    "$ref": "#/$defs/%23DeploymentEventData"
 }

@@ -6,8 +6,7 @@
 // state reads bounded while allowing streams to grow unbounded over time.
 //
 // The store assigns monotonically increasing sequence numbers to each event,
-// enabling range queries, cursor-based pagination, and coordinated pruning
-// with the global EventIndex.
+// enabling range queries, cursor-based pagination, and chunk-level pruning.
 package orchestrator
 
 import (
@@ -245,10 +244,8 @@ func (DeploymentEventStore) RollbackPlan(ctx restate.ObjectSharedContext, _ rest
 
 // Prune removes old events from this deployment's store. Events are eligible
 // for pruning if they are older than req.Before or exceed req.MaxEvents.
-// When req.ShipBeforeDelete is true, pruned events are first sent in batches
-// to the drain sink via SinkRouter.DrainBatch, ensuring no data is lost.
-// Returns the ranges of deleted sequences so the caller can prune the global
-// EventIndex accordingly.
+// Pruning operates at chunk granularity: a chunk is removed only when every
+// event in it is eligible.
 func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePruneRequest) (EventStorePruneResult, error) {
 	meta, err := restate.Get[*eventStoreMeta](ctx, "meta")
 	if err != nil {
@@ -268,13 +265,6 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 	}
 	if req.MaxEvents < 0 {
 		return EventStorePruneResult{}, restate.TerminalError(fmt.Errorf("maxEvents must be >= 0"), 400)
-	}
-	if req.ShipBeforeDelete && strings.TrimSpace(req.DrainSink) == "" {
-		return EventStorePruneResult{}, restate.TerminalError(fmt.Errorf("drain sink is required when shipBeforeDelete is true"), 400)
-	}
-	batchSize := req.BatchSize
-	if batchSize <= 0 {
-		batchSize = defaultEventChunkSize
 	}
 
 	type chunkInfo struct {
@@ -301,8 +291,7 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 
 	remaining := meta.ActiveCount
 	prunedChunks := make([]chunkInfo, 0)
-	prunedRecords := make([]SequencedCloudEvent, 0)
-	removedRanges := make([]EventSequenceRange, 0)
+	prunedCount := 0
 	for _, chunk := range chunks {
 		eligibleByAge := !req.Before.IsZero() && chunk.records[len(chunk.records)-1].Event.Time().Before(req.Before)
 		eligibleByCount := req.MaxEvents > 0 && remaining > int64(req.MaxEvents)
@@ -310,30 +299,12 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 			continue
 		}
 		prunedChunks = append(prunedChunks, chunk)
-		prunedRecords = append(prunedRecords, chunk.records...)
-		removedRanges = append(removedRanges, EventSequenceRange{
-			DeploymentKey: restate.Key(ctx),
-			StartSequence: chunk.records[0].Sequence,
-			EndSequence:   chunk.records[len(chunk.records)-1].Sequence,
-		})
+		prunedCount += len(chunk.records)
 		remaining -= int64(len(chunk.records))
 	}
 
 	if len(prunedChunks) == 0 {
 		return EventStorePruneResult{DeploymentKey: restate.Key(ctx), RemainingEvents: remaining}, nil
-	}
-
-	shippedEvents := 0
-	if req.ShipBeforeDelete {
-		for start := 0; start < len(prunedRecords); start += batchSize {
-			end := min(start+batchSize, len(prunedRecords))
-			if _, drainErr := restate.WithRequestType[DrainBatchRequest, restate.Void](
-				restate.Service[restate.Void](ctx, SinkRouterServiceName, "DrainBatch"),
-			).Request(DrainBatchRequest{SinkName: req.DrainSink, Records: prunedRecords[start:end]}); drainErr != nil {
-				return EventStorePruneResult{}, drainErr
-			}
-			shippedEvents += end - start
-		}
 	}
 
 	for _, chunk := range prunedChunks {
@@ -347,11 +318,9 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 
 	return EventStorePruneResult{
 		DeploymentKey:   restate.Key(ctx),
-		PrunedEvents:    len(prunedRecords),
+		PrunedEvents:    prunedCount,
 		PrunedChunks:    len(prunedChunks),
 		RemainingEvents: remaining,
-		ShippedEvents:   shippedEvents,
-		RemovedRanges:   removedRanges,
 	}, nil
 }
 

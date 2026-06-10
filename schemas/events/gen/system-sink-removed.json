@@ -37,7 +37,7 @@
             "type": "string"
         }
     },
-    "$ref": "#/$defs/#SinkEventData",
+    "$ref": "#/$defs/%23SinkEventData",
     "required": [
         "sinkName"
     ]

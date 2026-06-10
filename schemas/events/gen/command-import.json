@@ -51,7 +51,7 @@
             "type": "string"
         }
     },
-    "$ref": "#/$defs/#CommandEventData",
+    "$ref": "#/$defs/%23CommandEventData",
     "required": [
         "region",
         "resourceId"

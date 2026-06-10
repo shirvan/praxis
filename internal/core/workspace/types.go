@@ -59,10 +59,7 @@ type EventSettings struct {
 type EventRetentionPolicy struct {
 	MaxAge                 string `json:"maxAge,omitempty"`
 	MaxEventsPerDeployment int    `json:"maxEventsPerDeployment,omitempty"`
-	MaxIndexEntries        int    `json:"maxIndexEntries,omitempty"`
 	SweepInterval          string `json:"sweepInterval,omitempty"`
-	ShipBeforeDelete       bool   `json:"shipBeforeDelete,omitempty"`
-	DrainSink              string `json:"drainSink,omitempty"`
 }
 
 // DefaultEventRetentionPolicy returns the system defaults used when no
@@ -72,9 +69,7 @@ func DefaultEventRetentionPolicy() EventRetentionPolicy {
 	return EventRetentionPolicy{
 		MaxAge:                 "90d",
 		MaxEventsPerDeployment: 10000,
-		MaxIndexEntries:        100000,
 		SweepInterval:          "24h",
-		ShipBeforeDelete:       false,
 	}
 }
 

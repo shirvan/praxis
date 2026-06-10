@@ -68,8 +68,8 @@ wait-stack:
 # Rebuild and restart the core + driver packs, then re-register them.
 restart:
     just ensure-env
-    docker compose build --no-cache praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge praxis-slack
-    docker compose up -d praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring praxis-notifications praxis-concierge praxis-slack
+    docker compose build --no-cache praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring
+    docker compose up -d praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring
     just wait-stack
     just register
 
@@ -102,16 +102,6 @@ logs-monitoring:
     docker compose logs -f praxis-monitoring
 
 # Follow logs for the notifications event service.
-logs-notifications:
-    docker compose logs -f praxis-notifications
-
-# Follow logs for the concierge AI assistant service.
-logs-concierge:
-    docker compose logs -f praxis-concierge
-
-logs-slack:
-    docker compose logs -f praxis-slack
-
 # Follow logs for all driver packs together.
 logs-drivers:
     docker compose logs -f praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring
@@ -156,21 +146,6 @@ register:
         -H 'content-type: application/json' \
         -d '{"uri": "http://praxis-core:9080"}' | jq .
     @echo "✓ Praxis core services registered"
-    @echo "Registering Praxis Notifications (event bus + sinks)..."
-    @curl -s -X POST http://localhost:9070/deployments \
-        -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-notifications:9080"}' | jq .
-    @echo "✓ Praxis notifications services registered"
-    @echo "Registering Praxis Concierge (AI assistant)..."
-    @curl -s -X POST http://localhost:9070/deployments \
-        -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-concierge:9080"}' | jq .
-    @echo "✓ Praxis concierge services registered"
-    @echo "Registering Praxis Slack (gateway)..."
-    @curl -s -X POST http://localhost:9070/deployments \
-        -H 'content-type: application/json' \
-        -d '{"uri": "http://praxis-slack:9080"}' | jq .
-    @echo "✓ Praxis slack services registered"
 
 # ─── Build ──────────────────────────────────────────────────
 
@@ -178,14 +153,11 @@ register:
 build:
     go build -o bin/praxis ./cmd/praxis
     go build -o bin/praxis-core ./cmd/praxis-core
-    go build -o bin/praxis-notifications ./cmd/praxis-notifications
     go build -o bin/praxis-storage ./cmd/praxis-storage
     go build -o bin/praxis-network ./cmd/praxis-network
     go build -o bin/praxis-compute ./cmd/praxis-compute
     go build -o bin/praxis-identity ./cmd/praxis-identity
     go build -o bin/praxis-monitoring ./cmd/praxis-monitoring
-    go build -o bin/praxis-concierge ./cmd/praxis-concierge
-    go build -o bin/praxis-slack ./cmd/praxis-slack
 
 # Build CLI binary only
 build-cli:
@@ -244,10 +216,6 @@ test-core:
 # Run CLI unit tests
 test-cli:
     go test ./internal/cli/... -v -count=1 -race
-
-# Run Concierge unit tests
-test-concierge:
-    go test ./internal/concierge/... -v -count=1 -race
 
 # Run S3 driver unit tests only
 test-s3:
