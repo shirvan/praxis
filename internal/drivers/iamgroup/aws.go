@@ -36,7 +36,7 @@ type realIAMGroupAPI struct {
 func NewIAMGroupAPI(client *iamsdk.Client) IAMGroupAPI {
 	return &realIAMGroupAPI{
 		client:  client,
-		limiter: ratelimit.New("iam", 15, 8),
+		limiter: ratelimit.Shared("iam", 15, 8),
 	}
 }
 

@@ -36,7 +36,7 @@ type realHostedZoneAPI struct {
 
 // NewHostedZoneAPI constructs a production HostedZoneAPI with Route53 rate limiting.
 func NewHostedZoneAPI(client *route53sdk.Client) HostedZoneAPI {
-	return &realHostedZoneAPI{client: client, limiter: ratelimit.New("route53", 5, 3)}
+	return &realHostedZoneAPI{client: client, limiter: ratelimit.Shared("route53", 5, 3)}
 }
 
 // CreateHostedZone calls the Route53 CreateHostedZone API using CallerReference for

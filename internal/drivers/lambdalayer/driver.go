@@ -144,10 +144,17 @@ func (d *LambdaLayerDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	}
 	state.Generation++
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetLatestLayerVersion(rc, ref.ResourceID)
+		obs, runErr := api.GetLatestLayerVersion(rc, ref.ResourceID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
+		if IsNotFound(err) || restate.ErrorCode(err) == 404 {
 			return LambdaLayerOutputs{}, restate.TerminalError(fmt.Errorf("import failed: Lambda layer %s does not exist", ref.ResourceID), 404)
 		}
 		return LambdaLayerOutputs{}, err
@@ -259,10 +266,17 @@ func (d *LambdaLayerDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	}
 	previousOutputs := state.Outputs
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetLatestLayerVersion(rc, state.Outputs.LayerName)
+		obs, runErr := api.GetLatestLayerVersion(rc, state.Outputs.LayerName)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
+		if IsNotFound(err) || restate.ErrorCode(err) == 404 {
 			state.Status = types.StatusError
 			state.Error = fmt.Sprintf("Lambda layer %s was deleted externally", state.Outputs.LayerName)
 			state.LastReconcile = now

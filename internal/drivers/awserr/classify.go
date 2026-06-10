@@ -64,12 +64,26 @@ func errString(err error) string {
 }
 
 // HasCode returns true if the error's AWS error code matches any of the given codes.
+//
+// When no code can be extracted (typed extraction failed and the message lacks
+// the "api error" marker), falls back to scanning the message for "<code>:".
+// Modeled AWS errors stringify as "<Code>: <message>", and errors that crossed
+// a Restate journal boundary are flattened to plain strings, so this fallback
+// is what keeps classification working after replay.
 func HasCode(err error, codes ...string) bool {
-	code := ErrorCode(err)
-	if code == "" {
+	if code := ErrorCode(err); code != "" {
+		return slices.Contains(codes, code)
+	}
+	message := errString(err)
+	if message == "" {
 		return false
 	}
-	return slices.Contains(codes, code)
+	for _, code := range codes {
+		if strings.Contains(message, code+":") {
+			return true
+		}
+	}
+	return false
 }
 
 // NotFound wraps ErrNotFound with a descriptive message. Use this instead of
@@ -80,8 +94,16 @@ func NotFound(msg string) error {
 }
 
 // IsNotFoundErr returns true if any error in the chain wraps ErrNotFound.
+//
+// Falls back to string matching for errors flattened by the Restate journal:
+// NotFound wraps as "%s: not found", so a message that is exactly "not found"
+// or contains ": not found" is treated as a not-found condition.
 func IsNotFoundErr(err error) bool {
-	return errors.Is(err, ErrNotFound)
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	message := errString(err)
+	return message == "not found" || strings.Contains(message, ": not found")
 }
 
 // HasCodePrefix returns true if the error's AWS code starts with any of the prefixes.

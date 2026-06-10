@@ -45,7 +45,7 @@ type realTargetGroupAPI struct {
 // NewTargetGroupAPI constructs a production TargetGroupAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewTargetGroupAPI(client *elbv2sdk.Client) TargetGroupAPI {
-	return &realTargetGroupAPI{client: client, limiter: ratelimit.New("target-group", 15, 8)}
+	return &realTargetGroupAPI{client: client, limiter: ratelimit.Shared("target-group", 15, 8)}
 }
 
 // CreateTargetGroup calls Elastic Load Balancing v2 to create a new AWS ELBv2 Target Group from the given spec.

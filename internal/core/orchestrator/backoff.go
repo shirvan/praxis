@@ -79,10 +79,7 @@ func nextRetryDelay(resourceName string, attempt int, config RetryConfig, retryA
 	if capDelay > config.MaxDelay {
 		capDelay = config.MaxDelay
 	}
-	actual := deterministicJitter(resourceName, attempt, capDelay)
-	if retryAfter > actual {
-		actual = retryAfter
-	}
+	actual := max(deterministicJitter(resourceName, attempt, capDelay), retryAfter)
 	if actual <= 0 {
 		return config.BaseDelay
 	}
@@ -94,6 +91,7 @@ func deterministicJitter(resourceName string, attempt int, maxDelay time.Duratio
 		return 0
 	}
 	hash := fnv.New64a()
-	_, _ = hash.Write([]byte(fmt.Sprintf("%s:%d", resourceName, attempt)))
-	return time.Duration(hash.Sum64()%uint64(maxDelay+1))
+	_, _ = fmt.Fprintf(hash, "%s:%d", resourceName, attempt)
+	jitter := hash.Sum64() % uint64(maxDelay+1)
+	return time.Duration(jitter) //nolint:gosec // jitter < maxDelay+1, which fits int64
 }

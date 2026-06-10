@@ -21,23 +21,14 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// deleteResourceTimeout is the maximum time to wait for a single resource's
-// delete sub-invocation before recording a failure and continuing to the next
-// resource. This prevents a single hung deletion from blocking the entire
-// delete workflow.
-const deleteResourceTimeout = 5 * time.Minute
-
 // applyDrainInterval is the poll cadence used while waiting for an in-progress
 // apply workflow to reach a terminal state before deletion begins.
 const applyDrainInterval = 2 * time.Second
 
-// applyDrainMaxPolls is the maximum number of applyDrainInterval polls the
-// delete workflow will wait for an apply workflow to finish. After this many
-// iterations the apply workflow is presumed hard-killed (e.g. cancelled via the
-// Restate admin API) before it could call finalizeDeployment, leaving the
-// deployment state stuck at Running or Pending. The delete workflow
-// force-transitions the state to Cancelled so teardown can proceed.
-const applyDrainMaxPolls = 30 // 30 × 2 s ≈ 60 s
+// minApplyDrainBudget is the floor for how long the delete workflow waits for
+// a running apply to settle before presuming it was hard-killed (e.g. via the
+// Restate admin API) and force-transitioning the deployment to Cancelled.
+const minApplyDrainBudget = time.Minute
 
 // DeploymentDeleteWorkflow runs one asynchronous deployment-wide delete flow.
 //
@@ -56,6 +47,29 @@ func NewDeploymentDeleteWorkflow(providers *provider.Registry) *DeploymentDelete
 // ServiceName returns the Restate service name for the delete workflow.
 func (*DeploymentDeleteWorkflow) ServiceName() string {
 	return DeploymentDeleteWorkflowServiceName
+}
+
+// applyDrainBudget returns how long Run waits for an in-progress apply to
+// settle: the largest per-resource provision timeout (in-flight driver calls
+// keep running after RequestCancel) plus one drain interval of margin, never
+// less than minApplyDrainBudget.
+func (w *DeploymentDeleteWorkflow) applyDrainBudget(state *DeploymentState) time.Duration {
+	budget := minApplyDrainBudget
+	resources := planResourcesFromState(state)
+	for i := range resources {
+		resource := &resources[i]
+		adapter, err := w.providers.Get(resource.Kind)
+		if err != nil {
+			continue
+		}
+		for _, isUpdate := range []bool{false, true} {
+			timeout, err := resolveProvisionTimeout(adapter, resource.Lifecycle, isUpdate)
+			if err == nil && timeout > budget {
+				budget = timeout
+			}
+		}
+	}
+	return budget + applyDrainInterval
 }
 
 // Run deletes resources in reverse topological order.
@@ -85,12 +99,19 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	//
 	// A hard-kill of the apply workflow via the Restate admin API leaves the
 	// state permanently at Running or Pending because the workflow exits before
-	// it can call finalizeDeployment. After applyDrainMaxPolls iterations we
-	// assume that scenario, force-transition the state to Cancelled, and
-	// proceed. This allows operators to flush stuck deployments by deleting them.
+	// it can call finalizeDeployment. After the drain budget elapses we assume
+	// that scenario, force-transition the state to Cancelled, and proceed.
+	// This allows operators to flush stuck deployments by deleting them.
+	//
+	// The budget covers the largest per-resource provision timeout: after
+	// RequestCancel the apply stops dispatching new work, but deliberately
+	// lets in-flight driver operations finish, which can take minutes for
+	// slow resources (RDS, ACM). A 60s heuristic would start deleting
+	// resources whose Provision is still executing.
+	drainMaxPolls := int(w.applyDrainBudget(state) / applyDrainInterval)
 	drainPolls := 0
 	for state.Status == types.DeploymentRunning || state.Status == types.DeploymentPending {
-		if drainPolls >= applyDrainMaxPolls {
+		if drainPolls >= drainMaxPolls {
 			// Apply workflow is presumed dead. Force the state out of the
 			// transient status so the delete can proceed safely.
 			now, nowErr := currentTime(ctx)
@@ -106,7 +127,9 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			state.Status = types.DeploymentCancelled
 			break
 		}
-		_ = restate.Sleep(ctx, applyDrainInterval)
+		if err := restate.Sleep(ctx, applyDrainInterval); err != nil {
+			return DeploymentResult{}, err
+		}
 		drainPolls++
 		state, err = getDeploymentState(ctx, req.DeploymentKey)
 		if err != nil {
@@ -325,6 +348,9 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			continue
 		}
 		if first == timeout {
+			// Cancel the abandoned driver call so it cannot complete the
+			// delete long after the workflow has recorded the failure.
+			restate.CancelInvocation(ctx, pending.invocation.ID())
 			resource := exec.plan[resourceName]
 			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, fmt.Sprintf("delete timed out after %s", pending.timeout), req.Force); err != nil {
 				return DeploymentResult{}, err
@@ -346,7 +372,13 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			}
 		}
 
-		conditions := deletedConditions(exec.conditionsFor(resourceName), loopNow, "resource deleted")
+		// Fresh timestamp: loopNow was journaled before a potentially
+		// minutes-long delete wait.
+		deletedAt, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		conditions := deletedConditions(exec.conditionsFor(resourceName), deletedAt, "resource deleted")
 		exec.markDeleted(resourceName)
 		exec.setConditions(resourceName, conditions)
 		if err := updateDeploymentResource(ctx, req.DeploymentKey, ResourceUpdate{

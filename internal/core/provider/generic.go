@@ -19,14 +19,15 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 // PlanProbeFunc looks up the live provider state for a resource during plan.
 // The bool reports whether the resource exists; a NotFound from the provider
 // must be translated to (zero, false, nil), and other errors returned as-is —
-// the generic adapter wraps the call in restate.Run and treats errors as
-// terminal for the plan.
+// the generic adapter wraps the call in restate.Run and treats throttling as
+// retryable and everything else as terminal for the plan.
 type PlanProbeFunc[Obs any] func(ctx restate.RunContext, planID string) (Obs, bool, error)
 
 // GenericDescriptor declares everything kind-specific the GenericAdapter
@@ -185,6 +186,11 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
 		state, found, describeErr := probe(runCtx, planID)
 		if describeErr != nil {
+			// Throttled describes during a wide plan must retry, not fail
+			// the whole plan permanently.
+			if awserr.IsThrottled(describeErr) {
+				return describePlanResult{}, describeErr
+			}
 			return describePlanResult{}, restate.TerminalError(describeErr, 500)
 		}
 		return describePlanResult{State: state, Found: found}, nil

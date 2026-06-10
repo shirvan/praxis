@@ -7,9 +7,9 @@
 // Architecture:
 //
 //	┌─────────┐       HTTP/JSON        ┌──────────────┐
-//	│ praxis  │ ───────────────────────▷│ Restate      │
-//	│  CLI    │    (ingress client)     │ ──▷ Core     │
-//	└─────────┘                        │ ──▷ Drivers   │
+//	│ praxis  │ ──────────────────────▷│ Restate      │
+//	│  CLI    │    (ingress client)    │ ──▷ Core     │
+//	└─────────┘                        │ ──▷ Drivers  │
 //	                                   └──────────────┘
 //
 // The binary itself is thin: it constructs a Cobra root command from the cli
@@ -18,17 +18,25 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/shirvan/praxis/internal/cli"
 )
 
 // main constructs the Cobra command tree and executes the user's sub-command.
-// If the command fails, cli.HandleError renders it (styled text, or a JSON
-// envelope when -o json is active) and maps it to a stable exit code:
-// 1 general, 3 not found, 4 validation, 5 conflict, 6 auth.
+// The root context is cancelled on SIGINT/SIGTERM so long-running commands
+// (--wait, observe) shut down cleanly. If the command fails, cli.HandleError
+// renders it (styled text, or a JSON envelope when -o json is active) and maps
+// it to a stable exit code: 1 general, 3 not found, 4 validation, 5 conflict,
+// 6 auth.
 func main() {
-	if err := cli.NewRootCmd().Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := cli.NewRootCmd().ExecuteContext(ctx)
+	stop()
+	if err != nil {
 		os.Exit(cli.HandleError(err))
 	}
 }

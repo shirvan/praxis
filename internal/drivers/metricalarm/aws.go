@@ -45,7 +45,7 @@ type realMetricAlarmAPI struct {
 func NewMetricAlarmAPI(client *cloudwatch.Client) MetricAlarmAPI {
 	return &realMetricAlarmAPI{
 		client:  client,
-		limiter: ratelimit.New("cloudwatch-metric-alarm", 20, 10),
+		limiter: ratelimit.Shared("cloudwatch-metric-alarm", 20, 10),
 	}
 }
 

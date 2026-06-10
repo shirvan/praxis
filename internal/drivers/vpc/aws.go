@@ -37,7 +37,7 @@ type realVPCAPI struct {
 func NewVPCAPI(client *ec2sdk.Client) VPCAPI {
 	return &realVPCAPI{
 		client:  client,
-		limiter: ratelimit.New("vpc", 20, 10),
+		limiter: ratelimit.Shared("vpc", 20, 10),
 	}
 }
 
@@ -212,10 +212,13 @@ func (r *realVPCAPI) UpdateTags(ctx context.Context, vpcId string, tags map[stri
 				oldTags = append(oldTags, ec2types.Tag{Key: t.Key})
 			}
 			if len(oldTags) > 0 {
-				_, _ = r.client.DeleteTags(ctx, &ec2sdk.DeleteTagsInput{
+				_, err = r.client.DeleteTags(ctx, &ec2sdk.DeleteTagsInput{
 					Resources: []string{vpcId},
 					Tags:      oldTags,
 				})
+				if err != nil {
+					return fmt.Errorf("delete tags: %w", err)
+				}
 			}
 		}
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/eventing"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -97,27 +98,29 @@ func (d *S3BucketDriver) Provision(ctx restate.ObjectContext, spec S3BucketSpec)
 	state.Generation++
 
 	// --- Check if bucket already exists (idempotent create) ---
+	// Classification happens inside the Run callback: only terminal errors
+	// propagate out; bare errors are retried by Restate and never reach the caller.
 	bucketExists := false
 	existsResult, err := restate.Run(ctx, func(rc restate.RunContext) (bool, error) {
-		if headErr := api.HeadBucket(rc, spec.BucketName); headErr == nil {
+		headErr := api.HeadBucket(rc, spec.BucketName)
+		if headErr == nil {
 			return true, nil
-		} else if IsNotFound(headErr) {
-			return false, nil
-		} else {
-			return false, headErr
 		}
-	})
-	if err != nil {
-		// HeadBucket failed with a non-404 error.
-		if IsConflict(err) {
-			state.Status = types.StatusError
-			state.Error = fmt.Sprintf("bucket %s exists but is not controllable by Praxis", spec.BucketName)
-			restate.Set(ctx, drivers.StateKey, state)
-			return S3BucketOutputs{}, restate.TerminalError(
-				fmt.Errorf("%s", state.Error), 409,
+		if IsNotFound(headErr) {
+			return false, nil
+		}
+		if awserr.IsAccessDenied(headErr) {
+			// 403 from HeadBucket: the bucket exists but is owned by another account.
+			return false, restate.TerminalError(
+				fmt.Errorf("bucket %s exists but is not controllable by this account: %w", spec.BucketName, headErr), 409,
 			)
 		}
-		// Transient error — let Restate retry
+		return false, headErr // transient (throttling/network) — Restate retries
+	})
+	if err != nil {
+		state.Status = types.StatusError
+		state.Error = fmt.Sprintf("bucket %s exists but is not controllable by Praxis", spec.BucketName)
+		restate.Set(ctx, drivers.StateKey, state)
 		return S3BucketOutputs{}, err
 	}
 	bucketExists = existsResult
@@ -224,15 +227,18 @@ func (d *S3BucketDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) 
 
 	// --- Describe the existing bucket ---
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeBucket(rc, ref.ResourceID)
+		obs, descErr := api.DescribeBucket(rc, ref.ResourceID)
+		if descErr != nil {
+			if IsNotFound(descErr) {
+				return ObservedState{}, restate.TerminalError(
+					fmt.Errorf("import failed: bucket %s does not exist", ref.ResourceID), 404,
+				)
+			}
+			return ObservedState{}, descErr // transient — Restate retries
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			return S3BucketOutputs{}, restate.TerminalError(
-				fmt.Errorf("import failed: bucket %s does not exist", ref.ResourceID), 404,
-			)
-		}
-		// Transient error — let Restate retry
 		return S3BucketOutputs{}, err
 	}
 
@@ -548,21 +554,21 @@ func (d *S3BucketDriver) scheduleReconcile(ctx restate.ObjectContext, state *S3B
 // specFromObserved creates an S3BucketSpec from observed AWS state.
 // This ensures the first reconciliation after import sees no drift.
 func specFromObserved(name string, obs ObservedState) S3BucketSpec {
-	versioning := obs.VersioningStatus == "Enabled"
-	algo := obs.EncryptionAlgo
-	if algo == "" {
-		algo = "AES256"
-	}
-	return S3BucketSpec{
+	spec := S3BucketSpec{
 		BucketName: name,
 		Region:     obs.Region,
-		Versioning: versioning,
-		Encryption: EncryptionSpec{
-			Enabled:   algo != "",
-			Algorithm: algo,
-		},
-		Tags: obs.Tags,
+		Versioning: obs.VersioningStatus == "Enabled",
+		Tags:       obs.Tags,
 	}
+	// Only carry encryption into the spec when the bucket actually has it —
+	// synthesizing AES256 for an unencrypted bucket would create phantom drift.
+	if obs.EncryptionAlgo != "" {
+		spec.Encryption = EncryptionSpec{
+			Enabled:   true,
+			Algorithm: obs.EncryptionAlgo,
+		}
+	}
+	return spec
 }
 
 // ClearState clears all Virtual Object state for this resource.

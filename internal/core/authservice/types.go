@@ -6,11 +6,20 @@ package authservice
 type CredentialResponse struct {
 	AccessKeyID     string `json:"accessKeyId"`
 	SecretAccessKey string `json:"secretAccessKey"`
-	SessionToken    string `json:"sessionToken,omitempty"` //nolint:gosec // G117: field name matches AWS API contract, not a hardcoded secret
+	SessionToken    string `json:"sessionToken,omitempty"`
 	Region          string `json:"region"`
 	EndpointURL     string `json:"endpointUrl,omitempty"`
 	ExpiresAt       string `json:"expiresAt,omitempty"`
+
+	// Source identifies how the credentials were resolved. When it is
+	// SourceDefaultChain the key fields are empty and callers must use the
+	// AWS default credential chain instead of a static provider.
+	Source string `json:"source,omitempty"`
 }
+
+// SourceDefaultChain marks credentials that come from the AWS default
+// credential chain (env, IMDS, shared config) rather than resolved strings.
+const SourceDefaultChain = "default-chain"
 
 // CredentialStatus is the read-only view returned by GetStatus.
 type CredentialStatus struct {
@@ -51,8 +60,9 @@ type AuthState struct {
 type CachedCredential struct {
 	AccessKeyID     string `json:"accessKeyId"`
 	SecretAccessKey string `json:"secretAccessKey"`
-	SessionToken    string `json:"sessionToken,omitempty"` //nolint:gosec // G117: field name matches AWS API contract, not a hardcoded secret
+	SessionToken    string `json:"sessionToken,omitempty"`
 	ExpiresAt       string `json:"expiresAt,omitempty"`
+	Source          string `json:"source,omitempty"`
 }
 
 // ConfigureRequest is the input for the Configure handler.

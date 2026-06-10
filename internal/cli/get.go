@@ -218,7 +218,7 @@ func getTemplateDetail(flags *rootFlags, name string) error {
 	if record.Metadata.Description != "" {
 		renderer.writeLabelValue("Description", 12, record.Metadata.Description)
 	}
-	renderer.writeLabelValue("Digest", 12, record.Digest[:12])
+	renderer.writeLabelValue("Digest", 12, shortDigest(record.Digest))
 	renderer.writeLabelValue("Created", 12, formatTime(record.Metadata.CreatedAt))
 	renderer.writeLabelValue("Updated", 12, formatTime(record.Metadata.UpdatedAt))
 
@@ -263,7 +263,7 @@ func getSinkDetail(flags *rootFlags, name string) error {
 	if sink == nil {
 		return fmt.Errorf("notification sink %q not found", name)
 	}
-	return printJSON(sink)
+	return printJSON(redactSinkHeaders(*sink))
 }
 
 // getConfigValue reads a workspace-scoped configuration value.
@@ -353,7 +353,8 @@ func getDeployment(ctx context.Context, client *Client, key string, format Outpu
 	var resourceInputs map[string]map[string]any
 	if sections.Inputs || format == OutputJSON {
 		resourceInputs = make(map[string]map[string]any, len(detail.Resources))
-		for _, r := range detail.Resources {
+		for i := range detail.Resources {
+			r := &detail.Resources[i]
 			inputs, inputErr := client.GetResourceInputs(ctx, r.Kind, r.Key)
 			if inputErr == nil && inputs != nil {
 				resourceInputs[r.Name] = inputs

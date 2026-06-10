@@ -37,6 +37,15 @@ func TestHasDrift_AliasMatch(t *testing.T) {
 	))
 }
 
+func TestHasDrift_WildcardOctalEscapedNameMatches(t *testing.T) {
+	// Route53 returns "\052.example.com." for "*.example.com" — the escaped
+	// observed name must not register as drift against the raw desired name.
+	assert.False(t, route53record.HasDrift(
+		route53record.RecordSpec{HostedZoneId: "Z123", Name: "*.example.com", Type: "A", TTL: 300, ResourceRecords: []string{"1.2.3.4"}},
+		route53record.ObservedState{HostedZoneId: "Z123", Name: `\052.example.com.`, Type: "A", TTL: 300, ResourceRecords: []string{"1.2.3.4"}},
+	))
+}
+
 func TestComputeFieldDiffs_Multiple(t *testing.T) {
 	diffs := route53record.ComputeFieldDiffs(
 		route53record.RecordSpec{HostedZoneId: "Z123", Name: "example.com", Type: "A", TTL: 600, ResourceRecords: []string{"5.6.7.8"}, HealthCheckId: "hc-1"},

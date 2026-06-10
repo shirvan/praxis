@@ -35,7 +35,7 @@ type realIAMInstanceProfileAPI struct {
 func NewIAMInstanceProfileAPI(client *iamsdk.Client) IAMInstanceProfileAPI {
 	return &realIAMInstanceProfileAPI{
 		client:  client,
-		limiter: ratelimit.New("iam", 15, 8),
+		limiter: ratelimit.Shared("iam", 15, 8),
 	}
 }
 

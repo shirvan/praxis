@@ -18,6 +18,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 
+	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/cuevalidate"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
 )
@@ -68,9 +69,18 @@ func (WorkspaceService) Configure(ctx restate.ObjectContext, cfg WorkspaceConfig
 		return restate.TerminalError(fmt.Errorf("workspace %q: region is required", cfg.Name), 400)
 	}
 
-	// Verify the account alias exists via Auth.GetStatus.
-	_, err = restate.Object[any](ctx, "AuthService", cfg.Account, "GetStatus").Request(restate.Void{})
+	// Verify the account alias is actually registered. GetStatus succeeds for
+	// any key (returning a zero status for unconfigured aliases), so inspect
+	// the response rather than the error; transport errors propagate as-is so
+	// Restate can retry instead of misreporting them as an unknown alias.
+	status, err := restate.Object[authservice.CredentialStatus](ctx, authservice.ServiceName, cfg.Account, "GetStatus").Request(restate.Void{})
 	if err != nil {
+		if restate.IsTerminalError(err) {
+			return err
+		}
+		return fmt.Errorf("workspace %q: verify account alias %q: %w", cfg.Name, cfg.Account, err)
+	}
+	if status.CredentialSource == "" {
 		return restate.TerminalError(
 			fmt.Errorf("workspace %q: unknown account alias %q — register it with Auth.Configure first", cfg.Name, cfg.Account), 400,
 		)

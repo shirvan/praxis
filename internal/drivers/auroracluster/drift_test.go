@@ -33,10 +33,28 @@ func TestHasDrift_PortChanged(t *testing.T) {
 	assert.True(t, HasDrift(spec, obs))
 }
 
+func TestHasDrift_PortUnsetInSpecIgnored(t *testing.T) {
+	spec := AuroraClusterSpec{EngineVersion: "8.0", BackupRetentionPeriod: 7}
+	obs := ObservedState{EngineVersion: "8.0", Port: 3306, BackupRetentionPeriod: 7}
+	assert.False(t, HasDrift(spec, obs))
+	for _, d := range ComputeFieldDiffs(spec, obs) {
+		assert.NotEqual(t, "spec.port", d.Path)
+	}
+}
+
 func TestHasDrift_SubnetGroupChanged(t *testing.T) {
 	spec := AuroraClusterSpec{EngineVersion: "8.0", DBSubnetGroupName: "new-sg", BackupRetentionPeriod: 7}
 	obs := ObservedState{EngineVersion: "8.0", DBSubnetGroupName: "old-sg", BackupRetentionPeriod: 7}
 	assert.True(t, HasDrift(spec, obs))
+}
+
+func TestHasDrift_SubnetGroupUnsetInSpecIgnored(t *testing.T) {
+	spec := AuroraClusterSpec{EngineVersion: "8.0", BackupRetentionPeriod: 7}
+	obs := ObservedState{EngineVersion: "8.0", DBSubnetGroupName: "default-sg", BackupRetentionPeriod: 7}
+	assert.False(t, HasDrift(spec, obs))
+	for _, d := range ComputeFieldDiffs(spec, obs) {
+		assert.NotEqual(t, "spec.dbSubnetGroupName", d.Path)
+	}
 }
 
 func TestHasDrift_ParameterGroupChanged(t *testing.T) {

@@ -73,9 +73,22 @@ func (d *LambdaPermissionDriver) Provision(ctx restate.ObjectContext, spec Lambd
 	}
 	if state.Outputs.StatementId != "" {
 		_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-			return restate.Void{}, api.RemovePermission(rc, previousObserved.FunctionName, previousObserved.StatementId)
+			runErr := api.RemovePermission(rc, previousObserved.FunctionName, previousObserved.StatementId)
+			if runErr != nil {
+				if IsNotFound(runErr) {
+					return restate.Void{}, nil
+				}
+				if IsConflict(runErr) || IsPreconditionFailed(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 409)
+				}
+				if IsInvalidParameter(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 400)
+				}
+				return restate.Void{}, runErr
+			}
+			return restate.Void{}, nil
 		})
-		if err != nil && !IsNotFound(err) {
+		if err != nil {
 			state.Status = types.StatusError
 			state.Error = err.Error()
 			restate.Set(ctx, drivers.StateKey, state)
@@ -83,19 +96,36 @@ func (d *LambdaPermissionDriver) Provision(ctx restate.ObjectContext, spec Lambd
 		}
 	}
 	statement, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
-		return api.AddPermission(rc, spec)
+		stmt, runErr := api.AddPermission(rc, spec)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return "", restate.TerminalError(runErr, 404)
+			}
+			if IsConflict(runErr) || IsPreconditionFailed(runErr) {
+				return "", restate.TerminalError(runErr, 409)
+			}
+			if IsInvalidParameter(runErr) {
+				return "", restate.TerminalError(runErr, 400)
+			}
+			return "", runErr
+		}
+		return stmt, nil
 	})
 	if err != nil {
 		state.Status = types.StatusError
 		state.Error = err.Error()
 		restate.Set(ctx, drivers.StateKey, state)
-		if IsConflict(err) || IsPreconditionFailed(err) {
-			return LambdaPermissionOutputs{}, restate.TerminalError(err, 409)
-		}
 		return LambdaPermissionOutputs{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetPermission(rc, spec.FunctionName, spec.StatementId)
+		obs, runErr := api.GetPermission(rc, spec.FunctionName, spec.StatementId)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		state.Status = types.StatusError
@@ -129,10 +159,17 @@ func (d *LambdaPermissionDriver) Import(ctx restate.ObjectContext, ref types.Imp
 	}
 	state.Generation++
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetPermission(rc, functionName, statementID)
+		obs, runErr := api.GetPermission(rc, functionName, statementID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
+		if IsNotFound(err) || restate.ErrorCode(err) == 404 {
 			return LambdaPermissionOutputs{}, restate.TerminalError(fmt.Errorf("import failed: Lambda permission %s does not exist", ref.ResourceID), 404)
 		}
 		return LambdaPermissionOutputs{}, err
@@ -237,10 +274,17 @@ func (d *LambdaPermissionDriver) Reconcile(ctx restate.ObjectContext) (types.Rec
 		return types.ReconcileResult{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetPermission(rc, state.Observed.FunctionName, state.Observed.StatementId)
+		obs, runErr := api.GetPermission(rc, state.Observed.FunctionName, state.Observed.StatementId)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
+		if IsNotFound(err) || restate.ErrorCode(err) == 404 {
 			state.Status = types.StatusError
 			state.Error = fmt.Sprintf("Lambda permission %s was deleted externally", state.Outputs.StatementId)
 			state.LastReconcile = now

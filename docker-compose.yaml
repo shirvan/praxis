@@ -27,7 +27,7 @@ services:
     image: motoserver/moto:latest
     container_name: praxis-moto
     ports:
-      - "4566:4566"
+      - "127.0.0.1:4566:4566"
     environment:
       - MOTO_PORT=4566
       - MOTO_IAM_LOAD_MANAGED_POLICIES=true
@@ -62,9 +62,9 @@ services:
     image: docker.restate.dev/restatedev/restate:1.6
     container_name: praxis-restate
     ports:
-      - "8080:8080"   # ingress used by the CLI and by any external callers
-      - "9070:9070"   # admin API used by `just register`
-      - "9071:9071"   # metrics / observability
+      - "127.0.0.1:8080:8080"   # ingress used by the CLI and by any external callers
+      - "127.0.0.1:9070:9070"   # admin API used by `just register`
+      - "127.0.0.1:9071:9071"   # metrics / observability
     environment:
       - RESTATE_OBSERVABILITY__LOG__FILTER=restate=info
     volumes:
@@ -91,7 +91,7 @@ services:
       moto-init:
         condition: service_completed_successfully
     ports:
-      - "9081:9080"
+      - "127.0.0.1:9081:9080"
     environment:
       # Every Praxis service exposes a Restate endpoint on 9080 inside the
       # container. The host port only exists for local debugging convenience.
@@ -111,7 +111,7 @@ services:
       moto-init:
         condition: service_completed_successfully
     ports:
-      - "9084:9080"
+      - "127.0.0.1:9084:9080"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
@@ -129,7 +129,7 @@ services:
       moto-init:
         condition: service_completed_successfully
     ports:
-      - "9085:9080"
+      - "127.0.0.1:9085:9080"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
@@ -147,7 +147,7 @@ services:
       moto-init:
         condition: service_completed_successfully
     ports:
-      - "9082:9080"
+      - "127.0.0.1:9082:9080"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
@@ -165,7 +165,7 @@ services:
       moto-init:
         condition: service_completed_successfully
     ports:
-      - "9083:9080"
+      - "127.0.0.1:9083:9080"
     environment:
       # Praxis Core binds the command service and orchestration/read-model
       # services on one Restate-discoverable endpoint.
@@ -196,7 +196,7 @@ services:
       moto-init:
         condition: service_completed_successfully
     ports:
-      - "9087:9080"
+      - "127.0.0.1:9087:9080"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 

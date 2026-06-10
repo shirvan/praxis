@@ -47,7 +47,7 @@ type realEC2API struct {
 func NewEC2API(client *ec2sdk.Client) EC2API {
 	return &realEC2API{
 		client:  client,
-		limiter: ratelimit.New("ec2-instance", 20, 10),
+		limiter: ratelimit.Shared("ec2-instance", 20, 10),
 	}
 }
 

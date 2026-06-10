@@ -41,7 +41,7 @@ jobs:
 
       - name: Lint
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
           just lint
 
       - name: Unit tests
@@ -62,6 +62,9 @@ jobs:
       - name: Extract release notes from tag
         id: notes
         run: |
+          # actions/checkout converts annotated tags into lightweight ones
+          # (actions/checkout#290), so re-fetch the real tag object first.
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           # Get tag message body (skip the first "title" line)
           BODY=$(git tag -l --format='%(contents:body)' "${GITHUB_REF_NAME}")
           SUBJECT=$(git tag -l --format='%(contents:subject)' "${GITHUB_REF_NAME}")
@@ -97,13 +100,17 @@ jobs:
       matrix:
         image:
           - name: praxis-core
-            dockerfile: cmd/praxis-core/Dockerfile
+            target: praxis-core
           - name: praxis-storage
-            dockerfile: cmd/praxis-storage/Dockerfile
+            target: praxis-storage
           - name: praxis-network
-            dockerfile: cmd/praxis-network/Dockerfile
+            target: praxis-network
           - name: praxis-compute
-            dockerfile: cmd/praxis-compute/Dockerfile
+            target: praxis-compute
+          - name: praxis-identity
+            target: praxis-identity
+          - name: praxis-monitoring
+            target: praxis-monitoring
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,7 +130,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.image.dockerfile }}
+          file: Dockerfile
+          target: ${{ matrix.image.target }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}:${{ steps.version.outputs.version }}

@@ -55,8 +55,9 @@ func TestSpecFromObserved_VersioningNeverEnabled(t *testing.T) {
 }
 
 func TestSpecFromObserved_NoEncryption(t *testing.T) {
-	// When no encryption is reported (empty algo), specFromObserved defaults
-	// to AES256 since that's the AWS default since January 2023.
+	// When no encryption is reported (empty algo), the synthesized spec must
+	// not claim encryption — otherwise import-then-reconcile would see phantom
+	// drift (or worse, silently enable encryption on the bucket).
 	obs := ObservedState{
 		Region:           "us-east-1",
 		VersioningStatus: "Enabled",
@@ -65,8 +66,8 @@ func TestSpecFromObserved_NoEncryption(t *testing.T) {
 
 	spec := specFromObserved("test-bucket", obs)
 
-	assert.True(t, spec.Encryption.Enabled)
-	assert.Equal(t, "AES256", spec.Encryption.Algorithm)
+	assert.False(t, spec.Encryption.Enabled)
+	assert.Empty(t, spec.Encryption.Algorithm)
 }
 
 func TestSpecFromObserved_NilTags(t *testing.T) {

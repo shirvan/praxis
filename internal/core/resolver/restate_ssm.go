@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	restate "github.com/restatedev/sdk-go"
+
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 )
 
 // RestateSSMResolver wraps SSMResolver so parameter fetches are journaled via
@@ -46,11 +48,27 @@ func (r *RestateSSMResolver) Resolve(
 		return restate.Run(ctx, func(runCtx restate.RunContext) (map[string]string, error) {
 			result, err := r.inner.batchFetchMap(runCtx, paths)
 			if err != nil {
-				return nil, restate.TerminalError(err, 500)
+				return nil, classifySSMError(err)
 			}
 			return result, nil
 		})
 	})
+}
+
+// classifySSMError maps SSM fetch failures to Restate semantics: throttling
+// is returned bare so Restate retries it; everything else is terminal with a
+// code that reflects the failure class.
+func classifySSMError(err error) error {
+	switch {
+	case awserr.IsThrottled(err):
+		return err
+	case awserr.HasCode(err, "ParameterNotFound"):
+		return restate.TerminalError(err, 404)
+	case awserr.IsAccessDenied(err):
+		return restate.TerminalError(err, 403)
+	default:
+		return restate.TerminalError(err, 500)
+	}
 }
 
 // resolveWithFetcher delegates to the shared resolveSSMReferences function,

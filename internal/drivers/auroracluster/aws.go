@@ -55,7 +55,7 @@ type realAuroraClusterAPI struct {
 // NewAuroraClusterAPI creates a new API backed by the given RDS client.
 // Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewAuroraClusterAPI(client *rdssdk.Client) AuroraClusterAPI {
-	return &realAuroraClusterAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
+	return &realAuroraClusterAPI{client: client, limiter: ratelimit.Shared("rds", 15, 8)}
 }
 
 // CreateDBCluster calls rds:CreateDBCluster with the full spec.
@@ -170,7 +170,6 @@ func (r *realAuroraClusterAPI) ModifyDBCluster(ctx context.Context, spec AuroraC
 		DBClusterIdentifier:               aws.String(spec.ClusterIdentifier),
 		EngineVersion:                     aws.String(spec.EngineVersion),
 		ApplyImmediately:                  aws.Bool(applyImmediately),
-		Port:                              aws.Int32(spec.Port),
 		DBClusterParameterGroupName:       aws.String(spec.DBClusterParameterGroupName),
 		VpcSecurityGroupIds:               spec.VpcSecurityGroupIds,
 		BackupRetentionPeriod:             aws.Int32(spec.BackupRetentionPeriod),
@@ -178,6 +177,9 @@ func (r *realAuroraClusterAPI) ModifyDBCluster(ctx context.Context, spec AuroraC
 		PreferredMaintenanceWindow:        aws.String(spec.PreferredMaintenanceWindow),
 		DeletionProtection:                aws.Bool(spec.DeletionProtection),
 		CloudwatchLogsExportConfiguration: &rdstypes.CloudwatchLogsExportConfiguration{EnableLogTypes: spec.EnabledCloudwatchLogsExports},
+	}
+	if spec.Port > 0 {
+		input.Port = aws.Int32(spec.Port)
 	}
 	if spec.MasterUserPassword != "" {
 		input.MasterUserPassword = aws.String(spec.MasterUserPassword)

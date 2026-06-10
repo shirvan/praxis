@@ -17,6 +17,7 @@ import (
 	restatetest "github.com/restatedev/sdk-go/testing"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/eventing"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -122,7 +123,8 @@ func (f *fakeRecordAPI) DescribeRecord(ctx context.Context, identity RecordIdent
 	key := recordKey(identity)
 	obs, ok := f.records[key]
 	if !ok {
-		return ObservedState{}, &mockAPIError{code: "InvalidInput", message: fmt.Sprintf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId)}
+		// Mirror the real DescribeRecord, which wraps awserr.ErrNotFound.
+		return ObservedState{}, awserr.NotFound(fmt.Sprintf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId))
 	}
 	return obs, nil
 }

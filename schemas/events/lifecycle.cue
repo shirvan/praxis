@@ -1,3 +1,5 @@
+package events
+
 #DeploymentStatus: "Pending" | "Running" | "Complete" | "Failed" | "Deleting" | "Deleted" | "Cancelled"
 
 #DeploymentEventData: {

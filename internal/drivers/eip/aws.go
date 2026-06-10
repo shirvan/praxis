@@ -44,7 +44,7 @@ type realEIPAPI struct {
 func NewEIPAPI(client *ec2sdk.Client) EIPAPI {
 	return &realEIPAPI{
 		client:  client,
-		limiter: ratelimit.New("elastic-ip", 20, 10),
+		limiter: ratelimit.Shared("elastic-ip", 20, 10),
 	}
 }
 

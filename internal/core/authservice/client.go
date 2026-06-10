@@ -69,19 +69,25 @@ func (c *LocalAuthClient) GetCredentials(_ restate.Context, accountAlias string)
 }
 
 // buildAWSConfig reconstructs an aws.Config from a CredentialResponse.
-// Uses a static credentials provider because the CredentialResponse contains
-// already-resolved credential strings from the AuthService. If EndpointURL
-// is set (Moto), configures BaseEndpoint for local development.
+// For resolved credential strings (static/role sources) it installs a static
+// credentials provider. For default-chain credentials it lets the AWS default
+// chain (env, shared config, IMDS) resolve credentials directly — the
+// response carries no usable key material in that case. If EndpointURL is
+// set (Moto), configures BaseEndpoint for local development.
 func buildAWSConfig(creds CredentialResponse) (aws.Config, error) {
-	provider := credentials.NewStaticCredentialsProvider(
-		creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken,
-	)
-
-	cfg, err := awsconfig.LoadDefaultConfig(
-		context.Background(),
+	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(creds.Region),
-		awsconfig.WithCredentialsProvider(provider),
-	)
+	}
+	// The AccessKeyID check covers state cached before the Source field existed.
+	if creds.Source != SourceDefaultChain && creds.AccessKeyID != SourceDefaultChain {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(
+				creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken,
+			),
+		))
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		return aws.Config{}, fmt.Errorf("build aws.Config from credentials: %w", err)
 	}

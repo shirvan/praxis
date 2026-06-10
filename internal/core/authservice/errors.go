@@ -220,6 +220,13 @@ func isAWSRetryable(err error) bool {
 	return awserr.IsThrottled(err)
 }
 
+// isValidationFailure returns true for AWS validation-class errors that will
+// never succeed on retry (malformed ARNs, bad parameters, disabled regions).
+func isValidationFailure(err error) bool {
+	return awserr.HasCodePrefix(err, "Validation", "InvalidParameter", "Malformed") ||
+		awserr.HasCode(err, "RegionDisabledException", "InvalidIdentityToken")
+}
+
 // ClassifyAWSError wraps an AWS API error with auth context if it's an
 // authorization failure. Returns the original error unchanged if not auth-related.
 func ClassifyAWSError(err error, account string) error {

@@ -13,3 +13,14 @@ func TestLayerErrorClassifiers(t *testing.T) {
 	assert.False(t, IsInvalidParameter(nil))
 	assert.False(t, IsPolicyNotFound(nil))
 }
+
+func TestLayerContent_InvalidBase64(t *testing.T) {
+	_, err := layerContent(CodeSpec{ZipFile: "not-valid-base64!!!"})
+	assert.ErrorContains(t, err, "decode zipFile")
+}
+
+func TestLayerContent_ValidBase64(t *testing.T) {
+	content, err := layerContent(CodeSpec{ZipFile: "aGVsbG8="})
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("hello"), content.ZipFile)
+}

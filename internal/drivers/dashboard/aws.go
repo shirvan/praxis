@@ -36,7 +36,7 @@ type realDashboardAPI struct {
 func NewDashboardAPI(client *cloudwatch.Client) DashboardAPI {
 	return &realDashboardAPI{
 		client:  client,
-		limiter: ratelimit.New("cloudwatch-dashboard", 20, 10),
+		limiter: ratelimit.Shared("cloudwatch-dashboard", 20, 10),
 	}
 }
 

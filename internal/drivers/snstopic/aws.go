@@ -38,7 +38,7 @@ type realTopicAPI struct {
 func NewTopicAPI(client *snssdk.Client) TopicAPI {
 	return &realTopicAPI{
 		client:  client,
-		limiter: ratelimit.New("sns-topic", 30, 10),
+		limiter: ratelimit.Shared("sns-topic", 30, 10),
 	}
 }
 

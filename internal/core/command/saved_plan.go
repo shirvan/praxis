@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"time"
 
-	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -52,39 +50,6 @@ func executionPlanFromCompiled(
 	return plan
 }
 
-func executionPlanToDeploymentPlan(
-	plan types.ExecutionPlan,
-	createdAt time.Time,
-	maxParallelism int,
-	retryConfig *orchestrator.RetryConfig,
-) orchestrator.DeploymentPlan {
-	resources := make([]orchestrator.PlanResource, 0, len(plan.Resources))
-	for i := range plan.Resources {
-		resource := plan.Resources[i]
-		resources = append(resources, orchestrator.PlanResource{
-			Name:          resource.Name,
-			Kind:          resource.Kind,
-			DriverService: resource.DriverService,
-			Key:           resource.Key,
-			Spec:          append(json.RawMessage(nil), resource.Spec...),
-			Dependencies:  append([]string(nil), resource.Dependencies...),
-			Expressions:   cloneStringMap(resource.Expressions),
-			Lifecycle:     cloneLifecycle(resource.Lifecycle),
-		})
-	}
-	return orchestrator.DeploymentPlan{
-		Key:            plan.DeploymentKey,
-		Account:        plan.Account,
-		Workspace:      plan.Workspace,
-		Resources:      resources,
-		Variables:      cloneAnyMap(plan.Variables),
-		CreatedAt:      createdAt,
-		TemplatePath:   plan.TemplatePath,
-		MaxParallelism: maxParallelism,
-		RetryConfig:    retryConfig,
-	}
-}
-
 func ComputeSavedPlanHash(plan types.ExecutionPlan) (string, error) {
 	encoded, err := json.Marshal(plan)
 	if err != nil {
@@ -109,6 +74,12 @@ func VerifySavedPlan(saved types.SavedPlan, signingKey []byte) error {
 		return fmt.Errorf("saved plan content hash mismatch")
 	}
 	if saved.Signature == "" {
+		// When a signing key is configured, an unsigned plan must be rejected:
+		// otherwise stripping the signature field (and recomputing the
+		// unauthenticated content hash) bypasses verification entirely.
+		if len(signingKey) > 0 {
+			return fmt.Errorf("saved plan is unsigned but a signing key is configured; re-create the plan with signing enabled")
+		}
 		return nil
 	}
 	if len(signingKey) == 0 {
@@ -137,7 +108,7 @@ func WriteSavedPlanFile(path string, saved types.SavedPlan) error {
 }
 
 func ReadSavedPlanFile(path string) (types.SavedPlan, error) {
-	encoded, err := os.ReadFile(path)
+	encoded, err := os.ReadFile(path) //nolint:gosec // user-supplied plan path is the command's contract
 	if err != nil {
 		return types.SavedPlan{}, fmt.Errorf("read saved plan %q: %w", path, err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/drivers/awserr"
 
@@ -39,7 +40,7 @@ type realLayerAPI struct {
 
 // NewLayerAPI creates a production LayerAPI with rate limiting (15 tokens/s, burst 10).
 func NewLayerAPI(client *lambdasdk.Client) LayerAPI {
-	return &realLayerAPI{client: client, limiter: ratelimit.New("lambda-layer", 15, 10)}
+	return &realLayerAPI{client: client, limiter: ratelimit.Shared("lambda-layer", 15, 10)}
 }
 
 // PublishLayerVersion creates a new immutable layer version from the spec.
@@ -47,13 +48,17 @@ func (r *realLayerAPI) PublishLayerVersion(ctx context.Context, spec LambdaLayer
 	if err := validateCode(spec.Code); err != nil {
 		return LambdaLayerOutputs{}, err
 	}
+	content, err := layerContent(spec.Code)
+	if err != nil {
+		return LambdaLayerOutputs{}, restate.TerminalError(err, 400)
+	}
 	if err := r.limiter.Wait(ctx); err != nil {
 		return LambdaLayerOutputs{}, err
 	}
 	input := &lambdasdk.PublishLayerVersionInput{
 		LayerName:   aws.String(spec.LayerName),
 		Description: optionalString(spec.Description),
-		Content:     layerContent(spec.Code),
+		Content:     content,
 	}
 	if len(spec.CompatibleRuntimes) > 0 {
 		input.CompatibleRuntimes = toLayerRuntimes(spec.CompatibleRuntimes)
@@ -226,7 +231,8 @@ func (r *realLayerAPI) getLayerVersionPermissions(ctx context.Context, layerName
 }
 
 // layerContent converts CodeSpec to the Lambda SDK layer content input.
-func layerContent(code CodeSpec) *lambdatypes.LayerVersionContentInput {
+// Returns an error if the inline zipFile is not valid base64.
+func layerContent(code CodeSpec) (*lambdatypes.LayerVersionContentInput, error) {
 	content := &lambdatypes.LayerVersionContentInput{}
 	if code.S3 != nil {
 		content.S3Bucket = aws.String(code.S3.Bucket)
@@ -234,10 +240,13 @@ func layerContent(code CodeSpec) *lambdatypes.LayerVersionContentInput {
 		content.S3ObjectVersion = optionalString(code.S3.ObjectVersion)
 	}
 	if code.ZipFile != "" {
-		decoded, _ := base64.StdEncoding.DecodeString(code.ZipFile)
+		decoded, err := base64.StdEncoding.DecodeString(code.ZipFile)
+		if err != nil {
+			return nil, fmt.Errorf("decode zipFile: %w", err)
+		}
 		content.ZipFile = decoded
 	}
-	return content
+	return content, nil
 }
 
 func toArchitectures(values []string) []lambdatypes.Architecture {

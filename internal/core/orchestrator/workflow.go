@@ -18,10 +18,6 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// forceReplaceDeleteTimeout is the maximum time to wait for a force-replace
-// delete sub-invocation before recording a failure and continuing the dispatch.
-const forceReplaceDeleteTimeout = 5 * time.Minute
-
 // DeploymentWorkflow executes one apply/re-apply run for a deployment.
 //
 // The workflow itself is intentionally thin on durable state. The authoritative
@@ -341,6 +337,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						continue
 					}
 					if delFirst == delTimeout {
+						restate.CancelInvocation(ctx, delInvocation.ID())
 						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("force-replace delete timed out after %s", replaceDeleteTimeout)); err != nil {
 							return DeploymentResult{}, err
 						}
@@ -411,7 +408,9 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			}
 			if nextRetryAt, ok := exec.nextRetryAt(); ok {
 				if loopNow.Before(nextRetryAt) {
-					_ = restate.Sleep(ctx, nextRetryAt.Sub(loopNow))
+					if err := restate.Sleep(ctx, nextRetryAt.Sub(loopNow)); err != nil {
+						return DeploymentResult{}, err
+					}
 				}
 				continue
 			}
@@ -447,6 +446,9 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			continue
 		}
 		if first == waitTimeout {
+			// Cancel the abandoned driver call: without this it keeps running
+			// and could provision the resource after dependents were skipped.
+			restate.CancelInvocation(ctx, pending.invocation.ID())
 			resource := exec.plan[resourceName]
 			if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind, fmt.Sprintf("resource timed out after %s", pending.timeout)); recErr != nil {
 				return DeploymentResult{}, recErr
@@ -556,6 +558,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					continue
 				}
 				if delFirst == delTimeout {
+					restate.CancelInvocation(ctx, delInvocation.ID())
 					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
 						fmt.Sprintf("auto-replace delete timed out after %s", replaceDeleteTimeout)); recErr != nil {
 						return DeploymentResult{}, recErr
@@ -689,9 +692,15 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	finalError := ""
 	if cancellationRequested {
 		pending := exec.skipPendingForCancellation()
+		// Fetch a fresh timestamp: `now` was journaled before the dispatch
+		// loop, which can run for many minutes.
+		skippedAt, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
 		for _, name := range pending {
 			resource := exec.plan[name]
-			conditions := skippedConditions(exec.conditionsFor(name), now, exec.errors[name])
+			conditions := skippedConditions(exec.conditionsFor(name), skippedAt, exec.errors[name])
 			exec.setConditions(name, conditions)
 			if err := updateDeploymentResource(ctx, plan.Key, ResourceUpdate{
 				Name:       name,

@@ -613,7 +613,7 @@ func TestObserveCmd_Resource(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(types.ResourceStatusResponse{
+		_ = json.NewEncoder(w).Encode(types.StatusResponse{
 			Status:     types.StatusReady,
 			Mode:       types.ModeManaged,
 			Generation: 1,

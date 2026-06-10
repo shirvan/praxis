@@ -1,3 +1,5 @@
+package events
+
 #CommandEventData: {
 	message:     string
 	action:      string

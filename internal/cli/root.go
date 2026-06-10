@@ -113,8 +113,12 @@ drift detection, dependency ordering, and lifecycle management.`,
 		return fmt.Errorf("unknown command %q for \"praxis\"\nRun 'praxis --help' for usage", args[0])
 	}
 
-	// Global flags available to every subcommand.
+	// Global flags available to every subcommand. Endpoint precedence:
+	// --endpoint flag > PRAXIS_RESTATE_ENDPOINT > ~/.praxis/config.json > default.
 	defaultEndpoint := os.Getenv(envRestateEndpoint)
+	if defaultEndpoint == "" {
+		defaultEndpoint = LoadCLIConfig().Endpoint
+	}
 	if defaultEndpoint == "" {
 		defaultEndpoint = defaultRestateEndpoint
 	}
@@ -154,7 +158,7 @@ drift detection, dependency ordering, and lifecycle management.`,
 
 		// Utilities
 		newFmtCmd(),
-		newVersionCmd(),
+		newVersionCmd(flags),
 	)
 
 	return root

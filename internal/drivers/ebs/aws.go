@@ -58,7 +58,7 @@ type realEBSAPI struct {
 func NewEBSAPI(client *ec2sdk.Client) EBSAPI {
 	return &realEBSAPI{
 		client:  client,
-		limiter: ratelimit.New("ebs-volume", 20, 10),
+		limiter: ratelimit.Shared("ebs-volume", 20, 10),
 	}
 }
 

@@ -163,6 +163,13 @@ func (s *PraxisCommandService) compileTemplate(
 
 		dataSources, err = s.resolveDataSources(ctx, evalResult.DataSources, accountName)
 		if err != nil {
+			// Errors from nested restate.Run calls are already classified
+			// (terminal with a meaningful code, or retried before reaching
+			// here); re-wrapping would obscure the code and misreport
+			// transient infrastructure failures as permanent.
+			if restate.IsTerminalError(err) {
+				return nil, err
+			}
 			return nil, restate.TerminalError(err, 500)
 		}
 
@@ -181,11 +188,17 @@ func (s *PraxisCommandService) compileTemplate(
 	// which JSON paths are sensitive (for masking in rendered output).
 	ssmResolver, err := s.newSSMResolver(ctx, accountName)
 	if err != nil {
+		if restate.IsTerminalError(err) {
+			return nil, err
+		}
 		return nil, restate.TerminalError(err, 500)
 	}
 
 	ssmResolvedSpecs, sensitive, err := ssmResolver.Resolve(ctx, rawSpecs)
 	if err != nil {
+		if restate.IsTerminalError(err) {
+			return nil, err
+		}
 		return nil, restate.TerminalError(err, 400)
 	}
 

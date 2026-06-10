@@ -586,21 +586,3 @@ type SavedPlan struct {
 	CreatedAt    time.Time     `json:"createdAt"`
 	TemplateHash string        `json:"templateHash,omitempty"`
 }
-
-// ResourceStatusResponse holds the status returned by a driver's GetStatus
-// shared handler. This is a lightweight query that does not trigger any
-// cloud API calls — it reads the driver's locally cached state only.
-type ResourceStatusResponse struct {
-	// Status is the current lifecycle status of the resource.
-	Status ResourceStatus `json:"status"`
-
-	// Mode indicates whether the resource is Managed or Observed.
-	Mode Mode `json:"mode"`
-
-	// Generation is a monotonically increasing counter incremented on
-	// each state-changing operation (Provision, Import, Reconcile).
-	Generation int64 `json:"generation"`
-
-	// Error holds the last error message, if the resource is in StatusError.
-	Error string `json:"error,omitempty"`
-}

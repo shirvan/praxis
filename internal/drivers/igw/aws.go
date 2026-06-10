@@ -38,7 +38,7 @@ type realIGWAPI struct {
 func NewIGWAPI(client *ec2sdk.Client) IGWAPI {
 	return &realIGWAPI{
 		client:  client,
-		limiter: ratelimit.New("internet-gateway", 20, 10),
+		limiter: ratelimit.Shared("internet-gateway", 20, 10),
 	}
 }
 

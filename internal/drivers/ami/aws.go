@@ -46,7 +46,7 @@ type realAMIAPI struct {
 func NewAMIAPI(client *ec2sdk.Client) AMIAPI {
 	return &realAMIAPI{
 		client:  client,
-		limiter: ratelimit.New("ami", 20, 10),
+		limiter: ratelimit.Shared("ami", 20, 10),
 	}
 }
 

@@ -185,9 +185,10 @@ func (d *RDSInstanceDriver) Import(ctx restate.ObjectContext, ref types.ImportRe
 	return state.Outputs, nil
 }
 
-// Delete removes the RDS instance. Auto-disables deletion protection before
-// deleting. Skips the final snapshot. Waits for full deletion before returning.
-// Observed-mode resources cannot be deleted.
+// Delete removes the RDS instance. Fails with 409 if deletion protection is
+// enabled on the observed instance; the user must set deletionProtection: false
+// in the spec and apply first. Skips the final snapshot. Waits for full
+// deletion before returning. Observed-mode resources cannot be deleted.
 func (d *RDSInstanceDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[RDSInstanceState](ctx, drivers.StateKey)
 	if err != nil {
@@ -212,17 +213,7 @@ func (d *RDSInstanceDriver) Delete(ctx restate.ObjectContext) error {
 		return restate.TerminalError(err, 400)
 	}
 	if state.Observed.DeletionProtection {
-		spec := state.Desired
-		spec.DeletionProtection = false
-		if err := d.correctDrift(ctx, api, spec, state.Observed, state.Desired); err != nil {
-			return err
-		}
-		_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-			return restate.Void{}, api.WaitUntilAvailable(rc, identifier)
-		})
-		if err != nil {
-			return err
-		}
+		return deletionProtectionError(identifier)
 	}
 	state.Status = types.StatusDeleting
 	state.Error = ""
@@ -295,7 +286,14 @@ func (d *RDSInstanceDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 		return types.ReconcileResult{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeDBInstance(rc, identifier)
+		obs, runErr := api.DescribeDBInstance(rc, identifier)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {
@@ -417,6 +415,12 @@ func (d *RDSInstanceDriver) scheduleReconcile(ctx restate.ObjectContext, state *
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+}
+
+// deletionProtectionError is the terminal error returned when Delete is
+// attempted while the observed instance still has deletion protection enabled.
+func deletionProtectionError(identifier string) error {
+	return restate.TerminalError(fmt.Errorf("deletion protection is enabled on %s; set deletionProtection: false in the spec, apply, then retry the delete", identifier), 409)
 }
 
 // apiForAccount resolves AWS credentials and returns an RDSInstanceAPI client.

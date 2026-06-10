@@ -1,3 +1,5 @@
+package events
+
 #PolicyPreventedDestroyData: {
 	message:      string
 	policy:       "lifecycle.preventDestroy"

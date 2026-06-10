@@ -43,7 +43,7 @@ type realRouteTableAPI struct {
 func NewRouteTableAPI(client *ec2sdk.Client) RouteTableAPI {
 	return &realRouteTableAPI{
 		client:  client,
-		limiter: ratelimit.New("route-table", 20, 10),
+		limiter: ratelimit.Shared("route-table", 20, 10),
 	}
 }
 

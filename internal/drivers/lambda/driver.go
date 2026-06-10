@@ -420,6 +420,15 @@ func (d *LambdaFunctionDriver) correctDrift(ctx restate.ObjectContext, api Lambd
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.UpdateFunctionConfiguration(rc, desired, observed)
 			if runErr != nil {
+				if IsNotFound(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 404)
+				}
+				if IsConflict(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 409)
+				}
+				if IsInvalidParameter(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 400)
+				}
 				return restate.Void{}, runErr
 			}
 			return restate.Void{}, nil
@@ -435,6 +444,15 @@ func (d *LambdaFunctionDriver) correctDrift(ctx restate.ObjectContext, api Lambd
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.UpdateTags(rc, observed.FunctionArn, desired.Tags)
 			if runErr != nil {
+				if IsNotFound(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 404)
+				}
+				if IsConflict(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 409)
+				}
+				if IsInvalidParameter(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 400)
+				}
 				return restate.Void{}, runErr
 			}
 			return restate.Void{}, nil

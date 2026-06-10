@@ -21,10 +21,13 @@ type FieldDiffEntry struct {
 // Immutable fields (engine, masterUsername, databaseName) are NOT checked here.
 func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
-	if desired.EngineVersion != observed.EngineVersion || desired.Port != observed.Port {
+	if desired.EngineVersion != observed.EngineVersion {
 		return true
 	}
-	if desired.DBSubnetGroupName != observed.DBSubnetGroupName {
+	if desired.Port != 0 && desired.Port != observed.Port {
+		return true
+	}
+	if desired.DBSubnetGroupName != "" && desired.DBSubnetGroupName != observed.DBSubnetGroupName {
 		return true
 	}
 	if desired.DBClusterParameterGroupName != "" && desired.DBClusterParameterGroupName != observed.DBClusterParameterGroupName {
@@ -63,8 +66,12 @@ func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []Fiel
 		}
 	}
 	appendIfDifferent("spec.engineVersion", observed.EngineVersion, desired.EngineVersion)
-	appendIfDifferent("spec.port", observed.Port, desired.Port)
-	appendIfDifferent("spec.dbSubnetGroupName", observed.DBSubnetGroupName, desired.DBSubnetGroupName)
+	if desired.Port != 0 {
+		appendIfDifferent("spec.port", observed.Port, desired.Port)
+	}
+	if desired.DBSubnetGroupName != "" {
+		appendIfDifferent("spec.dbSubnetGroupName", observed.DBSubnetGroupName, desired.DBSubnetGroupName)
+	}
 	if desired.DBClusterParameterGroupName != "" {
 		appendIfDifferent("spec.dbClusterParameterGroupName", observed.DBClusterParameterGroupName, desired.DBClusterParameterGroupName)
 	}

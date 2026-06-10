@@ -1,3 +1,5 @@
+package notifications
+
 #SinkFilter: {
 	types?: [...string]
 	categories?: [...("lifecycle" | "drift" | "policy" | "command" | "system")]

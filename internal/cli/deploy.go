@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -74,13 +75,13 @@ Examples:
 				return fmt.Errorf("cannot combine --orphan-removed with --target")
 			}
 			if opts.planFile != "" {
-				return deployFromSavedPlan(flags, opts)
+				return deployFromSavedPlan(cmd.Context(), flags, opts)
 			}
 			source := args[0]
 			if isFilePath(source) {
-				return deployFromFile(flags, source, opts)
+				return deployFromFile(cmd.Context(), flags, source, opts)
 			}
-			return deployFromTemplate(flags, source, opts)
+			return deployFromTemplate(cmd.Context(), flags, source, opts)
 		},
 	}
 
@@ -106,7 +107,7 @@ Examples:
 	return cmd
 }
 
-func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) error {
+func deployFromFile(ctx context.Context, flags *rootFlags, templatePath string, opts deployOpts) error {
 	renderer := flags.renderer()
 	workspace := flags.activeWorkspace()
 
@@ -121,7 +122,6 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 	}
 
 	client := flags.newClient()
-	ctx := context.Background()
 
 	planResp, err := client.Plan(ctx, types.PlanRequest{
 		Template:      string(content),
@@ -162,8 +162,8 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 		return nil
 	}
 
-	if !opts.yes && !confirmDeploy(renderer) {
-		return nil
+	if proceed, err := confirmOrFail(flags, renderer, opts.yes); err != nil || !proceed {
+		return err
 	}
 
 	resp, err := client.Apply(ctx, types.ApplyRequest{
@@ -184,10 +184,10 @@ func deployFromFile(flags *rootFlags, templatePath string, opts deployOpts) erro
 		return err
 	}
 
-	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, opts.wait, opts.pollInterval, opts.timeout)
+	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, nil, opts.wait, opts.pollInterval, opts.timeout)
 }
 
-func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) error {
+func deployFromTemplate(ctx context.Context, flags *rootFlags, templateName string, opts deployOpts) error {
 	renderer := flags.renderer()
 	workspace := flags.activeWorkspace()
 
@@ -197,7 +197,6 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 	}
 
 	client := flags.newClient()
-	ctx := context.Background()
 
 	planResp, err := client.PlanDeploy(ctx, types.PlanDeployRequest{
 		Template:      templateName,
@@ -239,8 +238,8 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 		return nil
 	}
 
-	if !opts.yes && !confirmDeploy(renderer) {
-		return nil
+	if proceed, err := confirmOrFail(flags, renderer, opts.yes); err != nil || !proceed {
+		return err
 	}
 
 	resp, err := client.Deploy(ctx, types.DeployRequest{
@@ -260,10 +259,10 @@ func deployFromTemplate(flags *rootFlags, templateName string, opts deployOpts) 
 		return err
 	}
 
-	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, opts.wait, opts.pollInterval, opts.timeout)
+	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, nil, opts.wait, opts.pollInterval, opts.timeout)
 }
 
-func deployFromSavedPlan(flags *rootFlags, opts deployOpts) error {
+func deployFromSavedPlan(ctx context.Context, flags *rootFlags, opts deployOpts) error {
 	if len(opts.vars) > 0 || opts.varsFile != "" {
 		return fmt.Errorf("cannot use --var or --file with --plan")
 	}
@@ -285,7 +284,6 @@ func deployFromSavedPlan(flags *rootFlags, opts deployOpts) error {
 
 	renderer := flags.renderer()
 	client := flags.newClient()
-	ctx := context.Background()
 
 	saved, err := command.ReadSavedPlanFile(opts.planFile)
 	if err != nil {
@@ -303,7 +301,7 @@ func deployFromSavedPlan(flags *rootFlags, opts deployOpts) error {
 	}
 	warnings := make([]string, 0, 2)
 	if saved.Signature == "" {
-		warnings = append(warnings, "Saved plan is unsigned; set PRAXIS_PLAN_SIGNING_KEY to require HMAC verification")
+		warnings = append(warnings, "Saved plan is unsigned; unsigned plans are rejected when PRAXIS_PLAN_SIGNING_KEY is set")
 	}
 	if opts.maxPlanAge > 0 && time.Since(saved.CreatedAt) > opts.maxPlanAge {
 		return fmt.Errorf("saved plan is too old: created %s ago (max %s)", time.Since(saved.CreatedAt).Round(time.Second), opts.maxPlanAge)
@@ -327,12 +325,15 @@ func deployFromSavedPlan(flags *rootFlags, opts deployOpts) error {
 	}
 	if saved.Diff == nil || !saved.Diff.Summary.HasChanges() {
 		if flags.outputFormat() == OutputJSON {
-			return printJSON(saved)
+			return printJSON(struct {
+				types.SavedPlan
+				Warnings []string `json:"warnings,omitempty"`
+			}{saved, warnings})
 		}
 		return nil
 	}
-	if !opts.yes && !confirmDeploy(renderer) {
-		return nil
+	if proceed, err := confirmOrFail(flags, renderer, opts.yes); err != nil || !proceed {
+		return err
 	}
 
 	resp, err := client.ApplySavedPlan(ctx, types.ApplySavedPlanRequest{
@@ -344,15 +345,15 @@ func deployFromSavedPlan(flags *rootFlags, opts deployOpts) error {
 	if err != nil {
 		return err
 	}
-	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, opts.wait, opts.pollInterval, opts.timeout)
+	return finishDeployment(flags, ctx, client, renderer, resp.DeploymentKey, resp.Status, warnings, opts.wait, opts.pollInterval, opts.timeout)
 }
 
 func currentTemplateHash(ctx context.Context, client *Client, templatePath string) (string, error) {
 	if templatePath == "" || strings.HasPrefix(templatePath, "inline://") {
 		return "", nil
 	}
-	if strings.HasPrefix(templatePath, "registry://") {
-		source, err := client.GetTemplateSource(ctx, strings.TrimPrefix(templatePath, "registry://"))
+	if name, ok := strings.CutPrefix(templatePath, "registry://"); ok {
+		source, err := client.GetTemplateSource(ctx, name)
 		if err != nil {
 			return "", err
 		}
@@ -363,6 +364,25 @@ func currentTemplateHash(ctx context.Context, client *Client, templatePath strin
 		return "", err
 	}
 	return command.TemplateSourceHash(string(content)), nil
+}
+
+// errConfirmationRequired is returned in JSON output mode when a destructive
+// command needs confirmation but --yes was not provided. JSON consumers cannot
+// answer an interactive prompt, so the command fails immediately.
+var errConfirmationRequired = errors.New("confirmation required: pass --yes")
+
+// confirmOrFail resolves the confirmation step for destructive commands.
+// With --yes it proceeds immediately. In JSON mode without --yes it returns
+// errConfirmationRequired instead of prompting. Otherwise it prompts the user
+// interactively and reports whether they confirmed.
+func confirmOrFail(flags *rootFlags, renderer *Renderer, yes bool) (bool, error) {
+	if yes {
+		return true, nil
+	}
+	if flags.outputFormat() == OutputJSON {
+		return false, errConfirmationRequired
+	}
+	return confirmDeploy(renderer), nil
 }
 
 func confirmDeploy(renderer *Renderer) bool {
@@ -380,17 +400,33 @@ func confirmDeploy(renderer *Renderer) bool {
 	return true
 }
 
-func finishDeployment(flags *rootFlags, ctx context.Context, client *Client, renderer *Renderer, deploymentKey string, status types.DeploymentStatus, wait bool, pollInterval, timeout time.Duration) error {
-	if flags.outputFormat() == OutputJSON {
-		return printJSON(types.DeployResponse{DeploymentKey: deploymentKey, Status: status})
-	}
-
-	renderer.writeLabelValue("Deployment", 11, deploymentKey)
-	renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(status)))
+func finishDeployment(flags *rootFlags, ctx context.Context, client *Client, renderer *Renderer, deploymentKey string, status types.DeploymentStatus, warnings []string, wait bool, pollInterval, timeout time.Duration) error {
+	jsonOut := flags.outputFormat() == OutputJSON
 
 	if !wait {
+		if jsonOut {
+			return printJSON(struct {
+				types.DeployResponse
+				Warnings []string `json:"warnings,omitempty"`
+			}{types.DeployResponse{DeploymentKey: deploymentKey, Status: status}, warnings})
+		}
+		renderer.writeLabelValue("Deployment", 11, deploymentKey)
+		renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(status)))
 		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted("Use 'praxis get Deployment/"+deploymentKey+"' to check progress."))
 		return nil
+	}
+
+	if jsonOut {
+		// The final deployment detail is emitted as JSON by pollDeployment.
+		// Surface any pre-flight warnings up front so they are not lost.
+		if len(warnings) > 0 {
+			if err := printJSONLine(map[string]any{"warnings": warnings}); err != nil {
+				return err
+			}
+		}
+	} else {
+		renderer.writeLabelValue("Deployment", 11, deploymentKey)
+		renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(status)))
 	}
 
 	var cancel context.CancelFunc
@@ -402,9 +438,12 @@ func finishDeployment(flags *rootFlags, ctx context.Context, client *Client, ren
 	if cancel != nil {
 		cancel()
 	}
-	if isTimeoutError(ctx, err) {
+	if isTimeoutError(err) {
 		printTimeoutError(renderer, timeout, deploymentKey)
 		os.Exit(2)
+	}
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("interrupted while waiting for deployment %q; it continues in the background — use 'praxis get Deployment/%s' to check progress", deploymentKey, deploymentKey)
 	}
 	return err
 }
@@ -472,8 +511,12 @@ func parseVariables(vars []string) (map[string]any, error) {
 
 // pollDeployment queries the deployment state at regular intervals until it
 // reaches a terminal status. It prints incremental status updates for the user.
+// When the deployment ends Failed or Cancelled, the terminal detail is printed
+// and a non-nil error is returned so the process exits non-zero.
 func pollDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat, renderer *Renderer) error {
-	_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Waiting for deployment to complete..."))
+	if format != OutputJSON {
+		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Waiting for deployment to complete..."))
+	}
 
 	var lastStatus types.DeploymentStatus
 	for {
@@ -486,21 +529,29 @@ func pollDeployment(ctx context.Context, client *Client, key string, interval ti
 		}
 
 		if detail.Status != lastStatus {
-			renderer.writeLabelStyledValue("Status", 9, renderer.renderStatus(string(detail.Status)))
+			if format != OutputJSON {
+				renderer.writeLabelStyledValue("Status", 9, renderer.renderStatus(string(detail.Status)))
+			}
 			lastStatus = detail.Status
 		}
 
 		if isTerminalStatus(detail.Status) {
-			_, _ = fmt.Fprintln(renderer.out)
 			if format == OutputJSON {
-				return printJSON(detail)
+				if err := printJSON(detail); err != nil {
+					return err
+				}
+			} else {
+				_, _ = fmt.Fprintln(renderer.out)
+				printDeploymentDetail(renderer, detail, deploymentSections{
+					Deps:    true,
+					Inputs:  true,
+					Outputs: true,
+					Errors:  true,
+				})
 			}
-			printDeploymentDetail(renderer, detail, deploymentSections{
-				Deps:    true,
-				Inputs:  true,
-				Outputs: true,
-				Errors:  true,
-			})
+			if detail.Status == types.DeploymentFailed || detail.Status == types.DeploymentCancelled {
+				return fmt.Errorf("deployment %q finished with status %s", key, detail.Status)
+			}
 			return nil
 		}
 

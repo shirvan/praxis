@@ -198,7 +198,12 @@ paths:
               type: object
               properties:
                 source: { type: string }
+                templateRef:
+                  type: object
+                  properties:
+                    name: { type: string }
                 variables: { type: object }
+                mode: { type: string, enum: [static, full] }
       responses:
         '200':
           description: Validation result with structured errors
@@ -315,6 +320,7 @@ components:
         orphanRemoved: { type: boolean }
         replace: { type: array, items: { type: string } }
         allowReplace: { type: boolean }
+        templatePath: { type: string, description: Original source filename for audit records }
         maxParallelism: { type: integer }
         maxRetries: { type: integer }
 
@@ -337,12 +343,14 @@ components:
         account: { type: string }
         workspace: { type: string }
         targets: { type: array, items: { type: string } }
+        templatePath: { type: string, description: Original source filename for plan output }
         deploymentKey: { type: string }
 
     PlanResponse:
       type: object
       properties:
         plan: { $ref: '#/components/schemas/PlanResult' }
+        executionPlan: { type: object, description: Workflow-ready plan, savable and applicable without re-evaluation (pkg/types/execution_plan.go) }
         rendered: { type: string, description: Evaluated template, secrets masked }
         templateHash: { type: string }
         dataSources: { type: object }
@@ -366,9 +374,11 @@ components:
         account: { type: string }
         workspace: { type: string }
         targets: { type: array, items: { type: string } }
+        orphanRemoved: { type: boolean }
         replace: { type: array, items: { type: string } }
         allowReplace: { type: boolean }
         maxParallelism: { type: integer }
+        maxRetries: { type: integer }
 
     DeployResponse:
       type: object
@@ -431,7 +441,7 @@ components:
         key: { type: string }
         status: { $ref: '#/components/schemas/DeploymentStatus' }
         workspace: { type: string }
-        generation: { type: integer }
+        templatePath: { type: string }
         resources:
           type: array
           items:
@@ -439,9 +449,13 @@ components:
             properties:
               name: { type: string }
               kind: { type: string }
+              key: { type: string }
               status: { type: string }
               outputs: { type: object, additionalProperties: true }
               error: { type: string }
+        error: { type: string }
+        errorCode: { type: string }
+        resourceErrors: { type: object, additionalProperties: { type: string } }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -454,9 +468,9 @@ components:
           items:
             type: object
             properties:
-              name: { type: string }
-              kind: { type: string }
-              operation: { type: string, enum: [create, update, delete, noop] }
+              resourceKey: { type: string }
+              resourceType: { type: string }
+              operation: { type: string, enum: [create, update, delete, no-op] }
               fieldDiffs:
                 type: array
                 items:
@@ -498,3 +512,4 @@ components:
           properties:
             maxAttempts: { type: integer }
             backoffMs: { type: integer }
+        circuitOpenDurationSec: { type: integer, minimum: 10, maximum: 3600, description: How long the circuit breaker stays open after repeated delivery failures }

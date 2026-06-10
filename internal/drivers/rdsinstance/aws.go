@@ -58,7 +58,7 @@ type realRDSInstanceAPI struct {
 // NewRDSInstanceAPI creates a new RDSInstanceAPI backed by the given RDS SDK client.
 // Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewRDSInstanceAPI(client *rdssdk.Client) RDSInstanceAPI {
-	return &realRDSInstanceAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
+	return &realRDSInstanceAPI{client: client, limiter: ratelimit.Shared("rds", 15, 8)}
 }
 
 // CreateDBInstance calls rds:CreateDBInstance. For Aurora cluster members

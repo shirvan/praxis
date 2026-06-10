@@ -148,7 +148,14 @@ func (d *EventSourceMappingDriver) Import(ctx restate.ObjectContext, ref types.I
 	}
 	state.Generation++
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetEventSourceMapping(rc, ref.ResourceID)
+		obs, runErr := api.GetEventSourceMapping(rc, ref.ResourceID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {
@@ -219,7 +226,16 @@ func (d *EventSourceMappingDriver) Delete(ctx restate.ObjectContext) error {
 		restate.Set(ctx, drivers.StateKey, state)
 		return err
 	}
-	if _, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) { return api.WaitForStableState(rc, state.Outputs.UUID) }); err != nil && !IsNotFound(err) {
+	if _, err := restate.Run(ctx, func(rc restate.RunContext) (string, error) {
+		mappingState, runErr := api.WaitForStableState(rc, state.Outputs.UUID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return "", restate.TerminalError(runErr, 404)
+			}
+			return "", runErr
+		}
+		return mappingState, nil
+	}); err != nil && !IsNotFound(err) {
 		state.Status = types.StatusError
 		state.Error = err.Error()
 		restate.Set(ctx, drivers.StateKey, state)
@@ -255,7 +271,14 @@ func (d *EventSourceMappingDriver) Reconcile(ctx restate.ObjectContext) (types.R
 		return types.ReconcileResult{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetEventSourceMapping(rc, state.Outputs.UUID)
+		obs, runErr := api.GetEventSourceMapping(rc, state.Outputs.UUID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {

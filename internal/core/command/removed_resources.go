@@ -88,7 +88,7 @@ func (s *PraxisCommandService) cleanupMissingResources(
 	orphanRemoved bool,
 ) error {
 	for i := range resources {
-		resource := resources[i]
+		resource := &resources[i]
 		if shouldDetachMissingResource(resource, orphanRemoved) {
 			if err := s.detachMissingResource(ctx, deploymentKey, resource.Name); err != nil {
 				return err
@@ -134,7 +134,7 @@ func (s *PraxisCommandService) detachMissingResource(ctx restate.Context, deploy
 	return nil
 }
 
-func shouldDetachMissingResource(resource orchestrator.ResourceState, orphanRemoved bool) bool {
+func shouldDetachMissingResource(resource *orchestrator.ResourceState, orphanRemoved bool) bool {
 	if orphanRemoved {
 		return true
 	}
@@ -155,11 +155,11 @@ func missingDeletionsForPlan(existing *orchestrator.DeploymentState, desired []o
 		return nil
 	}
 	filtered := missing[:0]
-	for _, resource := range missing {
-		if shouldDetachMissingResource(resource, false) {
+	for i := range missing {
+		if shouldDetachMissingResource(&missing[i], false) {
 			continue
 		}
-		filtered = append(filtered, resource)
+		filtered = append(filtered, missing[i])
 	}
 	if len(filtered) == 0 {
 		return nil

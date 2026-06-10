@@ -185,19 +185,12 @@ func parseRetentionDuration(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("duration is required")
 	}
 	if days, ok := strings.CutSuffix(value, "d"); ok {
-		n, err := strconv.Atoi(days)
-		if err != nil {
-			return 0, err
+		if n, err := strconv.Atoi(days); err == nil {
+			return time.Duration(n) * 24 * time.Hour, nil
 		}
-		return time.Duration(n) * 24 * time.Hour, nil
 	}
-	if hours, ok := strings.CutSuffix(value, "h"); ok {
-		n, err := strconv.Atoi(hours)
-		if err != nil {
-			return 0, err
-		}
-		return time.Duration(n) * time.Hour, nil
-	}
+	// Fall through to time.ParseDuration so values like "1.5h" or "1h30m"
+	// (valid Go durations) are not rejected.
 	return time.ParseDuration(value)
 }
 

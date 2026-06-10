@@ -30,7 +30,7 @@ type realHealthCheckAPI struct {
 
 // NewHealthCheckAPI constructs a production HealthCheckAPI with Route53 rate limiting.
 func NewHealthCheckAPI(client *route53sdk.Client) HealthCheckAPI {
-	return &realHealthCheckAPI{client: client, limiter: ratelimit.New("route53", 5, 3)}
+	return &realHealthCheckAPI{client: client, limiter: ratelimit.Shared("route53", 5, 3)}
 }
 
 func (r *realHealthCheckAPI) CreateHealthCheck(ctx context.Context, spec HealthCheckSpec) (string, error) {

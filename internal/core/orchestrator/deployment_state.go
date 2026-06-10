@@ -51,6 +51,21 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		return 0, err
 	}
 
+	// Authoritative submit guard. The command service performs the same check
+	// before submitting, but that read-then-init sequence is racy across
+	// concurrent applies; this handler is exclusive per deployment key, so
+	// re-checking here makes the guard atomic with initialization.
+	if existing != nil {
+		switch existing.Status {
+		case types.DeploymentDeleting:
+			return 0, restate.TerminalError(
+				fmt.Errorf("deployment %q is currently deleting; wait for deletion to complete", restate.Key(ctx)), 409)
+		case types.DeploymentRunning, types.DeploymentPending:
+			return 0, restate.TerminalError(
+				fmt.Errorf("deployment %q is currently %s; wait for completion, cancel, or delete before re-applying", restate.Key(ctx), existing.Status), 409)
+		}
+	}
+
 	// generation tracks how many times this deployment key has been applied.
 	// Generation 1 = first apply; each re-apply increments it. This enables
 	// events to be correlated with the specific apply run that produced them.
@@ -121,9 +136,12 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 	}
 	// Clean up stale resource-event-owner mappings from the previous generation.
 	// If a resource was removed from the template between re-applies, its owner
-	// mapping must be deleted to prevent phantom drift events.
+	// mapping must be deleted to prevent phantom drift events. Iterate in
+	// sorted order: each delete is a journaled call, and Go map order is
+	// random per run, which would break Restate replay.
 	if existing != nil {
-		for _, resource := range existing.Resources {
+		for _, name := range sortedResourceNames(existing.Resources) {
+			resource := existing.Resources[name]
 			if resource == nil || activeKeys[resource.Key] {
 				continue
 			}
@@ -204,7 +222,9 @@ func (DeploymentStateObj) Finalize(ctx restate.ObjectContext, final FinalizeRequ
 	state.UpdatedAt = final.UpdatedAt
 	restate.Set(ctx, "state", state)
 	if final.Status == types.DeploymentDeleted {
-		for _, resource := range state.Resources {
+		// Sorted order keeps the journaled delete calls deterministic on replay.
+		for _, name := range sortedResourceNames(state.Resources) {
+			resource := state.Resources[name]
 			if resource == nil || resource.Key == "" {
 				continue
 			}
@@ -326,7 +346,9 @@ func (DeploymentStateObj) ReconcileAll(ctx restate.ObjectContext, req ReconcileA
 		triggered int
 		skipped   []string
 	)
-	for name, resource := range state.Resources {
+	// Sorted order keeps the journaled ObjectSend calls deterministic on replay.
+	for _, name := range sortedResourceNames(state.Resources) {
+		resource := state.Resources[name]
 		if resource == nil {
 			continue
 		}
@@ -540,16 +562,23 @@ func isTerminal(status types.DeploymentStatus) bool {
 	}
 }
 
+// sortedResourceNames returns the map keys in sorted order so loops that
+// issue journaled Restate calls per resource are deterministic on replay.
+func sortedResourceNames(resources map[string]*ResourceState) []string {
+	names := make([]string, 0, len(resources))
+	for name := range resources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func stateResourcesToPublic(state *DeploymentState) []types.DeploymentResource {
 	if state == nil || len(state.Resources) == 0 {
 		return nil
 	}
 
-	names := make([]string, 0, len(state.Resources))
-	for name := range state.Resources {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedResourceNames(state.Resources)
 
 	resources := make([]types.DeploymentResource, 0, len(names))
 	for _, name := range names {

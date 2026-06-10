@@ -529,11 +529,17 @@ func resolveSinkHeaders(ctx restate.Context, sink NotificationSink, workspaceNam
 	workspaceName = strings.TrimSpace(workspaceName)
 	if workspaceName != "" && workspaceName != "system" && workspaceName != "test" {
 		info, err := restate.Object[sinkWorkspaceInfo](ctx, workspaceServiceName, workspaceName, "Get").Request(restate.Void{})
-		if err != nil {
+		switch {
+		case err == nil:
+			if strings.TrimSpace(info.Account) != "" {
+				accountAlias = info.Account
+			}
+		case restate.ErrorCode(err) == 404:
+			// Workspace was never explicitly configured (e.g. the implicit
+			// "default" workspace) — fall back to the default account rather
+			// than failing every delivery for this sink.
+		default:
 			return nil, fmt.Errorf("resolve workspace %q for sink header secrets: %w", workspaceName, err)
-		}
-		if strings.TrimSpace(info.Account) != "" {
-			accountAlias = info.Account
 		}
 	}
 
@@ -558,6 +564,11 @@ func resolveSinkHeaders(ctx restate.Context, sink NotificationSink, workspaceNam
 	return decoded.Headers, nil
 }
 
+// sinkHTTPClient bounds webhook deliveries so a hung sink endpoint cannot
+// stall the delivery workflow indefinitely (the circuit breaker only trips
+// on completed attempts).
+var sinkHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 // deliverToSinkOnce performs a single delivery attempt to a webhook sink:
 // an HTTP POST with the CloudEvent serialized as a JSON body.
 func deliverToSinkOnce(sink NotificationSink, headers map[string]string, record SequencedCloudEvent) error {
@@ -576,7 +587,7 @@ func deliverToSinkOnce(sink NotificationSink, headers map[string]string, record 
 		for key, value := range headers {
 			request.Header.Set(key, value)
 		}
-		resp, err := http.DefaultClient.Do(request) //nolint:gosec // URL is operator-configured sink endpoint
+		resp, err := sinkHTTPClient.Do(request)
 		if err != nil {
 			return fmt.Errorf("deliver sink %q: %w", sink.Name, err)
 		}

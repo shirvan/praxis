@@ -98,7 +98,7 @@ func formatFile(path string, check bool) (bool, error) {
 		if err != nil {
 			return true, err
 		}
-		if err := os.WriteFile(path, formatted, info.Mode()); err != nil {
+		if err := os.WriteFile(path, formatted, info.Mode()); err != nil { //nolint:gosec // fmt rewrites the user-supplied file in place with its original mode
 			return true, err
 		}
 	}

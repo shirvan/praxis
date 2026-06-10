@@ -46,7 +46,7 @@ type realIAMUserAPI struct {
 func NewIAMUserAPI(client *iamsdk.Client) IAMUserAPI {
 	return &realIAMUserAPI{
 		client:  client,
-		limiter: ratelimit.New("iam", 15, 8),
+		limiter: ratelimit.Shared("iam", 15, 8),
 	}
 }
 

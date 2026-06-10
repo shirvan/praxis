@@ -52,6 +52,9 @@ func newSetWorkspaceCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("save config: %w", err)
 			}
 
+			if flags.outputFormat() == OutputJSON {
+				return printJSON(map[string]string{"activeWorkspace": name})
+			}
 			renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
 			return nil
 		},

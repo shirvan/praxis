@@ -27,7 +27,7 @@ type AssumeRoleOpts struct {
 type Credentials struct {
 	AccessKeyID     string
 	SecretAccessKey string
-	SessionToken    string //nolint:gosec // G117: field name matches AWS API contract, not a hardcoded secret
+	SessionToken    string
 	ExpiresAt       time.Time
 }
 
