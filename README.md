@@ -8,11 +8,52 @@
 
 > Praxis is in alpha, with limited real world testing.
 
-Praxis is a declarative infrastructure platform that manages cloud resources the way Kubernetes manages containers continuous reconciliation, drift correction, dependency-aware orchestration but without the overhead of a Kubernetes cluster to run it. Praxis itself can be run on Kubernetes if you already use it.
+Infrastructure-as-code tools stop paying attention the moment `apply`
+returns. A security group opened "temporarily" in the console, a tag removed
+by a script, a bucket policy deleted by hand — none of it surfaces until the
+next time someone runs `plan`. The tools that do watch continuously, like
+Crossplane and Kubernetes operators, require running a cluster just to
+manage cloud resources.
 
-Powered by [Restate](https://restate.dev) for durable execution, Praxis models every cloud resource as a stateful Virtual Object with exactly-once lifecycle guarantees. Define what you want in [CUE](https://cuelang.org/) templates, and Praxis converges reality to match.
+Praxis does both halves without the cluster. You declare resources in typed,
+validated [CUE](https://cuelang.org/) templates; Praxis provisions them in
+dependency order, then keeps checking: every resource is re-compared against
+reality on a five-minute interval, drift is corrected (or just reported —
+your choice per resource), and every change lands in an audit event stream.
+The whole stack runs from Docker Compose on a laptop, on Kubernetes, or on
+Restate Cloud.
 
-For a more detailed explanation of the idea and reasons behind Praxis see the [Praxis Architecture](docs/PRAXIS_ARCHITECTURE.md) document.
+```bash
+# Declare a bucket in a CUE template (typed, validated, with defaults)
+cat > bucket.cue <<'CUE'
+resources: archive: {
+    apiVersion: "praxis.io/v1"
+    kind:       "S3Bucket"
+    metadata: name: "orders-archive"
+    spec: {
+        region:     "us-east-1"
+        versioning: true
+        tags: team: "payments"
+    }
+}
+CUE
+
+praxis plan bucket.cue --account prod      # see exactly what would change
+praxis deploy bucket.cue --account prod --key orders --wait
+
+# From now on the bucket is reconciled every five minutes. Disable
+# versioning in the console and it's re-enabled, with a drift event logged.
+praxis observe Deployment/orders
+```
+
+Praxis is built on [Restate](https://restate.dev), a durable execution
+engine. Every AWS API call is journaled: if anything crashes mid-provision,
+execution resumes where it stopped — no duplicate resources, no half-applied
+state. Each resource is a single-writer stateful object, so there are no
+racing updates and no distributed locks.
+
+For the full reasoning behind the design, read the
+[Architecture document](docs/PRAXIS_ARCHITECTURE.md).
 
 ```mermaid
 graph TD
@@ -38,8 +79,6 @@ graph TD
 ---
 
 ## Why Praxis
-
-### The Problem
 
 Managing cloud infrastructure today means choosing between extremes:
 
