@@ -51,7 +51,7 @@ type realIAMRoleAPI struct {
 func NewIAMRoleAPI(client *iamsdk.Client) IAMRoleAPI {
 	return &realIAMRoleAPI{
 		client:  client,
-		limiter: ratelimit.New("iam", 15, 8),
+		limiter: ratelimit.Shared("iam", 15, 8),
 	}
 }
 

@@ -45,7 +45,7 @@ type realLambdaAPI struct {
 
 // NewLambdaAPI creates a production LambdaAPI with rate limiting (15 tokens/s, burst 10).
 func NewLambdaAPI(client *lambdasdk.Client) LambdaAPI {
-	return &realLambdaAPI{client: client, limiter: ratelimit.New("lambda-function", 15, 10)}
+	return &realLambdaAPI{client: client, limiter: ratelimit.Shared("lambda-function", 15, 10)}
 }
 
 // CreateFunction creates a new Lambda function from the full spec.
@@ -54,6 +54,10 @@ func NewLambdaAPI(client *lambdasdk.Client) LambdaAPI {
 func (r *realLambdaAPI) CreateFunction(ctx context.Context, spec LambdaFunctionSpec) (string, error) {
 	if err := validateCode(spec.Code); err != nil {
 		return "", err
+	}
+	code, err := functionCode(spec.Code)
+	if err != nil {
+		return "", restate.TerminalError(err, 400)
 	}
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
@@ -65,7 +69,7 @@ func (r *realLambdaAPI) CreateFunction(ctx context.Context, spec LambdaFunctionS
 		MemorySize:   aws.Int32(spec.MemorySize),
 		Timeout:      aws.Int32(spec.Timeout),
 		Tags:         withManagedKey(spec.ManagedKey, spec.Tags),
-		Code:         functionCode(spec.Code),
+		Code:         code,
 	}
 	if spec.PackageType != "" {
 		input.PackageType = lambdatypes.PackageType(spec.PackageType)
@@ -317,7 +321,8 @@ func validateCode(code CodeSpec) error {
 }
 
 // functionCode converts CodeSpec to the Lambda SDK FunctionCode type.
-func functionCode(code CodeSpec) *lambdatypes.FunctionCode {
+// Returns an error if the inline zipFile is not valid base64.
+func functionCode(code CodeSpec) (*lambdatypes.FunctionCode, error) {
 	input := &lambdatypes.FunctionCode{}
 	if code.S3 != nil {
 		input.S3Bucket = aws.String(code.S3.Bucket)
@@ -325,13 +330,16 @@ func functionCode(code CodeSpec) *lambdatypes.FunctionCode {
 		input.S3ObjectVersion = optionalString(code.S3.ObjectVersion)
 	}
 	if code.ZipFile != "" {
-		decoded, _ := base64.StdEncoding.DecodeString(code.ZipFile)
+		decoded, err := base64.StdEncoding.DecodeString(code.ZipFile)
+		if err != nil {
+			return nil, fmt.Errorf("decode zipFile: %w", err)
+		}
 		input.ZipFile = decoded
 	}
 	if code.ImageURI != "" {
 		input.ImageUri = aws.String(code.ImageURI)
 	}
-	return input
+	return input, nil
 }
 
 // toArchitectures converts string slice to Lambda Architecture enum slice.

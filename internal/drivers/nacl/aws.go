@@ -44,7 +44,7 @@ type realNetworkACLAPI struct {
 func NewNetworkACLAPI(client *ec2sdk.Client) NetworkACLAPI {
 	return &realNetworkACLAPI{
 		client:  client,
-		limiter: ratelimit.New("network-acl", 20, 10),
+		limiter: ratelimit.Shared("network-acl", 20, 10),
 	}
 }
 

@@ -148,7 +148,34 @@ func normalizeHostedZoneID(id string) string {
 }
 
 func normalizeRecordName(name string) string {
-	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), "."))
+	return unescapeRoute53Name(strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), ".")))
+}
+
+// unescapeRoute53Name decodes Route53's octal escape sequences (e.g. "\052"
+// for "*") back to their literal characters. Route53 returns escaped names
+// from ListResourceRecordSets, so comparisons against the raw names users
+// supply (like "*.example.com") would otherwise never match.
+func unescapeRoute53Name(name string) string {
+	if !strings.Contains(name, `\`) {
+		return name
+	}
+	var builder strings.Builder
+	builder.Grow(len(name))
+	for i := 0; i < len(name); {
+		// First digit capped at '3' so the decoded value fits a byte (max \377).
+		if name[i] == '\\' && i+3 < len(name) && name[i+1] >= '0' && name[i+1] <= '3' && isOctalDigit(name[i+2]) && isOctalDigit(name[i+3]) {
+			builder.WriteByte((name[i+1]-'0')<<6 | (name[i+2]-'0')<<3 | (name[i+3] - '0'))
+			i += 4
+			continue
+		}
+		builder.WriteByte(name[i])
+		i++
+	}
+	return builder.String()
+}
+
+func isOctalDigit(b byte) bool {
+	return b >= '0' && b <= '7'
 }
 
 func normalizeStringSlice(values []string) []string {

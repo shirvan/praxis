@@ -41,7 +41,7 @@ type realSubnetAPI struct {
 func NewSubnetAPI(client *ec2sdk.Client) SubnetAPI {
 	return &realSubnetAPI{
 		client:  client,
-		limiter: ratelimit.New("subnet", 20, 10),
+		limiter: ratelimit.Shared("subnet", 20, 10),
 	}
 }
 

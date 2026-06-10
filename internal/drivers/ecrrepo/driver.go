@@ -154,7 +154,14 @@ func (d *ECRRepositoryDriver) Import(ctx restate.ObjectContext, ref types.Import
 	}
 	state.Generation++
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeRepository(rc, ref.ResourceID)
+		obs, runErr := api.DescribeRepository(rc, ref.ResourceID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {
@@ -258,7 +265,14 @@ func (d *ECRRepositoryDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 		return types.ReconcileResult{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeRepository(rc, state.Outputs.RepositoryName)
+		obs, runErr := api.DescribeRepository(rc, state.Outputs.RepositoryName)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {

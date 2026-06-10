@@ -38,7 +38,7 @@ type realKeyPairAPI struct {
 func NewKeyPairAPI(client *ec2sdk.Client) KeyPairAPI {
 	return &realKeyPairAPI{
 		client:  client,
-		limiter: ratelimit.New("key-pair", 20, 10),
+		limiter: ratelimit.Shared("key-pair", 20, 10),
 	}
 }
 

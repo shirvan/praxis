@@ -30,7 +30,7 @@ type realRecordAPI struct {
 
 // NewRecordAPI constructs a production RecordAPI with Route53 rate limiting.
 func NewRecordAPI(client *route53sdk.Client) RecordAPI {
-	return &realRecordAPI{client: client, limiter: ratelimit.New("route53", 5, 3)}
+	return &realRecordAPI{client: client, limiter: ratelimit.Shared("route53", 5, 3)}
 }
 
 // UpsertRecord calls ChangeResourceRecordSets with UPSERT action, creating or updating the record.
@@ -102,9 +102,12 @@ func toRoute53RecordSet(spec RecordSpec) *route53types.ResourceRecordSet {
 	}
 	if spec.SetIdentifier != "" {
 		recordSet.SetIdentifier = aws.String(spec.SetIdentifier)
-	}
-	if spec.Weight != 0 {
-		recordSet.Weight = aws.Int64(spec.Weight)
+		// Weighted routing is the policy in effect when no other policy field is
+		// set. Always send Weight for it — including 0 — otherwise weight-0
+		// records are impossible to express.
+		if spec.Region == "" && spec.Failover == "" && spec.GeoLocation == nil && !spec.MultiValueAnswer {
+			recordSet.Weight = aws.Int64(spec.Weight)
+		}
 	}
 	if spec.Region != "" {
 		recordSet.Region = route53types.ResourceRecordSetRegion(spec.Region)
@@ -141,8 +144,12 @@ func fromRoute53RecordSet(hostedZoneID string, recordSet route53types.ResourceRe
 	return normalizeObservedState(observed)
 }
 
+// IsNotFound reports whether the record (or its hosted zone) no longer exists.
+// NoSuchHostedZone counts: a deleted zone implies the record is gone too.
+// InvalidInput is deliberately NOT mapped here — it signals a real validation
+// failure, not an already-deleted record.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "InvalidInput") || awserr.IsNotFoundErr(err)
+	return awserr.HasCode(err, "NoSuchHostedZone") || awserr.IsNotFoundErr(err)
 }
 
 func IsConflict(err error) bool {

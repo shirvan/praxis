@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -59,7 +60,7 @@ Examples:
 			}
 
 			client := flags.newClient()
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			// Apply a timeout to the observe context if set.
 			if timeout > 0 {
@@ -77,11 +78,15 @@ Examples:
 				}
 				err = observeDeployment(ctx, client, key, pollInterval, query, flags.outputFormat(), renderer)
 			default:
+				key = flags.resolveResourceKey(kind, key)
 				err = observeResource(ctx, client, kind, key, pollInterval, flags.outputFormat(), renderer)
 			}
-			if isTimeoutError(ctx, err) {
+			if isTimeoutError(err) {
 				printTimeoutError(renderer, timeout, key)
 				os.Exit(2)
+			}
+			if errors.Is(err, context.Canceled) {
+				return fmt.Errorf("observe interrupted")
 			}
 			return err
 		},
@@ -97,9 +102,12 @@ Examples:
 }
 
 // observeDeployment polls the event stream and deployment status, displaying
-// incremental progress until a terminal state is reached.
+// incremental progress until a terminal state is reached. In JSON mode the
+// events are streamed as NDJSON: one JSON object per line per event.
 func observeDeployment(ctx context.Context, client *Client, key string, interval time.Duration, query orchestrator.EventQuery, format OutputFormat, renderer *Renderer) error {
-	_, _ = fmt.Fprintf(renderer.out, "%s\n\n", renderer.renderSection(fmt.Sprintf("Observing deployment %s...", key)))
+	if format != OutputJSON {
+		_, _ = fmt.Fprintf(renderer.out, "%s\n\n", renderer.renderSection(fmt.Sprintf("Observing deployment %s...", key)))
+	}
 
 	var lastSeq int64
 
@@ -109,27 +117,29 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 			return fmt.Errorf("observe: fetch events: %w", err)
 		}
 		filtered := filterCloudEvents(events, query)
-		if len(filtered) > 0 {
-			if format == OutputJSON {
-				if err := printJSON(filtered); err != nil {
+		if format == OutputJSON {
+			for i := range filtered {
+				if err := printJSONLine(filtered[i]); err != nil {
 					return err
 				}
-			} else {
-				printCloudEvents(renderer, filtered)
 			}
+		} else if len(filtered) > 0 {
+			printCloudEvents(renderer, filtered)
 		}
 		if len(events) > 0 {
 			lastSeq = events[len(events)-1].Sequence
 		}
 		for i := range events {
 			if isTerminalCloudEvent(events[i]) {
-				status := cloudEventStatus(events[i].Event)
-				_, _ = fmt.Fprintln(renderer.out)
-				_, _ = fmt.Fprintf(renderer.out, "%s %s\n",
-					renderer.renderSection("Deployment reached terminal state:"),
-					renderer.renderStatus(status))
-				_, _ = fmt.Fprintf(renderer.out, "%s\n",
-					renderer.renderMuted("Run 'praxis get Deployment/"+key+"' for full details."))
+				if format != OutputJSON {
+					status := cloudEventStatus(events[i].Event)
+					_, _ = fmt.Fprintln(renderer.out)
+					_, _ = fmt.Fprintf(renderer.out, "%s %s\n",
+						renderer.renderSection("Deployment reached terminal state:"),
+						renderer.renderStatus(status))
+					_, _ = fmt.Fprintf(renderer.out, "%s\n",
+						renderer.renderMuted("Run 'praxis get Deployment/"+key+"' for full details."))
+				}
 				return nil
 			}
 		}
@@ -143,9 +153,12 @@ func observeDeployment(ctx context.Context, client *Client, key string, interval
 }
 
 // observeResource polls a single cloud resource's status and displays changes
-// until it reaches a terminal state (Ready, Error, or Deleted).
+// until it reaches a terminal state (Ready, Error, or Deleted). In JSON mode
+// each status change is streamed as one NDJSON line.
 func observeResource(ctx context.Context, client *Client, kind, key string, interval time.Duration, format OutputFormat, renderer *Renderer) error {
-	_, _ = fmt.Fprintf(renderer.out, "%s\n\n", renderer.renderSection(fmt.Sprintf("Observing %s/%s...", kind, key)))
+	if format != OutputJSON {
+		_, _ = fmt.Fprintf(renderer.out, "%s\n\n", renderer.renderSection(fmt.Sprintf("Observing %s/%s...", kind, key)))
+	}
 
 	var lastStatus types.ResourceStatus
 	for {
@@ -155,7 +168,7 @@ func observeResource(ctx context.Context, client *Client, kind, key string, inte
 		}
 		if resp.Status != lastStatus {
 			if format == OutputJSON {
-				if err := printJSON(resp); err != nil {
+				if err := printJSONLine(resp); err != nil {
 					return err
 				}
 			} else {
@@ -173,10 +186,12 @@ func observeResource(ctx context.Context, client *Client, kind, key string, inte
 			lastStatus = resp.Status
 		}
 		if isTerminalResourceStatus(resp.Status) {
-			_, _ = fmt.Fprintln(renderer.out)
-			_, _ = fmt.Fprintf(renderer.out, "%s %s\n",
-				renderer.renderSection(fmt.Sprintf("%s/%s reached terminal state:", kind, key)),
-				renderer.renderStatus(string(resp.Status)))
+			if format != OutputJSON {
+				_, _ = fmt.Fprintln(renderer.out)
+				_, _ = fmt.Fprintf(renderer.out, "%s %s\n",
+					renderer.renderSection(fmt.Sprintf("%s/%s reached terminal state:", kind, key)),
+					renderer.renderStatus(string(resp.Status)))
+			}
 			return nil
 		}
 

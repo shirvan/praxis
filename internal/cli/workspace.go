@@ -69,20 +69,26 @@ func createWorkspace(flags *rootFlags, name, account, region string, vars []stri
 		return err
 	}
 
-	renderer.successLine(fmt.Sprintf("Workspace %q created.", name))
-
 	names, err := client.ListWorkspaces(ctx)
 	if err != nil {
 		return err
 	}
 
+	selected := false
 	if selectFlag || (cliCfg.ActiveWorkspace == "" && len(names) == 1) {
 		cliCfg.ActiveWorkspace = name
 		if err := SaveCLIConfig(cliCfg); err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
-		renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
+		selected = true
 	}
 
+	if flags.outputFormat() == OutputJSON {
+		return printJSON(map[string]any{"created": name, "selected": selected})
+	}
+	renderer.successLine(fmt.Sprintf("Workspace %q created.", name))
+	if selected {
+		renderer.successLine(fmt.Sprintf("Switched to workspace %q.", name))
+	}
 	return nil
 }

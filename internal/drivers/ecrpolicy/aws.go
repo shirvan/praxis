@@ -38,7 +38,7 @@ type realLifecyclePolicyAPI struct {
 // NewLifecyclePolicyAPI constructs a production ECRLifecyclePolicyAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewLifecyclePolicyAPI(client *ecrsdk.Client) LifecyclePolicyAPI {
-	return &realLifecyclePolicyAPI{client: client, limiter: ratelimit.New("ecr-lifecycle-policy", 15, 5)}
+	return &realLifecyclePolicyAPI{client: client, limiter: ratelimit.Shared("ecr-lifecycle-policy", 15, 5)}
 }
 
 func (r *realLifecyclePolicyAPI) PutLifecyclePolicy(ctx context.Context, spec ECRLifecyclePolicySpec) (ObservedState, error) {

@@ -82,7 +82,18 @@ func (d *RecordDriver) Provision(ctx restate.ObjectContext, spec RecordSpec) (Re
 	}
 
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeRecord(rc, identityFromSpec(spec))
+		obs, runErr := api.DescribeRecord(rc, identityFromSpec(spec))
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				// The record was just upserted; not finding it is a real anomaly,
+				// not an eventually-consistent read — fail instead of retrying forever.
+				return ObservedState{}, restate.TerminalError(
+					fmt.Errorf("record %s %s not found after upsert: %w", spec.Name, spec.Type, runErr), 500,
+				)
+			}
+			return ObservedState{}, runErr // transient — Restate retries
+		}
+		return obs, nil
 	})
 	if err != nil {
 		state.Status = types.StatusError
@@ -120,7 +131,12 @@ func (d *RecordDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (R
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 		obs, runErr := api.DescribeRecord(rc, identity)
 		if runErr != nil {
-			return ObservedState{}, runErr
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(
+					fmt.Errorf("import failed: record %s %s does not exist in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId), 404,
+				)
+			}
+			return ObservedState{}, runErr // transient — Restate retries
 		}
 		return obs, nil
 	})

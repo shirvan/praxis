@@ -36,7 +36,7 @@ type realPolicyAPI struct {
 // NewPolicyAPI constructs a production SQSQueuePolicyAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewPolicyAPI(client *sqssdk.Client) PolicyAPI {
-	return &realPolicyAPI{client: client, limiter: ratelimit.New("sqs", 50, 20)}
+	return &realPolicyAPI{client: client, limiter: ratelimit.Shared("sqs", 50, 20)}
 }
 
 // GetQueueUrl reads the current state of the AWS SQS Queue Policy from Amazon Simple Queue Service (SQS).

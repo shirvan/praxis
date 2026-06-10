@@ -238,7 +238,14 @@ func (d *AMIDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (AMIO
 	state.Generation++
 
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return resolveImportImage(rc, api, ref.ResourceID)
+		obs, err := resolveImportImage(rc, api, ref.ResourceID)
+		if err != nil && IsNotFound(err) {
+			// A bare error from a Run closure is retried by Restate forever;
+			// a missing AMI is permanent, so fail terminally. Throttling and
+			// network errors stay bare so Restate retries them.
+			return ObservedState{}, restate.TerminalError(err, 404)
+		}
+		return obs, err
 	})
 	if err != nil {
 		if IsNotFound(err) {

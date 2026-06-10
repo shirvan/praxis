@@ -46,6 +46,24 @@ func TestHasDrift_SecurityGroupsChanged(t *testing.T) {
 	assert.True(t, ec2.HasDrift(spec, obs))
 }
 
+func TestHasDrift_EmptyDesiredSecurityGroupsIgnored(t *testing.T) {
+	// An empty desired list means "use the default SG". The correction paths
+	// never modify security groups for an empty desired list, so reporting
+	// drift here would loop forever without ever correcting.
+	spec := ec2.EC2InstanceSpec{
+		InstanceType:     "t3.micro",
+		SecurityGroupIds: nil,
+		Tags:             map[string]string{},
+	}
+	obs := ec2.ObservedState{
+		InstanceType:     "t3.micro",
+		SecurityGroupIds: []string{"sg-default"},
+		State:            "running",
+		Tags:             map[string]string{},
+	}
+	assert.False(t, ec2.HasDrift(spec, obs))
+}
+
 func TestHasDrift_SecurityGroupsReordered(t *testing.T) {
 	spec := ec2.EC2InstanceSpec{
 		InstanceType:     "t3.micro",

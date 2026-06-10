@@ -45,7 +45,7 @@ type realSubscriptionAPI struct {
 func NewSubscriptionAPI(client *snssdk.Client) SubscriptionAPI {
 	return &realSubscriptionAPI{
 		client:  client,
-		limiter: ratelimit.New("sns-subscription", 30, 10),
+		limiter: ratelimit.Shared("sns-subscription", 30, 10),
 	}
 }
 

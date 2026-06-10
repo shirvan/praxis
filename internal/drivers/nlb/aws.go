@@ -43,7 +43,7 @@ type realNLBAPI struct {
 // NewNLBAPI constructs a production NLBAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewNLBAPI(client *elbv2sdk.Client) NLBAPI {
-	return &realNLBAPI{client: client, limiter: ratelimit.New("nlb", 15, 8)}
+	return &realNLBAPI{client: client, limiter: ratelimit.Shared("nlb", 15, 8)}
 }
 
 // CreateNLB calls Elastic Load Balancing v2 to create a new AWS Network Load Balancer (NLB) from the given spec.

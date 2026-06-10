@@ -127,6 +127,13 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		if current := state.Resources[item.Name]; current == nil || current.Status == types.DeploymentResourceDeleted {
 			continue
 		}
+		// Dependencies of a resource that failed to rollback-delete are marked
+		// skipped so they are not torn down while still referenced; the plan is
+		// iterated in reverse provisioning order, so they appear later and must
+		// be honored here.
+		if exec.skipped[item.Name] || exec.failed[item.Name] {
+			continue
+		}
 
 		// Poll the cancellation flag. Once set, stop dispatching new deletes
 		// and finalize as Failed since not all resources were cleaned up.
@@ -211,6 +218,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 			continue
 		}
 		if first == timeout {
+			restate.CancelInvocation(ctx, invocation.ID())
 			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, fmt.Sprintf("rollback delete timed out after %s", rollbackResourceTimeout)); err != nil {
 				return DeploymentResult{}, err
 			}

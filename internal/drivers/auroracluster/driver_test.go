@@ -3,6 +3,7 @@ package auroracluster
 import (
 	"testing"
 
+	restate "github.com/restatedev/sdk-go"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -137,6 +138,14 @@ func TestOutputsFromObserved(t *testing.T) {
 func TestDefaultImportMode(t *testing.T) {
 	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
 	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
+}
+
+func TestDeletionProtectionError(t *testing.T) {
+	err := deletionProtectionError("my-cluster")
+	assert.True(t, restate.IsTerminalError(err))
+	assert.Equal(t, restate.Code(409), restate.ErrorCode(err))
+	assert.ErrorContains(t, err, "deletion protection is enabled on my-cluster")
+	assert.ErrorContains(t, err, "set deletionProtection: false in the spec, apply, then retry the delete")
 }
 
 func TestApplyDefaults(t *testing.T) {

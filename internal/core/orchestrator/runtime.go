@@ -81,12 +81,6 @@ func (s *executionState) loadOutputs(outputs map[string]map[string]any) {
 	maps.Copy(s.outputs, outputs)
 }
 
-// ready returns resource names whose dependencies are satisfied and that have
-// not yet been dispatched, delegating to the DAG scheduler.
-func (s *executionState) ready(schedule *dag.Schedule) []string {
-	return s.readyAt(schedule, time.Time{})
-}
-
 // readyAt returns resources whose dependencies are met and whose retry cooldown
 // has expired at the supplied timestamp.
 func (s *executionState) readyAt(schedule *dag.Schedule, now time.Time) []string {

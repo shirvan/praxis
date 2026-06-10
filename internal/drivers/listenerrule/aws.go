@@ -42,7 +42,7 @@ type realListenerRuleAPI struct {
 // NewListenerRuleAPI constructs a production ListenerRuleAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewListenerRuleAPI(client *elbv2sdk.Client) ListenerRuleAPI {
-	return &realListenerRuleAPI{client: client, limiter: ratelimit.New("listener-rule", 15, 8)}
+	return &realListenerRuleAPI{client: client, limiter: ratelimit.Shared("listener-rule", 15, 8)}
 }
 
 // CreateRule calls Elastic Load Balancing v2 to create a new AWS ELBv2 Listener Rule from the given spec.

@@ -18,6 +18,7 @@ package command
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	restate "github.com/restatedev/sdk-go"
@@ -51,9 +52,7 @@ func (s *PraxisCommandService) computeResourceDiffs(
 
 	// Seed with any prior deployment outputs so we have a fallback for
 	// resources whose drivers haven't stored state yet.
-	for k, v := range priorOutputs {
-		liveOutputs[k] = v
-	}
+	maps.Copy(liveOutputs, priorOutputs)
 
 	for i := range resources {
 		resource := &resources[i]
@@ -108,7 +107,7 @@ func (s *PraxisCommandService) computeResourceDiffs(
 		}
 	}
 	for i := range removed {
-		resource := removed[i]
+		resource := &removed[i]
 		corediff.Add(plan, resource.Kind, resource.Key, types.OpDelete, nil)
 	}
 
@@ -120,8 +119,8 @@ func (s *PraxisCommandService) computeResourceDiffs(
 // need their outputs collected for downstream hydration.
 func referencedResourceNames(resources []orchestrator.PlanResource) map[string]bool {
 	refs := make(map[string]bool)
-	for _, r := range resources {
-		for _, expr := range r.Expressions {
+	for i := range resources {
+		for _, expr := range resources[i].Expressions {
 			// Expression format: "resources.<name>.outputs.<field>"
 			parts := strings.Split(expr, ".")
 			if len(parts) >= 2 && parts[0] == "resources" {

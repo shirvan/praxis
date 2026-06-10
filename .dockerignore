@@ -1,0 +1,8 @@
+# Keep secrets and build artifacts out of the Docker build context.
+# The Dockerfile does `COPY . .`, so anything not listed here ends up in the
+# builder stage. `.env` matches the root env file exactly; .env.example is
+# still included.
+.git
+.env
+bin/
+dist/

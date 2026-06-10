@@ -46,7 +46,7 @@ type realALBAPI struct {
 // NewALBAPI constructs a production ALBAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewALBAPI(client *elbv2sdk.Client) ALBAPI {
-	return &realALBAPI{client: client, limiter: ratelimit.New("alb", 15, 8)}
+	return &realALBAPI{client: client, limiter: ratelimit.Shared("alb", 15, 8)}
 }
 
 // CreateALB calls Elastic Load Balancing v2 to create a new AWS Application Load Balancer (ALB) from the given spec.

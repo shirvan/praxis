@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
@@ -25,8 +27,12 @@ func main() {
 		Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth), rp)).
 		Bind(restate.Reflect(dashboard.NewDashboardDriver(auth), rp))
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
 	slog.Info("starting monitoring driver pack", "addr", cfg.ListenAddr)
-	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
+	err := srv.Start(ctx, cfg.ListenAddr)
+	stop()
+	if err != nil {
 		slog.Error("monitoring driver pack exited", "err", err.Error())
 		os.Exit(1)
 	}

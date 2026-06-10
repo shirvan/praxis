@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
@@ -55,8 +57,12 @@ func main() {
 		Bind(restate.Reflect(vpcpeering.NewVPCPeeringDriver(auth), rp)).
 		Bind(restate.Reflect(vpc.NewVPCDriver(auth), rp))
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
 	slog.Info("starting network driver pack", "addr", cfg.ListenAddr)
-	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
+	err := srv.Start(ctx, cfg.ListenAddr)
+	stop()
+	if err != nil {
 		slog.Error("network driver pack exited", "err", err.Error())
 		os.Exit(1)
 	}

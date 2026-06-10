@@ -43,7 +43,7 @@ type realQueueAPI struct {
 // NewQueueAPI constructs a production SQSQueueAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewQueueAPI(client *sqssdk.Client) QueueAPI {
-	return &realQueueAPI{client: client, limiter: ratelimit.New("sqs", 50, 20)}
+	return &realQueueAPI{client: client, limiter: ratelimit.Shared("sqs", 50, 20)}
 }
 
 // CreateQueue calls Amazon Simple Queue Service (SQS) to create a new AWS SQS Queue from the given spec.

@@ -45,7 +45,7 @@ type realDBParameterGroupAPI struct {
 // NewDBParameterGroupAPI creates a new API backed by the given RDS client.
 // Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewDBParameterGroupAPI(client *rdssdk.Client) DBParameterGroupAPI {
-	return &realDBParameterGroupAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
+	return &realDBParameterGroupAPI{client: client, limiter: ratelimit.Shared("rds", 15, 8)}
 }
 
 // CreateParameterGroup calls rds:CreateDBParameterGroup or rds:CreateDBClusterParameterGroup.

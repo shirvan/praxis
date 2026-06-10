@@ -13,3 +13,14 @@ func TestErrorClassifiers(t *testing.T) {
 	assert.False(t, IsConflict(nil))
 	assert.False(t, IsAccessDenied(nil))
 }
+
+func TestFunctionCode_InvalidBase64(t *testing.T) {
+	_, err := functionCode(CodeSpec{ZipFile: "not-valid-base64!!!"})
+	assert.ErrorContains(t, err, "decode zipFile")
+}
+
+func TestFunctionCode_ValidBase64(t *testing.T) {
+	code, err := functionCode(CodeSpec{ZipFile: "aGVsbG8="})
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("hello"), code.ZipFile)
+}

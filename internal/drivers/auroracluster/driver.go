@@ -183,8 +183,9 @@ func (d *AuroraClusterDriver) Import(ctx restate.ObjectContext, ref types.Import
 }
 
 // Delete removes the Aurora cluster. Blocks deletion in Observed mode.
-// Auto-disables deletion protection if enabled, then deletes with skipFinalSnapshot=true.
-// Waits for the cluster to be fully deleted before clearing state.
+// Fails with 409 if deletion protection is enabled on the observed cluster;
+// the user must set deletionProtection: false in the spec and apply first.
+// Deletes with skipFinalSnapshot=true and waits for full deletion.
 func (d *AuroraClusterDriver) Delete(ctx restate.ObjectContext) error {
 	state, err := restate.Get[AuroraClusterState](ctx, drivers.StateKey)
 	if err != nil {
@@ -209,17 +210,7 @@ func (d *AuroraClusterDriver) Delete(ctx restate.ObjectContext) error {
 		return restate.TerminalError(err, 400)
 	}
 	if state.Observed.DeletionProtection {
-		spec := state.Desired
-		spec.DeletionProtection = false
-		if err := d.correctDrift(ctx, api, spec, state.Observed, state.Desired); err != nil {
-			return err
-		}
-		_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-			return restate.Void{}, api.WaitUntilAvailable(rc, identifier)
-		})
-		if err != nil {
-			return err
-		}
+		return deletionProtectionError(identifier)
 	}
 	state.Status = types.StatusDeleting
 	state.Error = ""
@@ -292,7 +283,14 @@ func (d *AuroraClusterDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 		return types.ReconcileResult{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeDBCluster(rc, identifier)
+		obs, runErr := api.DescribeDBCluster(rc, identifier)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {
@@ -412,6 +410,12 @@ func (d *AuroraClusterDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+}
+
+// deletionProtectionError is the terminal error returned when Delete is
+// attempted while the observed cluster still has deletion protection enabled.
+func deletionProtectionError(identifier string) error {
+	return restate.TerminalError(fmt.Errorf("deletion protection is enabled on %s; set deletionProtection: false in the spec, apply, then retry the delete", identifier), 409)
 }
 
 // apiForAccount resolves AWS credentials and creates an API client for the given account.

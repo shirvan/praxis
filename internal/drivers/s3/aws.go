@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/drivers/awserr"
 
@@ -59,7 +61,7 @@ type realS3API struct {
 func NewS3API(client *s3sdk.Client) S3API {
 	return &realS3API{
 		client:  client,
-		limiter: ratelimit.New("s3", 100, 20),
+		limiter: ratelimit.Shared("s3", 100, 20),
 	}
 }
 
@@ -139,26 +141,69 @@ func (r *realS3API) ConfigureBucket(ctx context.Context, spec S3BucketSpec) erro
 	}
 
 	// --- Tags ---
-	if len(spec.Tags) > 0 {
-		var tagSet []s3types.Tag
-		for k, v := range spec.Tags {
-			tagSet = append(tagSet, s3types.Tag{
-				Key:   aws.String(k),
-				Value: aws.String(v),
-			})
+	// PutBucketTagging replaces the entire tag set, so converge to
+	// observed praxis:-prefixed bookkeeping tags + desired user tags.
+	// An empty final set requires DeleteBucketTagging — putting an empty
+	// set is rejected by S3, which would leave tag drift uncorrectable.
+	current, err := r.getBucketTags(ctx, spec.BucketName)
+	if err != nil {
+		return fmt.Errorf("get tagging: %w", err)
+	}
+	final := make(map[string]string, len(current)+len(spec.Tags))
+	for k, v := range current {
+		if strings.HasPrefix(k, "praxis:") {
+			final[k] = v
 		}
-		_, err = r.client.PutBucketTagging(ctx, &s3sdk.PutBucketTaggingInput{
+	}
+	maps.Copy(final, spec.Tags)
+	if len(final) == 0 {
+		_, err = r.client.DeleteBucketTagging(ctx, &s3sdk.DeleteBucketTaggingInput{
 			Bucket: aws.String(spec.BucketName),
-			Tagging: &s3types.Tagging{
-				TagSet: tagSet,
-			},
 		})
 		if err != nil {
-			return fmt.Errorf("put tagging: %w", err)
+			return fmt.Errorf("delete tagging: %w", err)
 		}
+		return nil
+	}
+	var tagSet []s3types.Tag
+	for k, v := range final {
+		tagSet = append(tagSet, s3types.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		})
+	}
+	_, err = r.client.PutBucketTagging(ctx, &s3sdk.PutBucketTaggingInput{
+		Bucket: aws.String(spec.BucketName),
+		Tagging: &s3types.Tagging{
+			TagSet: tagSet,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("put tagging: %w", err)
 	}
 
 	return nil
+}
+
+// getBucketTags returns the bucket's current tags, treating NoSuchTagSet
+// (bucket has no tags) as an empty map rather than an error.
+func (r *realS3API) getBucketTags(ctx context.Context, name string) (map[string]string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	out, err := r.client.GetBucketTagging(ctx, &s3sdk.GetBucketTaggingInput{Bucket: aws.String(name)})
+	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchTagSet" {
+			return map[string]string{}, nil
+		}
+		return nil, err
+	}
+	tags := make(map[string]string, len(out.TagSet))
+	for _, tag := range out.TagSet {
+		tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+	}
+	return tags, nil
 }
 
 // DescribeBucket returns the observed state of a bucket by querying
@@ -280,8 +325,8 @@ func (r *realS3API) deleteAllObjectVersions(ctx context.Context, name string) er
 			return fmt.Errorf("list object versions: %w", err)
 		}
 		objects := make([]s3types.ObjectIdentifier, 0, len(out.Versions)+len(out.DeleteMarkers))
-		for _, version := range out.Versions {
-			objects = append(objects, s3types.ObjectIdentifier{Key: version.Key, VersionId: version.VersionId})
+		for i := range out.Versions {
+			objects = append(objects, s3types.ObjectIdentifier{Key: out.Versions[i].Key, VersionId: out.Versions[i].VersionId})
 		}
 		for _, marker := range out.DeleteMarkers {
 			objects = append(objects, s3types.ObjectIdentifier{Key: marker.Key, VersionId: marker.VersionId})
@@ -347,6 +392,10 @@ func (r *realS3API) deleteObjectBatch(ctx context.Context, name string, objects 
 }
 
 func (r *realS3API) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	if len(tags) == 0 {
+		// An empty filter would match every bucket in the account.
+		return "", restate.TerminalError(fmt.Errorf("tag lookup requires at least one tag filter"), 400)
+	}
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
 	}
@@ -367,9 +416,9 @@ func (r *realS3API) FindByTags(ctx context.Context, tags map[string]string) (str
 		if tagErr != nil {
 			var apiErr smithy.APIError
 			if errors.As(tagErr, &apiErr) && apiErr.ErrorCode() == "NoSuchTagSet" {
-				continue
+				continue // bucket has no tags — cannot match a non-empty filter
 			}
-			continue
+			return "", fmt.Errorf("get tagging for bucket %s: %w", name, tagErr)
 		}
 		bucketTags := make(map[string]string, len(tagResp.TagSet))
 		for _, tag := range tagResp.TagSet {
@@ -411,19 +460,12 @@ func IsNotFound(err error) bool {
 	var nsk *s3types.NoSuchKey
 	var nsb *s3types.NoSuchBucket
 	var nf *s3types.NotFound
-	var apiErr smithy.APIError
 	if errors.As(err, &nsk) || errors.As(err, &nsb) || errors.As(err, &nf) {
 		return true
 	}
-	// HeadBucket returns a generic 404 as an API error
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound" {
-		return true
-	}
-	// Fallback: match Restate-wrapped error strings
-	errText := err.Error()
-	return strings.Contains(errText, "NoSuchBucket") ||
-		strings.Contains(errText, "NoSuchKey") ||
-		strings.Contains(errText, "api error NotFound")
+	// HasCode covers typed API errors (e.g. HeadBucket's generic 404) and
+	// journal-flattened "<Code>:" strings.
+	return awserr.HasCode(err, "NotFound", "NoSuchBucket", "NoSuchKey")
 }
 
 // IsBucketNotEmpty returns true if a DeleteBucket call failed because the
@@ -440,7 +482,10 @@ func IsConflict(err error) bool {
 	}
 	var bao *s3types.BucketAlreadyOwnedByYou
 	var bae *s3types.BucketAlreadyExists
-	return errors.As(err, &bao) || errors.As(err, &bae)
+	if errors.As(err, &bao) || errors.As(err, &bae) {
+		return true
+	}
+	return awserr.HasCode(err, "BucketAlreadyOwnedByYou", "BucketAlreadyExists")
 }
 
 func IsBucketLimitExceeded(err error) bool {

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"maps"
 	"time"
 
 	restate "github.com/restatedev/sdk-go"
@@ -51,12 +52,8 @@ func waitForResourceReady(
 				return outputs, nil
 			}
 			merged := make(map[string]any, len(outputs)+len(result.Outputs))
-			for key, value := range outputs {
-				merged[key] = value
-			}
-			for key, value := range result.Outputs {
-				merged[key] = value
-			}
+			maps.Copy(merged, outputs)
+			maps.Copy(merged, result.Outputs)
 			return merged, nil
 		}
 		now, err := currentTime(ctx)
@@ -69,7 +66,9 @@ func waitForResourceReady(
 			}
 			return nil, fmt.Errorf("wait ready timed out after %s: %s", maxWait, lastMessage)
 		}
-		_ = restate.Sleep(ctx, pollInterval)
+		if err := restate.Sleep(ctx, pollInterval); err != nil {
+			return nil, err
+		}
 	}
 }
 
@@ -84,7 +83,16 @@ func waitPollInterval(lifecycle *types.LifecyclePolicy) (time.Duration, error) {
 	if lifecycle == nil || lifecycle.Wait == nil || lifecycle.Wait.PollInterval == "" {
 		return defaultWaitPollInterval, nil
 	}
-	return time.ParseDuration(lifecycle.Wait.PollInterval)
+	interval, err := time.ParseDuration(lifecycle.Wait.PollInterval)
+	if err != nil {
+		return 0, err
+	}
+	if interval <= 0 {
+		// A zero/negative interval would hot-loop WaitReady calls and grow the
+		// journal until maxWait expires.
+		return 0, fmt.Errorf("lifecycle.wait.pollInterval must be positive, got %q", lifecycle.Wait.PollInterval)
+	}
+	return interval, nil
 }
 
 func waitMaxWait(lifecycle *types.LifecyclePolicy) (time.Duration, error) {

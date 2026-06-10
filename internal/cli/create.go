@@ -166,6 +166,6 @@ func createTemplate(flags *rootFlags, filePath, name, description string) error 
 		return printJSON(resp)
 	}
 
-	renderer.successLine(fmt.Sprintf("Registered template %q (digest: %s)", resp.Name, resp.Digest[:12]))
+	renderer.successLine(fmt.Sprintf("Registered template %q (digest: %s)", resp.Name, shortDigest(resp.Digest)))
 	return nil
 }

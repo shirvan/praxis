@@ -3,6 +3,7 @@ package rdsinstance
 import (
 	"testing"
 
+	restate "github.com/restatedev/sdk-go"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/shirvan/praxis/pkg/types"
@@ -164,4 +165,12 @@ func TestApplyDefaults(t *testing.T) {
 func TestApplyDefaults_AuroraSkipsBackupDefault(t *testing.T) {
 	spec := applyDefaults(RDSInstanceSpec{DBClusterIdentifier: "my-cluster"})
 	assert.Equal(t, int32(0), spec.BackupRetentionPeriod)
+}
+
+func TestDeletionProtectionError(t *testing.T) {
+	err := deletionProtectionError("mydb")
+	assert.True(t, restate.IsTerminalError(err))
+	assert.Equal(t, restate.Code(409), restate.ErrorCode(err))
+	assert.ErrorContains(t, err, "deletion protection is enabled on mydb")
+	assert.ErrorContains(t, err, "set deletionProtection: false in the spec, apply, then retry the delete")
 }

@@ -1,3 +1,5 @@
+package events
+
 #RetentionEventData: {
 	message:             string
 	workspace?:          string

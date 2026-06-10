@@ -179,6 +179,7 @@ generate-event-schemas:
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteCompletedData' > schemas/events/gen/deployment-delete-completed.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteFailedData' > schemas/events/gen/deployment-delete-failed.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceReplaceStartedData' > schemas/events/gen/resource-replace-started.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceAutoReplaceStartedData' > schemas/events/gen/resource-auto-replace-started.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceDispatchedData' > schemas/events/gen/resource-dispatched.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceReadyData' > schemas/events/gen/resource-ready.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceErrorData' > schemas/events/gen/resource-error.json
@@ -190,6 +191,7 @@ generate-event-schemas:
     cue export schemas/events/drift.cue --out jsonschema -e '#DriftCorrectedData' > schemas/events/gen/drift-corrected.json
     cue export schemas/events/drift.cue --out jsonschema -e '#DriftExternalDeleteData' > schemas/events/gen/drift-external-delete.json
     cue export schemas/events/policy.cue --out jsonschema -e '#PolicyPreventedDestroyData' > schemas/events/gen/policy-prevented-destroy.json
+    cue export schemas/events/policy.cue --out jsonschema -e '#ForceDeleteOverrideData' > schemas/events/gen/policy-force-delete-override.json
     cue export schemas/events/system.cue --out jsonschema -e '#SinkRegisteredData' > schemas/events/gen/system-sink-registered.json
     cue export schemas/events/system.cue --out jsonschema -e '#SinkRemovedData' > schemas/events/gen/system-sink-removed.json
     cue export schemas/events/system.cue --out jsonschema -e '#SinkDeliveryFailedData' > schemas/events/gen/system-sink-delivery-failed.json
@@ -920,7 +922,7 @@ release-build VERSION: (_validate-version VERSION)
 
     echo "Building service binaries (linux/amd64)..."
     mkdir -p "${DIST}/linux_amd64"
-    for SVC in praxis-core praxis-storage praxis-network praxis-compute; do
+    for SVC in praxis-core praxis-storage praxis-network praxis-compute praxis-identity praxis-monitoring; do
         echo "  ${SVC}"
         GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o "${DIST}/linux_amd64/${SVC}" "./cmd/${SVC}"
     done

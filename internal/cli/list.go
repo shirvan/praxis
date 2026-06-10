@@ -50,16 +50,17 @@ Supported resource types:
 Use -o json for machine-readable output.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			resourceType := args[0]
 			switch resourceType {
 			case "deployments", "deployment", "deploy":
-				return listDeployments(flags, wsFilter)
+				return listDeployments(ctx, flags, wsFilter)
 			case "templates", "template":
-				return listTemplates(flags)
+				return listTemplates(ctx, flags)
 			case "workspaces", "workspace":
-				return listWorkspaces(flags)
+				return listWorkspaces(ctx, flags)
 			case "sinks", "sink":
-				return listSinks(flags)
+				return listSinks(ctx, flags)
 			case "schemas", "schema":
 				return listSchemas(flags)
 			case "events", "event":
@@ -67,10 +68,10 @@ Use -o json for machine-readable output.`,
 				if len(args) > 1 {
 					scope = args[1]
 				}
-				return listEvents(flags, scope, wsFilter, sinceRaw, typePrefix, severity, resource, limit)
+				return listEvents(ctx, flags, scope, wsFilter, sinceRaw, typePrefix, severity, resource, limit)
 			default:
 				// Cloud resource Kind (e.g. S3Bucket, EC2Instance, VPC).
-				return listCloudResources(flags, resourceType, wsFilter)
+				return listCloudResources(ctx, flags, resourceType, wsFilter)
 			}
 		},
 	}
@@ -86,10 +87,9 @@ Use -o json for machine-readable output.`,
 }
 
 // listDeployments queries the global deployment index and renders the results.
-func listDeployments(flags *rootFlags, workspace string) error {
+func listDeployments(ctx context.Context, flags *rootFlags, workspace string) error {
 	client := flags.newClient()
 	renderer := flags.renderer()
-	ctx := context.Background()
 
 	summaries, err := client.ListDeployments(ctx, workspace)
 	if err != nil {
@@ -105,10 +105,9 @@ func listDeployments(flags *rootFlags, workspace string) error {
 }
 
 // listTemplates queries the template registry and renders the results.
-func listTemplates(flags *rootFlags) error {
+func listTemplates(ctx context.Context, flags *rootFlags) error {
 	renderer := flags.renderer()
 	client := flags.newClient()
-	ctx := context.Background()
 
 	templates, err := client.ListTemplates(ctx)
 	if err != nil {
@@ -142,10 +141,9 @@ func listTemplates(flags *rootFlags) error {
 }
 
 // listWorkspaces queries the workspace index and renders the results.
-func listWorkspaces(flags *rootFlags) error {
+func listWorkspaces(ctx context.Context, flags *rootFlags) error {
 	renderer := flags.renderer()
 	client := flags.newClient()
-	ctx := context.Background()
 
 	names, err := client.ListWorkspaces(ctx)
 	if err != nil {
@@ -188,10 +186,14 @@ func listWorkspaces(flags *rootFlags) error {
 }
 
 // listSinks queries the notification sink configuration and renders the results.
-func listSinks(flags *rootFlags) error {
-	sinks, err := flags.newClient().ListNotificationSinks(context.Background())
+// Header values are redacted in every output mode.
+func listSinks(ctx context.Context, flags *rootFlags) error {
+	sinks, err := flags.newClient().ListNotificationSinks(ctx)
 	if err != nil {
 		return err
+	}
+	for i := range sinks {
+		sinks[i] = redactSinkHeaders(sinks[i])
 	}
 	if flags.outputFormat() == OutputJSON {
 		return printJSON(sinks)
@@ -206,8 +208,7 @@ func listSinks(flags *rootFlags) error {
 
 // listEvents lists events for a single deployment. Events are stored per
 // deployment; pass a Deployment/<key> scope to select the stream.
-func listEvents(flags *rootFlags, scope, wsFilter, sinceRaw, typePrefix, severity, resource string, limit int) error {
-	_ = wsFilter
+func listEvents(ctx context.Context, flags *rootFlags, scope, wsFilter, sinceRaw, typePrefix, severity, resource string, limit int) error {
 	since, err := parseLookback(sinceRaw)
 	if err != nil {
 		return err
@@ -226,21 +227,21 @@ func listEvents(flags *rootFlags, scope, wsFilter, sinceRaw, typePrefix, severit
 	}
 	query := orchestrator.EventQuery{
 		DeploymentKey: key,
+		Workspace:     wsFilter,
 		TypePrefix:    typePrefix,
 		Severity:      severity,
 		Resource:      resource,
 		Since:         since,
 		Limit:         limit,
 	}
-	return listDeploymentEvents(context.Background(), flags.newClient(), key, query, flags.outputFormat(), flags.renderer())
+	return listDeploymentEvents(ctx, flags.newClient(), key, query, flags.outputFormat(), flags.renderer())
 }
 
 // listCloudResources queries all deployments for resources matching the given
 // Kind and renders them as a table. This walks the deployment index because
 // there is no dedicated per-Kind resource index service yet.
-func listCloudResources(flags *rootFlags, kind, workspace string) error {
+func listCloudResources(ctx context.Context, flags *rootFlags, kind, workspace string) error {
 	client := flags.newClient()
-	ctx := context.Background()
 
 	items, err := client.ListResourcesByKind(ctx, kind, workspace)
 	if err != nil {

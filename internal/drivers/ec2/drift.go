@@ -31,7 +31,9 @@ func HasDrift(desired EC2InstanceSpec, observed ObservedState) bool {
 	if desired.InstanceType != observed.InstanceType {
 		return true
 	}
-	if !securityGroupsMatch(desired.SecurityGroupIds, observed.SecurityGroupIds) {
+	// An empty desired list means "use the default SG" — the correction paths
+	// skip it, so flagging it as drift would loop forever without correction.
+	if len(desired.SecurityGroupIds) > 0 && !securityGroupsMatch(desired.SecurityGroupIds, observed.SecurityGroupIds) {
 		return true
 	}
 	if desired.Monitoring != observed.Monitoring {

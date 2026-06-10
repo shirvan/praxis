@@ -26,8 +26,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	restate "github.com/restatedev/sdk-go"
@@ -116,8 +118,12 @@ func main() {
 		go seedPoliciesFromDir(cfg)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
 	slog.Info("starting Praxis core runtime", "addr", cfg.ListenAddr)
-	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
+	err := srv.Start(ctx, cfg.ListenAddr)
+	stop()
+	if err != nil {
 		slog.Error("Praxis core exited", "err", err.Error())
 		os.Exit(1)
 	}

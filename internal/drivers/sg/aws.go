@@ -45,7 +45,7 @@ type realSGAPI struct {
 func NewSGAPI(client *ec2sdk.Client) SGAPI {
 	return &realSGAPI{
 		client:  client,
-		limiter: ratelimit.New("ec2", 20, 10),
+		limiter: ratelimit.Shared("ec2", 20, 10),
 	}
 }
 
@@ -273,12 +273,15 @@ func (r *realSGAPI) UpdateTags(ctx context.Context, groupId string, tags map[str
 		return awserr.NotFound(fmt.Sprintf("security group %s not found", groupId))
 	}
 
-	// Delete existing tags
-	if len(out.SecurityGroups[0].Tags) > 0 {
-		var tagKeys []ec2types.Tag
-		for _, t := range out.SecurityGroups[0].Tags {
-			tagKeys = append(tagKeys, ec2types.Tag{Key: t.Key})
+	// Delete existing tags, preserving praxis:-prefixed bookkeeping tags
+	var tagKeys []ec2types.Tag
+	for _, t := range out.SecurityGroups[0].Tags {
+		if strings.HasPrefix(aws.ToString(t.Key), "praxis:") {
+			continue
 		}
+		tagKeys = append(tagKeys, ec2types.Tag{Key: t.Key})
+	}
+	if len(tagKeys) > 0 {
 		_, err = r.client.DeleteTags(ctx, &ec2sdk.DeleteTagsInput{
 			Resources: []string{groupId},
 			Tags:      tagKeys,
@@ -292,17 +295,22 @@ func (r *realSGAPI) UpdateTags(ctx context.Context, groupId string, tags map[str
 	if len(tags) > 0 {
 		var ec2Tags []ec2types.Tag
 		for k, v := range tags {
+			if strings.HasPrefix(k, "praxis:") {
+				continue
+			}
 			ec2Tags = append(ec2Tags, ec2types.Tag{
 				Key:   aws.String(k),
 				Value: aws.String(v),
 			})
 		}
-		_, err = r.client.CreateTags(ctx, &ec2sdk.CreateTagsInput{
-			Resources: []string{groupId},
-			Tags:      ec2Tags,
-		})
-		if err != nil {
-			return fmt.Errorf("create tags: %w", err)
+		if len(ec2Tags) > 0 {
+			_, err = r.client.CreateTags(ctx, &ec2sdk.CreateTagsInput{
+				Resources: []string{groupId},
+				Tags:      ec2Tags,
+			})
+			if err != nil {
+				return fmt.Errorf("create tags: %w", err)
+			}
 		}
 	}
 

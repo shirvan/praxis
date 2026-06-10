@@ -80,9 +80,10 @@ func (d *SecurityGroupDriver) Provision(ctx restate.ObjectContext, spec Security
 
 	// --- Check if SG already exists (re-provision path) ---
 	groupId := state.Outputs.GroupId
+	ownerId := state.Observed.OwnerId
 	if groupId != "" {
 		// Verify it still exists in AWS
-		_, descErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+		existing, descErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 			obs, err := api.DescribeSecurityGroup(rc, groupId)
 			if err != nil {
 				if IsNotFound(err) {
@@ -94,6 +95,8 @@ func (d *SecurityGroupDriver) Provision(ctx restate.ObjectContext, spec Security
 		})
 		if descErr != nil {
 			groupId = "" // was deleted externally or not found, recreate
+		} else {
+			ownerId = existing.OwnerId
 		}
 	}
 
@@ -151,7 +154,7 @@ func (d *SecurityGroupDriver) Provision(ctx restate.ObjectContext, spec Security
 	// --- Build outputs ---
 	outputs := SecurityGroupOutputs{
 		GroupId:  groupId,
-		GroupArn: fmt.Sprintf("arn:aws:ec2:%s:000000000000:security-group/%s", region, groupId),
+		GroupArn: groupArn(region, ownerId, groupId),
 		VpcId:    spec.VpcId,
 	}
 
@@ -184,14 +187,18 @@ func (d *SecurityGroupDriver) Import(ctx restate.ObjectContext, ref types.Import
 
 	// --- Describe the existing security group ---
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.DescribeSecurityGroup(rc, ref.ResourceID)
+		obs, descErr := api.DescribeSecurityGroup(rc, ref.ResourceID)
+		if descErr != nil {
+			if IsNotFound(descErr) {
+				return ObservedState{}, restate.TerminalError(
+					fmt.Errorf("import failed: security group %s does not exist", ref.ResourceID), 404,
+				)
+			}
+			return ObservedState{}, descErr // transient — Restate retries
+		}
+		return obs, nil
 	})
 	if err != nil {
-		if IsNotFound(err) {
-			return SecurityGroupOutputs{}, restate.TerminalError(
-				fmt.Errorf("import failed: security group %s does not exist", ref.ResourceID), 404,
-			)
-		}
 		return SecurityGroupOutputs{}, err
 	}
 
@@ -200,7 +207,7 @@ func (d *SecurityGroupDriver) Import(ctx restate.ObjectContext, ref types.Import
 	spec.Account = ref.Account
 	outputs := SecurityGroupOutputs{
 		GroupId:  observed.GroupId,
-		GroupArn: fmt.Sprintf("arn:aws:ec2:%s:000000000000:security-group/%s", region, observed.GroupId),
+		GroupArn: groupArn(region, observed.OwnerId, observed.GroupId),
 		VpcId:    observed.VpcId,
 	}
 
@@ -506,6 +513,16 @@ func specFromObserved(obs ObservedState) SecurityGroupSpec {
 	}
 
 	return spec
+}
+
+// groupArn builds the security group ARN from the observed owner account ID.
+// Falls back to a placeholder account when the owner is unknown (e.g. the
+// group was just created and has not been described yet).
+func groupArn(region, ownerId, groupId string) string {
+	if ownerId == "" {
+		ownerId = "000000000000"
+	}
+	return fmt.Sprintf("arn:aws:ec2:%s:%s:security-group/%s", region, ownerId, groupId)
 }
 
 // extractCidr strips the "cidr:" prefix from a target string.

@@ -43,7 +43,7 @@ type realCertificateAPI struct {
 // NewCertificateAPI constructs a production ACMCertificateAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewCertificateAPI(client *acmsdk.Client) CertificateAPI {
-	return &realCertificateAPI{client: client, limiter: ratelimit.New("acm-certificate", 10, 5)}
+	return &realCertificateAPI{client: client, limiter: ratelimit.Shared("acm-certificate", 10, 5)}
 }
 
 func (r *realCertificateAPI) RequestCertificate(ctx context.Context, spec ACMCertificateSpec) (string, error) {

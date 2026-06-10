@@ -88,19 +88,26 @@ func (a *AuthService) GetCredentials(ctx restate.ObjectContext, _ string) (Crede
 		state = &AuthState{Config: cfg}
 	}
 
+	// Journaled clock: cache-validity branching and refresh-timer delays must
+	// be deterministic on Restate replay, so never read the wall clock directly.
+	now, err := journaledNow(ctx)
+	if err != nil {
+		return CredentialResponse{}, err
+	}
+
 	// Check cache validity for non-force requests
-	if isCacheValid(state.CachedCredential) {
+	if isCacheValidAt(state.CachedCredential, now) {
 		return buildResponse(state.CachedCredential, cfg), nil
 	}
 
 	// Resolve fresh credentials
-	if err := a.resolveCredentials(ctx, state, cfg, alias); err != nil {
+	if err := a.resolveCredentials(ctx, state, cfg, alias, now); err != nil {
 		state.Error = err.Error()
 		restate.Set(ctx, "state", state)
 		return CredentialResponse{}, err
 	}
 
-	state.LastRefresh = time.Now().UTC().Format(time.RFC3339)
+	state.LastRefresh = now.Format(time.RFC3339)
 	state.Error = ""
 	restate.Set(ctx, "state", state)
 
@@ -124,18 +131,23 @@ func (a *AuthService) RefreshCredentials(ctx restate.ObjectContext, _ string) (C
 		state = &AuthState{Config: cfg}
 	}
 
+	now, err := journaledNow(ctx)
+	if err != nil {
+		return CredentialResponse{}, err
+	}
+
 	// Clear refresh flag — we're doing the refresh now
 	state.RefreshScheduled = false
 
 	// Always resolve fresh (ignore cache)
 	state.CachedCredential = nil
-	if err := a.resolveCredentials(ctx, state, cfg, alias); err != nil {
+	if err := a.resolveCredentials(ctx, state, cfg, alias, now); err != nil {
 		state.Error = err.Error()
 		restate.Set(ctx, "state", state)
 		return CredentialResponse{}, err
 	}
 
-	state.LastRefresh = time.Now().UTC().Format(time.RFC3339)
+	state.LastRefresh = now.Format(time.RFC3339)
 	state.Error = ""
 	restate.Set(ctx, "state", state)
 
@@ -222,12 +234,12 @@ func (a *AuthService) resolveConfig(ctx restate.ObjectContext, alias string) (Ac
 //   - "static": uses inline access key ID + secret from config
 //   - "role": calls STS AssumeRole and caches temporary credentials
 //   - "" or "default": uses the AWS default credential chain (env, IMDS, etc.)
-func (a *AuthService) resolveCredentials(ctx restate.ObjectContext, state *AuthState, cfg AccountConfig, alias string) error {
+func (a *AuthService) resolveCredentials(ctx restate.ObjectContext, state *AuthState, cfg AccountConfig, alias string, now time.Time) error {
 	switch cfg.CredentialSource {
 	case "static":
 		return a.resolveStatic(state, cfg, alias)
 	case "role":
-		return a.resolveRole(ctx, state, cfg, alias)
+		return a.resolveRole(ctx, state, cfg, alias, now)
 	case "", "default":
 		return a.resolveDefault(ctx, state, cfg, alias)
 	default:
@@ -251,7 +263,7 @@ func (a *AuthService) resolveStatic(state *AuthState, cfg AccountConfig, alias s
 // resolveRole calls STS AssumeRole to obtain temporary credentials for a
 // cross-account or role-based configuration. On success, caches the credentials
 // and schedules a proactive refresh 10 minutes before expiry.
-func (a *AuthService) resolveRole(ctx restate.ObjectContext, state *AuthState, cfg AccountConfig, alias string) error {
+func (a *AuthService) resolveRole(ctx restate.ObjectContext, state *AuthState, cfg AccountConfig, alias string, now time.Time) error {
 	if cfg.RoleARN == "" {
 		return restate.TerminalError(errMissingRoleARN(alias), 401)
 	}
@@ -271,21 +283,21 @@ func (a *AuthService) resolveRole(ctx restate.ObjectContext, state *AuthState, c
 		duration = time.Hour
 	}
 
+	// Classification must happen inside the Run callback: a bare error from
+	// the callback is retried by Restate and never reaches this handler, and
+	// errors that cross the journal lose their Go types.
 	creds, err := restate.Run(ctx, func(rc restate.RunContext) (*Credentials, error) {
-		return stsAPI.AssumeRole(rc, cfg.RoleARN, AssumeRoleOpts{
+		creds, err := stsAPI.AssumeRole(rc, cfg.RoleARN, AssumeRoleOpts{
 			ExternalID:      cfg.ExternalID,
 			SessionDuration: duration,
 		})
+		if err != nil {
+			return nil, classifySTSError(errAssumeRole(alias, err), err)
+		}
+		return creds, nil
 	})
 	if err != nil {
-		authErr := errAssumeRole(alias, err)
-		if isAccessDenied(err) {
-			return restate.TerminalError(authErr, 403)
-		}
-		if authErr.IsRetryable() {
-			return authErr
-		}
-		return restate.TerminalError(authErr, restate.Code(authErr.HTTPCode()))
+		return err
 	}
 
 	state.CachedCredential = &CachedCredential{
@@ -295,7 +307,7 @@ func (a *AuthService) resolveRole(ctx restate.ObjectContext, state *AuthState, c
 		ExpiresAt:       creds.ExpiresAt.UTC().Format(time.RFC3339),
 	}
 
-	a.scheduleRefresh(ctx, state, creds.ExpiresAt)
+	a.scheduleRefresh(ctx, state, creds.ExpiresAt, now)
 	return nil
 }
 
@@ -311,24 +323,48 @@ func (a *AuthService) resolveDefault(ctx restate.ObjectContext, state *AuthState
 
 	stsAPI := a.stsFactory(baseCfg)
 
-	// Validate credentials work via GetCallerIdentity
+	// Validate credentials work via GetCallerIdentity. Classify inside the
+	// callback — see resolveRole for why.
 	_, err = restate.Run(ctx, func(rc restate.RunContext) (*CallerIdentity, error) {
-		return stsAPI.GetCallerIdentity(rc)
+		ident, err := stsAPI.GetCallerIdentity(rc)
+		if err != nil {
+			return nil, classifySTSError(errCredentialRetrieval(alias, err), err)
+		}
+		return ident, nil
 	})
 	if err != nil {
-		authErr := errCredentialRetrieval(alias, err)
-		if authErr.IsRetryable() {
-			return authErr
-		}
-		return restate.TerminalError(authErr, restate.Code(authErr.HTTPCode()))
+		return err
 	}
 
-	// Default chain manages its own refresh — we just store the fact that it works
+	// Default chain manages its own refresh — we just store the fact that it
+	// works. The Source marker tells buildAWSConfig to use the default chain
+	// instead of treating the (empty) key fields as static credentials.
 	state.CachedCredential = &CachedCredential{
-		AccessKeyID:     "default-chain",
-		SecretAccessKey: "default-chain",
+		Source: SourceDefaultChain,
 	}
 	return nil
+}
+
+// classifySTSError wraps terminal STS failures in restate.TerminalError so
+// Restate does not retry them. Access denied and validation-class failures
+// are terminal; everything else (throttling, network) is returned as the
+// wrapped AuthError for retry. cause is the raw AWS error (types intact).
+func classifySTSError(authErr *AuthError, cause error) error {
+	if isAccessDenied(cause) {
+		return restate.TerminalError(authErr, 403)
+	}
+	if isValidationFailure(cause) {
+		return restate.TerminalError(authErr, 400)
+	}
+	return authErr
+}
+
+// journaledNow returns the current time through the Restate journal so the
+// value is stable across replays.
+func journaledNow(ctx restate.ObjectContext) (time.Time, error) {
+	return restate.Run(ctx, func(restate.RunContext) (time.Time, error) {
+		return time.Now().UTC(), nil
+	})
 }
 
 // scheduleRefresh schedules a proactive credential refresh before expiry.
@@ -337,12 +373,12 @@ func (a *AuthService) resolveDefault(ctx restate.ObjectContext, state *AuthState
 // minimum of 1 minute to avoid scheduling in the past.
 // The RefreshScheduled flag prevents duplicate timers if scheduleRefresh
 // is called multiple times for the same credential.
-func (a *AuthService) scheduleRefresh(ctx restate.ObjectContext, state *AuthState, expiresAt time.Time) {
+func (a *AuthService) scheduleRefresh(ctx restate.ObjectContext, state *AuthState, expiresAt, now time.Time) {
 	if state.RefreshScheduled {
 		return
 	}
 
-	delay := time.Until(expiresAt) - 10*time.Minute
+	delay := expiresAt.Sub(now) - 10*time.Minute
 	delay = max(delay, time.Minute)
 
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "RefreshCredentials").
@@ -350,12 +386,20 @@ func (a *AuthService) scheduleRefresh(ctx restate.ObjectContext, state *AuthStat
 	state.RefreshScheduled = true
 }
 
-// isCacheValid checks whether cached credentials are still usable.
-// Credentials without an expiry (static/default) are always valid.
-// Temporary credentials (from AssumeRole) are valid if they have at
-// least 5 minutes of remaining lifetime, providing a safety margin
-// for in-flight requests.
+// isCacheValid checks whether cached credentials are still usable as of the
+// real wall clock. Only safe in handlers whose journaled command sequence
+// does not depend on the result (e.g. the read-only GetStatus); durable
+// handlers must use isCacheValidAt with a journaled timestamp.
 func isCacheValid(cached *CachedCredential) bool {
+	return isCacheValidAt(cached, time.Now().UTC())
+}
+
+// isCacheValidAt checks whether cached credentials are still usable at the
+// given instant. Credentials without an expiry (static/default) are always
+// valid. Temporary credentials (from AssumeRole) are valid if they have at
+// least 5 minutes of remaining lifetime, providing a safety margin for
+// in-flight requests.
+func isCacheValidAt(cached *CachedCredential, now time.Time) bool {
 	if cached == nil {
 		return false
 	}
@@ -366,7 +410,7 @@ func isCacheValid(cached *CachedCredential) bool {
 	if err != nil {
 		return false
 	}
-	return time.Until(expiry) >= 5*time.Minute
+	return expiry.Sub(now) >= 5*time.Minute
 }
 
 // buildResponse maps cached credentials and account config into a
@@ -381,6 +425,14 @@ func buildResponse(cached *CachedCredential, cfg AccountConfig) CredentialRespon
 		resp.SecretAccessKey = cached.SecretAccessKey
 		resp.SessionToken = cached.SessionToken
 		resp.ExpiresAt = cached.ExpiresAt
+		resp.Source = cached.Source
+		// Legacy state written before the Source field existed used the
+		// sentinel string in the key fields.
+		if cached.AccessKeyID == SourceDefaultChain {
+			resp.Source = SourceDefaultChain
+			resp.AccessKeyID = ""
+			resp.SecretAccessKey = ""
+		}
 	}
 	return resp
 }

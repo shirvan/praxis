@@ -80,9 +80,11 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 		})
 	}
 
-	// --- Tags: added or changed ---
-	for k, v := range desired.Tags {
-		if ov, ok := observed.Tags[k]; !ok {
+	// --- Tags: added or changed (praxis:-prefixed bookkeeping tags ignored) ---
+	desiredTags := drivers.FilterPraxisTags(desired.Tags)
+	observedTags := drivers.FilterPraxisTags(observed.Tags)
+	for k, v := range desiredTags {
+		if ov, ok := observedTags[k]; !ok {
 			diffs = append(diffs, FieldDiffEntry{
 				Path:     "tags." + k,
 				OldValue: nil,
@@ -97,8 +99,8 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 		}
 	}
 	// Tags removed
-	for k, v := range observed.Tags {
-		if _, ok := desired.Tags[k]; !ok {
+	for k, v := range observedTags {
+		if _, ok := desiredTags[k]; !ok {
 			diffs = append(diffs, FieldDiffEntry{
 				Path:     "tags." + k,
 				OldValue: v,

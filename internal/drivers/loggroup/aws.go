@@ -49,7 +49,7 @@ type realLogGroupAPI struct {
 func NewLogGroupAPI(client *cloudwatchlogs.Client) LogGroupAPI {
 	return &realLogGroupAPI{
 		client:  client,
-		limiter: ratelimit.New("cloudwatch-log-group", 20, 10),
+		limiter: ratelimit.Shared("cloudwatch-log-group", 20, 10),
 	}
 }
 
@@ -73,47 +73,56 @@ func (r *realLogGroupAPI) CreateLogGroup(ctx context.Context, spec LogGroupSpec)
 }
 
 // DescribeLogGroup reads the current state of the AWS CloudWatch Log Group from Amazon CloudWatch Logs.
+// DescribeLogGroups matches by name prefix and pages at 50 groups, so paginate
+// until the exact name is found — otherwise a popular prefix could hide the
+// group on a later page and falsely report it deleted.
 func (r *realLogGroupAPI) DescribeLogGroup(ctx context.Context, logGroupName string) (ObservedState, bool, error) {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return ObservedState{}, false, err
-	}
-	out, err := r.client.DescribeLogGroups(ctx, &cloudwatchlogs.DescribeLogGroupsInput{
+	input := &cloudwatchlogs.DescribeLogGroupsInput{
 		LogGroupNamePrefix: aws.String(logGroupName),
-	})
-	if err != nil {
-		return ObservedState{}, false, err
 	}
-	for i := range out.LogGroups {
-		group := &out.LogGroups[i]
-		if aws.ToString(group.LogGroupName) != logGroupName {
-			continue
+	for {
+		if err := r.limiter.Wait(ctx); err != nil {
+			return ObservedState{}, false, err
 		}
-		observed := ObservedState{
-			ARN:           aws.ToString(group.Arn),
-			LogGroupName:  aws.ToString(group.LogGroupName),
-			LogGroupClass: string(group.LogGroupClass),
-			KmsKeyID:      aws.ToString(group.KmsKeyId),
-			CreationTime:  aws.ToInt64(group.CreationTime),
-			StoredBytes:   aws.ToInt64(group.StoredBytes),
-			Tags:          map[string]string{},
+		out, err := r.client.DescribeLogGroups(ctx, input)
+		if err != nil {
+			return ObservedState{}, false, err
 		}
-		if group.RetentionInDays != nil {
-			days := aws.ToInt32(group.RetentionInDays)
-			if days > 0 {
-				observed.RetentionInDays = aws.Int32(days)
+		for i := range out.LogGroups {
+			group := &out.LogGroups[i]
+			if aws.ToString(group.LogGroupName) != logGroupName {
+				continue
 			}
-		}
-		// AWS DescribeLogGroups does not return tags; fetch them separately.
-		if observed.ARN != "" {
-			tags, tagErr := r.ListTagsForResource(ctx, observed.ARN)
-			if tagErr != nil {
-				return ObservedState{}, false, fmt.Errorf("list tags for %s: %w", observed.ARN, tagErr)
+			observed := ObservedState{
+				ARN:           aws.ToString(group.Arn),
+				LogGroupName:  aws.ToString(group.LogGroupName),
+				LogGroupClass: string(group.LogGroupClass),
+				KmsKeyID:      aws.ToString(group.KmsKeyId),
+				CreationTime:  aws.ToInt64(group.CreationTime),
+				StoredBytes:   aws.ToInt64(group.StoredBytes),
+				Tags:          map[string]string{},
 			}
-			observed.Tags = tags
+			if group.RetentionInDays != nil {
+				days := aws.ToInt32(group.RetentionInDays)
+				if days > 0 {
+					observed.RetentionInDays = aws.Int32(days)
+				}
+			}
+			// AWS DescribeLogGroups does not return tags; fetch them separately.
+			if observed.ARN != "" {
+				tags, tagErr := r.ListTagsForResource(ctx, observed.ARN)
+				if tagErr != nil {
+					return ObservedState{}, false, fmt.Errorf("list tags for %s: %w", observed.ARN, tagErr)
+				}
+				observed.Tags = tags
+			}
+			return observed, true, nil
 		}
-		return observed, true, nil
+		if out.NextToken == nil {
+			return ObservedState{}, false, nil
+		}
+		input.NextToken = out.NextToken
 	}
-	return ObservedState{}, false, nil
 }
 
 func (r *realLogGroupAPI) PutRetentionPolicy(ctx context.Context, logGroupName string, retentionInDays int32) error {

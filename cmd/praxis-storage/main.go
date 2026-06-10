@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
@@ -39,8 +41,12 @@ func main() {
 		Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth), rp)).
 		Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth), rp))
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
 	slog.Info("starting storage driver pack", "addr", cfg.ListenAddr)
-	if err := srv.Start(context.Background(), cfg.ListenAddr); err != nil {
+	err := srv.Start(ctx, cfg.ListenAddr)
+	stop()
+	if err != nil {
 		slog.Error("storage driver pack exited", "err", err.Error())
 		os.Exit(1)
 	}

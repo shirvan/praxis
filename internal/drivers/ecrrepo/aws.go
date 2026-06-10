@@ -46,7 +46,7 @@ type realRepositoryAPI struct {
 // NewRepositoryAPI constructs a production ECRRepositoryAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewRepositoryAPI(client *ecrsdk.Client) RepositoryAPI {
-	return &realRepositoryAPI{client: client, limiter: ratelimit.New("ecr-repository", 15, 5)}
+	return &realRepositoryAPI{client: client, limiter: ratelimit.Shared("ecr-repository", 15, 5)}
 }
 
 // CreateRepository calls Amazon Elastic Container Registry (ECR) to create a new AWS ECR Repository from the given spec.

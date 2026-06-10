@@ -44,7 +44,7 @@ type realDBSubnetGroupAPI struct {
 // NewDBSubnetGroupAPI creates a new API backed by the given RDS client.
 // Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewDBSubnetGroupAPI(client *rdssdk.Client) DBSubnetGroupAPI {
-	return &realDBSubnetGroupAPI{client: client, limiter: ratelimit.New("rds", 15, 8)}
+	return &realDBSubnetGroupAPI{client: client, limiter: ratelimit.Shared("rds", 15, 8)}
 }
 
 // CreateDBSubnetGroup calls rds:CreateDBSubnetGroup.

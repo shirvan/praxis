@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -64,18 +65,19 @@ Use --yes / -y to skip the confirmation prompt.`,
 				return err
 			}
 
+			ctx := cmd.Context()
 			switch kind {
 			case "Deployment":
-				return deleteDeployment(flags, renderer, key, yes, wait, rollback, force, orphan, parallelism, timeout)
+				return deleteDeployment(ctx, flags, renderer, key, yes, wait, rollback, force, orphan, parallelism, timeout)
 			case "workspace":
-				return deleteWorkspace(flags, key)
+				return deleteWorkspace(ctx, flags, key)
 			case "template":
-				return deleteTemplate(flags, key)
+				return deleteTemplate(ctx, flags, key)
 			case "sink":
-				return deleteSink(flags, key)
+				return deleteSink(ctx, flags, key)
 			default:
 				// Cloud resource deletion (e.g. S3Bucket/my-bucket)
-				return deleteResource(flags, kind, key, yes)
+				return deleteResource(ctx, flags, kind, key, yes)
 			}
 		},
 	}
@@ -92,9 +94,9 @@ Use --yes / -y to skip the confirmation prompt.`,
 }
 
 // deleteDeployment handles the Deployment teardown flow.
-func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wait, rollback, force, orphan bool, parallelism int, timeout time.Duration) error {
+func deleteDeployment(ctx context.Context, flags *rootFlags, renderer *Renderer, key string, yes, wait, rollback, force, orphan bool, parallelism int, timeout time.Duration) error {
 	client := flags.newClient()
-	ctx := context.Background()
+	jsonOut := flags.outputFormat() == OutputJSON
 
 	// Fetch the current deployment state to show a destroy plan before
 	// prompting for confirmation. This mirrors Terraform's plan-before-destroy
@@ -107,13 +109,16 @@ func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wai
 		if detail == nil {
 			return fmt.Errorf("deployment %q not found", key)
 		}
-		if flags.outputFormat() != OutputJSON {
+		if !jsonOut {
 			printDestroyPlan(renderer, detail)
 			_, _ = fmt.Fprintln(renderer.out)
 		}
 	}
 
 	if !yes {
+		if jsonOut {
+			return errConfirmationRequired
+		}
 		_, _ = fmt.Fprintf(renderer.out, "%s ", renderer.renderPrompt(fmt.Sprintf("Delete deployment %q and all its resources? [y/N]:", key)))
 		var confirm string
 		if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "y" && confirm != "Y") {
@@ -135,20 +140,23 @@ func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wai
 		return err
 	}
 
-	if flags.outputFormat() == OutputJSON {
-		return printJSON(resp)
-	}
-
-	renderer.writeLabelValue("Deployment", 11, resp.DeploymentKey)
-	renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
-
 	if !wait {
+		if jsonOut {
+			return printJSON(resp)
+		}
+		renderer.writeLabelValue("Deployment", 11, resp.DeploymentKey)
+		renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
 		message := "Deletion in progress. Use 'praxis get Deployment/" + key + "' to check progress."
 		if rollback {
 			message = "Rollback in progress. Use 'praxis get Deployment/" + key + "' to check progress."
 		}
 		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderMuted(message))
 		return nil
+	}
+
+	if !jsonOut {
+		renderer.writeLabelValue("Deployment", 11, resp.DeploymentKey)
+		renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(resp.Status)))
 	}
 
 	var cancel context.CancelFunc
@@ -160,18 +168,20 @@ func deleteDeployment(flags *rootFlags, renderer *Renderer, key string, yes, wai
 	if cancel != nil {
 		cancel()
 	}
-	if isTimeoutError(ctx, err) {
+	if isTimeoutError(err) {
 		printTimeoutError(renderer, timeout, key)
 		os.Exit(2)
+	}
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("interrupted while waiting for deployment %q; deletion continues in the background — use 'praxis get Deployment/%s' to check progress", key, key)
 	}
 	return err
 }
 
 // deleteWorkspace removes a workspace from the configuration.
-func deleteWorkspace(flags *rootFlags, name string) error {
+func deleteWorkspace(ctx context.Context, flags *rootFlags, name string) error {
 	renderer := flags.renderer()
 	client := flags.newClient()
-	ctx := context.Background()
 
 	if err := client.DeleteWorkspace(ctx, name); err != nil {
 		return err
@@ -185,15 +195,18 @@ func deleteWorkspace(flags *rootFlags, name string) error {
 		}
 	}
 
+	if flags.outputFormat() == OutputJSON {
+		return printJSON(map[string]string{"deleted": name})
+	}
+
 	renderer.successLine(fmt.Sprintf("Workspace %q deleted.", name))
 	return nil
 }
 
 // deleteTemplate removes a template from the registry.
-func deleteTemplate(flags *rootFlags, name string) error {
+func deleteTemplate(ctx context.Context, flags *rootFlags, name string) error {
 	renderer := flags.renderer()
 	client := flags.newClient()
-	ctx := context.Background()
 
 	if err := client.DeleteTemplate(ctx, name); err != nil {
 		return err
@@ -208,8 +221,8 @@ func deleteTemplate(flags *rootFlags, name string) error {
 }
 
 // deleteSink removes a notification sink.
-func deleteSink(flags *rootFlags, name string) error {
-	if err := flags.newClient().RemoveNotificationSink(context.Background(), name); err != nil {
+func deleteSink(ctx context.Context, flags *rootFlags, name string) error {
+	if err := flags.newClient().RemoveNotificationSink(ctx, name); err != nil {
 		return err
 	}
 	if flags.outputFormat() == OutputJSON {
@@ -221,11 +234,14 @@ func deleteSink(flags *rootFlags, name string) error {
 
 // deleteResource deletes an individual cloud resource by calling the driver's
 // Delete handler on its Restate Virtual Object.
-func deleteResource(flags *rootFlags, kind, key string, yes bool) error {
+func deleteResource(ctx context.Context, flags *rootFlags, kind, key string, yes bool) error {
 	renderer := flags.renderer()
 	resolvedKey := flags.resolveResourceKey(kind, key)
 
 	if !yes {
+		if flags.outputFormat() == OutputJSON {
+			return errConfirmationRequired
+		}
 		_, _ = fmt.Fprintf(renderer.out, "%s ", renderer.renderPrompt(fmt.Sprintf("Delete %s/%s? This cannot be undone. [y/N]:", kind, resolvedKey)))
 		var confirm string
 		if _, err := fmt.Scanln(&confirm); err != nil || (confirm != "y" && confirm != "Y") {
@@ -235,7 +251,6 @@ func deleteResource(flags *rootFlags, kind, key string, yes bool) error {
 	}
 
 	client := flags.newClient()
-	ctx := context.Background()
 
 	if err := client.DeleteResource(ctx, kind, resolvedKey); err != nil {
 		return err

@@ -33,7 +33,7 @@ type realPermissionAPI struct {
 
 // NewPermissionAPI creates a production PermissionAPI with rate limiting (20 tokens/s, burst 10).
 func NewPermissionAPI(client *lambdasdk.Client) PermissionAPI {
-	return &realPermissionAPI{client: client, limiter: ratelimit.New("lambda-permission", 20, 10)}
+	return &realPermissionAPI{client: client, limiter: ratelimit.Shared("lambda-permission", 20, 10)}
 }
 
 // AddPermission calls Lambda AddPermission to add a policy statement.
@@ -198,6 +198,11 @@ func IsConflict(err error) bool {
 // IsPreconditionFailed returns true if the function version doesn't exist.
 func IsPreconditionFailed(err error) bool {
 	return awserr.HasCode(err, "PreconditionFailedException")
+}
+
+// IsInvalidParameter returns true if a parameter value is invalid.
+func IsInvalidParameter(err error) bool {
+	return awserr.HasCode(err, "InvalidParameterValueException", "ValidationException")
 }
 
 // IsThrottled returns true if the request was rate-limited by AWS.

@@ -6,6 +6,7 @@ package lambda
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/shirvan/praxis/internal/drivers"
 )
@@ -17,9 +18,24 @@ type FieldDiffEntry struct {
 	NewValue any
 }
 
-// HasDrift returns true if any mutable or immutable field differs.
+// HasDrift returns true if any correctable field differs. Immutable fields
+// (architectures, packageType, functionName) and code artifact diffs are
+// excluded: drift correction only updates configuration and tags, so
+// triggering on uncorrectable fields would loop forever without converging.
+// ComputeFieldDiffs still reports the full set of diffs for visibility.
 func HasDrift(desired LambdaFunctionSpec, observed ObservedState) bool {
-	return len(ComputeFieldDiffs(desired, observed)) > 0
+	for _, diff := range ComputeFieldDiffs(desired, observed) {
+		if isCorrectablePath(diff.Path) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCorrectablePath reports whether a diff at the given path can be fixed by
+// UpdateFunctionConfiguration/UpdateTags during drift correction.
+func isCorrectablePath(path string) bool {
+	return !strings.Contains(path, "(immutable, ignored)") && !strings.HasPrefix(path, "spec.code.")
 }
 
 // ComputeFieldDiffs returns per-field diffs between desired and observed state.

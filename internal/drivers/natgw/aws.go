@@ -43,7 +43,7 @@ type realNATGatewayAPI struct {
 func NewNATGatewayAPI(client *ec2sdk.Client) NATGatewayAPI {
 	return &realNATGatewayAPI{
 		client:  client,
-		limiter: ratelimit.New("nat-gateway", 20, 10),
+		limiter: ratelimit.Shared("nat-gateway", 20, 10),
 	}
 }
 

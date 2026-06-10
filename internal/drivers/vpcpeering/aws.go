@@ -38,7 +38,7 @@ type realVPCPeeringAPI struct {
 func NewVPCPeeringAPI(client *ec2sdk.Client) VPCPeeringAPI {
 	return &realVPCPeeringAPI{
 		client:  client,
-		limiter: ratelimit.New("vpc-peering", 20, 10),
+		limiter: ratelimit.Shared("vpc-peering", 20, 10),
 	}
 }
 

@@ -620,7 +620,7 @@ CUE has built-in JSON Schema export. A build step generates JSON Schema files fr
 just generate-event-schemas
 ```
 
-The generated files are committed under `schemas/events/gen/` and published alongside the event type catalog. External consumers reference them to validate incoming CloudEvents payloads without needing CUE tooling. The generated schemas cover all 31 event types: lifecycle (16), drift (3), command (4), policy (1), system (7).
+The generated files are committed under `schemas/events/gen/` and published alongside the event type catalog. External consumers reference them to validate incoming CloudEvents payloads without needing CUE tooling. The generated schemas cover all 31 event types with 30 payload schemas: lifecycle (17), drift (3), command (4), policy (2), system (4 — the two retention sweep event types share `#RetentionEventData`).
 
 ---
 
@@ -756,7 +756,7 @@ schemas/
     command.cue               # Command event data schemas
     policy.cue                # Policy event data schemas
     system.cue                # System event data schemas
-    gen/                      # Generated JSON Schema output (29 files, committed)
+    gen/                      # Generated JSON Schema output (30 files, committed)
   notifications/
     sink.cue                  # CUE schema for notification sink validation
     retention.cue             # CUE schema for event retention policy

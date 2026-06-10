@@ -39,7 +39,7 @@ type realESMAPI struct {
 
 // NewESMAPI creates a production ESMAPI with rate limiting (15 tokens/s, burst 10).
 func NewESMAPI(client *lambdasdk.Client) ESMAPI {
-	return &realESMAPI{client: client, limiter: ratelimit.New("lambda-esm", 15, 10)}
+	return &realESMAPI{client: client, limiter: ratelimit.Shared("lambda-esm", 15, 10)}
 }
 
 // CreateEventSourceMapping creates a new mapping with the full spec applied.

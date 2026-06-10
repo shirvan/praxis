@@ -22,6 +22,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
@@ -64,10 +66,17 @@ type Client struct {
 	rc *ingress.Client
 }
 
+// ingressRequestTimeout bounds every ingress HTTP request. All CLI calls are
+// quick request-response operations (submits are fire-and-forget, reads query
+// locally cached state); long-running waits are implemented client-side as
+// polling loops of short requests, so a per-request timeout never interferes
+// with --wait flows but prevents a wedged endpoint from hanging forever.
+const ingressRequestTimeout = 60 * time.Second
+
 // NewClient creates a new CLI client pointed at the given Restate ingress URL.
 func NewClient(endpoint string) *Client {
 	return &Client{
-		rc: ingress.NewClient(endpoint),
+		rc: ingress.NewClient(endpoint, restate.WithHttpClient(&http.Client{Timeout: ingressRequestTimeout})),
 	}
 }
 
@@ -266,8 +275,8 @@ func (c *Client) TestNotificationSink(ctx context.Context, name string) error {
 // GetResourceStatus reads a resource's current status from its driver service.
 // kind is the Restate service name (e.g., "S3Bucket"), key is the canonical
 // resource key (e.g., "my-bucket" or "vpc-123~web-sg").
-func (c *Client) GetResourceStatus(ctx context.Context, kind, key string) (*types.ResourceStatusResponse, error) {
-	resp, err := ingress.Object[restate.Void, types.ResourceStatusResponse](
+func (c *Client) GetResourceStatus(ctx context.Context, kind, key string) (*types.StatusResponse, error) {
+	resp, err := ingress.Object[restate.Void, types.StatusResponse](
 		c.rc, kind, key, "GetStatus",
 	).Request(ctx, restate.Void{})
 	if err != nil {
@@ -570,13 +579,14 @@ func (c *Client) StateMv(ctx context.Context, req types.StateMvRequest) (*types.
 		}
 	} else {
 		// Cross-deployment move: remove from source, add to destination.
-		rs, err := ingress.Object[string, orchestrator.ResourceState](
+		original, err := ingress.Object[string, orchestrator.ResourceState](
 			c.rc, stateServiceName, req.SourceDeployment, "RemoveResource",
 		).Request(ctx, req.ResourceName)
 		if err != nil {
 			return nil, fmt.Errorf("remove resource %q from %q: %w", req.ResourceName, req.SourceDeployment, err)
 		}
 
+		rs := original
 		rs.Name = newName
 		// Clear DependsOn since dependencies may not exist in the destination.
 		rs.DependsOn = nil
@@ -585,7 +595,23 @@ func (c *Client) StateMv(ctx context.Context, req types.StateMvRequest) (*types.
 			c.rc, stateServiceName, req.DestDeployment, "AddResource",
 		).Request(ctx, rs)
 		if err != nil {
-			return nil, fmt.Errorf("add resource %q to %q: %w", newName, req.DestDeployment, err)
+			// Compensate: the resource was already removed from the source, so
+			// try to restore it there before reporting the failure.
+			if _, restoreErr := ingress.Object[orchestrator.ResourceState, restate.Void](
+				c.rc, stateServiceName, req.SourceDeployment, "AddResource",
+			).Request(ctx, original); restoreErr != nil {
+				serialized, marshalErr := json.Marshal(original)
+				if marshalErr != nil {
+					serialized = fmt.Appendf(nil, "<failed to serialize resource state: %v>", marshalErr)
+				}
+				return nil, fmt.Errorf(
+					"add resource %q to %q failed: %v; restoring it to %q also failed: %v. "+
+						"The resource state is no longer tracked by either deployment. "+
+						"To recover, re-add it manually by calling DeploymentStateObj/%s/AddResource with this state: %s",
+					newName, req.DestDeployment, err, req.SourceDeployment, restoreErr,
+					req.SourceDeployment, serialized)
+			}
+			return nil, fmt.Errorf("add resource %q to %q: %w (resource was restored to %q)", newName, req.DestDeployment, err, req.SourceDeployment)
 		}
 	}
 

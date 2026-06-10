@@ -111,3 +111,23 @@ func sinkStateLabel(sink orchestrator.NotificationSink) string {
 	}
 	return orchestrator.SinkDeliveryStateHealthy
 }
+
+// redactSinkHeaders returns a copy of the sink with header values masked for
+// display in every output mode. Header values typically carry credentials
+// (e.g. Authorization tokens); ssm:/// parameter references are kept as-is
+// because they are pointers to secrets, not the secrets themselves.
+func redactSinkHeaders(sink orchestrator.NotificationSink) orchestrator.NotificationSink {
+	if len(sink.Headers) == 0 {
+		return sink
+	}
+	masked := make(map[string]string, len(sink.Headers))
+	for key, value := range sink.Headers {
+		if strings.HasPrefix(strings.TrimSpace(value), "ssm:///") {
+			masked[key] = value
+			continue
+		}
+		masked[key] = "<redacted>"
+	}
+	sink.Headers = masked
+	return sink
+}

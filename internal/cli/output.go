@@ -13,6 +13,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -49,6 +50,12 @@ func printJSON(v any) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(v)
+}
+
+// printJSONLine writes the value as a single-line JSON document to stdout.
+// Used by streaming commands (observe) to emit NDJSON: one object per line.
+func printJSONLine(v any) error {
+	return json.NewEncoder(os.Stdout).Encode(v)
 }
 
 // --------------------------------------------------------------------------
@@ -115,7 +122,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 	if len(d.Resources) > 0 {
 		headers := []string{"RESOURCE", "KIND", "KEY", "STATUS", "CONDITIONS", "ERROR"}
 		rows := make([][]string, 0, len(d.Resources))
-		for _, resource := range d.Resources {
+		for i := range d.Resources {
+			resource := &d.Resources[i]
 			errMsg := "-"
 			if resource.Error != "" {
 				errMsg = truncate(resource.Error, 60)
@@ -132,8 +140,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 		printTable(r, headers, rows)
 
 		hasConditions := false
-		for _, resource := range d.Resources {
-			if len(resource.Conditions) > 0 {
+		for i := range d.Resources {
+			if len(d.Resources[i].Conditions) > 0 {
 				hasConditions = true
 				break
 			}
@@ -141,7 +149,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 		if hasConditions {
 			_, _ = fmt.Fprintln(r.out)
 			_, _ = fmt.Fprintln(r.out, r.renderSection("Conditions:"))
-			for _, resource := range d.Resources {
+			for i := range d.Resources {
+				resource := &d.Resources[i]
 				if len(resource.Conditions) == 0 {
 					continue
 				}
@@ -165,8 +174,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 		// Print dependency graph info for resources that have dependencies.
 		if sections.Deps {
 			hasDeps := false
-			for _, res := range d.Resources {
-				if len(res.DependsOn) > 0 {
+			for i := range d.Resources {
+				if len(d.Resources[i].DependsOn) > 0 {
 					hasDeps = true
 					break
 				}
@@ -174,7 +183,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 			if hasDeps {
 				_, _ = fmt.Fprintln(r.out)
 				_, _ = fmt.Fprintln(r.out, r.renderSection("Dependencies:"))
-				for _, resource := range d.Resources {
+				for i := range d.Resources {
+					resource := &d.Resources[i]
 					if len(resource.DependsOn) > 0 {
 						_, _ = fmt.Fprintf(r.out, "  %s → %s\n", resource.Name, strings.Join(resource.DependsOn, ", "))
 					}
@@ -186,7 +196,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 		if sections.Inputs && len(inputs) > 0 {
 			_, _ = fmt.Fprintln(r.out)
 			_, _ = fmt.Fprintln(r.out, r.renderSection("Inputs:"))
-			for _, resource := range d.Resources {
+			for i := range d.Resources {
+				resource := &d.Resources[i]
 				resInputs, ok := inputs[resource.Name]
 				if !ok || len(resInputs) == 0 {
 					continue
@@ -205,8 +216,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 		// Print outputs section for resources that have them.
 		if sections.Outputs {
 			hasOutputs := false
-			for _, r := range d.Resources {
-				if len(r.Outputs) > 0 {
+			for i := range d.Resources {
+				if len(d.Resources[i].Outputs) > 0 {
 					hasOutputs = true
 					break
 				}
@@ -214,7 +225,8 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 			if hasOutputs {
 				_, _ = fmt.Fprintln(r.out)
 				_, _ = fmt.Fprintln(r.out, r.renderSection("Outputs:"))
-				for _, resource := range d.Resources {
+				for i := range d.Resources {
+					resource := &d.Resources[i]
 					keys := make([]string, 0, len(resource.Outputs))
 					for key := range resource.Outputs {
 						keys = append(keys, key)
@@ -231,10 +243,10 @@ func printDeploymentDetail(r *Renderer, d *types.DeploymentDetail, sections depl
 		// The table above truncates errors to 60 chars; this section shows them
 		// in full so the user can diagnose failures without digging into logs.
 		if sections.Errors {
-			var errorResources []types.DeploymentResource
-			for _, r := range d.Resources {
-				if r.Error != "" {
-					errorResources = append(errorResources, r)
+			var errorResources []*types.DeploymentResource
+			for i := range d.Resources {
+				if d.Resources[i].Error != "" {
+					errorResources = append(errorResources, &d.Resources[i])
 				}
 			}
 			if len(errorResources) > 0 {
@@ -338,7 +350,8 @@ func printDestroyPlan(r *Renderer, detail *types.DeploymentDetail) {
 	// Build a DAG from the deployment resources so we can show the
 	// reverse topological (destroy) order.
 	nodes := make([]*types.ResourceNode, 0, len(detail.Resources))
-	for _, res := range detail.Resources {
+	for i := range detail.Resources {
+		res := &detail.Resources[i]
 		nodes = append(nodes, &types.ResourceNode{
 			Name:         res.Name,
 			Kind:         res.Kind,
@@ -355,15 +368,15 @@ func printDestroyPlan(r *Renderer, detail *types.DeploymentDetail) {
 	if err == nil {
 		order = graph.ReverseTopo()
 	} else {
-		for _, res := range detail.Resources {
-			order = append(order, res.Name)
+		for i := range detail.Resources {
+			order = append(order, detail.Resources[i].Name)
 		}
 	}
 
 	// Index resources by name for lookup in topo order.
-	byName := make(map[string]types.DeploymentResource, len(detail.Resources))
-	for _, res := range detail.Resources {
-		byName[res.Name] = res
+	byName := make(map[string]*types.DeploymentResource, len(detail.Resources))
+	for i := range detail.Resources {
+		byName[detail.Resources[i].Name] = &detail.Resources[i]
 	}
 
 	_, _ = fmt.Fprintln(r.out)
@@ -857,13 +870,22 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
+// shortDigest abbreviates a content digest to 12 characters for display.
+// Short or empty digests are returned unchanged.
+func shortDigest(digest string) string {
+	if len(digest) <= 12 {
+		return digest
+	}
+	return digest[:12]
+}
+
 // --------------------------------------------------------------------------
 // Timeout helpers
 // --------------------------------------------------------------------------
 
-// isTimeoutError returns true if the context's deadline was exceeded.
-func isTimeoutError(ctx context.Context, err error) bool {
-	return ctx.Err() == context.DeadlineExceeded
+// isTimeoutError returns true if the error was caused by an exceeded deadline.
+func isTimeoutError(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 // printTimeoutError emits a user-friendly message when a polling wait exceeds

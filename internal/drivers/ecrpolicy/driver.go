@@ -122,7 +122,14 @@ func (d *ECRLifecyclePolicyDriver) Import(ctx restate.ObjectContext, ref types.I
 	}
 	state.Generation++
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetLifecyclePolicy(rc, ref.ResourceID)
+		obs, runErr := api.GetLifecyclePolicy(rc, ref.ResourceID)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {
@@ -229,7 +236,14 @@ func (d *ECRLifecyclePolicyDriver) Reconcile(ctx restate.ObjectContext) (types.R
 		return types.ReconcileResult{}, err
 	}
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
-		return api.GetLifecyclePolicy(rc, state.Outputs.RepositoryName)
+		obs, runErr := api.GetLifecyclePolicy(rc, state.Outputs.RepositoryName)
+		if runErr != nil {
+			if IsNotFound(runErr) {
+				return ObservedState{}, restate.TerminalError(runErr, 404)
+			}
+			return ObservedState{}, runErr
+		}
+		return obs, nil
 	})
 	if err != nil {
 		if IsNotFound(err) {
