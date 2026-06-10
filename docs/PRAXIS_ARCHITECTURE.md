@@ -20,7 +20,7 @@ These patterns are very common for operation teams and this document describes t
 
 ```mermaid
 graph TD
-    User["CLIENT<br/>(CLI / API / chat)"]
+    User["CLIENT<br/>(CLI / API)"]
 
     User -->|"HTTP/JSON via Restate ingress"| Core
 
@@ -61,6 +61,7 @@ No dedicated API server. No external database. No message broker. Restate is the
 Reconciliation systems have a fundamental problem: operations against external systems are slow, flaky, and can fail mid-way. A controller that creates a load balancer, attaches listeners, and registers targets needs to handle crashes at any step without leaving orphaned resources or getting into a bad state.
 
 The usual approaches:
+
 - **State machines + external databases** - complex bookkeeping, operational burden
 - **Message queues + idempotent consumers** - eventual consistency headaches, dead letter queues
 - **Kubernetes controllers** - works, but you need a full cluster
@@ -83,7 +84,7 @@ You get the same correctness guarantees without operating a distributed consensu
 
 The foundational modeling decision: **every managed resource instance is its own Virtual Object**, keyed by a natural identifier.
 
-```
+```text
 S3Bucket/my-bucket
 SecurityGroup/vpc-123~web-sg
 EC2Instance/us-east-1~web-server
@@ -107,7 +108,7 @@ Each Virtual Object has its own key-value store. No external database.
 
 Every resource driver implements six handlers:
 
-```
+```text
 Exclusive (single-writer):
   Provision(spec)  → outputs     Create or update the resource
   Import(ref)      → outputs     Adopt an existing resource
@@ -164,7 +165,7 @@ sequenceDiagram
 
 Cross-resource references use a simple dot-path syntax:
 
-```
+```text
 ${resources.<name>.outputs.<field>}
 ```
 
@@ -177,12 +178,14 @@ An alternative is distributed choreography: each driver watches for its dependen
 Centralized orchestration has tradeoffs:
 
 **Benefits:**
+
 - Drivers stay simple: pure CRUD, no coordination logic
 - Deployment state lives in one place for consistent observability
 - Failure handling is centralized with clear error propagation
 - The DAG is inspectable, so you can visualize and debug the execution plan
 
 **Cost:**
+
 - The orchestrator is a bottleneck. Every deployment flows through it.
 
 This cost is acceptable for most resource management domains. If you need thousands of concurrent deployments, you can shard orchestrators by deployment key.
@@ -360,17 +363,8 @@ graph TD
         DO["Deployment Orchestrator"]
         TR["Template & Policy Registries"]
         DS["Deployment State / Index / Events"]
+        EB["EventBus + DeploymentEventStore + SinkRouter"]
     end
-
-    User -->|"HTTP/JSON via Restate ingress"| Concierge
-
-    subgraph Concierge["CONCIERGE (optional)"]
-        CS2["ConciergeSession: per-session LLM conversation"]
-        CC["ConciergeConfig: LLM provider settings"]
-        AR["ApprovalRelay: awakeable resolution"]
-    end
-
-    Concierge -->|"Restate RPC"| Core
 
     Core -->|"Restate RPC"| Drivers
 
@@ -382,38 +376,20 @@ graph TD
         Monitoring["Monitoring (CloudWatch)"]
     end
 
-    Core -->|"CloudEvents"| Notifications
-
-    subgraph Notifications["NOTIFICATIONS (optional)"]
-        EB["EventBus + SinkRouter"]
-        ES["DeploymentEventStore + EventIndex"]
-    end
-
-    Notifications -->|"CloudEvents"| Slack
-
-    subgraph Slack["SLACK GATEWAY (optional)"]
-        SR["SlackEventReceiver"]
-        SGC["SlackGatewayConfig + WatchConfig"]
-    end
-
-    Slack -->|"Restate RPC"| Concierge
+    Core -->|"CloudEvents"| Sinks["NOTIFICATION SINKS<br/>(webhook / restate_rpc)"]
 
     Drivers --> AWS["AWS APIs"]
 ```
 
 ### Components
 
-**Praxis Core** is the coordination layer. It hosts the Command Service (receives CLI commands), Template Engine (CUE evaluation + policy enforcement), Deployment Orchestrator (DAG-scheduled workflows), and state management Virtual Objects. Runs as a single container.
+**Praxis Core** is the coordination layer. It hosts the Command Service (receives CLI commands), Template Engine (CUE evaluation + policy enforcement), Deployment Orchestrator (DAG-scheduled workflows), state management Virtual Objects, and the eventing layer (EventBus, per-deployment DeploymentEventStore, SinkRouter). Runs as a single container.
 
 **Driver Packs** are five containers, each hosting related AWS resource drivers as Virtual Objects. Each driver implements the six-handler contract (Provision, Import, Delete, Reconcile, GetStatus, GetOutputs), stores state in Restate's K/V store, and handles AWS API rate limiting. Drivers have zero knowledge of each other.
 
-**Concierge** (optional) is an AI-powered assistant that provides natural language interaction. It uses Restate awakeables for human-in-the-loop approval of destructive operations. Communicates with Core through the same RPC mechanism drivers use.
+**Eventing** is a CloudEvents event bus for deployment lifecycle events, hosted inside Praxis Core. It fans out to per-deployment event stores and registered notification sinks (`webhook` HTTP POST or `restate_rpc` service-to-service send). The orchestrator fires events and forgets about them. If a sink is unavailable, deployments keep going.
 
-**Notifications** (optional) is a CloudEvents event bus for deployment lifecycle events. It fans out to event stores, indexes, and registered sinks. The orchestrator fires events and forgets about them. If notifications are unavailable, deployments keep going.
-
-**Slack Gateway** (optional) receives events from the notification sink router and posts to Slack channels. Can optionally invoke the Concierge for AI-powered analysis.
-
-**CLI** is a standalone Go binary (Cobra) that talks directly to Restate's ingress HTTP API. No dedicated API server. Write commands route to the Command Service; read commands query Virtual Objects directly.
+**CLI** is a standalone Go binary (Cobra) that talks directly to Restate's ingress HTTP API. No dedicated API server. Write commands route to the Command Service; read commands query Virtual Objects directly. Every command supports `-o json` and stable exit codes, which makes the CLI (alongside the HTTP API, see [API.md](API.md)) the integration surface for scripts and AI agent harnesses.
 
 ### Data Flows
 
@@ -494,6 +470,7 @@ To apply this architecture to a different domain, map these concepts:
 | Reconciliation timer | Your drift detection interval |
 
 The pieces that are truly reusable:
+
 1. Virtual Objects as the entity model
 2. DAG-based orchestration with expression hydration
 3. Durable timers for reconciliation loops
@@ -502,6 +479,7 @@ The pieces that are truly reusable:
 6. Lifecycle guards (preventDestroy, ignoreChanges)
 
 The pieces that are Praxis-specific:
+
 1. CUE as the schema language (use whatever fits)
 2. AWS as the target (swap in any external API)
 3. The specific driver implementations

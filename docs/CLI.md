@@ -16,17 +16,15 @@ praxis <VERB> [<RESOURCE>] [flags]
 |------------|-------------------|----------------------------------------------------------------------------|
 | `deploy`   | Provision it      | From a CUE file path or registered template name                          |
 | `plan`     | Dry-run it        | Changes nothing — shows the JSON diff that `deploy` would produce          |
-| `get`      | Show one thing    | Deployment, resource, workspace, config, concierge status, notifications   |
-| `list`     | Show many things  | Deployments, templates, workspaces, sinks, events, concierge history       |
-| `delete`   | Tear it down      | Deployment, workspace, template, sink, concierge session                   |
+| `get`      | Show one thing    | Deployment, resource, workspace, config, schema, notifications             |
+| `list`     | Show many things  | Deployments, templates, workspaces, sinks, events, schemas                 |
+| `delete`   | Tear it down      | Deployment, workspace, template, sink                                      |
 | `create`   | Make a new thing  | Workspace, template, notification sink                                     |
-| `set`      | Update a setting  | Active workspace, config field, concierge provider                         |
+| `set`      | Update a setting  | Active workspace, config field                                             |
 | `move`     | Relocate it       | Rename resource or move between deployments                                |
 | `import`   | Adopt it          | Adopt an existing cloud resource                                           |
 | `reconcile`| Drift-check it    | On-demand reconciliation of a resource                                     |
 | `observe`  | Watch it          | Real-time event stream for any resource: deployments, individual resources |
-| `ask`      | Talk to AI        | Send a natural language prompt to the concierge                            |
-| `approve`  | Human-in-the-loop | Approve or reject a pending concierge action                               |
 | `test`     | Verify it         | Test delivery of an integration (notification sinks)                       |
 | `fmt`      | Format it         | Format CUE template files                                                  |
 
@@ -39,7 +37,6 @@ praxis <VERB> [<RESOURCE>] [flags]
 | `PRAXIS_ACCOUNT`          | Default AWS account for deploy/plan/import | —                       |
 | `PRAXIS_WORKSPACE`        | Active workspace override                  | from `~/.praxis/config` |
 | `PRAXIS_OUTPUT`           | Default output format (`table` or `json`)  | `table`                 |
-| `PRAXIS_SESSION`          | Concierge session ID                       | auto-generated          |
 
 ## Quick Reference
 
@@ -51,87 +48,27 @@ praxis <VERB> [<RESOURCE>] [flags]
 | `get <Kind/Key>`     | Both     | Show deployment or resource details              |
 | `get workspace`      | Both     | Show workspace details                           |
 | `get config`         | Both     | Show workspace-scoped configuration              |
-| `get concierge`      | Both     | Show concierge session status                    |
+| `get schema <Kind>`  | Both     | Print the CUE schema for a resource kind         |
 | `get notifications`  | Both     | Show notification sink health                    |
 | `list deployments`   | Both     | List active deployments                          |
 | `list templates`     | Both     | List registered templates                        |
 | `list workspaces`    | Both     | List workspaces                                  |
 | `list sinks`         | Both     | List notification sinks                          |
-| `list events`        | Both     | List or query events                             |
-| `list concierge`     | Both     | Show concierge conversation history              |
-| `delete <Kind/Key>`  | Both     | Delete a deployment, workspace, template, sink, or session |
+| `list schemas`       | Both     | List resource kinds and their CUE schemas        |
+| `list events`        | Both     | List events for a deployment                     |
+| `delete <Kind/Key>`  | Both     | Delete a deployment, workspace, template, or sink |
 | `create workspace`   | Operators| Create or update a workspace                     |
 | `create template`    | Operators| Register or update a CUE template                |
 | `create sink`        | Operators| Create or update a notification sink             |
 | `set workspace`      | Both     | Set the active workspace                         |
 | `set config`         | Operators| Update workspace-scoped configuration            |
-| `set concierge`      | Operators| Configure the concierge LLM provider             |
 | `move`               | Operators| Rename or move a resource between deployments    |
 | `import`             | Operators| Adopt an existing cloud resource                 |
 | `reconcile`          | Operators| Trigger on-demand drift detection and correction |
 | `observe <Kind/Key>` | Both     | Watch any resource in real time                  |
-| `ask`                | Users    | Send a prompt to the AI concierge                |
-| `approve`            | Both     | Approve or reject a pending concierge action     |
 | `test sink/<name>`   | Operators| Test notification sink delivery                  |
 | `fmt`                | Both     | Format CUE template files                        |
 | `version`            | Both     | Print the CLI version                            |
-| `concierge slack configure` | Operators | Configure the Slack gateway              |
-| `concierge slack get-config` | Both   | Show Slack gateway configuration              |
-| `concierge slack allowed-users` | Operators | Manage the Slack allowed-user list      |
-| `concierge slack watch` | Operators | Manage event watch rules                      |
-| `<prompt>` (root)    | Users    | Natural language shorthand — forwards to concierge |
-
-## Natural Language Shorthand
-
-When the concierge is running, you can talk to Praxis directly on the root
-command — any unrecognised arguments are forwarded as a natural language prompt:
-
-```bash
-praxis "why did my deploy fail?"
-praxis "convert this terraform to praxis" --file main.tf
-praxis "deploy the orders API to staging"
-```
-
-This is equivalent to `praxis ask <prompt>`. The following flags
-apply only when the root command forwards to the concierge:
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--session` | | auto-resolved | Switch to a specific session ID (env: PRAXIS_SESSION) |
-| `--new-session` | | `false` | Start a new session (ignores saved session) |
-| `--file` | `-f` | | Attach file, directory, or glob to the prompt |
-| `--account` | | env | Override AWS account |
-| `--workspace` | | | Override workspace |
-| `--auto-approve` | | `false` | Skip approval prompts |
-| `--json` | | `false` | Output raw AskResponse JSON |
-
-The `--file` flag supports single files, directories (walked recursively), and glob patterns:
-
-```bash
-# Single file
-praxis "convert this" --file main.tf
-
-# Directory (all files recursively)
-praxis "migrate everything" --file ./terraform/
-
-# Glob pattern
-praxis "analyze these modules" --file "./modules/*.tf"
-```
-
-Each attached file is appended to the prompt with a path marker so the concierge knows which file is which.
-
-### Session Persistence
-
-Session IDs are resolved in this order:
-
-1. `PRAXIS_SESSION` environment variable
-2. State file at `~/.praxis/session`
-3. Auto-generated random hex ID
-
-After every `ask` invocation, the active session ID is saved to `~/.praxis/session` so subsequent commands in any shell reuse the same session automatically. To start a fresh session, pass `--new-session`. The active session ID is printed to stderr at the start of each invocation.
-
-When the concierge container is not running, unrecognised arguments print a
-helpful setup message instead of an error.
 
 ## Global Flags
 
@@ -369,13 +306,13 @@ Retrieve the current state of a deployment, individual resource, or meta-resourc
 praxis get <Kind/Key>
 praxis get workspace [name]
 praxis get config <path>
-praxis get concierge [--session <id>]
+praxis get schema <Kind>
 praxis get notifications
 praxis get template/<name>
 praxis get sink/<name>
 ```
 
-The argument uses `Kind/Key` format for deployments and cloud resources. Meta-resources (workspace, config, concierge, notifications, template, sink) use subcommands.
+The argument uses `Kind/Key` format for deployments and cloud resources. Meta-resources (workspace, config, schema, notifications, template, sink) use subcommands.
 
 ### get (deployment / cloud resource)
 
@@ -496,19 +433,30 @@ praxis get config events.retention -w staging
 praxis get config events.retention -o json
 ```
 
-### get concierge
+### get schema
 
-Show the current status of a concierge session, including any pending approvals.
+Print the embedded CUE schema for a resource kind. Works fully offline — the schemas are embedded in the `praxis` binary, so no running stack is required.
 
 ```bash
-praxis get concierge [--session <id>]
+praxis get schema <Kind>
 ```
 
-**Flags:**
+The kind is matched case-insensitively (`praxis get schema s3bucket` and `praxis get schema S3Bucket` are equivalent). For an unknown kind, the error lists all known kinds.
 
-| Flag        | Default         | Description    |
-|-------------|-----------------|----------------|
-| `--session` | auto-resolved   | Session ID     |
+**Examples:**
+
+```bash
+# Print the S3 bucket schema
+praxis get schema S3Bucket
+
+# Case-insensitive lookup
+praxis get schema ec2instance
+
+# JSON output for scripting
+praxis get schema VPC -o json
+```
+
+With `-o json`, the output is an object of the form `{"kind": ..., "file": ..., "source": ...}` where `source` is the full CUE schema file content. Use `praxis list schemas` to discover available kinds.
 
 ### get notifications
 
@@ -541,22 +489,21 @@ praxis get sink/<name>
 List known resources of a given type.
 
 ```bash
-praxis list <resource-type> [flags]
+praxis list <resource-type> [scope] [flags]
 ```
 
-Accepted values: `deployments` (aliases: `deployment`, `deploy`), `templates`, `workspaces`, `sinks`, `events`, `concierge`, or any cloud resource Kind (e.g. `S3Bucket`, `EC2Instance`, `VPC`).
+Accepted values: `deployments` (aliases: `deployment`, `deploy`), `templates`, `workspaces`, `sinks`, `schemas`, `events`, or any cloud resource Kind (e.g. `S3Bucket`, `EC2Instance`, `VPC`).
 
 **Flags:**
 
 | Flag             | Default | Description                                         |
 |------------------|---------|-----------------------------------------------------|
-| `-w, --workspace`| —       | Filter by workspace name (deployments, events)      |
+| `-w, --workspace`| —       | Filter by workspace name (deployments, cloud resource Kinds) |
 | `--since`        | —       | Show events from the last duration (e.g. `1h`, `7d`)|
 | `--type`         | —       | Filter events by type prefix                        |
 | `--severity`     | —       | Filter events by severity (info, warn, error)       |
 | `--resource`     | —       | Filter events by resource name                      |
 | `--limit`        | 100     | Maximum events to return                            |
-| `--session`      | —       | Concierge session ID (default: auto-resolved)       |
 
 **Examples:**
 
@@ -574,17 +521,14 @@ praxis list workspaces
 # Notification sinks
 praxis list sinks
 
+# Resource kinds and their CUE schemas (offline)
+praxis list schemas
+praxis list schemas -o json
+
 # Events for a single deployment
 praxis list events Deployment/my-webapp
 praxis list events Deployment/my-webapp --since 1h --severity error
-
-# Cross-deployment event search
-praxis list events --severity error
-praxis list events -w staging --since 1d --limit 50
-
-# Concierge conversation history
-praxis list concierge
-praxis list concierge --session my-session
+praxis list events Deployment/my-webapp --type dev.praxis.resource --limit 50
 
 # Cloud resources by Kind (walks all deployments)
 praxis list S3Bucket
@@ -593,6 +537,14 @@ praxis list EC2Instance -o json
 ```
 
 The `--since` flag accepts Go-style durations (`1h`, `30m`, `2h30m`) plus a `d` suffix for days (`7d`).
+
+**Events:**
+
+`praxis list events` requires a `Deployment/<key>` scope — events are stored per deployment, and calling the command without a scope is an error. The `--since`, `--type`, `--severity`, `--resource`, and `--limit` filters are applied client-side to the deployment's event stream. The `--workspace` filter does not apply to events.
+
+**Schemas:**
+
+`praxis list schemas` lists every resource kind alongside the CUE schema file that templates are validated against. It works fully offline — the schemas are embedded in the `praxis` binary, so no running stack is required. With `-o json`, the output is an array of `{"kind": ..., "file": ...}` objects. Use `praxis get schema <Kind>` to print a schema's contents.
 
 **Output:**
 
@@ -613,7 +565,7 @@ Tear down a deployment and all its resources, or delete a meta-resource.
 praxis delete <Kind/Key> [flags]
 ```
 
-Supported kinds: `Deployment`, `workspace`, `template`, `sink`, `concierge`, or any cloud resource Kind (e.g. `S3Bucket/my-bucket`, `EC2Instance/us-east-1~web-server`).
+Supported kinds: `Deployment`, `workspace`, `template`, `sink`, or any cloud resource Kind (e.g. `S3Bucket/my-bucket`, `EC2Instance/us-east-1~web-server`).
 
 **Flags:**
 
@@ -652,10 +604,6 @@ praxis delete sink/old-webhook
 # Delete an individual cloud resource
 praxis delete S3Bucket/my-bucket --yes
 praxis delete EC2Instance/us-east-1~web-server -y
-
-# Clear a concierge session
-praxis delete concierge
-praxis delete concierge/my-session
 ```
 
 Without `--yes`, the command prompts for confirmation before proceeding. Deletion is asynchronous — use `--wait` to block until all resources have been removed!
@@ -882,7 +830,7 @@ praxis create sink [flags]
 | Flag                  | Default      | Description                              |
 |-----------------------|-------------|------------------------------------------|
 | `--name`              | —            | Sink name                                |
-| `--type`              | —            | Sink type (webhook, structured_log, etc) |
+| `--type`              | —            | Sink type: `webhook` or `restate_rpc`    |
 | `--url`               | —            | Endpoint URL                             |
 | `-f, --file`          | —            | Read config from JSON file or stdin (-)  |
 | `--filter-types`      | —            | Comma-separated event type prefixes      |
@@ -918,34 +866,27 @@ praxis set config <path> <value> [flags]
 | `-w, --workspace`| active workspace | Workspace name                           |
 | `-f, --file`     | —                | Load full policy from JSON file          |
 
-Supported paths: `events.retention.max-age`, `events.retention.max-events-per-deployment`, `events.retention.max-index-entries`, `events.retention.sweep-interval`, `events.retention.ship-before-delete`, `events.retention.drain-sink`.
+Supported paths: `events.retention` (replace the full policy with `--file`), `events.retention.max-age`, `events.retention.max-events-per-deployment`, `events.retention.sweep-interval`.
 
 **Examples:**
 
 ```bash
 praxis set config events.retention.max-age 180d
 praxis set config events.retention.max-events-per-deployment 500
-praxis set config events.retention.drain-sink ops-drain
+praxis set config events.retention.sweep-interval 6h
 praxis set config events.retention -f retention.json
 praxis set config events.retention.max-age 90d -w staging
 ```
 
-### set concierge
+When replacing the full policy with `--file`, the JSON shape is:
 
-Configure the concierge LLM provider.
-
-```bash
-praxis set concierge --provider <provider> [flags]
+```json
+{
+  "maxAge": "180d",
+  "maxEventsPerDeployment": 500,
+  "sweepInterval": "6h"
+}
 ```
-
-**Flags:**
-
-| Flag         | Default | Description                    |
-|--------------|---------|--------------------------------|
-| `--provider` | —       | LLM provider: openai or claude |
-| `--model`    | —       | Model name                     |
-| `--api-key`  | —       | API key for the provider       |
-| `--base-url` | —       | Custom API base URL            |
 
 ---
 
@@ -970,49 +911,6 @@ Destination can be:
 praxis move Deployment/web-app/myBucket newBucketName
 praxis move Deployment/web-app/myBucket Deployment/data-stack/dataBucket
 ```
-
----
-
-## ask
-
-Send a natural language prompt to the Concierge AI assistant.
-
-```bash
-praxis ask <prompt> [flags]
-```
-
-**Flags:**
-
-| Flag          | Default | Description                    |
-|---------------|---------|--------------------------------|
-| `--session`   | —       | Session ID for continuity      |
-| `--account`   | env     | AWS account name               |
-| `-w, --workspace` | — | Workspace name                 |
-
-**Examples:**
-
-```bash
-praxis ask how do I deploy a VPC
-praxis ask "what's the status of my-app"
-```
-
----
-
-## approve
-
-Approve or reject a pending action that the Concierge AI is waiting on.
-
-```bash
-praxis approve --awakeable-id <id> [flags]
-```
-
-**Flags:**
-
-| Flag              | Default | Description                     |
-|-------------------|---------|---------------------------------|
-| `--awakeable-id`  | —       | Awakeable ID (required)         |
-| `--reject`        | false   | Reject instead of approve       |
-| `--reason`        | —       | Reason for approval/rejection   |
 
 ---
 
@@ -1076,130 +974,6 @@ praxis <version> (built <timestamp>)
 
 ---
 
-## concierge
-
-AI-powered infrastructure assistant. The concierge is an optional service — these commands fail gracefully with setup instructions when the service is not running.
-
-The main concierge operations are now verb-first:
-- `praxis ask <prompt>` — Send a prompt
-- `praxis set concierge` — Configure the LLM provider
-- `praxis get concierge` — Show session status
-- `praxis list concierge` — Show conversation history
-- `praxis delete concierge` — Clear a session
-- `praxis approve` — Approve or reject a pending action
-
-### concierge slack
-
-Manage the Slack gateway integration. The Slack gateway is an optional component that allows users to interact with the concierge from Slack channels.
-
-#### concierge slack configure
-
-Configure the Slack gateway with bot and app tokens.
-
-```bash
-praxis concierge slack configure [flags]
-```
-
-**Flags:**
-
-| Flag               | Default | Description                                |
-|--------------------|---------|--------------------------------------------|
-| `--bot-token`      | —       | Slack bot token (`xoxb-...`)               |
-| `--bot-token-ref`  | —       | SSM parameter name for bot token           |
-| `--app-token`      | —       | Slack app-level token (`xapp-...`)         |
-| `--app-token-ref`  | —       | SSM parameter name for app token           |
-| `--event-channel`  | —       | Default channel for event notifications    |
-| `--allowed-users`  | —       | Comma-separated Slack user IDs             |
-
-**Examples:**
-
-```bash
-# Direct tokens (development)
-praxis concierge slack configure \
-  --bot-token xoxb-... \
-  --app-token xapp-... \
-  --event-channel C01ABC123
-
-# SSM-backed tokens (production)
-praxis concierge slack configure \
-  --bot-token-ref ssm:///praxis/slack/bot-token \
-  --app-token-ref ssm:///praxis/slack/app-token \
-  --event-channel C01ABC123 \
-  --allowed-users U04XYZ,U05ABC
-```
-
-#### concierge slack get-config
-
-Show the current Slack gateway configuration (tokens are redacted server-side).
-
-```bash
-praxis concierge slack get-config
-```
-
-#### concierge slack allowed-users
-
-Manage the Slack allowed-user list. When the list is empty, all users are permitted.
-
-```bash
-# Replace the entire list
-praxis concierge slack allowed-users set "U04XYZ,U05ABC"
-
-# Clear the list (permit all users)
-praxis concierge slack allowed-users set ""
-
-# Add a user
-praxis concierge slack allowed-users add U06DEF
-
-# Remove a user
-praxis concierge slack allowed-users remove U04XYZ
-
-# List current allowed users
-praxis concierge slack allowed-users list
-```
-
-#### concierge slack watch
-
-Manage event watch rules that route deployment events to specific Slack channels.
-
-```bash
-# Add a watch rule
-praxis concierge slack watch add --name prod-errors \
-  --channel C01ABC123 \
-  --severities error \
-  --workspaces prod
-
-# List all watch rules
-praxis concierge slack watch list
-
-# Update a rule
-praxis concierge slack watch update --id <rule-id> --enabled false
-
-# Remove a rule
-praxis concierge slack watch remove --id <rule-id>
-```
-
-**Watch add flags:**
-
-| Flag             | Default | Description                                      |
-|------------------|---------|--------------------------------------------------|
-| `--name`         | —       | Watch rule name (required)                       |
-| `--channel`      | —       | Slack channel for notifications                  |
-| `--types`        | —       | Comma-separated event types (supports trailing `*`) |
-| `--categories`   | —       | Comma-separated categories                       |
-| `--severities`   | —       | Comma-separated severities                       |
-| `--workspaces`   | —       | Comma-separated workspaces                       |
-| `--deployments`  | —       | Comma-separated deployments                      |
-
-**Watch update flags:**
-
-| Flag        | Default | Description                    |
-|-------------|---------|--------------------------------|
-| `--id`      | —       | Watch rule ID (required)       |
-| `--name`    | —       | New name                       |
-| `--enabled` | —       | Enable or disable (`true`/`false`) |
-
----
-
 ## Resource Key Resolution
 
 Resources are identified by `Kind/Key` pairs. The CLI automatically resolves keys based on the resource kind's scope:
@@ -1214,11 +988,20 @@ When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain 
 
 ## Exit Codes
 
-| Code | Meaning                                          |
-|------|--------------------------------------------------|
-| 0    | Success                                          |
-| 1    | Error (invalid arguments, API failure, etc.)     |
-| 2    | Timeout waiting for deployment completion        |
+Stable contract for scripts and AI agents:
+
+| Code | Meaning                                                       |
+|------|---------------------------------------------------------------|
+| 0    | Success                                                       |
+| 1    | General error (network failure, internal error, unclassified) |
+| 2    | Timeout waiting for deployment completion (`--wait` flows)    |
+| 3    | Not found (deployment, resource, template, workspace)         |
+| 4    | Validation error (bad template, bad input, schema violation)  |
+| 5    | Conflict (key in use, operation in progress, preventDestroy)  |
+| 6    | Authentication / credential error                             |
+
+With `-o json`, errors are emitted to stderr as a JSON envelope instead of
+styled text: `{"error": "<message>", "exitCode": <code>}`.
 
 ## Environment Variables
 
@@ -1229,4 +1012,3 @@ When `PRAXIS_REGION` (or `--region`) is set and the key doesn't already contain 
 | `PRAXIS_ACCOUNT`           | Default AWS account for provider calls |
 | `PRAXIS_WORKSPACE`         | Active workspace override              |
 | `PRAXIS_OUTPUT`            | Default output format (`table`/`json`) |
-| `PRAXIS_SESSION`           | Override concierge session ID          |

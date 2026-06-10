@@ -2,7 +2,7 @@
 
 > The following features are not yet implemented. Each section describes the technical approach for reference.
 >
-> Implemented capabilities such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, AWS SSM resolver, Auth Service (credential management), Workspace Service (environment isolation), Concierge (AI assistant), and Slack Gateway are intentionally omitted.
+> Implemented capabilities such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, AWS SSM resolver, Auth Service (credential management), and Workspace Service (environment isolation) are intentionally omitted. There is no built-in AI assistant: Praxis is agent-friendly by design — external agent harnesses drive it through the CLI (`-o json`, stable exit codes) or the HTTP API.
 
 ---
 

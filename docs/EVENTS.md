@@ -4,15 +4,14 @@
 
 ## Overview
 
-The Events & Notifications system is the observability and integration backbone of Praxis. Every state transition — deployment lifecycle, resource provisioning, drift detection, policy enforcement, administrative action — produces a structured [CloudEvents v1.0](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md) event that flows through a central event bus into per-deployment stores, a global query index, and external notification sinks.
+The Events & Notifications system is the observability and integration backbone of Praxis. Every state transition — deployment lifecycle, resource provisioning, drift detection, policy enforcement, administrative action — produces a structured [CloudEvents v1.0](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md) event that flows through a central event bus into per-deployment stores and external notification sinks.
 
 The system serves multiple consumers:
 
 - **CLI observe** — real-time deployment monitoring via `praxis observe`
-- **Audit trail** — cross-deployment queries via `praxis events query`
+- **Audit trail** — per-deployment event history via `praxis list events Deployment/<key>`
 - **Rollback** — event-stream-based rollback plans via `DeploymentEventStore.RollbackPlan`
-- **External integrations** — webhook, structured log, and CloudEvents HTTP sinks for Slack, PagerDuty, Datadog, S3 archival, etc.
-- **Concierge** — diagnostic queries against the event index
+- **External integrations** — webhook sinks for Slack, PagerDuty, Datadog, etc., and `restate_rpc` sinks for custom Restate-based consumers
 
 CloudEvents is a graduated CNCF specification with broad industry adoption (AWS EventBridge, Azure Event Grid, Google Eventarc, Knative). Every event Praxis produces can be consumed by any CloudEvents-compatible system without Praxis-specific adapters. The Go SDK ([`cloudevents/sdk-go`](https://github.com/cloudevents/sdk-go)) provides serialization, validation, and HTTP protocol bindings.
 
@@ -33,15 +32,12 @@ graph TD
 
     EB -->|"Append"| ES["Event Store<br/>(per-deployment stream)"]
     EB -->|"Fan-out"| SR["Sink Router<br/>(Restate Service)"]
-    EB -->|"Index"| EI["Event Index<br/>(query support)"]
 
     SR --> WH["Webhook Sink"]
-    SR --> SL["Structured Log Sink"]
-    SR --> CL["CloudEvents HTTP Sink<br/>(generic)"]
+    SR --> RPC["Restate RPC Sink<br/>(custom consumers)"]
 
     CLI["CLI observe"] -->|"Poll ListSince"| ES
-    Concierge["Concierge"] -->|"Query"| EI
-    AUDIT["Audit Trail"] -->|"Query"| EI
+    AUDIT["Audit Trail"] -->|"ListSince / ListByType"| ES
     RB["Rollback"] -->|"Query"| ES
 ```
 
@@ -49,9 +45,8 @@ graph TD
 
 | Component | Restate Type | Key | Purpose |
 |-----------|-------------|-----|---------|
-| `EventBus` | Virtual Object | `"global"` | Receives CloudEvents, validates against CUE schemas, routes to store + index + sinks |
+| `EventBus` | Virtual Object | `"global"` | Receives CloudEvents, validates against CUE schemas, routes to store + sinks |
 | `DeploymentEventStore` | Virtual Object | `<deploymentKey>` | Chunked append-only per-deployment event stream |
-| `EventIndex` | Virtual Object | `"global"` | Cross-deployment query index for audit, search, and concierge queries |
 | `SinkRouter` | Basic Service | — | Fan-out delivery to registered notification sinks |
 | `NotificationSinkConfig` | Virtual Object | `"global"` | Sink registrations, delivery configuration, health tracking |
 | `ResourceEventOwnerObj` | Virtual Object | `<resourceKey>` | Maps resource keys to deployment/workspace context for drift events |
@@ -59,26 +54,14 @@ graph TD
 
 ### Deployment Model
 
-The notifications system runs as a **standalone container** (`praxis-notifications`), separate from `praxis-core`. This follows the same driver-pack model used by `praxis-compute`, `praxis-network`, `praxis-storage`, and `praxis-identity` — each is an independent binary that registers its Restate services and scales independently.
-
-This separation matters because notification delivery can be high-traffic. A deployment that emits 50 events, fanned out to 5 sinks, produces 250 delivery operations. Across many concurrent deployments, the sink delivery load can dwarf the orchestration load. By running notifications in its own container, operators can scale delivery capacity independently without over-provisioning the core orchestrator.
-
-```yaml
-# docker-compose.yaml
-praxis-notifications:
-  build:
-    context: .
-    dockerfile: cmd/praxis-notifications/Dockerfile
-  ports:
-    - "9086:9080"
-  depends_on:
-    restate:
-      condition: service_healthy
-  environment:
-    - RESTATE_URI=http://restate:8080
-```
-
-The container registers seven Restate services: `EventBus`, `DeploymentEventStore`, `EventIndex`, `ResourceEventOwnerObj`, `ResourceEventBridge`, `SinkRouter`, and `NotificationSinkConfig`. Producers in `praxis-core` call `EventBus.Emit` via one-way send — Restate routes the message to whichever container registered the target service. No direct network coupling between containers.
+The event system is hosted by **`praxis-core`** alongside the command service
+and orchestrator — there is no separate notifications container. Core registers
+the six event services (`EventBus`, `DeploymentEventStore`, `ResourceEventOwnerObj`,
+`ResourceEventBridge`, `SinkRouter`, `NotificationSinkConfig`) with Restate.
+Producers (workflows, command handlers, drivers) call `EventBus.Emit` via
+one-way send — Restate routes the message regardless of which container
+registered the target service, so drivers in other packs need no direct
+network coupling to core.
 
 ---
 
@@ -212,7 +195,7 @@ Emitted during deployment validation when lifecycle policies block destructive o
 
 ### System Events (category: `system`)
 
-Internal health and operational events. System events are written to the event store and index but are excluded from sink delivery to prevent loops.
+Internal health and operational events. System events are written to the event store but are excluded from sink delivery to prevent loops.
 
 | Type | Severity | Subject | Description |
 |------|----------|---------|-------------|
@@ -221,8 +204,9 @@ Internal health and operational events. System events are written to the event s
 | `dev.praxis.system.sink.removed` | info | — | Notification sink removed |
 | `dev.praxis.system.retention.sweep_started` | info | — | Retention sweep began |
 | `dev.praxis.system.retention.sweep_completed` | info | — | Sweep finished (summary in payload) |
-| `dev.praxis.system.retention.ship_failed` | error | — | Drain sink delivery failed, pruning skipped |
-| `dev.praxis.system.retention.ship_completed` | info | — | Events shipped to drain sink |
+
+Sink lifecycle events land in the `__system__/sinks` stream; retention sweep
+events land in `__system__/retention/<workspace>`.
 
 ---
 
@@ -235,20 +219,18 @@ The `EventBus` Virtual Object is the single entry point for all event emission. 
 | Handler | Context | Purpose |
 |---------|---------|---------|
 | `Emit` | Exclusive | Validate, enrich, and route a single CloudEvent |
-| `EmitBatch` | Exclusive | Route multiple CloudEvents in one call (reduces RPC overhead) |
 | `ScheduleRetentionSweep` | Exclusive | Schedule the next retention sweep via durable timer |
-| `RunRetentionSweep` | Exclusive | Execute retention pruning and drain shipping |
+| `RunRetentionSweep` | Exclusive | Execute retention pruning |
 
 ### Emit Flow
 
 1. **Validate** — check required CloudEvents attributes (`specversion`, `id`, `source`, `type`)
 2. **Schema-validate** — validate the `data` payload against CUE schemas under `schemas/events/` for the event's type
 3. **Enrich** — add `time` if missing (via `restate.Run`-wrapped `time.Now()`)
-4. **Store** — one-way send to `DeploymentEventStore.Append` (keyed by `deployment` extension)
-5. **Index** — one-way send to `EventIndex.Index`
-6. **Fan-out** — one-way send to `SinkRouter.Deliver` for external sinks
+4. **Store** — request to `DeploymentEventStore.Append` (keyed by `deployment` extension), which assigns the sequence number
+5. **Fan-out** — one-way send to `SinkRouter.Deliver` for external sinks (skipped for system events)
 
-All downstream operations are one-way sends. The emit path is fast: validate, enrich, dispatch three fire-and-forget messages. Restate's durable messaging guarantees delivery without the producer blocking.
+Sink fan-out is a fire-and-forget send. Restate's durable messaging guarantees delivery without the producer blocking.
 
 ### Event Emission Helpers
 
@@ -303,26 +285,10 @@ type eventStoreMeta struct {
 | `RollbackPlan` | Shared | Query `resource.ready` events to build a rollback plan |
 | `Prune` | Exclusive | Delete expired chunks (called by retention sweep) |
 
-### `EventIndex` (Virtual Object, key: `"global"`)
+### Client-Side Filtering (`EventQuery`)
 
-A cross-deployment secondary index for queries that span multiple deployments. Optimized for audit trails and diagnostic queries.
-
-The index stores lightweight pointers keyed by event type and time bucket:
-
-```go
-type indexedEvent struct {
-    DeploymentKey string              `json:"deploymentKey"`
-    Workspace     string              `json:"workspace,omitempty"`
-    Sequence      int64               `json:"sequence"`
-    Type          string              `json:"type"`
-    Severity      string              `json:"severity,omitempty"`
-    Subject       string              `json:"subject,omitempty"`
-    Time          time.Time           `json:"time"`
-    Event         cloudevents.Event    `json:"event"`
-}
-```
-
-#### EventQuery
+Event queries are scoped to a single deployment's stream. The CLI fetches via
+`ListSince` and applies filters client-side using `EventQuery`:
 
 ```go
 type EventQuery struct {
@@ -337,14 +303,9 @@ type EventQuery struct {
 }
 ```
 
-| Handler | Context | Purpose |
-|---------|---------|---------|
-| `Index` | Exclusive | Add an event pointer to the inverted index |
-| `Query` | Shared | Search by type, time range, workspace, severity, resource, limit |
-| `QueryByDeployment` | Shared | All events for a deployment across categories |
-| `Prune` | Exclusive | Remove index entries older than retention window |
-
-The index is populated asynchronously via one-way send from `EventBus.Emit`, so it does not add latency to the critical event path.
+There is deliberately no global cross-deployment event index — per-deployment
+streams keep the write path simple and unbounded growth out of a single key.
+For fleet-wide alerting, register a webhook sink with a filter instead.
 
 ---
 
@@ -402,31 +363,22 @@ POST JSON CloudEvents to an HTTP endpoint:
 - Retry with exponential backoff, capped at configurable max attempts
 - Circuit breaker: after consecutive failures, the sink is marked open and delivery is paused
 
-#### Structured Log Sink
+#### Restate RPC Sink
 
-Emit CloudEvents as JSON log lines to stdout. Zero configuration required — useful for log pipeline ingestion (Datadog, CloudWatch Logs, ELK):
+Deliver events as a Restate service-to-service send to any service registered
+with the same Restate instance. This is the extension hook for custom
+consumers — write a service in any language, register it, and receive every
+matching `SequencedCloudEvent` without polling:
 
 ```json
 {
-  "name": "json-logs",
-  "type": "structured_log",
+  "name": "my-consumer",
+  "type": "restate_rpc",
+  "target": "MyEventConsumer",
+  "handler": "Receive",
   "filter": {
-    "categories": ["lifecycle", "drift"]
+    "categories": ["drift"]
   }
-}
-```
-
-#### CloudEvents HTTP Sink (Generic)
-
-POST events using the CloudEvents HTTP protocol binding (structured content mode). Compatible with any CloudEvents receiver: Knative, Azure Event Grid, AWS EventBridge, etc.
-
-```json
-{
-  "name": "eventbridge",
-  "type": "cloudevents_http",
-  "url": "https://events.us-east-1.amazonaws.com/",
-  "filter": {},
-  "contentMode": "structured"
 }
 ```
 
@@ -459,22 +411,15 @@ Sink configurations are validated through the same CUE engine that validates res
     retry:   #RetryPolicy | *{maxAttempts: 3, backoffMs: 1000}
 }
 
-#StructuredLogSink: {
-    name:   string & =~"^[a-zA-Z0-9_-]{1,64}$"
-    type:   "structured_log"
-    filter: #SinkFilter
+#RestateRPCSink: {
+    name:    string & =~"^[a-zA-Z0-9_-]{1,64}$"
+    type:    "restate_rpc"
+    target:  string & =~"^[a-zA-Z0-9_-]+$"
+    handler: string & =~"^[a-zA-Z0-9_-]+$"
+    filter:  #SinkFilter
 }
 
-#CloudEventsHTTPSink: {
-    name:        string & =~"^[a-zA-Z0-9_-]{1,64}$"
-    type:        "cloudevents_http"
-    url:         string & =~"^https://"
-    filter:      #SinkFilter
-    contentMode: "structured" | "binary" | *"structured"
-    retry:       #RetryPolicy | *{maxAttempts: 3, backoffMs: 1000}
-}
-
-#NotificationSink: #WebhookSink | #StructuredLogSink | #CloudEventsHTTPSink
+#NotificationSink: #WebhookSink | #RestateRPCSink
 ```
 
 Invalid configurations are rejected with clear error messages before they enter the system — the same pattern used for resource specs.
@@ -539,7 +484,7 @@ type NotificationSinkHealth struct {
 
 ## Event Retention
 
-Praxis stores events in Restate's built-in K/V store. The retention system ensures the event store stays bounded while giving operators full control over how long events live and where they go when they leave.
+Praxis stores events in Restate's built-in K/V store. The retention system keeps the event store bounded with two simple caps: a maximum age and a per-deployment event count.
 
 ### Retention Policy
 
@@ -549,12 +494,9 @@ Retention is configured per-workspace via the Workspace Service. The CUE schema 
 // schemas/notifications/retention.cue
 
 #RetentionPolicy: {
-    maxAge: string & =~"^[0-9]+(d)$" | *"90d"
+    maxAge:                 string & =~"^[0-9]+(d)$" | *"90d"
     maxEventsPerDeployment: int & >=100 & <=1000000 | *10000
-    maxIndexEntries: int & >=1000 & <=10000000 | *100000
-    sweepInterval: string & =~"^[0-9]+(h|d)$" | *"24h"
-    shipBeforeDelete: bool | *false
-    drainSink?: string
+    sweepInterval:          string & =~"^[0-9]+(h|d)$" | *"24h"
 }
 ```
 
@@ -564,10 +506,7 @@ Retention is configured per-workspace via the Workspace Service. The CUE schema 
 |---------|---------|-------------|
 | `maxAge` | `90d` | Events older than 90 days are eligible for pruning |
 | `maxEventsPerDeployment` | `10000` | Per-deployment cap; oldest events pruned first when exceeded |
-| `maxIndexEntries` | `100000` | Global index cap; oldest pointers pruned first |
 | `sweepInterval` | `24h` | How often the retention sweep runs |
-| `shipBeforeDelete` | `false` | Whether to drain events to a sink before pruning |
-| `drainSink` | — | Sink to ship events to (required when `shipBeforeDelete` is true) |
 
 ### Retention Sweep
 
@@ -581,41 +520,16 @@ flowchart TD
     EACH --> META["Read eventStoreMeta"]
     META --> CHECK{"Chunks exceed<br/>maxAge or maxEvents?"}
     CHECK -->|No| NEXT["Next deployment"]
-    CHECK -->|Yes| SHIP{"shipBeforeDelete?"}
-    SHIP -->|No| PRUNE["Delete expired chunks<br/>Update eventStoreMeta"]
-    SHIP -->|Yes| DRAIN["Ship chunks to drain sink"]
-    DRAIN --> CONFIRM{"Delivery confirmed?"}
-    CONFIRM -->|Yes| PRUNE
-    CONFIRM -->|No| SKIP["Skip pruning, emit<br/>system.retention.ship_failed<br/>event, retry next sweep"]
+    CHECK -->|Yes| PRUNE["Delete expired chunks<br/>Update eventStoreMeta"]
     PRUNE --> NEXT
-    NEXT --> IDX["Prune EventIndex<br/>entries older than maxAge"]
-    IDX --> SCHED["Schedule next sweep"]
+    NEXT --> SCHED["Schedule next sweep"]
 ```
 
 The sweep operates chunk-by-chunk, not event-by-event. A chunk is eligible for pruning when **all** events in it are older than `maxAge`, or when the total event count across all chunks exceeds `maxEventsPerDeployment` (oldest chunks first).
 
-### Event Shipping (Drain Pattern)
-
-When `shipBeforeDelete` is enabled, events are delivered to the designated drain sink before chunks are pruned. This treats Praxis's event store as a **buffer** — events are stored temporarily for operational use, then drained to an external system of record.
-
-1. **Register a drain sink** — any registered notification sink can serve as the drain target
-2. **Enable shipping** — link the drain sink to the retention policy
-3. **Sweep ships, then prunes** — expired chunks are delivered via batched `SinkRouter.DrainBatch`. Only after confirmed delivery are the chunks deleted. If delivery fails, chunks are retained until the next sweep.
-
-#### Shipping Guarantees
-
-- **At-least-once** — events may be shipped more than once if the sweep crashes between delivery and chunk deletion. The drain receiver must be idempotent (CloudEvents `id` field enables deduplication).
-- **No data loss** — chunks are never deleted until shipping is confirmed. If the drain sink is down, events accumulate past the `maxAge` window until shipping succeeds.
-
-#### Operational Profiles
-
-| Profile | `maxAge` | `shipBeforeDelete` | `drainSink` | Use Case |
-|---------|----------|--------------------|-------------|----------|
-| **Default** | `90d` | `false` | — | Small teams, moderate event volume |
-| **Buffer + Ship** | `7d` | `true` | `s3-archive` | Production workloads shipping to S3/Datadog for long-term retention |
-| **Minimal Buffer** | `1d` | `true` | `log-archive` | High-volume environments where events ship to a log pipeline immediately |
-| **Extended Local** | `365d` | `false` | — | Small-scale deployments wanting local history without external storage |
-| **Compliance** | `30d` | `true` | `archive-webhook` | Regulated environments requiring auditable event archives |
+If you need long-term archival of events, register a webhook (or `restate_rpc`)
+sink — every event is delivered as it happens, so the external system of record
+is continuously up to date regardless of local retention.
 
 ---
 
@@ -641,23 +555,21 @@ praxis observe Deployment/myapp-prod --output json
 
 ### Audit Trail via Event Queries
 
-The `EventIndex` cross-deployment query capability provides the foundation for audit trails:
+Each deployment's event stream is a complete, ordered audit trail:
 
 ```bash
-# Who applied to production this week?
-praxis events query \
-  --type "dev.praxis.command.apply" \
-  --workspace production \
-  --since 7d
+# Full timeline for a deployment
+praxis list events Deployment/myapp-prod
 
-# All policy events (prevented destroys) in the last 24 hours
-praxis events query \
-  --type "dev.praxis.policy.prevented_destroy" \
-  --since 24h
+# Apply commands in the last week
+praxis list events Deployment/myapp-prod --type "dev.praxis.command.apply" --since 7d
 
-# Full timeline for a specific deployment
-praxis events list Deployment/myapp-prod
+# Policy events (prevented destroys) in the last 24 hours
+praxis list events Deployment/myapp-prod --type "dev.praxis.policy." --since 24h
 ```
+
+For fleet-wide audit (across deployments), deliver events to an external
+system via a filtered webhook sink and query there.
 
 ### Rollback
 
@@ -727,23 +639,16 @@ Flags:
   --poll-interval duration   Polling interval (default: 1s)
 ```
 
-### `praxis events`
+### `praxis list events`
 
 ```
-praxis events list Deployment/<key> [flags]
+praxis list events Deployment/<key> [flags]
   --since duration       Show events from the last N duration (e.g., 1h, 7d)
   --type string          Filter by event type prefix
   --severity string      Filter by severity
   --resource string      Filter by resource name
-  --output string        Output format: text (default), json
-
-praxis events query [flags]
-  --workspace string     Filter by workspace
-  --type string          Filter by event type prefix
-  --severity string      Filter by severity
-  --since duration       Time range
   --limit int            Max events to return (default: 100)
-  --output string        Output format: text (default), json
+  -o, --output string    Output format: table (default), json
 ```
 
 ### Notification Sinks (verb-first CLI)
@@ -751,8 +656,8 @@ praxis events query [flags]
 ```
 praxis create sink [flags]
   --name string          Sink name (required unless using --file)
-  --type string          Sink type: webhook, structured_log, cloudevents_http
-  --url string           Endpoint URL (required for webhook, cloudevents_http)
+  --type string          Sink type: webhook or restate_rpc
+  --url string           Endpoint URL (required for webhook)
   --filter-types string  Comma-separated event type prefixes
   --filter-categories string  Comma-separated categories
   --filter-severities string  Comma-separated severities
@@ -778,10 +683,8 @@ praxis set config events.retention [flags]
 praxis set config events.retention.max-age <duration>
 praxis set config events.retention.max-events-per-deployment <int>
 praxis set config events.retention.sweep-interval <duration>
-praxis set config events.retention.ship-before-delete <bool>
-praxis set config events.retention.drain-sink <sink-name>
 
-praxis config get events.retention
+praxis get config events.retention
 ```
 
 ---
@@ -804,18 +707,15 @@ sequenceDiagram
     participant W as DeploymentWorkflow
     participant EB as EventBus
     participant ES as DeploymentEventStore
-    participant EI as EventIndex
     participant SR as SinkRouter
     participant WH as Webhook Endpoint
     participant CLI as CLI observe
 
     W->>EB: Emit(CloudEvent)
     EB->>EB: Validate + enrich
-    EB-->>ES: Send(Append, event)
-    EB-->>EI: Send(Index, pointer)
+    EB->>ES: Append(event)
+    ES-->>EB: SequencedCloudEvent
     EB-->>SR: Send(Deliver, event)
-
-    ES->>ES: Assign sequence, write to chunk
 
     SR->>SR: Load sink configs
     SR->>SR: Evaluate filters
@@ -831,9 +731,8 @@ sequenceDiagram
 
 ```
 cmd/
-  praxis-notifications/
-    main.go                   # Standalone container entry point
-    Dockerfile                # Container image build
+  praxis-core/
+    main.go                   # Hosts the event services alongside the command service
 internal/
   core/
     orchestrator/
@@ -841,15 +740,14 @@ internal/
       event_builders.go       # Typed CloudEvent constructors for all event types
       event_bus.go            # EventBus Virtual Object
       event_store.go          # DeploymentEventStore Virtual Object
-      event_index.go          # EventIndex Virtual Object
       notification_sinks.go   # NotificationSinkConfig + SinkRouter
       resource_event_bridge.go  # ResourceEventOwnerObj + ResourceEventBridge
-      retention.go            # Retention sweep, pruning, drain shipping
+      retention.go            # Retention sweep + pruning
   eventing/
     contracts.go              # Service name constants, DriftReportRequest, shared types
   cli/
-    events.go                 # praxis events commands
-    notifications.go          # praxis notifications commands
+    events.go                 # event listing helpers
+    notifications.go          # sink configuration helpers
     observe.go                # praxis observe command
 schemas/
   events/

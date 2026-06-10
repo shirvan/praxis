@@ -17,9 +17,7 @@ For a more detailed explanation of the idea and reasons behind Praxis see the [P
 ```mermaid
 graph TD
     CLI["Praxis CLI / API"] --> Restate["Restate<br/>durable execution engine"]
-    Restate --> Core["Praxis Core<br/>commands, workflows, templates"]
-    Restate --> Concierge["Praxis Concierge<br/>AI assistant (optional)"]
-    Concierge -->|"Restate RPC"| Core
+    Restate --> Core["Praxis Core<br/>commands, workflows, templates, events"]
     Core -->|"Restate RPC"| Drivers
 
     subgraph Drivers["Driver Packs"]
@@ -214,49 +212,22 @@ curl -X POST http://localhost:8080/PraxisCommandService/Apply \
   -d '{"template": "webapp", "account": "prod", "variables": {"env": "staging"}}'
 ```
 
-#### Concierge (AI Assistant)
+See the [API Reference](docs/API.md) and the [OpenAPI spec](api/openapi.yaml).
 
-The Concierge is an optional AI-powered interface that understands Praxis concepts. Ask questions in natural language, trigger deployments, debug failures, or migrate Terraform/CloudFormation/Crossplane templates to CUE — all through conversation.
+#### AI Agents
 
-```bash
-# Natural language on the root command
-praxis "why did my deploy fail?"
-praxis "convert this terraform to praxis" --file main.tf
-praxis "deploy the orders API to staging"
+Praxis is built to be driven by any AI agent harness (Claude Code, Copilot,
+Cursor, your own loop) — no embedded assistant required:
 
-# Or explicitly
-praxis concierge ask "show me what would change if I update the VPC CIDR"
-```
-
-The Concierge runs as a separate container (`praxis-concierge`). Bring your own LLM — it supports OpenAI-compatible APIs (OpenAI, Ollama, Together, Groq, Azure OpenAI) and Anthropic Claude. Destructive actions require explicit human approval before executing.
-
-##### Using a Local LLM
-
-No API keys or cloud services required — run the Concierge against a local model with [Ollama](https://ollama.com/):
-
-```bash
-# Pull the model
-ollama pull gemma4:26b
-
-# Point the Concierge at your local Ollama instance
-praxis concierge configure \
-  --provider openai \
-  --base-url http://localhost:11434/v1 \
-  --model gemma4:26b
-
-# Start chatting
-praxis "what changed in prod since yesterday?"
-praxis "migrate my entire terraform modules/ directory to praxis" --file modules/
-praxis "compare the staging and prod VPC configs and explain the differences"
-praxis "find all resources with drift and show me what changed"
-praxis "plan a blue-green cutover for the orders API"
-```
-
-When running the full stack in Docker Compose, use `http://ollama:11434/v1` as the base URL instead (assuming Ollama is a service in the same Compose network).
-
-For Slack teams, the [Slack Gateway](docs/SLACK_GATEWAY.md) connects the Concierge as a bot user — DM conversations, event-watch threads with AI-powered analysis, and approval buttons.
-
-See the [Concierge documentation](docs/CONCIERGE.md) for setup and capabilities.
+- Every CLI command supports `-o json`; errors come back as a JSON envelope
+  with [stable exit codes](docs/CLI.md#exit-codes).
+- `praxis list schemas` and `praxis get schema <Kind>` expose the full CUE
+  spec for every resource kind, offline.
+- The HTTP API is documented in [docs/API.md](docs/API.md) with a
+  machine-readable [OpenAPI spec](api/openapi.yaml).
+- [`AGENTS.md`](AGENTS.md) is the repo entry point for agents, with
+  step-by-step [skills](skills/MANIFEST.md) — including
+  [migrating Terraform/CloudFormation/Crossplane to CUE](skills/migrate-template/SKILL.md).
 
 ### Plan Output
 
@@ -312,18 +283,20 @@ See [FUTURE.md](docs/FUTURE.md) for what's coming next and [`examples/`](example
 
 | Document | Audience | Description |
 | ---------- | ---------- | ------------- |
+| [Index](docs/INDEX.md) | Everyone | One-table directory of all documentation |
 | [Architecture](docs/PRAXIS_ARCHITECTURE.md) | Everyone | How Praxis works — Restate-powered core, modular drivers, design tradeoffs |
+| [Codebase](docs/CODEBASE.md) | Contributors | Directory map, binaries, key files, entry points for common tasks |
+| [Glossary](docs/GLOSSARY.md) | Everyone | A–Z definitions of Praxis terms |
 | [Drivers](docs/DRIVERS.md) | Contributors | Driver model, contract, state management, reconciliation, building new drivers |
 | [Orchestrator](docs/ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete flow |
 | [Templates](docs/TEMPLATES.md) | Platform Engineers | CUE template system, expression evaluation, registry, policy enforcement, data sources |
 | [Auth & Workspaces](docs/AUTH.md) | Everyone | Credential management, workspace isolation, account selection |
-| [CLI Reference](docs/CLI.md) | Users | All commands, output formats, styled terminal output, timeouts |
+| [CLI Reference](docs/CLI.md) | Users | All commands, output formats, exit codes, timeouts |
+| [API Reference](docs/API.md) | Integrators / Agents | The HTTP API — every operation as a Restate ingress call, OpenAPI spec |
 | [Operator Guide](docs/OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
 | [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
-| [Events](docs/EVENTS.md) | Contributors | CloudEvents event bus, event types, sinks, event store |
+| [Events](docs/EVENTS.md) | Contributors | CloudEvents pipeline, event types, webhook sinks, retention |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
-| [Concierge](docs/CONCIERGE.md) | Contributors | AI assistant — LLM integration, tool framework, migration, approval flow |
-| [Slack Gateway](docs/SLACK_GATEWAY.md) | Contributors | Slack integration — DM conversations, event-watch threads, approval buttons |
 | [Extending Praxis](docs/EXTENDING.md) | Contributors | Build custom drivers in any language without forking — extension contract, Python example, deployment patterns |
 
 ---
