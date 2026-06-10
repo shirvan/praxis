@@ -16,39 +16,19 @@ Praxis development benefits from scoping the imagination sandbox of the LLM Agen
 ```text
 cmd/
   praxis/                      # CLI binary
-  praxis-core/                 # Core command/orchestration service
-  praxis-concierge/            # Concierge AI assistant service
+  praxis-core/                 # Core command/orchestration service (incl. event bus + notification sinks)
   praxis-storage/              # Storage driver pack (S3, EBS, DBSubnetGroup, DBParameterGroup, RDSInstance, AuroraCluster)
   praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53Zone, Route53Record, Route53HealthCheck)
   praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping)
   praxis-identity/             # Identity driver pack (IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile)
   praxis-monitoring/           # Monitoring driver pack (LogGroup, MetricAlarm, Dashboard)
-  praxis-notifications/        # Notification sink service
-  praxis-slack/                # Slack gateway service
 
 internal/
   cli/                         # CLI command implementations
     root.go                    # Root command, global flags
     apply.go, plan.go, ...     # Subcommand implementations
-    concierge.go               # Concierge AI assistant commands
     client.go                  # Restate ingress client wrapper
     output.go                  # Table/JSON output formatters
-  concierge/                   # Concierge AI assistant (optional service)
-    session.go                 # ConciergeSession Virtual Object (conversation loop)
-    config.go                  # ConciergeConfig Virtual Object (LLM settings)
-    relay.go                   # ApprovalRelay Basic Service (awakeable resolution)
-    types.go                   # Shared types and constants
-    llm.go                     # LLM provider abstraction
-    llm_openai.go              # OpenAI provider
-    llm_claude.go              # Anthropic Claude provider
-    tools.go                   # Tool registry and execution
-    tools_read.go              # Read-only tools (get, list, describe)
-    tools_write.go             # Write tools (apply, delete — require approval)
-    tools_explain.go           # Explain/plan tools
-    tools_migrate.go           # Migration analysis tool
-    prompt.go                  # System prompt construction
-    history.go                 # Conversation history management
-    migrate.go                 # Migration orchestration (Terraform/CloudFormation)
   core/
     command/                   # Restate Basic Service (PraxisCommandService)
       service.go               # Service registration
@@ -72,7 +52,9 @@ internal/
       delete_workflow.go       # DeploymentDeleteWorkflow
       deployment_state.go      # DeploymentState Virtual Object
       index.go                 # DeploymentIndex Virtual Object
-      events.go                # DeploymentEvents Virtual Object
+      event_bus.go             # EventBus Virtual Object (CloudEvents fan-out)
+      event_store.go           # DeploymentEventStore Virtual Object
+      notification_sinks.go    # SinkRouter + NotificationSinkConfig
       hydrator.go              # Dispatch-time expression hydration
     provider/                  # Driver adapter registry
       registry.go              # Kind → service name mapping, Adapter interface (incl. Lookup)
@@ -265,11 +247,9 @@ just docker-build
 just test
 
 # Scoped unit tests — Core
-just test-core       # Command service + DAG + orchestrator + provider + registry
+just test-core       # Command service + DAG + orchestrator
 just test-cli        # CLI commands + output formatting
-just test-concierge  # Concierge AI assistant + LLM + tools + migration
 just test-template   # Template engine + resolver + CUE validation
-just test-slack      # Slack gateway + config + messages + watch
 
 # Scoped unit tests — Network drivers
 just test-sg         # Security Group driver
@@ -385,7 +365,6 @@ No AWS or Restate required. Tests the most complex logic in isolation:
 - **Provider adapters** — Kind mapping, key generation, spec decoding, output normalization (all 45 adapters)
 - **Registry** — Template storage, policy storage, index synchronization
 - **CLI** — Config parsing, output formatting, error rendering
-- **Concierge** — LLM provider abstraction, tool registry, conversation history, migration mapping/inventory
 - **Auth** — Credential resolution, error classification, STS operations
 - **Infrastructure** — Rate limiter, AWS error classification
 
@@ -404,12 +383,10 @@ No AWS or Restate required. Tests the most complex logic in isolation:
 | `core/registry` | 3 | **Good** | Template CRUD, policy scoping, index sync |
 | `core/provider` | 45 | **Near-complete** | All 45 adapters: BuildKey, DecodeSpec, NormalizeOutputs, Scope |
 | `core/command` | 5 | **Partial** | Service init, pipeline, datasource, template/policy handlers |
-| `core/orchestrator` | 5 | **Partial** | Workflow state, hydrator, event builders/index, notification sinks |
+| `core/orchestrator` | 8 | **Partial** | Workflow state, hydrator, event builders, notification sinks, resource index/conditions, backoff, timeouts |
 | `core/authservice` | 3 | **Partial** | Client, config, errors; service.go/sts.go lack direct unit tests |
 | `core/workspace` | 1 | **Minimal** | Name validation only; service/index handlers untested |
-| `cli` | 11 | **Good** | Config, errors, fmt, output, root, state + command tests for plan, get, delete, list, apply, import, template, workspace, events, notifications, config, state mv, concierge (configure/status/history/reset/approve), slack (configure/get-config/allowed-users/watch) |
-| `concierge` | 10 | **Good** | Config, history, LLM providers, tools registry, types, session, migration mapping/inventory |
-| `slack` | 5 | **Partial** | Config, gateway, messages, thread_state, watch |
+| `cli` | 11 | **Good** | Config, errors, fmt, output, root, state + command tests for plan, get, delete, list, apply, import, template, workspace, events, notifications, config, state mv |
 
 ##### Driver Unit Test Coverage
 
@@ -566,10 +543,9 @@ Full deployment lifecycle through the Restate command service and orchestrator. 
 | Template-scoped policy | `TestPolicy_TemplateScopedPolicy` | ✅ |
 | preventDestroy lifecycle | `TestCore_SystemAndPolicyEvents` | ✅ |
 | Deployment events + CloudEvents | Multiple tests | ✅ |
-| Notification sink delivery | `TestCore_NotificationSink_*` | ✅ |
-| Event retention + sweep | `TestCore_Retention_*` | ✅ |
-| Event index querying | `TestCore_EventIndex_*` | ✅ |
-| Workspace event retention | `TestCore_Workspace_EventRetention_*` | ✅ |
+| Notification sink delivery | `TestCore_NotificationSink*` | ✅ |
+| Event retention + sweep | `TestCore_RetentionSweep_*` | ✅ |
+| Workspace event retention | `TestCore_WorkspaceEventRetention` | ✅ |
 
 ## Driver Development
 
@@ -694,7 +670,6 @@ All services currently share a **single monolithic version**. After the initial 
 | **Storage Pack** | `praxis-storage` | Shared tag |
 | **Identity Pack** | `praxis-identity` | Shared tag |
 | **Monitoring Pack** | `praxis-monitoring` | Shared tag |
-| **Notifications** | `praxis-notifications` | Shared tag |
 
 ### Release Workflow
 

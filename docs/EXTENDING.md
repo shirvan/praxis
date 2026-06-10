@@ -8,7 +8,7 @@ How to add custom resource types, integrations, and automation to Praxis from a 
 
 Praxis ships with 45 AWS drivers. Your team almost certainly manages things that aren't AWS resources: Datadog monitors, Cloudflare DNS records, PagerDuty services, GitHub repositories, Vault secrets, internal APIs. The traditional approach (fork the project, add your code, maintain a permanent divergence) is expensive and fragile.
 
-Praxis avoids this entirely because of a foundational architectural choice: **Restate is the runtime, not Praxis.** Every Praxis component (Core, drivers, the event bus, the Concierge) is just a set of Restate services registered with the same Restate instance. Your custom extensions register the same way. Restate doesn't distinguish between "built-in" and "external" services. They're all peers.
+Praxis avoids this entirely because of a foundational architectural choice: **Restate is the runtime, not Praxis.** Every Praxis component (Core, drivers, the event bus) is just a set of Restate services registered with the same Restate instance. Your custom extensions register the same way. Restate doesn't distinguish between "built-in" and "external" services. They're all peers.
 
 This means:
 
@@ -25,7 +25,7 @@ This means:
 
 Praxis uses Restate as its execution backbone. Every resource type is a [Restate Virtual Object](https://docs.restate.dev/develop/python/services#virtual-objects): a stateful, key-addressable entity with exclusive (single-writer) and shared (concurrent-read) handlers. The orchestrator dispatches work to drivers via durable Restate RPC, addressing them by **service name** and **key**.
 
-```
+```text
 Orchestrator → restate.Object("CloudflareDNSRecord", "example.com~api", "Provision") → your service
 ```
 
@@ -60,7 +60,7 @@ Once registered, your custom driver automatically participates in:
 - **Exactly-once execution.** Restate journals every API call your driver makes; crash recovery replays the journal
 - **Single-writer guarantee.** Concurrent provisions for the same resource key are serialized automatically
 - **State management.** Restate's embedded K/V store holds your driver's state. No external database needed
-- **Event streaming.** Resource lifecycle events flow through the Praxis event bus for observability, audit, and Slack notifications
+- **Event streaming.** Resource lifecycle events flow through the Praxis event bus for observability, audit, and delivery to notification sinks (`webhook` or `restate_rpc`)
 
 ---
 
@@ -72,7 +72,7 @@ The driver lives in its own repository, is written in Python, and integrates wit
 
 ### Project Structure
 
-```
+```text
 cloudflare-dns-driver/
 ├── pyproject.toml
 ├── Dockerfile
@@ -477,6 +477,7 @@ graph TD
 ```
 
 Every box connected to Restate is a peer. Restate handles:
+
 - **Discovery.** It queries each service's endpoint for handler metadata
 - **Routing.** It dispatches calls by service name and key
 - **State.** It provides the K/V store that each Virtual Object uses
@@ -517,22 +518,28 @@ async def on_deployment_complete(ctx: restate.Context, event: dict) -> dict:
             violations.append(result)
 
     if violations:
-        await ctx.run_typed("notify", send_slack_alert, violations=violations)
+        await ctx.run_typed("notify", send_alert, violations=violations)
 
     return {"compliant": len(violations) == 0, "violations": violations}
 
 app = restate.app([checker])
 ```
 
-Register a webhook sink in Praxis to route events to your service:
+Register a `restate_rpc` sink in Praxis to route events to your service. The SinkRouter delivers each matching CloudEvent as a Restate service-to-service send — durable, retried, exactly-once:
 
 ```bash
-praxis notifications sink create \
-  --name compliance \
-  --type webhook \
-  --url http://compliance-checker:9080/ComplianceChecker/on_deployment_complete \
-  --filter "type=deployment.complete"
+praxis create sink -f - <<'JSON'
+{
+  "name": "compliance",
+  "type": "restate_rpc",
+  "target": "ComplianceChecker",
+  "handler": "on_deployment_complete",
+  "filter": {"types": ["dev.praxis.deployment.completed"]}
+}
+JSON
 ```
+
+(For plain HTTP consumers, use `--type webhook --url <endpoint>` instead — the event arrives as a CloudEvent JSON POST.)
 
 ### Pattern 3: Custom CLI Tooling via the Restate HTTP API
 
