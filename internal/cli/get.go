@@ -2,9 +2,7 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -61,8 +59,8 @@ Meta-resources can also be retrieved:
     praxis get template/<name>
     praxis get sink/<name>
     praxis get config <path>
-    praxis get concierge
     praxis get notifications
+    praxis get schema <Kind>          Print the CUE schema for a resource kind (offline)
 
 The argument must be in Kind/Key format. Use 'praxis list deployments' to
 discover available deployment keys.`,
@@ -107,8 +105,8 @@ discover available deployment keys.`,
 	cmd.AddCommand(
 		newGetWorkspaceCmd(flags),
 		newGetConfigCmd(flags),
-		newGetConciergeCmd(flags),
 		newGetNotificationsCmd(flags),
+		newGetSchemaCmd(flags),
 	)
 
 	return cmd
@@ -138,20 +136,6 @@ func newGetConfigCmd(flags *rootFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&workspaceName, "workspace", "w", "", "Workspace name (env: PRAXIS_WORKSPACE, defaults to active workspace)")
-	return cmd
-}
-
-// newGetConciergeCmd builds `praxis get concierge`.
-func newGetConciergeCmd(flags *rootFlags) *cobra.Command {
-	var session string
-	cmd := &cobra.Command{
-		Use:   "concierge",
-		Short: "Show concierge session status",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return getConciergeStatus(flags, session)
-		},
-	}
-	cmd.Flags().StringVar(&session, "session", "", "Session ID (default: \"default\")")
 	return cmd
 }
 
@@ -302,43 +286,6 @@ func getConfigValue(flags *rootFlags, path, workspaceName string) error {
 	default:
 		return fmt.Errorf("unsupported config path %q", path)
 	}
-}
-
-// getConciergeStatus shows the concierge session status.
-func getConciergeStatus(flags *rootFlags, session string) error {
-	if session == "" {
-		session = resolveSessionID()
-	}
-
-	client := flags.newClient()
-
-	status, err := client.ConciergeGetStatus(context.Background(), session)
-	if err != nil {
-		if isConciergeUnavailable(err) {
-			fmt.Fprint(os.Stderr, conciergeUnavailableMsg)
-			return nil
-		}
-		return fmt.Errorf("get concierge: %w", err)
-	}
-
-	if flags.outputFormat() == OutputJSON {
-		return json.NewEncoder(os.Stdout).Encode(status)
-	}
-
-	fmt.Printf("Session:      %s\n", session)
-	fmt.Printf("Provider:     %s\n", status.Provider)
-	fmt.Printf("Model:        %s\n", status.Model)
-	fmt.Printf("Turns:        %d\n", status.TurnCount)
-	fmt.Printf("Last Active:  %s\n", status.LastActiveAt)
-	fmt.Printf("Expires:      %s\n", status.ExpiresAt)
-	if status.PendingApproval != nil {
-		fmt.Printf("\nPending Approval:\n")
-		fmt.Printf("  Action:      %s\n", status.PendingApproval.Action)
-		fmt.Printf("  Description: %s\n", status.PendingApproval.Description)
-		fmt.Printf("  Requested:   %s\n", status.PendingApproval.RequestedAt)
-		fmt.Printf("  Approve:     praxis approve --awakeable-id %s\n", status.PendingApproval.AwakeableID)
-	}
-	return nil
 }
 
 // getNotificationHealth shows aggregate notification sink health.

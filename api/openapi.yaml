@@ -1,0 +1,500 @@
+# OpenAPI description of the Praxis HTTP API as exposed through the Restate
+# ingress. Hand-maintained; pkg/types/contract.go is the source of truth for
+# request/response shapes. See docs/API.md for the narrative reference.
+openapi: 3.1.0
+info:
+  title: Praxis API
+  description: >
+    Declarative infrastructure automation. All operations are POSTs to the
+    Restate ingress: /{Service}/{Handler} for stateless services and
+    /{Object}/{key}/{Handler} for Virtual Objects. Pass an `idempotency-key`
+    header for exactly-once semantics across retries.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+    description: Local Restate ingress
+
+paths:
+  /PraxisCommandService/Apply:
+    post:
+      operationId: apply
+      summary: Evaluate inline CUE (or a template ref) and start an async deployment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyRequest' }
+      responses:
+        '200':
+          description: Deployment accepted; poll DeploymentStateObj GetDetail for progress
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /PraxisCommandService/Plan:
+    post:
+      operationId: plan
+      summary: Dry-run an inline template — per-field diffs, nothing dispatched
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanRequest' }
+      responses:
+        '200':
+          description: Plan result with diffs, rendered template, dependency graph
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /PraxisCommandService/Deploy:
+    post:
+      operationId: deploy
+      summary: Deploy a registered template by name (recommended production path)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeployRequest' }
+      responses:
+        '200':
+          description: Deployment accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeployResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /PraxisCommandService/PlanDeploy:
+    post:
+      operationId: planDeploy
+      summary: Dry-run a registered template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanDeployRequest' }
+      responses:
+        '200':
+          description: Plan result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanResponse' }
+
+  /PraxisCommandService/DeleteDeployment:
+    post:
+      operationId: deleteDeployment
+      summary: Tear down a deployment in reverse dependency order (async)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteDeploymentRequest' }
+      responses:
+        '200':
+          description: Delete accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeleteDeploymentResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /PraxisCommandService/RollbackDeployment:
+    post:
+      operationId: rollbackDeployment
+      summary: Delete only resources proven ready by the event store (targeted rollback)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteDeploymentRequest' }
+      responses:
+        '200':
+          description: Rollback accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeleteDeploymentResponse' }
+
+  /PraxisCommandService/Import:
+    post:
+      operationId: importResource
+      summary: Adopt an existing cloud resource under Praxis management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportRequest' }
+      responses:
+        '200':
+          description: Resource imported
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /PraxisCommandService/RegisterTemplate:
+    post:
+      operationId: registerTemplate
+      summary: Register or update a CUE template in the registry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, source]
+              properties:
+                name: { type: string }
+                source: { type: string, description: Raw CUE template source }
+                description: { type: string }
+                labels: { type: object, additionalProperties: { type: string } }
+      responses:
+        '200':
+          description: Registered; response includes digest and variable schema
+          content:
+            application/json:
+              schema: { type: object }
+
+  /PraxisCommandService/ListTemplates:
+    post:
+      operationId: listTemplates
+      summary: List registered templates
+      responses:
+        '200':
+          description: Template summaries
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+
+  /PraxisCommandService/GetTemplate:
+    post:
+      operationId: getTemplate
+      summary: Fetch a registered template by name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: string }
+      responses:
+        '200':
+          description: Template record with source and variable schema
+          content:
+            application/json:
+              schema: { type: object }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /PraxisCommandService/ValidateTemplate:
+    post:
+      operationId: validateTemplate
+      summary: Validate CUE template source without planning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string }
+                variables: { type: object }
+      responses:
+        '200':
+          description: Validation result with structured errors
+          content:
+            application/json:
+              schema: { type: object }
+
+  /DeploymentStateObj/{deploymentKey}/GetDetail:
+    post:
+      operationId: getDeploymentDetail
+      summary: Full deployment status — per-resource states, outputs, errors
+      parameters:
+        - { name: deploymentKey, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Deployment detail (null body accepted as request)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeploymentDetail' }
+
+  /DeploymentStateObj/{deploymentKey}/RequestCancel:
+    post:
+      operationId: cancelDeployment
+      summary: Request cooperative cancellation of a running deployment
+      parameters:
+        - { name: deploymentKey, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cancel flag set }
+
+  /DeploymentIndex/global/List:
+    post:
+      operationId: listDeployments
+      summary: List all deployments, optionally filtered by workspace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workspace: { type: string }
+      responses:
+        '200':
+          description: Deployment summaries
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+
+  /DeploymentEventStore/{deploymentKey}/ListSince:
+    post:
+      operationId: listEventsSince
+      summary: Cursor read of a deployment's CloudEvents stream (0 = all)
+      parameters:
+        - { name: deploymentKey, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Sequenced CloudEvents
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/SequencedCloudEvent' } }
+
+  /NotificationSinkConfig/global/Upsert:
+    post:
+      operationId: upsertSink
+      summary: Register or update a notification sink (webhook or restate_rpc)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationSink' }
+      responses:
+        '200': { description: Sink stored }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /NotificationSinkConfig/global/List:
+    post:
+      operationId: listSinks
+      summary: List registered notification sinks with delivery health
+      responses:
+        '200':
+          description: Sinks
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/NotificationSink' } }
+
+components:
+  responses:
+    ValidationError:
+      description: Input failed validation (error text embeds VALIDATION_ERROR / TEMPLATE_INVALID)
+    NotFound:
+      description: Referenced entity does not exist (error text embeds NOT_FOUND)
+    Conflict:
+      description: Conflicting state — key in use, operation in progress (error text embeds CONFLICT)
+
+  schemas:
+    ApplyRequest:
+      type: object
+      description: Exactly one of template / templateRef must be set.
+      properties:
+        template: { type: string, description: Inline CUE source }
+        templateRef:
+          type: object
+          properties:
+            name: { type: string }
+        variables: { type: object, additionalProperties: true }
+        deploymentKey: { type: string }
+        account: { type: string }
+        workspace: { type: string }
+        targets: { type: array, items: { type: string } }
+        orphanRemoved: { type: boolean }
+        replace: { type: array, items: { type: string } }
+        allowReplace: { type: boolean }
+        maxParallelism: { type: integer }
+        maxRetries: { type: integer }
+
+    ApplyResponse:
+      type: object
+      properties:
+        deploymentKey: { type: string }
+        status: { $ref: '#/components/schemas/DeploymentStatus' }
+        plan: { $ref: '#/components/schemas/PlanResult' }
+
+    PlanRequest:
+      type: object
+      properties:
+        template: { type: string }
+        templateRef:
+          type: object
+          properties:
+            name: { type: string }
+        variables: { type: object, additionalProperties: true }
+        account: { type: string }
+        workspace: { type: string }
+        targets: { type: array, items: { type: string } }
+        deploymentKey: { type: string }
+
+    PlanResponse:
+      type: object
+      properties:
+        plan: { $ref: '#/components/schemas/PlanResult' }
+        rendered: { type: string, description: Evaluated template, secrets masked }
+        templateHash: { type: string }
+        dataSources: { type: object }
+        graph:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              kind: { type: string }
+              dependencies: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+
+    DeployRequest:
+      type: object
+      required: [template]
+      properties:
+        template: { type: string, description: Registered template name }
+        variables: { type: object, additionalProperties: true }
+        deploymentKey: { type: string }
+        account: { type: string }
+        workspace: { type: string }
+        targets: { type: array, items: { type: string } }
+        replace: { type: array, items: { type: string } }
+        allowReplace: { type: boolean }
+        maxParallelism: { type: integer }
+
+    DeployResponse:
+      type: object
+      properties:
+        deploymentKey: { type: string }
+        status: { $ref: '#/components/schemas/DeploymentStatus' }
+
+    PlanDeployRequest:
+      type: object
+      required: [template]
+      properties:
+        template: { type: string }
+        variables: { type: object, additionalProperties: true }
+        account: { type: string }
+        workspace: { type: string }
+        targets: { type: array, items: { type: string } }
+        deploymentKey: { type: string }
+
+    DeleteDeploymentRequest:
+      type: object
+      required: [deploymentKey]
+      properties:
+        deploymentKey: { type: string }
+        force: { type: boolean, description: Override lifecycle.preventDestroy }
+        orphan: { type: boolean, description: Remove from management, keep running }
+        parallelism: { type: integer }
+
+    DeleteDeploymentResponse:
+      type: object
+      properties:
+        deploymentKey: { type: string }
+        status: { $ref: '#/components/schemas/DeploymentStatus' }
+
+    ImportRequest:
+      type: object
+      required: [kind, resourceId]
+      properties:
+        kind: { type: string, description: Resource kind, e.g. S3Bucket }
+        resourceId: { type: string, description: Cloud-native ID (bucket name, vpc-...) }
+        region: { type: string }
+        mode: { type: string, enum: [Managed, Observed] }
+        account: { type: string }
+        workspace: { type: string }
+
+    ImportResponse:
+      type: object
+      properties:
+        key: { type: string }
+        status: { type: string }
+        outputs: { type: object, additionalProperties: true }
+
+    DeploymentStatus:
+      type: string
+      enum: [Pending, Running, Complete, Failed, Cancelled, Deleting, Deleted]
+
+    DeploymentDetail:
+      type: object
+      description: Full shape in pkg/types/deployment.go
+      properties:
+        key: { type: string }
+        status: { $ref: '#/components/schemas/DeploymentStatus' }
+        workspace: { type: string }
+        generation: { type: integer }
+        resources:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              kind: { type: string }
+              status: { type: string }
+              outputs: { type: object, additionalProperties: true }
+              error: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PlanResult:
+      type: object
+      description: Full shape in pkg/types/diff.go
+      properties:
+        resources:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              kind: { type: string }
+              operation: { type: string, enum: [create, update, delete, noop] }
+              fieldDiffs:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    path: { type: string }
+                    oldValue: {}
+                    newValue: {}
+        summary: { type: object }
+
+    SequencedCloudEvent:
+      type: object
+      properties:
+        sequence: { type: integer, format: int64 }
+        event:
+          type: object
+          description: CloudEvents v1.0 envelope with Praxis extensions (deployment, workspace, generation, category, severity)
+
+    NotificationSink:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [webhook, restate_rpc] }
+        url: { type: string, description: Required for webhook sinks }
+        target: { type: string, description: Restate service name (restate_rpc) }
+        handler: { type: string, description: Restate handler name (restate_rpc) }
+        filter:
+          type: object
+          properties:
+            types: { type: array, items: { type: string } }
+            categories: { type: array, items: { type: string } }
+            severities: { type: array, items: { type: string } }
+            workspaces: { type: array, items: { type: string } }
+            deployments: { type: array, items: { type: string } }
+        headers: { type: object, additionalProperties: { type: string } }
+        retry:
+          type: object
+          properties:
+            maxAttempts: { type: integer }
+            backoffMs: { type: integer }
