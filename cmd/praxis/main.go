@@ -24,17 +24,11 @@ import (
 )
 
 // main constructs the Cobra command tree and executes the user's sub-command.
-// If the command fails, it formats the error appropriately (special formatting
-// for auth errors, generic formatting for everything else) and exits non-zero.
+// If the command fails, cli.HandleError renders it (styled text, or a JSON
+// envelope when -o json is active) and maps it to a stable exit code:
+// 1 general, 3 not found, 4 validation, 5 conflict, 6 auth.
 func main() {
 	if err := cli.NewRootCmd().Execute(); err != nil {
-		msg := err.Error()
-		// Auth errors get special formatting with hints about credential configuration.
-		if cli.IsAuthErrorMessage(msg) {
-			cli.FormatAuthError(msg)
-		} else {
-			cli.PrintError(msg)
-		}
-		os.Exit(1)
+		os.Exit(cli.HandleError(err))
 	}
 }

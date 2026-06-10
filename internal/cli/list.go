@@ -13,7 +13,7 @@ import (
 // newListCmd builds the `praxis list` subcommand.
 //
 // List supports multiple resource types: deployments, templates, workspaces,
-// sinks, events, concierge history.
+// sinks, events.
 //
 // Usage:
 //
@@ -22,7 +22,6 @@ import (
 //	praxis list workspaces
 //	praxis list sinks
 //	praxis list events [Kind/Key]
-//	praxis list concierge
 func newListCmd(flags *rootFlags) *cobra.Command {
 	var (
 		wsFilter   string
@@ -31,7 +30,6 @@ func newListCmd(flags *rootFlags) *cobra.Command {
 		severity   string
 		resource   string
 		limit      int
-		session    string
 	)
 
 	cmd := &cobra.Command{
@@ -45,9 +43,8 @@ Supported resource types:
     praxis list templates             List registered templates
     praxis list workspaces            List workspaces
     praxis list sinks                 List notification sinks
-    praxis list events                Cross-deployment event search
+    praxis list schemas               List resource kinds and their CUE schemas (offline)
     praxis list events Deployment/x   Events for one deployment
-    praxis list concierge             Show conversation history
     praxis list <Kind>                List cloud resources by Kind (e.g. S3Bucket, EC2Instance)
 
 Use -o json for machine-readable output.`,
@@ -63,14 +60,14 @@ Use -o json for machine-readable output.`,
 				return listWorkspaces(flags)
 			case "sinks", "sink":
 				return listSinks(flags)
+			case "schemas", "schema":
+				return listSchemas(flags)
 			case "events", "event":
 				var scope string
 				if len(args) > 1 {
 					scope = args[1]
 				}
 				return listEvents(flags, scope, wsFilter, sinceRaw, typePrefix, severity, resource, limit)
-			case "concierge":
-				return listConciergeHistory(flags, session)
 			default:
 				// Cloud resource Kind (e.g. S3Bucket, EC2Instance, VPC).
 				return listCloudResources(flags, resourceType, wsFilter)
@@ -84,7 +81,6 @@ Use -o json for machine-readable output.`,
 	cmd.Flags().StringVar(&severity, "severity", "", "Filter events by severity (info, warn, error)")
 	cmd.Flags().StringVar(&resource, "resource", "", "Filter events by resource name")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum events to return")
-	cmd.Flags().StringVar(&session, "session", "", "Concierge session ID (default: \"default\")")
 
 	return cmd
 }
@@ -208,82 +204,35 @@ func listSinks(flags *rootFlags) error {
 	return nil
 }
 
-// listEvents handles both per-deployment event listing and cross-deployment queries.
+// listEvents lists events for a single deployment. Events are stored per
+// deployment; pass a Deployment/<key> scope to select the stream.
 func listEvents(flags *rootFlags, scope, wsFilter, sinceRaw, typePrefix, severity, resource string, limit int) error {
+	_ = wsFilter
 	since, err := parseLookback(sinceRaw)
 	if err != nil {
 		return err
 	}
 
-	if scope != "" {
-		// Per-deployment event listing: list events Deployment/<key>
-		kind, key, err := parseKindKey(scope)
-		if err != nil {
-			return err
-		}
-		if kind != "Deployment" {
-			return fmt.Errorf("events list only supports Deployment resources, got %q", kind)
-		}
-		query := orchestrator.EventQuery{
-			DeploymentKey: key,
-			TypePrefix:    typePrefix,
-			Severity:      severity,
-			Resource:      resource,
-			Since:         since,
-		}
-		return listDeploymentEvents(context.Background(), flags.newClient(), key, query, flags.outputFormat(), flags.renderer())
+	if scope == "" {
+		return fmt.Errorf("praxis list events requires a deployment scope, e.g. praxis list events Deployment/my-app")
 	}
 
-	// Cross-deployment event query
-	query := orchestrator.EventQuery{
-		Workspace:  wsFilter,
-		TypePrefix: typePrefix,
-		Severity:   severity,
-		Resource:   resource,
-		Since:      since,
-		Limit:      limit,
-	}
-	events, err := flags.newClient().QueryCloudEvents(context.Background(), query)
+	kind, key, err := parseKindKey(scope)
 	if err != nil {
 		return err
 	}
-	if flags.outputFormat() == OutputJSON {
-		return printJSON(events)
+	if kind != "Deployment" {
+		return fmt.Errorf("events list only supports Deployment resources, got %q", kind)
 	}
-	printCloudEvents(flags.renderer(), events)
-	return nil
-}
-
-// listConciergeHistory shows conversation history for a concierge session.
-func listConciergeHistory(flags *rootFlags, session string) error {
-	if session == "" {
-		session = "default"
+	query := orchestrator.EventQuery{
+		DeploymentKey: key,
+		TypePrefix:    typePrefix,
+		Severity:      severity,
+		Resource:      resource,
+		Since:         since,
+		Limit:         limit,
 	}
-
-	client := flags.newClient()
-
-	messages, err := client.ConciergeGetHistory(context.Background(), session)
-	if err != nil {
-		if isConciergeUnavailable(err) {
-			_, _ = fmt.Fprint(flags.renderer().out, conciergeUnavailableMsg)
-			return nil
-		}
-		return fmt.Errorf("list concierge: %w", err)
-	}
-
-	if flags.outputFormat() == OutputJSON {
-		return printJSON(messages)
-	}
-
-	if len(messages) == 0 {
-		_, _ = fmt.Fprintln(flags.renderer().out, flags.renderer().renderMuted("No conversation history."))
-		return nil
-	}
-
-	for _, msg := range messages {
-		fmt.Printf("[%s] %s\n%s\n\n", msg.Timestamp, msg.Role, msg.Content)
-	}
-	return nil
+	return listDeploymentEvents(context.Background(), flags.newClient(), key, query, flags.outputFormat(), flags.renderer())
 }
 
 // listCloudResources queries all deployments for resources matching the given
