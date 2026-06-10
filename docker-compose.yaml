@@ -12,8 +12,6 @@
 #   - praxis-compute: AMI, EC2, ECR, Lambda (future: Auto Scaling, ECS, EKS)
 #   - praxis-identity: IAM Role, Policy, User, Group, Instance Profile
 #   - praxis-monitoring: CloudWatch Log Groups, Metric Alarms, Dashboards
-#   - praxis-concierge: AI assistant (LLM-powered operations)
-#   - praxis-slack: Slack gateway (Socket Mode, event routing)
 #
 # The stack is intentionally explicit rather than clever. The goal is that a
 # human operator or an AI agent can read this file and understand the topology,
@@ -201,63 +199,6 @@ services:
       - "9087:9080"
     environment:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-
-  praxis-notifications:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: praxis-notifications
-    container_name: praxis-notifications
-    depends_on:
-      restate:
-        condition: service_healthy
-    ports:
-      - "9086:9080"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-      - PRAXIS_SCHEMA_DIR=/schemas
-
-  praxis-concierge:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: praxis-concierge
-    container_name: praxis-concierge
-    env_file:
-      - .env
-    depends_on:
-      restate:
-        condition: service_healthy
-    ports:
-      - "9088:9080"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-      # LLM provider configuration — set in .env or override here.
-      # - CONCIERGE_LLM_PROVIDER=openai
-      # - CONCIERGE_LLM_MODEL=gpt-4o
-      # - CONCIERGE_API_KEY=sk-...
-
-  praxis-slack:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: praxis-slack
-    container_name: praxis-slack
-    env_file:
-      - .env
-    depends_on:
-      restate:
-        condition: service_healthy
-    ports:
-      - "9089:9080"
-    environment:
-      - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
-      - RESTATE_URI=http://restate:8080
-      # Slack credentials — set in .env or override here.
-      # - SLACK_BOT_TOKEN=xoxb-...
-      # - SLACK_APP_TOKEN=xapp-...
 
 volumes:
   # Keep infra data in named volumes so operators can opt into clean slates via

@@ -4,12 +4,10 @@
 // delayed message to EventBus.RunRetentionSweep. The sweep:
 //
 //  1. Loads the workspace's retention policy (maxAge, maxEventsPerDeployment,
-//     maxIndexEntries, sweepInterval, shipBeforeDelete, drainSink).
+//     sweepInterval).
 //  2. Iterates all deployments in the workspace (via DeploymentIndex).
-//  3. Prunes each deployment's EventStore, optionally shipping events to a
-//     drain sink before deleting them.
-//  4. Prunes the global EventIndex using the removed sequence ranges.
-//  5. Re-schedules itself using Restate's delayed send.
+//  3. Prunes each deployment's EventStore.
+//  4. Re-schedules itself using Restate's delayed send.
 //
 // This creates a self-perpetuating sweep loop: each completion schedules the
 // next sweep at the configured interval.
@@ -38,10 +36,7 @@ const (
 type retentionPolicySnapshot struct {
 	MaxAge                 string `json:"maxAge,omitempty"`
 	MaxEventsPerDeployment int    `json:"maxEventsPerDeployment,omitempty"`
-	MaxIndexEntries        int    `json:"maxIndexEntries,omitempty"`
 	SweepInterval          string `json:"sweepInterval,omitempty"`
-	ShipBeforeDelete       bool   `json:"shipBeforeDelete,omitempty"`
-	DrainSink              string `json:"drainSink,omitempty"`
 }
 
 // ScheduleRetentionSweep registers a delayed Restate message that will trigger
@@ -82,10 +77,9 @@ func (b EventBus) ScheduleRetentionSweep(ctx restate.ObjectContext, req Retentio
 //  2. Loads the workspace's retention policy.
 //  3. Computes the cutoff time from the policy's maxAge.
 //  4. Emits a sweep_started system event.
-//  5. Prunes each deployment's event store (with optional drain-before-delete).
-//  6. Prunes the global event index using the deleted sequence ranges.
-//  7. Emits a sweep_completed system event.
-//  8. Re-schedules itself for the next interval.
+//  5. Prunes each deployment's event store.
+//  6. Emits a sweep_completed system event.
+//  7. Re-schedules itself for the next interval.
 func (b EventBus) RunRetentionSweep(ctx restate.ObjectContext, req RetentionSweepRequest) (RetentionSweepResult, error) {
 	workspace := strings.TrimSpace(req.Workspace)
 	if workspace == "" {
@@ -125,24 +119,15 @@ func (b EventBus) RunRetentionSweep(ctx restate.ObjectContext, req RetentionSwee
 		Workspace:          workspace,
 		DeploymentsScanned: len(summaries),
 	}
-	removedRanges := make([]EventSequenceRange, 0)
 	for _, summary := range summaries {
 		pruneResult, pruneErr := restate.WithRequestType[EventStorePruneRequest, EventStorePruneResult](
 			restate.Object[EventStorePruneResult](ctx, DeploymentEventStoreServiceName, summary.Key, "Prune"),
 		).Request(EventStorePruneRequest{
-			Before:           before,
-			MaxEvents:        policy.MaxEventsPerDeployment,
-			ShipBeforeDelete: policy.ShipBeforeDelete,
-			DrainSink:        policy.DrainSink,
-			BatchSize:        defaultEventChunkSize,
+			Before:    before,
+			MaxEvents: policy.MaxEventsPerDeployment,
 		})
 		if pruneErr != nil {
 			result.FailedDeployments = append(result.FailedDeployments, summary.Key)
-			_ = b.emitDeploymentRetentionEvent(ctx, workspace, summary.Key, EventTypeSystemRetentionShipFailed, EventSeverityError, map[string]any{
-				"message":       "retention shipping failed",
-				"deploymentKey": summary.Key,
-				"error":         pruneErr.Error(),
-			})
 			continue
 		}
 		if pruneResult.PrunedEvents > 0 {
@@ -150,30 +135,7 @@ func (b EventBus) RunRetentionSweep(ctx restate.ObjectContext, req RetentionSwee
 		}
 		result.PrunedEvents += pruneResult.PrunedEvents
 		result.PrunedChunks += pruneResult.PrunedChunks
-		result.ShippedEvents += pruneResult.ShippedEvents
-		removedRanges = append(removedRanges, pruneResult.RemovedRanges...)
-		if pruneResult.ShippedEvents > 0 {
-			_ = b.emitDeploymentRetentionEvent(ctx, workspace, summary.Key, EventTypeSystemRetentionShipCompleted, EventSeverityInfo, map[string]any{
-				"message":       "retention shipping completed",
-				"deploymentKey": summary.Key,
-				"shippedEvents": pruneResult.ShippedEvents,
-				"prunedChunks":  pruneResult.PrunedChunks,
-			})
-		}
 	}
-
-	indexResult, err := restate.WithRequestType[EventIndexPruneRequest, EventIndexPruneResult](
-		restate.Object[EventIndexPruneResult](ctx, EventIndexServiceName, EventIndexGlobalKey, "Prune"),
-	).Request(EventIndexPruneRequest{
-		Workspace:     workspace,
-		Before:        before,
-		MaxEntries:    policy.MaxIndexEntries,
-		RemovedRanges: removedRanges,
-	})
-	if err != nil {
-		return result, err
-	}
-	result.IndexEntriesPruned = indexResult.Removed
 
 	_ = b.emitWorkspaceRetentionEvent(ctx, workspace, EventTypeSystemRetentionSweepCompleted, EventSeverityInfo, map[string]any{
 		"message":            "retention sweep completed",
@@ -182,8 +144,6 @@ func (b EventBus) RunRetentionSweep(ctx restate.ObjectContext, req RetentionSwee
 		"deploymentsPruned":  result.DeploymentsPruned,
 		"prunedEvents":       result.PrunedEvents,
 		"prunedChunks":       result.PrunedChunks,
-		"shippedEvents":      result.ShippedEvents,
-		"indexEntriesPruned": result.IndexEntriesPruned,
 		"failedDeployments":  result.FailedDeployments,
 	})
 
@@ -255,16 +215,6 @@ func retentionCutoff(now time.Time, maxAge string) (time.Time, error) {
 // the workspace (used for sweep_started and sweep_completed).
 func (b EventBus) emitWorkspaceRetentionEvent(ctx restate.ObjectContext, workspace, eventType, severity string, data map[string]any) error {
 	event, err := newRetentionSystemEvent(retentionSystemStreamBase+workspace, workspace, eventType, severity, "", data)
-	if err != nil {
-		return err
-	}
-	return b.Emit(ctx, event)
-}
-
-// emitDeploymentRetentionEvent emits a system-level retention event scoped to
-// a specific deployment (used for ship_failed and ship_completed).
-func (b EventBus) emitDeploymentRetentionEvent(ctx restate.ObjectContext, workspace, deploymentKey, eventType, severity string, data map[string]any) error {
-	event, err := newRetentionSystemEvent(deploymentKey, workspace, eventType, severity, deploymentKey, data)
 	if err != nil {
 		return err
 	}

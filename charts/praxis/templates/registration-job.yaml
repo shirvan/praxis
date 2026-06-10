@@ -51,15 +51,6 @@ spec:
               register "{{ $name }}" "http://${FN}-{{ $name }}.${NS}:9080"
               {{- end }}
               {{- end }}
-              {{- if .Values.notifications.enabled }}
-              register "notifications" "http://${FN}-notifications.${NS}:9080"
-              {{- end }}
-              {{- if .Values.concierge.enabled }}
-              register "concierge" "http://${FN}-concierge.${NS}:9080"
-              {{- end }}
-              {{- if .Values.slack.enabled }}
-              register "slack" "http://${FN}-slack.${NS}:9080"
-              {{- end }}
 
               echo "Registration complete."
 {{- end }}

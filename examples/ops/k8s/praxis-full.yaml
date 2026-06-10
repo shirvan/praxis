@@ -18,14 +18,13 @@
 #   praxis-network (Deployment) — VPC, SG, IGW, NACL, Subnet, NAT, Route 53, ELB, ACM drivers
 #   praxis-identity (Deployment) — IAM Role, Policy, User, Group, Instance Profile drivers
 #   praxis-monitoring (Deployment) — CloudWatch Log Group, Metric Alarm, Dashboard drivers
-#   praxis-notifications (Deployment) — Notification routing service
 #
 # Quick start:
 #   1. Edit the ConfigMap below with your AWS credentials and Restate endpoint.
 #   2. kubectl apply -f examples/ops/k8s/praxis-full.yaml
 #   3. Register services with Restate:
 #      for svc in praxis-core praxis-storage praxis-compute praxis-network \
-#                 praxis-identity praxis-monitoring praxis-notifications; do
+#                 praxis-identity praxis-monitoring; do
 #        curl -X POST http://<RESTATE_ADMIN>:9070/deployments \
 #          -H 'content-type: application/json' \
 #          -d "{\"uri\": \"http://${svc}.praxis-system:9080\", \"force\": true}"
@@ -494,78 +493,6 @@ metadata:
 spec:
   selector:
     app.kubernetes.io/name: praxis-monitoring
-  ports:
-    - name: restate
-      port: 9080
-      targetPort: restate
-
----
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PRAXIS NOTIFICATIONS — notification routing service
-# ═══════════════════════════════════════════════════════════════════════════════
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: praxis-notifications
-  namespace: praxis-system
-  labels:
-    app.kubernetes.io/name: praxis-notifications
-    app.kubernetes.io/part-of: praxis
-    app.kubernetes.io/component: notifications
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: praxis-notifications
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: praxis-notifications
-        app.kubernetes.io/part-of: praxis
-        app.kubernetes.io/component: notifications
-    spec:
-      containers:
-        - name: praxis-notifications
-          image: ghcr.io/shirvan/praxis-notifications:latest
-          ports:
-            - name: restate
-              containerPort: 9080
-          envFrom:
-            - configMapRef:
-                name: praxis-config
-          env:
-            - name: PRAXIS_LISTEN_ADDR
-              value: "0.0.0.0:9080"
-            - name: PRAXIS_SCHEMA_DIR
-              value: "/schemas"
-          readinessProbe:
-            tcpSocket:
-              port: restate
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 250m
-              memory: 128Mi
-
----
-
-apiVersion: v1
-kind: Service
-metadata:
-  name: praxis-notifications
-  namespace: praxis-system
-  labels:
-    app.kubernetes.io/name: praxis-notifications
-    app.kubernetes.io/part-of: praxis
-spec:
-  selector:
-    app.kubernetes.io/name: praxis-notifications
   ports:
     - name: restate
       port: 9080

@@ -194,68 +194,6 @@ drivers:
       targetCPUUtilization: 70
 
 # ---------------------------------------------------------------------------
-# Notifications service
-# ---------------------------------------------------------------------------
-
-notifications:
-  enabled: true
-  replicas: 1
-  image:
-    repository: ""
-    tag: ""
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 250m
-      memory: 128Mi
-
-# ---------------------------------------------------------------------------
-# Concierge — AI-powered natural language assistant (optional)
-# ---------------------------------------------------------------------------
-
-concierge:
-  enabled: false
-  replicas: 1
-  image:
-    repository: ""
-    tag: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
-  # -- LLM provider configuration
-  llm:
-    # -- Provider: "openai" or "claude"
-    provider: ""
-    # -- Model name (e.g. gpt-4o, claude-sonnet-4-20250514)
-    model: ""
-    # -- API key for the LLM provider (pass via --set at install time)
-    apiKey: ""
-
-# ---------------------------------------------------------------------------
-# Slack Gateway (optional)
-# ---------------------------------------------------------------------------
-
-slack:
-  enabled: false
-  replicas: 1
-  image:
-    repository: ""
-    tag: ""
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 250m
-      memory: 128Mi
-
-# ---------------------------------------------------------------------------
 # Service registration — registers all Praxis services with Restate
 # ---------------------------------------------------------------------------
 

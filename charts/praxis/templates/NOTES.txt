@@ -20,12 +20,3 @@ Services deployed:
   - {{ include "praxis.fullname" $ }}-{{ $name }}
 {{- end }}
 {{- end }}
-{{- if .Values.notifications.enabled }}
-  - {{ include "praxis.fullname" . }}-notifications
-{{- end }}
-{{- if .Values.concierge.enabled }}
-  - {{ include "praxis.fullname" . }}-concierge
-{{- end }}
-{{- if .Values.slack.enabled }}
-  - {{ include "praxis.fullname" . }}-slack
-{{- end }}

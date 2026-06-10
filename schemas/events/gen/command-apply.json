@@ -48,5 +48,5 @@
             "const": "Pending"
         }
     },
-    "$ref": "#/$defs/#CommandEventData"
+    "$ref": "#/$defs/%23CommandEventData"
 }

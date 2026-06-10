@@ -705,6 +705,9 @@ func filterCloudEvents(events []orchestrator.SequencedCloudEvent, query orchestr
 			out = append(out, event)
 		}
 	}
+	if query.Limit > 0 && len(out) > query.Limit {
+		out = out[len(out)-query.Limit:]
+	}
 	return out
 }
 

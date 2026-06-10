@@ -10,6 +10,9 @@
 //   - DeploymentStateObj + DeploymentIndex: deployment read-model and listing
 //   - TemplateRegistry + TemplateIndex: template storage and search
 //   - PolicyRegistry: policy storage and evaluation
+//   - EventBus + DeploymentEventStore: CloudEvents validation, sequencing, storage
+//   - SinkRouter + NotificationSinkConfig: notification sink delivery and config
+//   - ResourceEventOwner + ResourceEventBridge: drift event routing from drivers
 //
 // All handlers are registered with a single Restate server. The Restate runtime
 // handles discovery, invocation routing, and durable execution guarantees.
@@ -92,7 +95,19 @@ func main() {
 		// TemplateIndex: searchable index over all registered templates.
 		Bind(restate.Reflect(registry.TemplateIndex{}, rp)).
 		// PolicyRegistry: stores CUE-based validation policies.
-		Bind(restate.Reflect(registry.PolicyRegistry{}, rp))
+		Bind(restate.Reflect(registry.PolicyRegistry{}, rp)).
+		// EventBus: CloudEvents entrypoint (validation, sequencing, fan-out).
+		Bind(restate.Reflect(orchestrator.NewEventBus(cfg.SchemaDir), rp)).
+		// DeploymentEventStore: chunked per-deployment event streams.
+		Bind(restate.Reflect(orchestrator.DeploymentEventStore{}, rp)).
+		// ResourceEventOwner: resource → deployment ownership for drift events.
+		Bind(restate.Reflect(orchestrator.ResourceEventOwnerObj{}, rp)).
+		// ResourceEventBridge: receives drift reports from drivers, emits CloudEvents.
+		Bind(restate.Reflect(orchestrator.ResourceEventBridge{}, rp)).
+		// SinkRouter: delivers events to notification sinks with retries.
+		Bind(restate.Reflect(orchestrator.SinkRouter{}, rp)).
+		// NotificationSinkConfig: stores registered notification sinks.
+		Bind(restate.Reflect(orchestrator.NewNotificationSinkConfig(cfg.SchemaDir), rp))
 
 	// If a policy seed directory is configured, load .cue files in the background.
 	// This runs in a goroutine because it needs the Restate server to be accepting

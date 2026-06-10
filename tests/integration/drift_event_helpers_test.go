@@ -27,7 +27,6 @@ func setupDriverEventingEnv(t *testing.T, services ...any) *ingress.Client {
 		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
-		restate.Reflect(orchestrator.EventIndex{}),
 		restate.Reflect(orchestrator.ResourceEventOwnerObj{}),
 		restate.Reflect(orchestrator.ResourceEventBridge{}),
 		restate.Reflect(orchestrator.SinkRouter{}),

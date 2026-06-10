@@ -12,7 +12,8 @@
         "operation": {
             "enum": [
                 "delete",
-                "force-replace"
+                "force-replace",
+                "rollback"
             ]
         },
         "policy": {

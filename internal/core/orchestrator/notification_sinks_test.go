@@ -62,7 +62,6 @@ func TestSinkRouterDeliver_ResolvesSSMHeaders(t *testing.T) {
 	env := restatetest.Start(t,
 		restate.Reflect(NewEventBus(absSchemaDir)),
 		restate.Reflect(DeploymentEventStore{}),
-		restate.Reflect(EventIndex{}),
 		restate.Reflect(NewNotificationSinkConfig(absSchemaDir)),
 		restate.Reflect(SinkRouter{}),
 	)
@@ -111,7 +110,6 @@ func TestSinkRouter_RestateRPC(t *testing.T) {
 	env := restatetest.Start(t,
 		restate.Reflect(NewEventBus(absSchemaDir)),
 		restate.Reflect(DeploymentEventStore{}),
-		restate.Reflect(EventIndex{}),
 		restate.Reflect(NewNotificationSinkConfig(absSchemaDir)),
 		restate.Reflect(SinkRouter{}),
 		restate.Reflect(rpcSinkTarget{}),

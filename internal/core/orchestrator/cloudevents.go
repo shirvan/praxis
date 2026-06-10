@@ -5,7 +5,7 @@
 // extensions (deployment, workspace, generation, resourcekind, category, severity)
 // so that consumers can filter and route events without parsing payloads.
 //
-// Events flow:  producer → EventBus.Emit → EventStore.Append → EventIndex.Index
+// Events flow:  producer → EventBus.Emit → EventStore.Append
 //
 //	→ SinkRouter.Deliver → external sinks
 package orchestrator
@@ -132,15 +132,11 @@ const (
 	EventTypeSystemSinkDeliveryFailed      = "dev.praxis.system.sink.delivery_failed"      // sink delivery failed after retries
 	EventTypeSystemRetentionSweepStarted   = "dev.praxis.system.retention.sweep_started"   // retention sweep began
 	EventTypeSystemRetentionSweepCompleted = "dev.praxis.system.retention.sweep_completed" // retention sweep finished
-	EventTypeSystemRetentionShipFailed     = "dev.praxis.system.retention.ship_failed"     // drain-before-delete failed
-	EventTypeSystemRetentionShipCompleted  = "dev.praxis.system.retention.ship_completed"  // drain-before-delete succeeded
 
 	// --- Notification sink types ---
 
-	SinkTypeWebhook         = "webhook"          // plain HTTP POST with JSON body
-	SinkTypeStructuredLog   = "structured_log"   // writes to Go log.Print (stdout)
-	SinkTypeCloudEventsHTTP = "cloudevents_http" // HTTP POST with CloudEvents content-type
-	SinkTypeRestateRPC      = "restate_rpc"      // delivers via Restate service-to-service send
+	SinkTypeWebhook    = "webhook"     // plain HTTP POST with JSON body
+	SinkTypeRestateRPC = "restate_rpc" // delivers via Restate service-to-service send
 )
 
 // SequencedCloudEvent pairs a CloudEvent with a monotonically increasing
@@ -158,9 +154,9 @@ type EventRangeRequest struct {
 	EndSequence   int64 `json:"endSequence"`
 }
 
-// EventQuery is the filter input to EventIndex.Query. All non-zero fields are
-// AND-matched; events must satisfy every specified criterion. The Limit field
-// returns only the N most recent matching events.
+// EventQuery is a client-side filter for per-deployment event listings.
+// All non-zero fields are AND-matched; events must satisfy every specified
+// criterion. The Limit field returns only the N most recent matching events.
 type EventQuery struct {
 	DeploymentKey string    `json:"deploymentKey,omitempty"`
 	Workspace     string    `json:"workspace,omitempty"`
@@ -182,20 +178,6 @@ type eventStoreMeta struct {
 	ActiveCount  int64 `json:"activeCount,omitempty"`
 	ChunkCount   int   `json:"chunkCount"`
 	ChunkSize    int   `json:"chunkSize"`
-}
-
-// indexedEvent is the denormalised record stored in the global EventIndex.
-// It caches frequently-queried fields (deployment, workspace, severity, time)
-// so that Query can filter without deserialising the full CloudEvent each time.
-type indexedEvent struct {
-	DeploymentKey string              `json:"deploymentKey"`
-	Workspace     string              `json:"workspace,omitempty"`
-	Sequence      int64               `json:"sequence"`
-	Type          string              `json:"type"`
-	Severity      string              `json:"severity,omitempty"`
-	Subject       string              `json:"subject,omitempty"`
-	Time          time.Time           `json:"time"`
-	Record        SequencedCloudEvent `json:"record"`
 }
 
 // SinkFilter controls which events a notification sink receives. All non-empty
@@ -240,7 +222,6 @@ type NotificationSink struct {
 	Filter                 SinkFilter        `json:"filter,omitzero"`
 	Headers                map[string]string `json:"headers,omitempty"`
 	Retry                  RetryPolicy       `json:"retry,omitzero"`
-	ContentMode            string            `json:"contentMode,omitempty"`
 	CircuitOpenDurationSec int               `json:"circuitOpenDurationSec,omitempty"`
 	LastError              string            `json:"lastError,omitempty"`
 	LastSuccessAt          string            `json:"lastSuccessAt,omitempty"`
@@ -299,44 +280,6 @@ func normalizeRetryPolicy(policy RetryPolicy) RetryPolicy {
 // Chunks are 1-indexed: chunk-1, chunk-2, etc.
 func eventChunkKey(index int) string {
 	return fmt.Sprintf("chunk-%d", index)
-}
-
-// matchesEventQuery tests whether a single event satisfies all non-zero fields
-// of an EventQuery. Used by EventIndex.Query to filter the in-memory index.
-func matchesEventQuery(record SequencedCloudEvent, query EventQuery) bool {
-	event := record.Event
-	if query.DeploymentKey != "" && eventStringExtension(event, EventExtensionDeployment) != query.DeploymentKey {
-		return false
-	}
-	if query.Workspace != "" && eventStringExtension(event, EventExtensionWorkspace) != query.Workspace {
-		return false
-	}
-	if query.TypePrefix != "" && !strings.HasPrefix(event.Type(), query.TypePrefix) {
-		return false
-	}
-	if query.Severity != "" && eventStringExtension(event, EventExtensionSeverity) != query.Severity {
-		return false
-	}
-	if query.Resource != "" && event.Subject() != query.Resource {
-		return false
-	}
-	if !query.Since.IsZero() && event.Time().Before(query.Since) {
-		return false
-	}
-	if !query.Until.IsZero() && event.Time().After(query.Until) {
-		return false
-	}
-	return true
-}
-
-// limitCloudEvents returns at most the last `limit` events, preserving order.
-// A zero or negative limit disables trimming.
-func limitCloudEvents(events []SequencedCloudEvent, limit int) []SequencedCloudEvent {
-	if limit <= 0 || len(events) <= limit {
-		return events
-	}
-	trimmed := append([]SequencedCloudEvent(nil), events[len(events)-limit:]...)
-	return trimmed
 }
 
 // eventStringExtension reads a CloudEvent extension value as a string,

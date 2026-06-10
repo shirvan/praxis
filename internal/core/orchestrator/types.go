@@ -18,9 +18,8 @@
 // workflows are transient execution vehicles that read and write it.
 //
 // All state transitions emit structured CloudEvents through an EventBus →
-// EventStore → EventIndex pipeline. Notification sinks (webhooks, structured
-// logs, CloudEvents HTTP, Restate RPC) subscribe to these events with per-sink
-// filtering and a built-in circuit breaker.
+// EventStore pipeline. Notification sinks (webhooks, Restate RPC) subscribe to
+// these events with per-sink filtering and a built-in circuit breaker.
 //
 // Key subsystems:
 //
@@ -30,11 +29,10 @@
 //   - Expression Hydrator: resolves "resources.<name>.outputs.<field>" references
 //     just before dispatch, writing typed values back into the resource spec.
 //   - Event Pipeline: CloudEvents flow through EventBus (validation + sequencing),
-//     EventStore (chunked per-deployment persistence), EventIndex (cross-deployment
-//     queries), and SinkRouter (fan-out delivery with retries and circuit breaker).
-//   - Retention: workspace-scoped GC prunes old events from stores and the index
-//     on a configurable schedule, optionally shipping events to a drain sink
-//     before deletion.
+//     EventStore (chunked per-deployment persistence), and SinkRouter (fan-out
+//     delivery with retries and circuit breaker).
+//   - Retention: workspace-scoped GC prunes old events from stores on a
+//     configurable schedule (maxAge and maxEvents caps).
 package orchestrator
 
 import (
@@ -70,9 +68,6 @@ const (
 	// DeploymentEventStoreServiceName stores CloudEvents in chunked per-deployment streams.
 	DeploymentEventStoreServiceName = "DeploymentEventStore"
 
-	// EventIndexServiceName stores cross-deployment event query state.
-	EventIndexServiceName = "EventIndex"
-
 	// SinkRouterServiceName fan-outs stored events to configured sinks.
 	SinkRouterServiceName = "SinkRouter"
 
@@ -81,9 +76,6 @@ const (
 
 	// DeploymentIndexGlobalKey is the well-known key used by DeploymentIndex.
 	DeploymentIndexGlobalKey = "global"
-
-	// EventIndexGlobalKey is the fixed key used by the cross-deployment event index.
-	EventIndexGlobalKey = "global"
 
 	// EventBusGlobalKey is the fixed key used by the event bus object.
 	EventBusGlobalKey = "global"
@@ -190,7 +182,7 @@ type PlanResource struct {
 // DeploymentState virtual object.
 //
 // This type is intentionally workflow-agnostic. Apply and delete workflows both
-// read and write it, while the CLI and future AI concierge can query it through
+// read and write it, while the CLI and other clients can query it through
 // shared handlers without coupling to workflow internals.
 type DeploymentState struct {
 	Key          string                    `json:"key"`
@@ -314,67 +306,25 @@ type RollbackPlan struct {
 	Resources     []RollbackResource `json:"resources,omitempty"`
 }
 
-// EventSequenceRange identifies a contiguous range of event sequences within
-// one deployment's event store. Used by retention to communicate which chunks
-// were deleted so the EventIndex can prune its corresponding entries.
-type EventSequenceRange struct {
-	DeploymentKey string `json:"deploymentKey"`
-	StartSequence int64  `json:"startSequence"`
-	EndSequence   int64  `json:"endSequence"`
-}
-
 // EventStorePruneRequest controls per-deployment event pruning during retention
-// sweeps. Events older than Before or exceeding MaxEvents are pruned. When
-// ShipBeforeDelete is true, pruned events are first delivered to DrainSink in
-// batches before being removed from the store.
+// sweeps. Events older than Before or exceeding MaxEvents are pruned.
 type EventStorePruneRequest struct {
-	Before           time.Time `json:"before,omitzero"`
-	MaxEvents        int       `json:"maxEvents,omitempty"`
-	ShipBeforeDelete bool      `json:"shipBeforeDelete,omitempty"`
-	DrainSink        string    `json:"drainSink,omitempty"`
-	BatchSize        int       `json:"batchSize,omitempty"`
+	Before    time.Time `json:"before,omitzero"`
+	MaxEvents int       `json:"maxEvents,omitempty"`
 }
 
 // EventStorePruneResult reports the outcome of a single deployment's event
-// store prune operation, including how many events and chunks were removed
-// and the sequence ranges that were deleted (fed to EventIndex.Prune).
+// store prune operation, including how many events and chunks were removed.
 type EventStorePruneResult struct {
-	DeploymentKey   string               `json:"deploymentKey"`
-	PrunedEvents    int                  `json:"prunedEvents"`
-	PrunedChunks    int                  `json:"prunedChunks"`
-	RemainingEvents int64                `json:"remainingEvents"`
-	ShippedEvents   int                  `json:"shippedEvents"`
-	RemovedRanges   []EventSequenceRange `json:"removedRanges,omitempty"`
-}
-
-// EventIndexPruneRequest controls the global event index pruning. It removes
-// entries that match the workspace and are older than Before, belong to pruned
-// store ranges, or exceed MaxEntries (oldest-first after other filters).
-type EventIndexPruneRequest struct {
-	Workspace     string               `json:"workspace,omitempty"`
-	Before        time.Time            `json:"before,omitzero"`
-	MaxEntries    int                  `json:"maxEntries,omitempty"`
-	RemovedRanges []EventSequenceRange `json:"removedRanges,omitempty"`
-}
-
-// EventIndexPruneResult reports how many entries the global index removed and
-// how many remain after pruning.
-type EventIndexPruneResult struct {
-	Removed   int `json:"removed"`
-	Remaining int `json:"remaining"`
-}
-
-// DrainBatchRequest sends a batch of events to a specific notification sink.
-// Used by the retention system to ship events to a drain sink before deleting
-// them from the event store.
-type DrainBatchRequest struct {
-	SinkName string                `json:"sinkName"`
-	Records  []SequencedCloudEvent `json:"records"`
+	DeploymentKey   string `json:"deploymentKey"`
+	PrunedEvents    int    `json:"prunedEvents"`
+	PrunedChunks    int    `json:"prunedChunks"`
+	RemainingEvents int64  `json:"remainingEvents"`
 }
 
 // RetentionSweepRequest triggers a workspace-scoped retention sweep. The sweep
-// iterates all deployments in the workspace, prunes their event stores according
-// to the workspace's retention policy, and then prunes the global event index.
+// iterates all deployments in the workspace and prunes their event stores
+// according to the workspace's retention policy.
 type RetentionSweepRequest struct {
 	Workspace string `json:"workspace"`
 }
@@ -386,7 +336,5 @@ type RetentionSweepResult struct {
 	DeploymentsPruned  int      `json:"deploymentsPruned"`
 	PrunedEvents       int      `json:"prunedEvents"`
 	PrunedChunks       int      `json:"prunedChunks"`
-	ShippedEvents      int      `json:"shippedEvents"`
-	IndexEntriesPruned int      `json:"indexEntriesPruned"`
 	FailedDeployments  []string `json:"failedDeployments,omitempty"`
 }

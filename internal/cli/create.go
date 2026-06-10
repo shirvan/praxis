@@ -99,14 +99,13 @@ func newCreateSinkCmd(flags *rootFlags) *cobra.Command {
 		maxRetries       int
 		backoffMs        int
 		fromFile         string
-		contentMode      string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "sink",
 		Short: "Create or update a notification sink",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sink, err := buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryFilters, severityFilters, workspaceFilters, deploymentFilter, headers, maxRetries, backoffMs, contentMode)
+			sink, err := buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryFilters, severityFilters, workspaceFilters, deploymentFilter, headers, maxRetries, backoffMs)
 			if err != nil {
 				return err
 			}
@@ -122,8 +121,8 @@ func newCreateSinkCmd(flags *rootFlags) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Sink name")
-	cmd.Flags().StringVar(&sinkType, "type", "", "Sink type: webhook, structured_log, cloudevents_http")
-	cmd.Flags().StringVar(&url, "url", "", "Endpoint URL for webhook or cloudevents_http sinks")
+	cmd.Flags().StringVar(&sinkType, "type", "", "Sink type: webhook or restate_rpc")
+	cmd.Flags().StringVar(&url, "url", "", "Endpoint URL for webhook sinks")
 	cmd.Flags().StringVar(&typeFilters, "filter-types", "", "Comma-separated event type prefixes")
 	cmd.Flags().StringVar(&categoryFilters, "filter-categories", "", "Comma-separated event categories")
 	cmd.Flags().StringVar(&severityFilters, "filter-severities", "", "Comma-separated severities")
@@ -133,7 +132,6 @@ func newCreateSinkCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().IntVar(&maxRetries, "max-retries", 3, "Maximum delivery retry attempts")
 	cmd.Flags().IntVar(&backoffMs, "backoff-ms", 1000, "Initial delivery retry backoff in milliseconds")
 	cmd.Flags().StringVarP(&fromFile, "file", "f", "", "Read sink config from JSON file or - for stdin")
-	cmd.Flags().StringVar(&contentMode, "content-mode", "structured", "CloudEvents HTTP content mode")
 	return cmd
 }
 

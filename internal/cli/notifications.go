@@ -22,7 +22,7 @@ import (
 // buildNotificationSink assembles a NotificationSink from either a JSON file
 // (--from-file) or individual flag values. File loading takes precedence
 // when --from-file is set.
-func buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryFilters, severityFilters, workspaceFilters, deploymentFilters string, headers []string, maxRetries, backoffMs int, contentMode string) (orchestrator.NotificationSink, error) {
+func buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryFilters, severityFilters, workspaceFilters, deploymentFilters string, headers []string, maxRetries, backoffMs int) (orchestrator.NotificationSink, error) {
 	if strings.TrimSpace(fromFile) != "" {
 		return loadNotificationSink(fromFile)
 	}
@@ -41,9 +41,8 @@ func buildNotificationSink(fromFile, name, sinkType, url, typeFilters, categoryF
 			Workspaces:  splitCSV(workspaceFilters),
 			Deployments: splitCSV(deploymentFilters),
 		},
-		Headers:     headersMap,
-		Retry:       orchestrator.RetryPolicy{MaxAttempts: maxRetries, BackoffMs: backoffMs},
-		ContentMode: strings.TrimSpace(contentMode),
+		Headers: headersMap,
+		Retry:   orchestrator.RetryPolicy{MaxAttempts: maxRetries, BackoffMs: backoffMs},
 	}, nil
 }
 

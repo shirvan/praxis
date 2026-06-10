@@ -160,7 +160,6 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 		// CloudEvents event system
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
-		restate.Reflect(orchestrator.EventIndex{}),
 		restate.Reflect(orchestrator.ResourceEventOwnerObj{}),
 		restate.Reflect(orchestrator.ResourceEventBridge{}),
 		restate.Reflect(orchestrator.SinkRouter{}),
@@ -304,10 +303,10 @@ func pollDeploymentList(
 	}
 }
 
-func pollEventIndexTypes(
+func pollDeploymentEventTypes(
 	t *testing.T,
 	client *ingress.Client,
-	query orchestrator.EventQuery,
+	deployKey string,
 	expectedTypes []string,
 	timeout time.Duration,
 ) []orchestrator.SequencedCloudEvent {
@@ -315,13 +314,13 @@ func pollEventIndexTypes(
 
 	deadline := time.Now().Add(timeout)
 	for {
-		events, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+		events, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
 			client,
-			orchestrator.EventIndexServiceName,
-			orchestrator.EventIndexGlobalKey,
-			"Query",
-		).Request(t.Context(), query)
-		require.NoError(t, err, "polling EventIndex should not fail")
+			orchestrator.DeploymentEventStoreServiceName,
+			deployKey,
+			"ListSince",
+		).Request(t.Context(), int64(0))
+		require.NoError(t, err, "polling DeploymentEventStore should not fail")
 
 		typeSet := make(map[string]bool, len(events))
 		for _, record := range events {
@@ -344,7 +343,7 @@ func pollEventIndexTypes(
 			for eventType := range typeSet {
 				seenTypes = append(seenTypes, eventType)
 			}
-			t.Fatalf("event index query %+v did not contain expected types %v within %v; saw %v", query, expectedTypes, timeout, seenTypes)
+			t.Fatalf("event store %q did not contain expected types %v within %v; saw %v", deployKey, expectedTypes, timeout, seenTypes)
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -926,14 +925,6 @@ func TestCore_DeploymentEvents(t *testing.T) {
 	require.NotNil(t, resourceReadyPayload, "resource.ready payload should be present")
 	assert.Contains(t, resourceReadyPayload, "outputs", "resource.ready should carry typed outputs in the CloudEvent payload")
 
-	indexedEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
-		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{DeploymentKey: deployKey})
-	require.NoError(t, err, "EventIndex query should succeed")
-	require.NotEmpty(t, indexedEvents, "EventIndex should contain the deployment events")
 }
 
 func TestCore_EventBusRejectsInvalidLifecycleData(t *testing.T) {
@@ -993,6 +984,11 @@ func TestCore_EventBusRejectsInvalidLifecycleData(t *testing.T) {
 func TestCore_SystemAndPolicyEvents(t *testing.T) {
 	env := setupCoreStack(t)
 
+	sinkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sinkServer.Close()
+
 	_, err := ingress.Object[orchestrator.NotificationSink, restate.Void](
 		env.ingress,
 		orchestrator.NotificationSinkConfigServiceName,
@@ -1000,7 +996,8 @@ func TestCore_SystemAndPolicyEvents(t *testing.T) {
 		"Upsert",
 	).Request(t.Context(), orchestrator.NotificationSink{
 		Name: "test-log-sink",
-		Type: orchestrator.SinkTypeStructuredLog,
+		Type: orchestrator.SinkTypeWebhook,
+		URL:  sinkServer.URL,
 	})
 	require.NoError(t, err)
 
@@ -1012,12 +1009,13 @@ func TestCore_SystemAndPolicyEvents(t *testing.T) {
 	).Request(t.Context(), "test-log-sink")
 	require.NoError(t, err)
 
-	systemEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+	// Sink lifecycle events land in the __system__/sinks stream.
+	systemEvents, err := ingress.Object[string, []orchestrator.SequencedCloudEvent](
 		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{Workspace: "system", TypePrefix: "dev.praxis.system.sink."})
+		orchestrator.DeploymentEventStoreServiceName,
+		"__system__/sinks",
+		"ListByType",
+	).Request(t.Context(), "dev.praxis.system.sink.")
 	require.NoError(t, err)
 	require.NotEmpty(t, systemEvents)
 	systemTypes := make(map[string]bool, len(systemEvents))
@@ -1055,10 +1053,10 @@ func TestCore_SystemAndPolicyEvents(t *testing.T) {
 	)
 	require.Equal(t, types.DeploymentFailed, state.Status)
 
-	deploymentEvents := pollEventIndexTypes(
+	deploymentEvents := pollDeploymentEventTypes(
 		t,
 		env.ingress,
-		orchestrator.EventQuery{DeploymentKey: deployKey},
+		deployKey,
 		[]string{
 			orchestrator.EventTypeCommandApply,
 			orchestrator.EventTypeCommandDelete,
@@ -1101,7 +1099,7 @@ func TestCore_NotificationSinkValidation(t *testing.T) {
 		"Upsert",
 	).Request(t.Context(), orchestrator.NotificationSink{
 		Name: "local-events",
-		Type: "cloudevents_http",
+		Type: "webhook",
 		URL:  "http://localhost:8080/events",
 	})
 	require.NoError(t, err)
@@ -1114,7 +1112,6 @@ func TestCore_NotificationSinkValidation(t *testing.T) {
 	).Request(t.Context(), "local-events")
 	require.NoError(t, err)
 	require.NotNil(t, sink)
-	assert.Equal(t, "structured", sink.ContentMode, "CUE defaults should normalize contentMode")
 	assert.Equal(t, 3, sink.Retry.MaxAttempts, "CUE defaults should normalize retry.maxAttempts")
 	assert.Equal(t, 1000, sink.Retry.BackoffMs, "CUE defaults should normalize retry.backoffMs")
 }
@@ -1304,34 +1301,8 @@ func TestCore_WorkspaceEventRetention(t *testing.T) {
 		workspaceName,
 		"SetEventRetention",
 	).Request(t.Context(), workspace.EventRetentionPolicy{
-		MaxAge:           "30d",
-		ShipBeforeDelete: true,
-		DrainSink:        "archive",
-	})
-	require.Error(t, err, "retention policies that ship before delete should require a registered drain sink")
-	assert.Contains(t, strings.ToLower(err.Error()), "not registered")
-
-	_, err = ingress.Object[orchestrator.NotificationSink, restate.Void](
-		env.ingress,
-		orchestrator.NotificationSinkConfigServiceName,
-		orchestrator.NotificationSinkConfigGlobalKey,
-		"Upsert",
-	).Request(t.Context(), orchestrator.NotificationSink{
-		Name: "archive",
-		Type: "structured_log",
-	})
-	require.NoError(t, err)
-
-	_, err = ingress.Object[workspace.EventRetentionPolicy, restate.Void](
-		env.ingress,
-		workspace.WorkspaceServiceName,
-		workspaceName,
-		"SetEventRetention",
-	).Request(t.Context(), workspace.EventRetentionPolicy{
 		MaxAge:                 "30d",
 		MaxEventsPerDeployment: 500,
-		ShipBeforeDelete:       true,
-		DrainSink:              "archive",
 	})
 	require.NoError(t, err)
 
@@ -1344,13 +1315,10 @@ func TestCore_WorkspaceEventRetention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "30d", policy.MaxAge)
 	assert.Equal(t, 500, policy.MaxEventsPerDeployment)
-	assert.Equal(t, 100000, policy.MaxIndexEntries, "CUE defaults should normalize maxIndexEntries")
 	assert.Equal(t, "24h", policy.SweepInterval, "CUE defaults should normalize sweepInterval")
-	assert.True(t, policy.ShipBeforeDelete)
-	assert.Equal(t, "archive", policy.DrainSink)
 }
 
-func TestCore_RetentionSweep_PrunesAndShips(t *testing.T) {
+func TestCore_RetentionSweep_Prunes(t *testing.T) {
 	env := setupCoreStack(t)
 	workspaceName := "retention-" + uniqueName(t, "ws")
 
@@ -1366,30 +1334,6 @@ func TestCore_RetentionSweep_PrunesAndShips(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var (
-		mu            sync.Mutex
-		drainRequests int
-	)
-	drainServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		drainRequests++
-		mu.Unlock()
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer drainServer.Close()
-
-	_, err = ingress.Object[orchestrator.NotificationSink, restate.Void](
-		env.ingress,
-		orchestrator.NotificationSinkConfigServiceName,
-		orchestrator.NotificationSinkConfigGlobalKey,
-		"Upsert",
-	).Request(t.Context(), orchestrator.NotificationSink{
-		Name: "archive-webhook",
-		Type: orchestrator.SinkTypeWebhook,
-		URL:  drainServer.URL,
-	})
-	require.NoError(t, err)
-
 	_, err = ingress.Object[workspace.EventRetentionPolicy, restate.Void](
 		env.ingress,
 		workspace.WorkspaceServiceName,
@@ -1398,10 +1342,7 @@ func TestCore_RetentionSweep_PrunesAndShips(t *testing.T) {
 	).Request(t.Context(), workspace.EventRetentionPolicy{
 		MaxAge:                 "1d",
 		MaxEventsPerDeployment: 100,
-		MaxIndexEntries:        1000,
 		SweepInterval:          "24h",
-		ShipBeforeDelete:       true,
-		DrainSink:              "archive-webhook",
 	})
 	require.NoError(t, err)
 
@@ -1472,7 +1413,6 @@ func TestCore_RetentionSweep_PrunesAndShips(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, workspaceName, sweepResult.Workspace)
 	assert.Greater(t, sweepResult.PrunedEvents, 0)
-	assert.Greater(t, sweepResult.ShippedEvents, 0)
 
 	afterEvents, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
 		env.ingress,
@@ -1494,247 +1434,15 @@ func TestCore_RetentionSweep_PrunesAndShips(t *testing.T) {
 	require.NoError(t, err)
 	assert.Less(t, afterCount, beforeCount)
 
-	mu.Lock()
-	receivedDrainRequests := drainRequests
-	mu.Unlock()
-	assert.Greater(t, receivedDrainRequests, 0, "drain sink should receive pruned event batches")
-
-	retentionEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+	// Sweep lifecycle events land in the workspace's retention system stream.
+	retentionEvents, err := ingress.Object[string, []orchestrator.SequencedCloudEvent](
 		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{
-		Workspace:  workspaceName,
-		TypePrefix: "dev.praxis.system.retention.",
-	})
+		orchestrator.DeploymentEventStoreServiceName,
+		"__system__/retention/"+workspaceName,
+		"ListByType",
+	).Request(t.Context(), "dev.praxis.system.retention.")
 	require.NoError(t, err)
 	require.NotEmpty(t, retentionEvents, "retention sweep should emit system retention events")
-}
-
-func TestCore_RetentionSweep_ShipFailureSkipsPrune(t *testing.T) {
-	env := setupCoreStack(t)
-	workspaceName := uniqueName(t, "rf")
-
-	_, err := ingress.Object[workspace.WorkspaceConfig, restate.Void](
-		env.ingress,
-		workspace.WorkspaceServiceName,
-		workspaceName,
-		"Configure",
-	).Request(t.Context(), workspace.WorkspaceConfig{
-		Name:    workspaceName,
-		Account: integrationAccountName,
-		Region:  "us-east-1",
-	})
-	require.NoError(t, err)
-
-	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer failingServer.Close()
-
-	_, err = ingress.Object[orchestrator.NotificationSink, restate.Void](
-		env.ingress,
-		orchestrator.NotificationSinkConfigServiceName,
-		orchestrator.NotificationSinkConfigGlobalKey,
-		"Upsert",
-	).Request(t.Context(), orchestrator.NotificationSink{
-		Name:  "archive-failing-webhook",
-		Type:  orchestrator.SinkTypeWebhook,
-		URL:   failingServer.URL,
-		Retry: orchestrator.RetryPolicy{MaxAttempts: 1, BackoffMs: 100},
-	})
-	require.NoError(t, err)
-
-	_, err = ingress.Object[workspace.EventRetentionPolicy, restate.Void](
-		env.ingress,
-		workspace.WorkspaceServiceName,
-		workspaceName,
-		"SetEventRetention",
-	).Request(t.Context(), workspace.EventRetentionPolicy{
-		MaxAge:                 "1d",
-		MaxEventsPerDeployment: 100,
-		MaxIndexEntries:        1000,
-		SweepInterval:          "24h",
-		ShipBeforeDelete:       true,
-		DrainSink:              "archive-failing-webhook",
-	})
-	require.NoError(t, err)
-
-	deployKey := "retention-fail-" + uniqueName(t, "dep")
-	oldTime := time.Now().Add(-48 * time.Hour).UTC()
-	_, err = ingress.Object[types.DeploymentSummary, restate.Void](
-		env.ingress,
-		orchestrator.DeploymentIndexServiceName,
-		orchestrator.DeploymentIndexGlobalKey,
-		"Upsert",
-	).Request(t.Context(), types.DeploymentSummary{
-		Key:       deployKey,
-		Status:    types.DeploymentComplete,
-		Resources: 1,
-		Workspace: workspaceName,
-		CreatedAt: oldTime,
-		UpdatedAt: oldTime,
-	})
-	require.NoError(t, err)
-
-	for index := 0; index < 2; index++ {
-		event := cloudevents.NewEvent(cloudevents.VersionV1)
-		event.SetSource(fmt.Sprintf("/praxis/%s/%s", workspaceName, deployKey))
-		event.SetType(orchestrator.EventTypeDeploymentStarted)
-		event.SetTime(oldTime.Add(time.Duration(index) * time.Minute))
-		event.SetExtension(orchestrator.EventExtensionDeployment, deployKey)
-		event.SetExtension(orchestrator.EventExtensionWorkspace, workspaceName)
-		event.SetExtension(orchestrator.EventExtensionGeneration, int64(1))
-		event.SetExtension(orchestrator.EventExtensionCategory, orchestrator.EventCategoryLifecycle)
-		event.SetExtension(orchestrator.EventExtensionSeverity, orchestrator.EventSeverityInfo)
-		err = event.SetData(cloudevents.ApplicationJSON, map[string]any{
-			"message": fmt.Sprintf("old event %d", index+1),
-		})
-		require.NoError(t, err)
-
-		_, err = ingress.Object[cloudevents.Event, restate.Void](
-			env.ingress,
-			orchestrator.EventBusServiceName,
-			orchestrator.EventBusGlobalKey,
-			"Emit",
-		).Request(t.Context(), event)
-		require.NoError(t, err)
-	}
-
-	beforeCount, err := ingress.Object[restate.Void, int64](
-		env.ingress,
-		orchestrator.DeploymentEventStoreServiceName,
-		deployKey,
-		"Count",
-	).Request(t.Context(), restate.Void{})
-	require.NoError(t, err)
-
-	result, err := ingress.Object[orchestrator.RetentionSweepRequest, orchestrator.RetentionSweepResult](
-		env.ingress,
-		orchestrator.EventBusServiceName,
-		orchestrator.EventBusGlobalKey,
-		"RunRetentionSweep",
-	).Request(t.Context(), orchestrator.RetentionSweepRequest{Workspace: workspaceName})
-	require.NoError(t, err)
-	assert.Contains(t, result.FailedDeployments, deployKey)
-	assert.Equal(t, 0, result.PrunedEvents)
-	assert.Equal(t, 0, result.ShippedEvents)
-
-	afterCount, err := ingress.Object[restate.Void, int64](
-		env.ingress,
-		orchestrator.DeploymentEventStoreServiceName,
-		deployKey,
-		"Count",
-	).Request(t.Context(), restate.Void{})
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, afterCount, beforeCount, "failed drain delivery should not prune the original deployment events")
-
-	afterEvents, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
-		env.ingress,
-		orchestrator.DeploymentEventStoreServiceName,
-		deployKey,
-		"ListSince",
-	).Request(t.Context(), int64(0))
-	require.NoError(t, err)
-	var lifecycleEvents int
-	for _, record := range afterEvents {
-		if record.Event.Type() == orchestrator.EventTypeDeploymentStarted {
-			lifecycleEvents++
-		}
-	}
-	assert.Equal(t, 2, lifecycleEvents, "failed drain delivery should leave the original deployment events intact")
-
-	retentionEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
-		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{
-		Workspace:  workspaceName,
-		TypePrefix: orchestrator.EventTypeSystemRetentionShipFailed,
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, retentionEvents)
-}
-
-func TestCore_EventIndexQuery_MultiDeployment(t *testing.T) {
-	env := setupCoreStack(t)
-	workspaceName := uniqueName(t, "q")
-	deploymentKeys := []string{
-		"query-a-" + uniqueName(t, "dep"),
-		"query-b-" + uniqueName(t, "dep"),
-	}
-
-	for _, deployKey := range deploymentKeys {
-		_, err := ingress.Object[orchestrator.DeploymentPlan, int64](
-			env.ingress,
-			orchestrator.DeploymentStateServiceName,
-			deployKey,
-			"InitDeployment",
-		).Request(t.Context(), orchestrator.DeploymentPlan{
-			Key:       deployKey,
-			Workspace: workspaceName,
-			CreatedAt: time.Now().UTC(),
-		})
-		require.NoError(t, err)
-
-		event := cloudevents.NewEvent(cloudevents.VersionV1)
-		event.SetSource(fmt.Sprintf("/praxis/%s/%s", workspaceName, deployKey))
-		event.SetType(orchestrator.EventTypeResourceReady)
-		event.SetTime(time.Now().UTC())
-		event.SetSubject("bucket")
-		event.SetExtension(orchestrator.EventExtensionDeployment, deployKey)
-		event.SetExtension(orchestrator.EventExtensionWorkspace, workspaceName)
-		event.SetExtension(orchestrator.EventExtensionGeneration, int64(1))
-		event.SetExtension(orchestrator.EventExtensionResourceKind, "S3Bucket")
-		event.SetExtension(orchestrator.EventExtensionCategory, orchestrator.EventCategoryLifecycle)
-		event.SetExtension(orchestrator.EventExtensionSeverity, orchestrator.EventSeverityInfo)
-		err = event.SetData(cloudevents.ApplicationJSON, map[string]any{
-			"message":      "resource ready",
-			"resourceName": "bucket",
-			"resourceKind": "S3Bucket",
-			"resourceKey":  deployKey + "-bucket",
-			"status":       "Running",
-		})
-		require.NoError(t, err)
-
-		_, err = ingress.Object[cloudevents.Event, restate.Void](
-			env.ingress,
-			orchestrator.EventBusServiceName,
-			orchestrator.EventBusGlobalKey,
-			"Emit",
-		).Request(t.Context(), event)
-		require.NoError(t, err)
-	}
-
-	var (
-		records  []orchestrator.SequencedCloudEvent
-		queryErr error
-	)
-	require.Eventually(t, func() bool {
-		records, queryErr = ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
-			env.ingress,
-			orchestrator.EventIndexServiceName,
-			orchestrator.EventIndexGlobalKey,
-			"Query",
-		).Request(t.Context(), orchestrator.EventQuery{
-			Workspace:  workspaceName,
-			TypePrefix: orchestrator.EventTypeResourceReady,
-			Limit:      10,
-		})
-		require.NoError(t, queryErr)
-		return len(records) == 2
-	}, 10*time.Second, 200*time.Millisecond)
-
-	seenDeployments := map[string]bool{}
-	for _, record := range records {
-		seenDeployments[orchestratorEventExtension(record, orchestrator.EventExtensionDeployment)] = true
-		assert.Equal(t, orchestrator.EventTypeResourceReady, record.Event.Type())
-		assert.Equal(t, workspaceName, orchestratorEventExtension(record, orchestrator.EventExtensionWorkspace))
-	}
-	assert.True(t, seenDeployments[deploymentKeys[0]])
-	assert.True(t, seenDeployments[deploymentKeys[1]])
 }
 
 func orchestratorEventExtension(record orchestrator.SequencedCloudEvent, key string) string {
@@ -2044,11 +1752,11 @@ func TestCore_Delete_EmitsCloudEvents(t *testing.T) {
 	assert.True(t, typeSet[orchestrator.EventTypeDeploymentDeleteDone],
 		"delete workflow should emit deployment.delete.completed")
 
-	// --- Verify the delete events are indexed ---
-	indexedEvents := pollEventIndexTypes(
+	// --- Verify the delete events are stored ---
+	storedEvents := pollDeploymentEventTypes(
 		t,
 		env.ingress,
-		orchestrator.EventQuery{DeploymentKey: deployKey},
+		deployKey,
 		[]string{
 			orchestrator.EventTypeDeploymentDeleteStarted,
 			orchestrator.EventTypeResourceDeleteStarted,
@@ -2057,12 +1765,13 @@ func TestCore_Delete_EmitsCloudEvents(t *testing.T) {
 		},
 		15*time.Second,
 	)
-	require.NotEmpty(t, indexedEvents)
+	require.NotEmpty(t, storedEvents)
 }
 
-// TestCore_EventIndexQuery_Filters verifies that EventIndex.Query correctly
-// filters events by workspace, type prefix, severity, and limit.
-func TestCore_EventIndexQuery_Filters(t *testing.T) {
+// TestCore_EventStore_TypeAndResourceFilters verifies the per-deployment
+// event store's ListByType and ListByResource filters, which back the CLI's
+// `praxis list events Deployment/<key>` filtering.
+func TestCore_EventStore_TypeAndResourceFilters(t *testing.T) {
 	env := setupCoreStack(t)
 	workspaceName := uniqueName(t, "qf")
 	deployKey := "query-filter-" + uniqueName(t, "dep")
@@ -2120,8 +1829,8 @@ func TestCore_EventIndexQuery_Filters(t *testing.T) {
 	emitEvent(orchestrator.EventTypeResourceReady, orchestrator.EventCategoryLifecycle, orchestrator.EventSeverityInfo)
 	emitEvent(orchestrator.EventTypeDeploymentDeleteFailed, orchestrator.EventCategoryLifecycle, orchestrator.EventSeverityError)
 
-	// Wait for all 4 events to be indexed
-	pollEventIndexTypes(t, env.ingress, orchestrator.EventQuery{DeploymentKey: deployKey},
+	// Wait for all 4 events to be stored
+	pollDeploymentEventTypes(t, env.ingress, deployKey,
 		[]string{
 			orchestrator.EventTypeDeploymentStarted,
 			orchestrator.EventTypeResourceDispatched,
@@ -2131,29 +1840,13 @@ func TestCore_EventIndexQuery_Filters(t *testing.T) {
 		15*time.Second,
 	)
 
-	// --- Filter by workspace ---
-	wsEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
-		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{Workspace: workspaceName})
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(wsEvents), 4, "workspace filter should return at least the 4 emitted events")
-	for _, record := range wsEvents {
-		assert.Equal(t, workspaceName, orchestratorEventExtension(record, orchestrator.EventExtensionWorkspace))
-	}
-
 	// --- Filter by type prefix ---
-	resourceEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+	resourceEvents, err := ingress.Object[string, []orchestrator.SequencedCloudEvent](
 		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{
-		DeploymentKey: deployKey,
-		TypePrefix:    "dev.praxis.resource.",
-	})
+		orchestrator.DeploymentEventStoreServiceName,
+		deployKey,
+		"ListByType",
+	).Request(t.Context(), "dev.praxis.resource.")
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(resourceEvents), 2,
 		"type prefix filter should return resource events")
@@ -2162,37 +1855,24 @@ func TestCore_EventIndexQuery_Filters(t *testing.T) {
 			"filtered events should match the type prefix")
 	}
 
-	// --- Filter by severity ---
-	errorEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+	// --- Cursor reads ---
+	allEvents, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
 		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{
-		DeploymentKey: deployKey,
-		Severity:      orchestrator.EventSeverityError,
-	})
+		orchestrator.DeploymentEventStoreServiceName,
+		deployKey,
+		"ListSince",
+	).Request(t.Context(), int64(0))
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(errorEvents), 1,
-		"severity filter should find the error event")
-	for _, record := range errorEvents {
-		assert.Equal(t, orchestrator.EventSeverityError,
-			orchestratorEventExtension(record, orchestrator.EventExtensionSeverity))
-	}
+	require.GreaterOrEqual(t, len(allEvents), 4)
 
-	// --- Filter with limit ---
-	limitedEvents, err := ingress.Object[orchestrator.EventQuery, []orchestrator.SequencedCloudEvent](
+	tail, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
 		env.ingress,
-		orchestrator.EventIndexServiceName,
-		orchestrator.EventIndexGlobalKey,
-		"Query",
-	).Request(t.Context(), orchestrator.EventQuery{
-		DeploymentKey: deployKey,
-		Limit:         2,
-	})
+		orchestrator.DeploymentEventStoreServiceName,
+		deployKey,
+		"ListSince",
+	).Request(t.Context(), allEvents[len(allEvents)-2].Sequence)
 	require.NoError(t, err)
-	assert.LessOrEqual(t, len(limitedEvents), 2,
-		"limit filter should cap the number of returned events")
+	assert.Len(t, tail, 1, "cursor read should only return events after the given sequence")
 }
 
 // TestCore_CloudEventsJSON_Serialization verifies that CloudEvents stored in

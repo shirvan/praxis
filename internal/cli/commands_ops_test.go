@@ -42,20 +42,14 @@ func TestListEventsCmd_PerDeployment_InvalidArg(t *testing.T) {
 	assert.Contains(t, err.Error(), "expected Kind/Key")
 }
 
-func TestListEventsCmd_Query_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/EventIndex/global/Query", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]orchestrator.SequencedCloudEvent{})
-	}))
-	defer srv.Close()
-
-	_, _, err := executeCmd(t, []string{"list", "events", "--severity", "error"}, srv.URL)
-	require.NoError(t, err)
+func TestListEventsCmd_Query_NoScope(t *testing.T) {
+	_, _, err := executeCmd(t, []string{"list", "events", "--severity", "error"}, "http://unused")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a deployment scope")
 }
 
 func TestListEventsCmd_Query_InvalidDuration(t *testing.T) {
-	_, _, err := executeCmd(t, []string{"list", "events", "--since", "notaduration"}, "http://unused")
+	_, _, err := executeCmd(t, []string{"list", "events", "Deployment/my-app", "--since", "notaduration"}, "http://unused")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid duration")
 }
@@ -159,7 +153,7 @@ func TestGetNotificationsCmd_Health(t *testing.T) {
 func TestBuildNotificationSink_Flags(t *testing.T) {
 	sink, err := buildNotificationSink("", "test-sink", "webhook", "https://example.com",
 		"deploy.ready,deploy.failed", "deployment", "error,warn", "prod", "my-app-*",
-		[]string{"Authorization=Bearer tok"}, 5, 2000, "structured")
+		[]string{"Authorization=Bearer tok"}, 5, 2000)
 	require.NoError(t, err)
 	assert.Equal(t, "test-sink", sink.Name)
 	assert.Equal(t, "webhook", sink.Type)

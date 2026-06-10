@@ -33,7 +33,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/$defs/#DeploymentStatus"
+                    "$ref": "#/$defs/%23DeploymentStatus"
                 }
             },
             "required": [
@@ -56,7 +56,7 @@
             ]
         }
     },
-    "$ref": "#/$defs/#ResourceEventData",
+    "$ref": "#/$defs/%23ResourceEventData",
     "required": [
         "error",
         "status"
