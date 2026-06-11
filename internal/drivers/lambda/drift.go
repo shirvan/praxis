@@ -75,14 +75,14 @@ func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []Fie
 	if deadLetterTarget(desired.DeadLetterConfig) != observed.DeadLetterTarget {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.deadLetterConfig.targetArn", OldValue: observed.DeadLetterTarget, NewValue: deadLetterTarget(desired.DeadLetterConfig)})
 	}
-	if tracingMode(desired.TracingConfig) != observed.TracingMode {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tracingConfig.mode", OldValue: observed.TracingMode, NewValue: tracingMode(desired.TracingConfig)})
+	if tracingMode(desired.TracingConfig) != normalizeTracingMode(observed.TracingMode) {
+		diffs = append(diffs, FieldDiffEntry{Path: "spec.tracingConfig.mode", OldValue: normalizeTracingMode(observed.TracingMode), NewValue: tracingMode(desired.TracingConfig)})
 	}
 	if !slices.Equal(normalizeArchitectures(desired.Architectures), normalizeArchitectures(observed.Architectures)) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.architectures (immutable, ignored)", OldValue: observed.Architectures, NewValue: desired.Architectures})
 	}
-	if ephemeralSize(desired.EphemeralStorage) != observed.EphemeralSize {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.ephemeralStorage.size", OldValue: observed.EphemeralSize, NewValue: ephemeralSize(desired.EphemeralStorage)})
+	if ephemeralSize(desired.EphemeralStorage) != normalizeEphemeralSize(observed.EphemeralSize) {
+		diffs = append(diffs, FieldDiffEntry{Path: "spec.ephemeralStorage.size", OldValue: normalizeEphemeralSize(observed.EphemeralSize), NewValue: ephemeralSize(desired.EphemeralStorage)})
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) {
 		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
@@ -161,6 +161,26 @@ func ephemeralSize(spec *EphemeralStorageSpec) int32 {
 		return 512
 	}
 	return spec.Size
+}
+
+// normalizeTracingMode maps an unreported observed mode to the AWS default.
+// GetFunctionConfiguration always reports a mode on real AWS, so "" only
+// occurs with incomplete emulator responses; treating it as PassThrough
+// prevents a non-convergent drift loop.
+func normalizeTracingMode(mode string) string {
+	if mode == "" {
+		return "PassThrough"
+	}
+	return mode
+}
+
+// normalizeEphemeralSize maps an unreported observed size to the AWS default
+// (512 MB); 0 is not a real AWS value.
+func normalizeEphemeralSize(size int32) int32 {
+	if size == 0 {
+		return 512
+	}
+	return size
 }
 
 // normalizeArchitectures defaults to ["x86_64"] if empty (matches AWS default).
