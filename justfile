@@ -10,6 +10,7 @@ default:
 
 wait_timeout_seconds := "120"
 test_heartbeat_seconds := "30"
+integration_timeout := env_var_or_default("PRAXIS_INTEGRATION_TIMEOUT", "10m")
 
 # ─── Development ────────────────────────────────────────────
 
@@ -476,12 +477,12 @@ test-iamuser-integration:
 test-template:
     go test ./internal/core/template/... ./internal/core/resolver/... -v -count=1 -race
 
-# Run integration tests (requires Docker — Testcontainers + LocalStack)
+# Run integration tests (requires Docker — Testcontainers + Moto on :4566)
 test-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
-    echo "Running integration tests (heartbeat every ${heartbeat}s)..."
-    go test ./tests/integration/... -v -count=1 -tags=integration -timeout=10m &
+    echo "Running integration tests (heartbeat every ${heartbeat}s, timeout {{integration_timeout}})..."
+    go test ./tests/integration/... -v -count=1 -tags=integration -timeout={{integration_timeout}} &
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         echo "[test-integration] still running at $(date +%H:%M:%S)"
