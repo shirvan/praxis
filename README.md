@@ -350,4 +350,4 @@ See [docs/DEVELOPERS.md](docs/DEVELOPERS.md) for building, testing.
 
 ## License
 
-Copyright 2026 Shirvan. Licensed under the Apache License, Version 2.0.
+Licensed under the Apache License, Version 2.0.
