@@ -40,3 +40,31 @@ jobs:
 
       - name: Build
         run: just build
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      # The integration suite expects Moto (mock AWS) on localhost:4566,
+      # seeded with the SSM parameters and default VPC from moto-init.
+      # Restate itself is started per-test by Testcontainers.
+      - name: Start and seed Moto
+        run: |
+          docker compose up -d moto
+          docker compose up --exit-code-from moto-init moto-init
+
+      - name: Integration tests
+        run: just test-integration
+        env:
+          PRAXIS_INTEGRATION_TIMEOUT: 40m

@@ -21,8 +21,36 @@ permissions:
   contents: write
 
 jobs:
+  # Releases are gated on the full Moto-backed integration suite — the unit
+  # suite alone proves very little about actual provisioning behavior.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Start and seed Moto
+        run: |
+          docker compose up -d moto
+          docker compose up --exit-code-from moto-init moto-init
+
+      - name: Integration tests
+        run: just test-integration
+        env:
+          PRAXIS_INTEGRATION_TIMEOUT: 40m
+
   release:
     runs-on: ubuntu-latest
+    needs: integration
     steps:
       - name: Checkout
         uses: actions/checkout@v4
