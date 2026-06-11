@@ -6,7 +6,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/restatedev/sdk-go/testing"
+	restatetest "github.com/shirvan/praxis/internal/restatetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
