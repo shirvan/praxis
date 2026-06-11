@@ -1,9 +1,4 @@
-// Subnet provider adapter.
-//
-// This file implements the provider.Adapter interface for Amazon VPC (Subnet)
-// resources. It translates between the generic JSON resource documents used by
-// the orchestrator / command service and the strongly typed Go structs expected
-// by the Subnet Restate Virtual Object driver.
+// Subnet provider adapter — descriptor for the GenericAdapter.
 //
 // Key scope: custom (VPC-scoped).
 // Key parts: VPC ID + subnet name.
@@ -24,129 +19,102 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// SubnetAdapter implements provider.Adapter for Subnet (Amazon VPC (Subnet)) resources.
-// It holds an auth client for credential resolution and a factory for creating
-// AWS API clients scoped to the target account. A staticPlanningAPI field allows
-// tests to inject a mock API without requiring real AWS credentials.
+// SubnetAdapter is the descriptor-driven adapter for Subnet, extended with a
+// read-only Lookup for template data sources. The auth/staticPlanningAPI/
+// apiFactory fields back the Lookup path; the embedded GenericAdapter owns the
+// plan-time probe.
 type SubnetAdapter struct {
+	*GenericAdapter[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState]
 	auth              authservice.AuthClient
 	staticPlanningAPI subnet.SubnetAPI
 	apiFactory        func(aws.Config) subnet.SubnetAPI
 }
 
-// NewSubnetAdapterWithAuth creates a production Subnet adapter using
-// the given auth client for per-account credential resolution.
-// The apiFactory closure creates a real AWS API client from the resolved
-// aws.Config, ensuring each Plan/Provision call targets the correct account.
-func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
-	return &SubnetAdapter{
-		auth: auth,
-		apiFactory: func(cfg aws.Config) subnet.SubnetAPI {
-			return subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg))
+func subnetDescriptor() GenericDescriptor[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState] {
+	return GenericDescriptor[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState]{
+		Kind:  subnet.ServiceName,
+		Scope: KeyScopeCustom,
+
+		DecodeSpec: func(rawSpec json.RawMessage, metadataName string) (subnet.SubnetSpec, error) {
+			var spec subnet.SubnetSpec
+			if err := json.Unmarshal(rawSpec, &spec); err != nil {
+				return subnet.SubnetSpec{}, fmt.Errorf("decode Subnet spec: %w", err)
+			}
+			name := strings.TrimSpace(metadataName)
+			if name == "" {
+				return subnet.SubnetSpec{}, fmt.Errorf("subnet metadata.name is required")
+			}
+			if strings.TrimSpace(spec.Region) == "" {
+				return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.region is required")
+			}
+			if strings.TrimSpace(spec.VpcId) == "" {
+				return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.vpcId is required")
+			}
+			if strings.TrimSpace(spec.CidrBlock) == "" {
+				return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.cidrBlock is required")
+			}
+			if strings.TrimSpace(spec.AvailabilityZone) == "" {
+				return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.availabilityZone is required")
+			}
+			if spec.Tags == nil {
+				spec.Tags = make(map[string]string)
+			}
+			if spec.Tags["Name"] == "" {
+				spec.Tags["Name"] = name
+			}
+			spec.Account = ""
+			return spec, nil
+		},
+
+		KeyFromSpec: func(spec subnet.SubnetSpec, metadataName string) (string, error) {
+			if err := ValidateKeyPart("VPC ID", spec.VpcId); err != nil {
+				return "", err
+			}
+			name := strings.TrimSpace(metadataName)
+			if err := ValidateKeyPart("subnet name", name); err != nil {
+				return "", err
+			}
+			return JoinKey(spec.VpcId, name), nil
+		},
+
+		ImportKey: func(region, resourceID string) (string, error) {
+			if err := ValidateKeyPart("region", region); err != nil {
+				return "", err
+			}
+			if err := ValidateKeyPart("resource ID", resourceID); err != nil {
+				return "", err
+			}
+			return JoinKey(region, resourceID), nil
+		},
+
+		PrepareSpec: func(spec subnet.SubnetSpec, key, account string) subnet.SubnetSpec {
+			spec.Account = account
+			spec.ManagedKey = key
+			return spec
+		},
+
+		NormalizeOutputs: normalizeSubnetOutputs,
+
+		PlanID: func(out subnet.SubnetOutputs) string { return out.SubnetId },
+
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[subnet.ObservedState] {
+			return subnetProbe(subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg)))
+		},
+
+		DiffFields: func(desired subnet.SubnetSpec, observed subnet.ObservedState) []types.FieldDiff {
+			rawDiffs := subnet.ComputeFieldDiffs(desired, observed)
+			fields := make([]types.FieldDiff, 0, len(rawDiffs))
+			for _, diff := range rawDiffs {
+				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
+			}
+			return fields
 		},
 	}
 }
 
-// NewSubnetAdapterWithAPI creates a Subnet adapter with a pre-built API
-// client. This is primarily useful in tests that supply a mock implementation
-// and do not need per-account credential resolution.
-func NewSubnetAdapterWithAPI(api subnet.SubnetAPI) *SubnetAdapter {
-	return &SubnetAdapter{staticPlanningAPI: api}
-}
-
-// Kind returns the resource kind string "Subnet" that maps template
-// resource documents to this adapter in the provider registry.
-func (a *SubnetAdapter) Kind() string {
-	return subnet.ServiceName
-}
-
-// ServiceName returns the Restate Virtual Object service name for the
-// Subnet driver. The orchestrator uses this to dispatch durable RPCs.
-func (a *SubnetAdapter) ServiceName() string {
-	return subnet.ServiceName
-}
-
-// Scope returns the key-scope strategy for Subnet resources,
-// which controls how BuildKey assembles the canonical object key.
-func (a *SubnetAdapter) Scope() KeyScope {
-	return KeyScopeCustom
-}
-
-// BuildKey derives the canonical Restate object key for a Subnet resource
-// from the raw JSON resource document. The key is composed of VPC ID + subnet name,
-// ensuring uniqueness within the Restate Virtual Object namespace.
-func (a *SubnetAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return "", err
-	}
-	spec, err := a.decodeSpec(doc)
-	if err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("VPC ID", spec.VpcId); err != nil {
-		return "", err
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if err := ValidateKeyPart("subnet name", name); err != nil {
-		return "", err
-	}
-	return JoinKey(spec.VpcId, name), nil
-}
-
-// DecodeSpec extracts the spec section from a raw JSON resource document and
-// returns it as the concrete Subnet spec struct expected by the driver.
-func (a *SubnetAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return nil, err
-	}
-	return a.decodeSpec(doc)
-}
-
-// Provision sends a durable Provision request to the Subnet Restate
-// Virtual Object keyed by the given key. It returns a ProvisionInvocation
-// handle that the orchestrator can await via restate.Wait/WaitFirst.
-// The account string is injected into the spec so the driver knows which
-// AWS account to target.
-func (a *SubnetAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
-	typedSpec, err := castSpec[subnet.SubnetSpec](spec)
-	if err != nil {
-		return nil, err
-	}
-	typedSpec.Account = account
-	typedSpec.ManagedKey = key
-
-	fut := restate.WithRequestType[subnet.SubnetSpec, subnet.SubnetOutputs](
-		restate.Object[subnet.SubnetOutputs](ctx, a.ServiceName(), key, "Provision"),
-	).RequestFuture(typedSpec)
-
-	return &provisionHandle[subnet.SubnetOutputs]{
-		id:        fut.GetInvocationId(),
-		raw:       fut,
-		normalize: a.NormalizeOutputs,
-	}, nil
-}
-
-// Delete sends a durable Delete request to the Subnet Restate Virtual
-// Object keyed by the given key. It returns a DeleteInvocation handle
-// that the orchestrator can await alongside other parallel futures.
-func (a *SubnetAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
-	fut := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
-	).RequestFuture(restate.Void{})
-
-	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
-}
-
-// NormalizeOutputs converts the typed Subnet driver output struct into
-// the generic map[string]any used by deployment state, CLI display,
-// and cross-resource expression interpolation.
-func (a *SubnetAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
-	out, err := castOutput[subnet.SubnetOutputs](raw)
-	if err != nil {
-		return nil, err
-	}
+// normalizeSubnetOutputs converts the typed driver outputs into the generic
+// output map. Shared between the descriptor and the Lookup path.
+func normalizeSubnetOutputs(out subnet.SubnetOutputs) map[string]any {
 	result := map[string]any{
 		"subnetId":            out.SubnetId,
 		"vpcId":               out.VpcId,
@@ -161,102 +129,42 @@ func (a *SubnetAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	if out.ARN != "" {
 		result["arn"] = out.ARN
 	}
-	return result, nil
+	return result
 }
 
-// Plan compares the desired Subnet spec against the current provider
-// state. It first checks whether the resource already exists (via cached
-// outputs or a Describe API call), then computes field-level diffs.
-// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
-// or OpNoOp if the resource matches the desired state.
-func (a *SubnetAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
-	desired, err := castSpec[subnet.SubnetSpec](desiredSpec)
-	if err != nil {
-		return "", nil, err
-	}
-
-	outputs, getErr := restate.Object[subnet.SubnetOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
-	if getErr != nil {
-		return "", nil, fmt.Errorf("subnet plan: failed to read outputs for key %q: %w", key, getErr)
-	}
-	if outputs.SubnetId == "" {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-
-	planningAPI, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return "", nil, err
-	}
-
-	type describePlanResult struct {
-		State subnet.ObservedState
-		Found bool
-	}
-	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		obs, descErr := planningAPI.DescribeSubnet(runCtx, outputs.SubnetId)
-		if descErr != nil {
-			if subnet.IsNotFound(descErr) {
-				return describePlanResult{Found: false}, nil
+// subnetProbe adapts the driver API to the generic plan probe shape.
+func subnetProbe(api subnet.SubnetAPI) PlanProbeFunc[subnet.ObservedState] {
+	return func(runCtx restate.RunContext, subnetID string) (subnet.ObservedState, bool, error) {
+		obs, err := api.DescribeSubnet(runCtx, subnetID)
+		if err != nil {
+			if subnet.IsNotFound(err) {
+				return subnet.ObservedState{}, false, nil
 			}
-			return describePlanResult{}, restate.TerminalError(descErr, 500)
+			return subnet.ObservedState{}, false, err
 		}
-		return describePlanResult{State: obs, Found: true}, nil
-	})
-	if err != nil {
-		return "", nil, err
+		return obs, true, nil
 	}
-
-	if !result.Found {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-
-	rawDiffs := subnet.ComputeFieldDiffs(desired, result.State)
-	if len(rawDiffs) == 0 {
-		return types.OpNoOp, nil, nil
-	}
-
-	fields := make([]types.FieldDiff, 0, len(rawDiffs))
-	for _, diff := range rawDiffs {
-		fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-	}
-	return types.OpUpdate, fields, nil
 }
 
-// BuildImportKey derives the canonical Restate object key for importing
-// an existing Subnet resource by its region and provider-native ID.
-func (a *SubnetAdapter) BuildImportKey(region, resourceID string) (string, error) {
-	if err := ValidateKeyPart("region", region); err != nil {
-		return "", err
+// NewSubnetAdapterWithAuth builds the production adapter; plan-time and
+// lookup-time credentials are resolved through the Auth Service.
+func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
+	return &SubnetAdapter{
+		GenericAdapter: NewGenericAdapter(subnetDescriptor(), auth),
+		auth:           auth,
+		apiFactory: func(cfg aws.Config) subnet.SubnetAPI {
+			return subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg))
+		},
 	}
-	if err := ValidateKeyPart("resource ID", resourceID); err != nil {
-		return "", err
-	}
-	return JoinKey(region, resourceID), nil
 }
 
-// Import adopts an existing Subnet resource into Praxis management.
-// It delegates to the driver's Import handler and normalizes the outputs.
-func (a *SubnetAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
-	ref.Account = account
-	output, err := restate.WithRequestType[types.ImportRef, subnet.SubnetOutputs](
-		restate.Object[subnet.SubnetOutputs](ctx, a.ServiceName(), key, "Import"),
-	).Request(ref)
-	if err != nil {
-		return "", nil, err
+// NewSubnetAdapterWithAPI builds an adapter with a fixed planning/lookup API.
+// Used by tests.
+func NewSubnetAdapterWithAPI(api subnet.SubnetAPI) *SubnetAdapter {
+	return &SubnetAdapter{
+		GenericAdapter:    NewGenericAdapterWithProbe(subnetDescriptor(), subnetProbe(api)),
+		staticPlanningAPI: api,
 	}
-	outputs, err := a.NormalizeOutputs(output)
-	if err != nil {
-		return "", nil, err
-	}
-	return types.StatusReady, outputs, nil
 }
 
 // Lookup performs a read-only data-source query for an existing Subnet
@@ -280,7 +188,7 @@ func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter Looku
 	if !matchesSubnetFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no Subnet found matching filter"), 404)
 	}
-	outputs, err := a.NormalizeOutputs(subnet.SubnetOutputs{
+	return normalizeSubnetOutputs(subnet.SubnetOutputs{
 		SubnetId:            observed.SubnetId,
 		ARN:                 subnetARN(filter.Region, observed.OwnerId, observed.SubnetId),
 		VpcId:               observed.VpcId,
@@ -291,68 +199,12 @@ func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter Looku
 		State:               observed.State,
 		OwnerId:             observed.OwnerId,
 		AvailableIpCount:    observed.AvailableIpCount,
-	})
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	return outputs, nil
-}
-
-// decodeSpec unmarshals the raw JSON spec from a resource document into
-// the typed Subnet spec struct, validates required fields, and applies
-// sensible defaults. The Account field is deliberately zeroed so that only
-// the orchestrator (not the template author) can set the target account.
-func (a *SubnetAdapter) decodeSpec(doc resourceDocument) (subnet.SubnetSpec, error) {
-	var spec subnet.SubnetSpec
-	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return subnet.SubnetSpec{}, fmt.Errorf("decode Subnet spec: %w", err)
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if name == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("subnet metadata.name is required")
-	}
-	if strings.TrimSpace(spec.Region) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.region is required")
-	}
-	if strings.TrimSpace(spec.VpcId) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.vpcId is required")
-	}
-	if strings.TrimSpace(spec.CidrBlock) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.cidrBlock is required")
-	}
-	if strings.TrimSpace(spec.AvailabilityZone) == "" {
-		return subnet.SubnetSpec{}, fmt.Errorf("subnet spec.availabilityZone is required")
-	}
-	if spec.Tags == nil {
-		spec.Tags = make(map[string]string)
-	}
-	if spec.Tags["Name"] == "" {
-		spec.Tags["Name"] = name
-	}
-	spec.Account = ""
-	return spec, nil
-}
-
-// planningAPI returns the AWS API client used for Plan (read-only) operations.
-// In production it resolves credentials for the given account via the auth
-// client and creates a fresh API. In tests it returns the staticPlanningAPI.
-func (a *SubnetAdapter) planningAPI(ctx restate.Context, account string) (subnet.SubnetAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("subnet adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve Subnet planning account %q: %w", account, err)
-	}
-	return a.apiFactory(awsCfg), nil
+	}), nil
 }
 
 // lookupAPI returns the AWS API client used for Lookup (data-source) queries.
-// Like planningAPI, it resolves credentials per-account, but also overrides
-// the region when the lookup filter specifies one.
+// It resolves credentials per-account and overrides the region when the lookup
+// filter specifies one. In tests it returns the staticPlanningAPI.
 func (a *SubnetAdapter) lookupAPI(ctx restate.Context, account string, region string) (subnet.SubnetAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

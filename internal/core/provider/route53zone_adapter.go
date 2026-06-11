@@ -1,9 +1,5 @@
-// Route53HostedZone provider adapter.
-//
-// This file implements the provider.Adapter interface for Amazon Route 53 (Hosted Zone)
-// resources. It translates between the generic JSON resource documents used by
-// the orchestrator / command service and the strongly typed Go structs expected
-// by the Route53HostedZone Restate Virtual Object driver.
+// Route53HostedZone provider adapter — descriptor for the GenericAdapter,
+// extended with a data-source Lookup.
 //
 // Key scope: global (DNS zones are global).
 // Key parts: zone name.
@@ -24,151 +20,119 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// Route53HostedZoneAdapter is the descriptor-driven adapter for
+// Route53HostedZone. Beyond the core Adapter interface it keeps a read-only
+// Lookup for data source blocks, which needs its own planning API plumbing.
 type Route53HostedZoneAdapter struct {
+	*GenericAdapter[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs, route53zone.ObservedState]
+
 	auth              authservice.AuthClient
 	staticPlanningAPI route53zone.HostedZoneAPI
 	apiFactory        func(aws.Config) route53zone.HostedZoneAPI
 }
 
+func route53HostedZoneDescriptor() GenericDescriptor[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs, route53zone.ObservedState] {
+	return GenericDescriptor[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs, route53zone.ObservedState]{
+		Kind:  route53zone.ServiceName,
+		Scope: KeyScopeGlobal,
+
+		DecodeSpec: func(rawSpec json.RawMessage, metadataName string) (route53zone.HostedZoneSpec, error) {
+			var spec route53zone.HostedZoneSpec
+			if err := json.Unmarshal(rawSpec, &spec); err != nil {
+				return route53zone.HostedZoneSpec{}, fmt.Errorf("decode Route53HostedZone spec: %w", err)
+			}
+			name := strings.TrimSpace(metadataName)
+			if name == "" {
+				return route53zone.HostedZoneSpec{}, fmt.Errorf("Route53HostedZone metadata.name is required")
+			}
+			spec.Name = strings.ToLower(strings.TrimSuffix(name, "."))
+			if spec.Tags == nil {
+				spec.Tags = map[string]string{}
+			}
+			// Only the orchestrator (not the template author) may set the account.
+			spec.Account = ""
+			return spec, nil
+		},
+
+		KeyFromSpec: func(spec route53zone.HostedZoneSpec, _ string) (string, error) {
+			if err := ValidateKeyPart("hosted zone name", spec.Name); err != nil {
+				return "", err
+			}
+			return spec.Name, nil
+		},
+
+		ImportKey: func(_, resourceID string) (string, error) {
+			if err := ValidateKeyPart("resource ID", resourceID); err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(resourceID), nil
+		},
+
+		PrepareSpec: func(spec route53zone.HostedZoneSpec, key, account string) route53zone.HostedZoneSpec {
+			spec.Account = account
+			spec.ManagedKey = key
+			return spec
+		},
+
+		NormalizeOutputs: func(out route53zone.HostedZoneOutputs) map[string]any {
+			return map[string]any{"hostedZoneId": out.HostedZoneId, "name": out.Name, "nameServers": out.NameServers, "isPrivate": out.IsPrivate, "recordCount": out.RecordCount}
+		},
+
+		PlanID: func(out route53zone.HostedZoneOutputs) string { return out.HostedZoneId },
+
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53zone.ObservedState] {
+			return route53HostedZoneProbe(route53zone.NewHostedZoneAPI(awsclient.NewRoute53Client(cfg)))
+		},
+
+		DiffFields: func(desired route53zone.HostedZoneSpec, observed route53zone.ObservedState) []types.FieldDiff {
+			rawDiffs := route53zone.ComputeFieldDiffs(desired, observed)
+			fields := make([]types.FieldDiff, 0, len(rawDiffs))
+			for _, diff := range rawDiffs {
+				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
+			}
+			return fields
+		},
+	}
+}
+
+// route53HostedZoneProbe adapts the driver API to the generic plan probe shape.
+func route53HostedZoneProbe(api route53zone.HostedZoneAPI) PlanProbeFunc[route53zone.ObservedState] {
+	return func(runCtx restate.RunContext, hostedZoneID string) (route53zone.ObservedState, bool, error) {
+		obs, err := api.DescribeHostedZone(runCtx, hostedZoneID)
+		if err != nil {
+			if route53zone.IsNotFound(err) {
+				return route53zone.ObservedState{}, false, nil
+			}
+			return route53zone.ObservedState{}, false, err
+		}
+		return obs, true, nil
+	}
+}
+
+// NewRoute53HostedZoneAdapterWithAuth builds the production adapter; plan- and
+// lookup-time credentials are resolved through the Auth Service.
 func NewRoute53HostedZoneAdapterWithAuth(auth authservice.AuthClient) *Route53HostedZoneAdapter {
 	return &Route53HostedZoneAdapter{
-		auth: auth,
+		GenericAdapter: NewGenericAdapter(route53HostedZoneDescriptor(), auth),
+		auth:           auth,
 		apiFactory: func(cfg aws.Config) route53zone.HostedZoneAPI {
 			return route53zone.NewHostedZoneAPI(awsclient.NewRoute53Client(cfg))
 		},
 	}
 }
 
+// NewRoute53HostedZoneAdapterWithAPI builds an adapter with a fixed planning
+// API used for both Plan probes and Lookup. Used by tests.
 func NewRoute53HostedZoneAdapterWithAPI(api route53zone.HostedZoneAPI) *Route53HostedZoneAdapter {
-	return &Route53HostedZoneAdapter{staticPlanningAPI: api}
+	return &Route53HostedZoneAdapter{
+		GenericAdapter:    NewGenericAdapterWithProbe(route53HostedZoneDescriptor(), route53HostedZoneProbe(api)),
+		staticPlanningAPI: api,
+	}
 }
 
-func (a *Route53HostedZoneAdapter) Kind() string        { return route53zone.ServiceName }
-func (a *Route53HostedZoneAdapter) ServiceName() string { return route53zone.ServiceName }
-func (a *Route53HostedZoneAdapter) Scope() KeyScope     { return KeyScopeGlobal }
-
-func (a *Route53HostedZoneAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return "", err
-	}
-	spec, err := a.decodeSpec(doc)
-	if err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("hosted zone name", spec.Name); err != nil {
-		return "", err
-	}
-	return spec.Name, nil
-}
-
-func (a *Route53HostedZoneAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return nil, err
-	}
-	return a.decodeSpec(doc)
-}
-
-func (a *Route53HostedZoneAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
-	typedSpec, err := castSpec[route53zone.HostedZoneSpec](spec)
-	if err != nil {
-		return nil, err
-	}
-	typedSpec.Account = account
-	typedSpec.ManagedKey = key
-	fut := restate.WithRequestType[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](restate.Object[route53zone.HostedZoneOutputs](ctx, a.ServiceName(), key, "Provision")).RequestFuture(typedSpec)
-	return &provisionHandle[route53zone.HostedZoneOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
-}
-
-func (a *Route53HostedZoneAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
-	fut := restate.WithRequestType[restate.Void, restate.Void](restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete")).RequestFuture(restate.Void{})
-	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
-}
-
-func (a *Route53HostedZoneAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
-	out, err := castOutput[route53zone.HostedZoneOutputs](raw)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"hostedZoneId": out.HostedZoneId, "name": out.Name, "nameServers": out.NameServers, "isPrivate": out.IsPrivate, "recordCount": out.RecordCount}, nil
-}
-
-func (a *Route53HostedZoneAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
-	desired, err := castSpec[route53zone.HostedZoneSpec](desiredSpec)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, getErr := restate.Object[route53zone.HostedZoneOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
-	if getErr != nil {
-		return "", nil, fmt.Errorf("Route53HostedZone Plan: failed to read outputs for key %q: %w", key, getErr)
-	}
-	if outputs.HostedZoneId == "" {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-	planningAPI, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return "", nil, err
-	}
-	type describePlanResult struct {
-		State route53zone.ObservedState
-		Found bool
-	}
-	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		obs, descErr := planningAPI.DescribeHostedZone(runCtx, outputs.HostedZoneId)
-		if descErr != nil {
-			if route53zone.IsNotFound(descErr) {
-				return describePlanResult{Found: false}, nil
-			}
-			return describePlanResult{}, restate.TerminalError(descErr, 500)
-		}
-		return describePlanResult{State: obs, Found: true}, nil
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	if !result.Found {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-	rawDiffs := route53zone.ComputeFieldDiffs(desired, result.State)
-	if len(rawDiffs) == 0 {
-		return types.OpNoOp, nil, nil
-	}
-	fields := make([]types.FieldDiff, 0, len(rawDiffs))
-	for _, diff := range rawDiffs {
-		fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-	}
-	return types.OpUpdate, fields, nil
-}
-
-func (a *Route53HostedZoneAdapter) BuildImportKey(region, resourceID string) (string, error) {
-	if err := ValidateKeyPart("resource ID", resourceID); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(resourceID), nil
-}
-
-func (a *Route53HostedZoneAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
-	ref.Account = account
-	output, err := restate.WithRequestType[types.ImportRef, route53zone.HostedZoneOutputs](restate.Object[route53zone.HostedZoneOutputs](ctx, a.ServiceName(), key, "Import")).Request(ref)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, err := a.NormalizeOutputs(output)
-	if err != nil {
-		return "", nil, err
-	}
-	return types.StatusReady, outputs, nil
-}
-
+// Lookup performs a read-only data-source query for an existing hosted zone,
+// matching by ID, name, or tags. This is used by template data source blocks
+// to resolve references to pre-existing infrastructure.
 func (a *Route53HostedZoneAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
 	api, err := a.planningAPI(ctx, account)
 	if err != nil {
@@ -196,23 +160,10 @@ func (a *Route53HostedZoneAdapter) Lookup(ctx restate.Context, account string, f
 	})
 }
 
-func (a *Route53HostedZoneAdapter) decodeSpec(doc resourceDocument) (route53zone.HostedZoneSpec, error) {
-	var spec route53zone.HostedZoneSpec
-	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return route53zone.HostedZoneSpec{}, fmt.Errorf("decode Route53HostedZone spec: %w", err)
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if name == "" {
-		return route53zone.HostedZoneSpec{}, fmt.Errorf("Route53HostedZone metadata.name is required")
-	}
-	spec.Name = strings.ToLower(strings.TrimSuffix(name, "."))
-	if spec.Tags == nil {
-		spec.Tags = map[string]string{}
-	}
-	spec.Account = ""
-	return spec, nil
-}
-
+// planningAPI returns the AWS API client used for Lookup (read-only)
+// operations. In production it resolves credentials for the given account via
+// the auth client and creates a fresh API. In tests it returns the
+// staticPlanningAPI.
 func (a *Route53HostedZoneAdapter) planningAPI(ctx restate.Context, account string) (route53zone.HostedZoneAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

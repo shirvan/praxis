@@ -1,9 +1,4 @@
-// VPC provider adapter.
-//
-// This file implements the provider.Adapter interface for Amazon VPC
-// resources. It translates between the generic JSON resource documents used by
-// the orchestrator / command service and the strongly typed Go structs expected
-// by the VPC Restate Virtual Object driver.
+// VPC provider adapter — descriptor for the GenericAdapter.
 //
 // Key scope: region-scoped.
 // Key parts: region + VPC name.
@@ -24,129 +19,99 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// VPCAdapter implements provider.Adapter for VPC (Amazon VPC) resources.
-// It holds an auth client for credential resolution and a factory for creating
-// AWS API clients scoped to the target account. A staticPlanningAPI field allows
-// tests to inject a mock API without requiring real AWS credentials.
+// VPCAdapter is the descriptor-driven adapter for VPC, extended with per-kind
+// default timeouts, a read-only Lookup for template data sources, and a live
+// Observe check. The auth/staticPlanningAPI/apiFactory fields back the Lookup
+// and Observe paths; the embedded GenericAdapter owns the plan-time probe.
 type VPCAdapter struct {
+	*GenericAdapter[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState]
 	auth              authservice.AuthClient
 	staticPlanningAPI vpc.VPCAPI
 	apiFactory        func(aws.Config) vpc.VPCAPI
 }
 
-// NewVPCAdapterWithAuth creates a production VPC adapter using
-// the given auth client for per-account credential resolution.
-// The apiFactory closure creates a real AWS API client from the resolved
-// aws.Config, ensuring each Plan/Provision call targets the correct account.
-func NewVPCAdapterWithAuth(auth authservice.AuthClient) *VPCAdapter {
-	return &VPCAdapter{
-		auth: auth,
-		apiFactory: func(cfg aws.Config) vpc.VPCAPI {
-			return vpc.NewVPCAPI(awsclient.NewEC2Client(cfg))
+func vpcDescriptor() GenericDescriptor[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState] {
+	return GenericDescriptor[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState]{
+		Kind:  vpc.ServiceName,
+		Scope: KeyScopeRegion,
+
+		DecodeSpec: func(rawSpec json.RawMessage, metadataName string) (vpc.VPCSpec, error) {
+			var spec vpc.VPCSpec
+			if err := json.Unmarshal(rawSpec, &spec); err != nil {
+				return vpc.VPCSpec{}, fmt.Errorf("decode VPC spec: %w", err)
+			}
+			name := strings.TrimSpace(metadataName)
+			if name == "" {
+				return vpc.VPCSpec{}, fmt.Errorf("VPC metadata.name is required")
+			}
+			if strings.TrimSpace(spec.Region) == "" {
+				return vpc.VPCSpec{}, fmt.Errorf("VPC spec.region is required")
+			}
+			if strings.TrimSpace(spec.CidrBlock) == "" {
+				return vpc.VPCSpec{}, fmt.Errorf("VPC spec.cidrBlock is required")
+			}
+			if spec.Tags == nil {
+				spec.Tags = make(map[string]string)
+			}
+			if spec.Tags["Name"] == "" {
+				spec.Tags["Name"] = name
+			}
+			if spec.InstanceTenancy == "" {
+				spec.InstanceTenancy = "default"
+			}
+			spec.Account = ""
+			return spec, nil
+		},
+
+		KeyFromSpec: func(spec vpc.VPCSpec, metadataName string) (string, error) {
+			if err := ValidateKeyPart("region", spec.Region); err != nil {
+				return "", err
+			}
+			name := strings.TrimSpace(metadataName)
+			if err := ValidateKeyPart("VPC name", name); err != nil {
+				return "", err
+			}
+			return JoinKey(spec.Region, name), nil
+		},
+
+		ImportKey: func(region, resourceID string) (string, error) {
+			if err := ValidateKeyPart("region", region); err != nil {
+				return "", err
+			}
+			if err := ValidateKeyPart("resource ID", resourceID); err != nil {
+				return "", err
+			}
+			return JoinKey(region, resourceID), nil
+		},
+
+		PrepareSpec: func(spec vpc.VPCSpec, key, account string) vpc.VPCSpec {
+			spec.Account = account
+			spec.ManagedKey = key
+			return spec
+		},
+
+		NormalizeOutputs: normalizeVPCOutputs,
+
+		PlanID: func(out vpc.VPCOutputs) string { return out.VpcId },
+
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpc.ObservedState] {
+			return vpcProbe(vpc.NewVPCAPI(awsclient.NewEC2Client(cfg)))
+		},
+
+		DiffFields: func(desired vpc.VPCSpec, observed vpc.ObservedState) []types.FieldDiff {
+			rawDiffs := vpc.ComputeFieldDiffs(desired, observed)
+			fields := make([]types.FieldDiff, 0, len(rawDiffs))
+			for _, diff := range rawDiffs {
+				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
+			}
+			return fields
 		},
 	}
 }
 
-// NewVPCAdapterWithAPI creates a VPC adapter with a pre-built API
-// client. This is primarily useful in tests that supply a mock implementation
-// and do not need per-account credential resolution.
-func NewVPCAdapterWithAPI(api vpc.VPCAPI) *VPCAdapter {
-	return &VPCAdapter{staticPlanningAPI: api}
-}
-
-// Kind returns the resource kind string "VPC" that maps template
-// resource documents to this adapter in the provider registry.
-func (a *VPCAdapter) Kind() string {
-	return vpc.ServiceName
-}
-
-// ServiceName returns the Restate Virtual Object service name for the
-// VPC driver. The orchestrator uses this to dispatch durable RPCs.
-func (a *VPCAdapter) ServiceName() string {
-	return vpc.ServiceName
-}
-
-// Scope returns the key-scope strategy for VPC resources,
-// which controls how BuildKey assembles the canonical object key.
-func (a *VPCAdapter) Scope() KeyScope {
-	return KeyScopeRegion
-}
-
-// BuildKey derives the canonical Restate object key for a VPC resource
-// from the raw JSON resource document. The key is composed of region + VPC name,
-// ensuring uniqueness within the Restate Virtual Object namespace.
-func (a *VPCAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return "", err
-	}
-	spec, err := a.decodeSpec(doc)
-	if err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("region", spec.Region); err != nil {
-		return "", err
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if err := ValidateKeyPart("VPC name", name); err != nil {
-		return "", err
-	}
-	return JoinKey(spec.Region, name), nil
-}
-
-// DecodeSpec extracts the spec section from a raw JSON resource document and
-// returns it as the concrete VPC spec struct expected by the driver.
-func (a *VPCAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return nil, err
-	}
-	return a.decodeSpec(doc)
-}
-
-// Provision sends a durable Provision request to the VPC Restate
-// Virtual Object keyed by the given key. It returns a ProvisionInvocation
-// handle that the orchestrator can await via restate.Wait/WaitFirst.
-// The account string is injected into the spec so the driver knows which
-// AWS account to target.
-func (a *VPCAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
-	typedSpec, err := castSpec[vpc.VPCSpec](spec)
-	if err != nil {
-		return nil, err
-	}
-	typedSpec.Account = account
-	typedSpec.ManagedKey = key
-
-	fut := restate.WithRequestType[vpc.VPCSpec, vpc.VPCOutputs](
-		restate.Object[vpc.VPCOutputs](ctx, a.ServiceName(), key, "Provision"),
-	).RequestFuture(typedSpec)
-
-	return &provisionHandle[vpc.VPCOutputs]{
-		id:        fut.GetInvocationId(),
-		raw:       fut,
-		normalize: a.NormalizeOutputs,
-	}, nil
-}
-
-// Delete sends a durable Delete request to the VPC Restate Virtual
-// Object keyed by the given key. It returns a DeleteInvocation handle
-// that the orchestrator can await alongside other parallel futures.
-func (a *VPCAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
-	fut := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
-	).RequestFuture(restate.Void{})
-
-	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
-}
-
-// NormalizeOutputs converts the typed VPC driver output struct into
-// the generic map[string]any used by deployment state, CLI display,
-// and cross-resource expression interpolation.
-func (a *VPCAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
-	out, err := castOutput[vpc.VPCOutputs](raw)
-	if err != nil {
-		return nil, err
-	}
+// normalizeVPCOutputs converts the typed driver outputs into the generic
+// output map. Shared between the descriptor and the Lookup path.
+func normalizeVPCOutputs(out vpc.VPCOutputs) map[string]any {
 	result := map[string]any{
 		"vpcId":              out.VpcId,
 		"cidrBlock":          out.CidrBlock,
@@ -161,107 +126,42 @@ func (a *VPCAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
 	if out.ARN != "" {
 		result["arn"] = out.ARN
 	}
-	return result, nil
+	return result
 }
 
-// Plan compares the desired VPC spec against the current provider
-// state. It first checks whether the resource already exists (via cached
-// outputs or a Describe API call), then computes field-level diffs.
-// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
-// or OpNoOp if the resource matches the desired state.
-func (a *VPCAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
-	desired, err := castSpec[vpc.VPCSpec](desiredSpec)
-	if err != nil {
-		return "", nil, err
-	}
-
-	outputs, getErr := restate.Object[vpc.VPCOutputs](ctx, a.ServiceName(), key, "GetOutputs").
-		Request(restate.Void{})
-	if getErr != nil {
-		return "", nil, fmt.Errorf("VPC Plan: failed to read outputs for key %q: %w", key, getErr)
-	}
-	if outputs.VpcId == "" {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-
-	planningAPI, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return "", nil, err
-	}
-
-	type describePlanResult struct {
-		State vpc.ObservedState
-		Found bool
-	}
-	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		obs, descErr := planningAPI.DescribeVpc(runCtx, outputs.VpcId)
-		if descErr != nil {
-			if vpc.IsNotFound(descErr) {
-				return describePlanResult{Found: false}, nil
+// vpcProbe adapts the driver API to the generic plan probe shape.
+func vpcProbe(api vpc.VPCAPI) PlanProbeFunc[vpc.ObservedState] {
+	return func(runCtx restate.RunContext, vpcID string) (vpc.ObservedState, bool, error) {
+		obs, err := api.DescribeVpc(runCtx, vpcID)
+		if err != nil {
+			if vpc.IsNotFound(err) {
+				return vpc.ObservedState{}, false, nil
 			}
-			return describePlanResult{}, restate.TerminalError(descErr, 500)
+			return vpc.ObservedState{}, false, err
 		}
-		return describePlanResult{State: obs, Found: true}, nil
-	})
-	if err != nil {
-		return "", nil, err
+		return obs, true, nil
 	}
-
-	if !result.Found {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-
-	rawDiffs := vpc.ComputeFieldDiffs(desired, result.State)
-	if len(rawDiffs) == 0 {
-		return types.OpNoOp, nil, nil
-	}
-
-	fields := make([]types.FieldDiff, 0, len(rawDiffs))
-	for _, diff := range rawDiffs {
-		fields = append(fields, types.FieldDiff{
-			Path:     diff.Path,
-			OldValue: diff.OldValue,
-			NewValue: diff.NewValue,
-		})
-	}
-	return types.OpUpdate, fields, nil
 }
 
-// BuildImportKey derives the canonical Restate object key for importing
-// an existing VPC resource by its region and provider-native ID.
-func (a *VPCAdapter) BuildImportKey(region, resourceID string) (string, error) {
-	if err := ValidateKeyPart("region", region); err != nil {
-		return "", err
+// NewVPCAdapterWithAuth builds the production adapter; plan-time, lookup-time,
+// and observe-time credentials are resolved through the Auth Service.
+func NewVPCAdapterWithAuth(auth authservice.AuthClient) *VPCAdapter {
+	return &VPCAdapter{
+		GenericAdapter: NewGenericAdapter(vpcDescriptor(), auth),
+		auth:           auth,
+		apiFactory: func(cfg aws.Config) vpc.VPCAPI {
+			return vpc.NewVPCAPI(awsclient.NewEC2Client(cfg))
+		},
 	}
-	if err := ValidateKeyPart("resource ID", resourceID); err != nil {
-		return "", err
-	}
-	return JoinKey(region, resourceID), nil
 }
 
-// Import adopts an existing VPC resource into Praxis management.
-// It delegates to the driver's Import handler and normalizes the outputs.
-func (a *VPCAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
-	ref.Account = account
-	output, err := restate.WithRequestType[types.ImportRef, vpc.VPCOutputs](
-		restate.Object[vpc.VPCOutputs](ctx, a.ServiceName(), key, "Import"),
-	).Request(ref)
-	if err != nil {
-		return "", nil, err
+// NewVPCAdapterWithAPI builds an adapter with a fixed planning/lookup API.
+// Used by tests.
+func NewVPCAdapterWithAPI(api vpc.VPCAPI) *VPCAdapter {
+	return &VPCAdapter{
+		GenericAdapter:    NewGenericAdapterWithProbe(vpcDescriptor(), vpcProbe(api)),
+		staticPlanningAPI: api,
 	}
-	outputs, err := a.NormalizeOutputs(output)
-	if err != nil {
-		return "", nil, err
-	}
-	return types.StatusReady, outputs, nil
 }
 
 // Lookup performs a read-only data-source query for an existing VPC
@@ -286,7 +186,7 @@ func (a *VPCAdapter) Lookup(ctx restate.Context, account string, filter LookupFi
 	if !matchesVPCFilter(observed, filter) {
 		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no VPC found matching filter"), 404)
 	}
-	outputs, err := a.NormalizeOutputs(vpc.VPCOutputs{
+	return normalizeVPCOutputs(vpc.VPCOutputs{
 		VpcId:              observed.VpcId,
 		ARN:                vpcARN(filter.Region, observed.OwnerId, observed.VpcId),
 		CidrBlock:          observed.CidrBlock,
@@ -297,11 +197,7 @@ func (a *VPCAdapter) Lookup(ctx restate.Context, account string, filter LookupFi
 		OwnerId:            observed.OwnerId,
 		DhcpOptionsId:      observed.DhcpOptionsId,
 		IsDefault:          observed.IsDefault,
-	})
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	return outputs, nil
+	}), nil
 }
 
 // DefaultTimeouts provides per-kind default timeouts for VPCs.
@@ -347,45 +243,13 @@ func (a *VPCAdapter) Observe(ctx restate.Context, key string, account string, sp
 		return ObserveResult{Exists: false}, nil
 	}
 	upToDate := !vpc.HasDrift(desired, result.State)
-	normalizedOutputs, _ := a.NormalizeOutputs(outputs)
-	return ObserveResult{Exists: true, UpToDate: upToDate, Outputs: normalizedOutputs}, nil
+	return ObserveResult{Exists: true, UpToDate: upToDate, Outputs: normalizeVPCOutputs(outputs)}, nil
 }
 
-// decodeSpec unmarshals the raw JSON spec from a resource document into
-// the typed VPC spec struct, validates required fields, and applies
-// sensible defaults. The Account field is deliberately zeroed so that only
-// the orchestrator (not the template author) can set the target account.
-func (a *VPCAdapter) decodeSpec(doc resourceDocument) (vpc.VPCSpec, error) {
-	var spec vpc.VPCSpec
-	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return vpc.VPCSpec{}, fmt.Errorf("decode VPC spec: %w", err)
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if name == "" {
-		return vpc.VPCSpec{}, fmt.Errorf("VPC metadata.name is required")
-	}
-	if strings.TrimSpace(spec.Region) == "" {
-		return vpc.VPCSpec{}, fmt.Errorf("VPC spec.region is required")
-	}
-	if strings.TrimSpace(spec.CidrBlock) == "" {
-		return vpc.VPCSpec{}, fmt.Errorf("VPC spec.cidrBlock is required")
-	}
-	if spec.Tags == nil {
-		spec.Tags = make(map[string]string)
-	}
-	if spec.Tags["Name"] == "" {
-		spec.Tags["Name"] = name
-	}
-	if spec.InstanceTenancy == "" {
-		spec.InstanceTenancy = "default"
-	}
-	spec.Account = ""
-	return spec, nil
-}
-
-// planningAPI returns the AWS API client used for Plan (read-only) operations.
-// In production it resolves credentials for the given account via the auth
-// client and creates a fresh API. In tests it returns the staticPlanningAPI.
+// planningAPI returns the AWS API client used for read-only describe
+// operations (Observe). In production it resolves credentials for the given
+// account via the auth client and creates a fresh API. In tests it returns
+// the staticPlanningAPI.
 func (a *VPCAdapter) planningAPI(ctx restate.Context, account string) (vpc.VPCAPI, error) {
 	if a.staticPlanningAPI != nil {
 		return a.staticPlanningAPI, nil

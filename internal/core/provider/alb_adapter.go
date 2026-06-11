@@ -5,6 +5,11 @@
 // the orchestrator / command service and the strongly typed Go structs expected
 // by the ALB Restate Virtual Object driver.
 //
+// NOT ported to GenericAdapter: when no ARN is recorded yet, Plan falls back
+// to describing by load balancer name, which the generic PlanProbeFunc
+// (planID-only, empty = OpCreate) cannot express. Kept hand-rolled, with the
+// throttle-retry fix applied to Plan.
+//
 // Key scope: region-scoped.
 // Key parts: region + ALB name.
 // Application load balancers are region-scoped; the key combines the AWS region and ALB name.
@@ -20,6 +25,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/alb"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -168,6 +174,11 @@ func (a *ALBAdapter) Plan(ctx restate.Context, key string, account string, desir
 		if descErr != nil {
 			if alb.IsNotFound(descErr) {
 				return describePlanResult{Found: false}, nil
+			}
+			// Throttled describes during a wide plan must retry, not fail
+			// the whole plan permanently.
+			if awserr.IsThrottled(descErr) {
+				return describePlanResult{}, descErr
 			}
 			return describePlanResult{}, restate.TerminalError(descErr, 500)
 		}
