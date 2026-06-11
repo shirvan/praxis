@@ -1,90 +1,37 @@
-# FUTURE.md — Architectural Direction
+# Future Directions
 
-> The following features are not yet implemented. Each section describes the technical approach for reference.
+> This document describes planned capabilities that are not yet implemented. Each section outlines the intended technical approach so design discussions have a common reference point; nothing here is a commitment to a timeline.
 >
-> Implemented capabilities such as the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state/index objects, deployment events stream, observe flow, AWS SSM resolver, Auth Service (credential management), and Workspace Service (environment isolation) are intentionally omitted. There is no built-in AI assistant: Praxis is agent-friendly by design — external agent harnesses drive it through the CLI (`-o json`, stable exit codes) or the HTTP API.
-
----
-
-## Kubernetes Integration
-
-A Kubernetes driver service that manages Deployments, Services, and Ingresses in a target cluster.
-
-**Technical approach:** A standard Restate Virtual Object driver that wraps the Kubernetes client-go SDK. Allows Praxis to orchestrate both cloud infrastructure and application deployment from a single composition — e.g. a compound template that provisions an RDS database and deploys a Kubernetes workload that connects to it.
+> Implemented capabilities — the Restate command service, DAG-driven deployment orchestrator, built-in CLI, deployment state and index objects, the deployment event stream, the observe flow, the AWS SSM resolver, the Auth Service (credential management), the Workspace Service (environment isolation), resource import (`praxis import`), CUE policy enforcement, and targeted rollback of failed deployments (`praxis delete --rollback`) — are intentionally omitted. Praxis also ships no built-in AI assistant by design: it is agent-friendly at the boundary, driven by external agent harnesses through the CLI (`-o json`, stable exit codes) or the HTTP API.
 
 ---
 
 ## Cross-Stack References
 
-Allow one deployment to reference the outputs of another deployment. A "networking" stack produces a VPC ID; an "application" stack consumes it.
+Allow one deployment to consume the outputs of another. A networking stack publishes a VPC ID; an application stack references it.
 
-**Technical approach:** Introduce a cross-stack reference syntax, e.g. `${ stacks["networking"].outputs["vpc"].vpcId }`. Core resolves these by querying the referenced deployment's stored outputs via `GetOutputs` on the Deployment Workflow. Requires that the referenced stack is already deployed and in a `Complete` state. Creates an implicit dependency edge between stacks for ordering during coordinated applies.
-
----
-
-## Rollbacks
-
-Revert a deployment to a previous known-good state when provisioning fails or on user request.
-
-```mermaid
-flowchart TD
-    subgraph Auto["Automatic (on failure)"]
-        F["Provisioning fails"] --> L["Read ordered<br/>resource list"]
-        L --> R1["Iterate in reverse<br/>calling Delete on each"]
-    end
-
-    subgraph Manual["User-initiated"]
-        U["praxis rollback stack<br/>--to deployment-id"] --> D["Diff current state vs<br/>target deployment record"]
-        D --> R2["Apply inverse changes"]
-    end
-```
-
-**Technical approach:** The Deployment Orchestrator already maintains the ordered list of provisioned resources. On failure, rollback iterates that list in reverse and calls `Delete` on each resource. For user-initiated rollbacks (`praxis rollback <stack> --to <deployment-id>`), Core diffs the current state against the target deployment record and applies the inverse changes. Deployment History provides the state snapshots needed for this.
+**Technical approach:** Introduce a cross-stack reference syntax, e.g. `${ stacks["networking"].outputs["vpc"].vpcId }`. Core resolves these at deploy time by querying the referenced deployment's stored outputs via `GetOutputs` on the Deployment Workflow. Resolution requires the referenced stack to be deployed and in a `Complete` state, and each reference creates an implicit dependency edge between stacks so coordinated applies order correctly.
 
 ---
 
-## Create-Before-Destroy Lifecycle
+## Point-in-Time Rollback
 
-When immutable field changes require recreation, the orchestrator provisions the replacement before deleting the old resource.
+Praxis already ships targeted rollback for failed deployments — `praxis delete Deployment/<key> --rollback` deletes confirmed-provisioned resources in reverse dependency order. What remains is reverting a deployment to a previous known-good state.
 
-This is intentionally deferred. Implementing it properly requires the driver contract to support provisioning a second instance with a temporary key, swapping references in dependent resources, and then tearing down the old instance — all under transactional semantics that the current driver model doesn't support. The coordination complexity (temporary naming, reference swapping, partial-failure recovery) is significantly higher than `preventDestroy` or `ignoreChanges` and isn't worth the investment until there are concrete use cases driving the need.
-
----
-
-## Multi-Cloud
-
-Support for GCP and Azure as additional cloud providers.
-
-**Technical approach:** The driver service model already supports this — each cloud provider is a set of independent driver services with their own container images and schemas. A GCP provider ships drivers for GCS, Cloud SQL, Compute Engine, etc. An Azure provider ships drivers for Blob Storage, Azure SQL, VMs, etc. v1 is AWS-only; this extends the provider ecosystem to other clouds.
+**Technical approach:** `praxis rollback <stack> --to <deployment-id>`. Core diffs the current deployment state against the target deployment record and applies the inverse changes — reverting specs that changed, deleting resources that were added, re-provisioning resources that were removed. Deployment History provides the state snapshots this requires.
 
 ---
 
-## Cross-Account
+## Approval Gates
 
-Manage resources across multiple AWS accounts (or multiple GCP projects / Azure subscriptions) from a single Praxis instance.
+Require explicit human approval before changes are applied to protected stacks.
 
-**Technical approach:** Credential configuration per driver instance via IAM role assumption (AWS), service account impersonation (GCP), or managed identity (Azure). Templates specify the target account/project as a parameter. Core passes the credential context to the driver, which assumes the appropriate role before making API calls. Enables hub-and-spoke patterns where a central platform team manages infrastructure across many workload accounts. The Auth Service already handles per-account credential resolution and STS AssumeRole — the remaining work is multi-account orchestration logic in Core and per-resource account overrides in templates.
+**Technical approach:** A stack or workspace is marked as protected; a deploy against it computes its plan, then suspends awaiting approval. Restate's durable promises make this nearly free to build — the workflow can remain suspended for days at no cost, then resume the instant `praxis approve <deployment-id>` (or the equivalent HTTP API call) is invoked. Approval and rejection decisions land in the deployment event stream, giving an audit trail of who approved what and when.
 
 ---
 
 ## Additional Secret Backends
 
-Extend beyond AWS SSM to support other secret stores.
+Extend secret resolution beyond AWS SSM Parameter Store.
 
-**Technical approach:** Pluggable resolver interface behind the `ssm://` protocol. Add backends for AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager, Azure Key Vault. Each backend implements a `Resolve(path) → value` interface. The URI scheme determines which backend handles the request (e.g. `vault:///secret/data/db-password`).
-
----
-
-## Partial / Speculative Provisioning
-
-Start provisioning long-running resources (e.g. RDS: 5–15 min) with a partial spec, then apply remaining fields as an in-place update after creation.
-
-**Technical approach:** Extends the driver service contract with a two-phase model: `ProvisionPartial` (create with available fields) → await dependent outputs → `ProvisionUpdate` (apply remaining fields). Optimization for deployment speed; not needed until creation latency becomes a pain point.
-
----
-
-## Central Rate Limit Advisor
-
-Shared service that aggregates AWS API usage across all drivers and signals "slow down" when approaching account-level limits.
-
-**Technical approach:** Drivers report API call counts to a central Virtual Object. The advisor tracks aggregate usage per API per account and returns throttle signals. Supplements per-driver rate limiting for high-scale deployments with many concurrent driver instances.
+**Technical approach:** A pluggable resolver interface — `Resolve(path) → value` — selected by URI scheme. AWS Secrets Manager is first (e.g. `secretsmanager://`), since it fills a genuine gap for an AWS-focused tool rather than extending into new territory. HashiCorp Vault (e.g. `vault:///secret/data/db-password`) follows as the most common cloud-agnostic store.

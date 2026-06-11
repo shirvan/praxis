@@ -80,6 +80,17 @@ For Restate Cloud, replace the Restate admin/ingress URLs in your configuration 
 | Monitoring Pack   | 9080          | 9087      | Restate endpoint     |
 | Moto        | 4566          | 4566      | Mock AWS (local dev) |
 
+### Network Exposure
+
+**The Restate ingress (8080) and admin API (9070) must never be reachable from untrusted networks.** The ingress performs no authentication, and Praxis exposes credential management over it: `AuthService/<alias>/GetCredentials` returns plaintext AWS credentials to any caller, and `Configure` accepts credential changes from any caller. The admin API can register arbitrary new service endpoints. Treat network access to these ports as equivalent to administrator access to every registered AWS account. See [Auth & Workspaces — Security Model](AUTH.md#security-model-the-ingress-is-the-trust-boundary) for the full threat model.
+
+Defaults are private — keep them that way:
+
+- **Docker Compose** binds all ports to `127.0.0.1`. Do not rebind to `0.0.0.0` on a shared host without a firewall in front.
+- **Helm chart** creates `ClusterIP` services only. Do not convert them to `LoadBalancer`/`NodePort` or add an Ingress for ports 8080/9070. Add a NetworkPolicy restricting traffic to the workloads that legitimately call Praxis (CI runners, operator tooling).
+- **Remote access** belongs behind an authenticating layer: VPN, SSH tunnel, or an mTLS/OIDC reverse proxy that terminates TLS — or use [Restate Cloud](https://restate.dev/cloud/), whose ingress requires API keys.
+- The driver-pack endpoint ports (9080-9087) only need to be reachable *from Restate*, nowhere else.
+
 ### Kubernetes Deployment (Helm)
 
 The recommended way to deploy Praxis on Kubernetes is via the Helm chart published to GitHub Container Registry. The chart deploys Praxis Core, all driver packs, and optionally a bundled Restate instance — or points to an external one (like [Restate Cloud](https://restate.dev/cloud/)).

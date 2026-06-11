@@ -10,7 +10,7 @@
 
 Infrastructure-as-code tools stop paying attention the moment `apply`
 returns. A security group opened "temporarily" in the console, a tag removed
-by a script, a bucket policy deleted by hand — none of it surfaces until the
+by a script, a queue policy deleted by hand — none of it surfaces until the
 next time someone runs `plan`. The tools that do watch continuously, like
 Crossplane and Kubernetes operators, require running a cluster just to
 manage cloud resources.
@@ -115,7 +115,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **Import Existing Resources.** Adopt cloud resources already running in your account. Praxis captures their current state as a baseline and begins managing or observing them.
 
-**Data Sources.** Reference existing cloud resources in templates without managing them. A `data` block performs read-only lookups that inject outputs (VPC IDs, ARNs, CIDR blocks) into managed resource specs — no state stored, no lifecycle tracked.
+**Data Sources.** Reference existing cloud resources in templates without managing them. A `data` block performs read-only lookups that inject outputs (VPC IDs, ARNs, CIDR blocks) into managed resource specs — no state stored, no lifecycle tracked. Currently supported for VPC, Subnet, Security Group, S3 Bucket, IAM Role, and Route 53 Hosted Zone.
 
 **CUE Templates.** Platform teams define typed, validated templates in CUE. End users fill in variables. Output expressions wire resource outputs into downstream specs. Policy constraints enforce organizational standards via CUE unification.
 
