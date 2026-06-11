@@ -40,6 +40,8 @@ func TestLoad_EnvOverrides(t *testing.T) {
 
 func TestLoad_PartialOverride(t *testing.T) {
 	t.Setenv("PRAXIS_LISTEN_ADDR", "")
+	// Isolate from ambient operator env (e.g. .env loaded by `just test`).
+	t.Setenv("PRAXIS_RESTATE_ENDPOINT", "")
 
 	cfg := Load()
 
