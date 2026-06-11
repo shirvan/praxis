@@ -14,6 +14,30 @@ These two services are co-dependent: the Auth Service provides the runtime regis
 
 ---
 
+## Security Model: The Ingress Is the Trust Boundary
+
+**Anyone who can reach the Restate ingress can read and configure AWS credentials.** Praxis services are invoked through the Restate ingress (port 8080 by default), which performs no authentication or authorization of its own. That includes `AuthService/<alias>/GetCredentials`, which returns plaintext credentials (`accessKeyId`, `secretAccessKey`, session token) to any caller, and `AuthService/<alias>/Configure`, which accepts new credential configuration from any caller. This is by design — drivers and Core resolve credentials over the same RPC path — but it means network access to the ingress must be treated as equivalent to full access to every registered AWS account.
+
+The shipped defaults keep the ingress private:
+
+| Deployment | Default | Exposure |
+|---|---|---|
+| Docker Compose | Ports bound to `127.0.0.1` | Local machine only |
+| Helm chart | `ClusterIP` services | Cluster-internal only |
+| Restate Cloud | API-key-authenticated ingress | Authenticated |
+
+Operators must preserve that posture:
+
+- **Never expose the ingress (8080) or the Restate admin port (9070) to untrusted networks.** No public LoadBalancer/NodePort services, no unauthenticated reverse proxies, no port-forwards left open. The admin port is equally sensitive: it can register attacker-controlled service endpoints.
+- **Restrict reachability inside shared networks.** In Kubernetes, apply a NetworkPolicy that limits ingress traffic to the namespaces/pods that legitimately call Praxis (CI runners, operator tooling). On VMs, use security groups or host firewalls scoped to known callers.
+- **If remote access is required, put an authenticating layer in front** — an mTLS or OIDC reverse proxy, a VPN, or SSH tunneling — or use [Restate Cloud](https://restate.dev/cloud/), whose ingress requires API keys. Terminate TLS at that layer; the ingress itself speaks plain HTTP.
+- **Prefer the `role` credential source over `static` for real AWS accounts.** Assumed-role sessions expire (15 minutes – 12 hours), so a leaked `GetCredentials` response has a bounded lifetime; static keys do not expire.
+- **Scope the deploy role tightly.** The IAM role Praxis assumes should carry only the permissions the registered drivers need, with an `ExternalId` set.
+
+See the [Operator Guide](OPERATORS.md#network-exposure) for deployment-specific configuration.
+
+---
+
 ## Auth Service
 
 ### Service Contract

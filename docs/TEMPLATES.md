@@ -193,7 +193,7 @@ resources: {
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `kind` | string | Yes | The resource kind to look up (e.g., `"VPC"`, `"S3Bucket"`, `"SecurityGroup"`). Must match a registered adapter. |
+| `kind` | string | Yes | The resource kind to look up. Lookup is currently supported for `VPC`, `Subnet`, `SecurityGroup`, `S3Bucket`, `IAMRole`, and `Route53HostedZone`; other kinds fail with a 501 "lookup unsupported" error. |
 | `region` | string | No | AWS region for region-scoped resources. Required for kinds that use `KeyScopeRegion`. |
 | `account` | string | No | Override the deployment's default account for this lookup. Falls back to the deployment account. |
 | `filter` | struct | Yes | Provider-specific filter criteria (see below). |
