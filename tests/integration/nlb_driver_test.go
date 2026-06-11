@@ -18,7 +18,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/restatedev/sdk-go/testing"
+	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
 	"github.com/shirvan/praxis/internal/drivers/nlb"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
