@@ -5,6 +5,12 @@
 // the orchestrator / command service and the strongly typed Go structs expected
 // by the LambdaLayer Restate Virtual Object driver.
 //
+// NOT ported to GenericAdapter: Plan gates on outputs.LayerVersionArn but
+// describes by outputs.LayerName, and the field diff takes the stored outputs
+// as a third argument — neither fits the generic planID-only probe and
+// (desired, observed) diff. Kept hand-rolled, with the throttle-retry fix
+// applied to Plan.
+//
 // Key scope: region-scoped.
 // Key parts: region + layer name.
 // Lambda layers are region-scoped; the key combines the AWS region and layer name.
@@ -19,6 +25,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/lambdalayer"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -173,6 +180,11 @@ func (a *LambdaLayerAdapter) Plan(ctx restate.Context, key string, account strin
 		if descErr != nil {
 			if lambdalayer.IsNotFound(descErr) {
 				return describePlanResult{Found: false}, nil
+			}
+			// Throttled describes during a wide plan must retry, not fail
+			// the whole plan permanently.
+			if awserr.IsThrottled(descErr) {
+				return describePlanResult{}, descErr
 			}
 			return describePlanResult{}, restate.TerminalError(descErr, 500)
 		}

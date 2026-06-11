@@ -1,13 +1,9 @@
-// ACMCertificate provider adapter.
-//
-// This file implements the provider.Adapter interface for AWS Certificate Manager
-// resources. It translates between the generic JSON resource documents used by
-// the orchestrator / command service and the strongly typed Go structs expected
-// by the ACMCertificate Restate Virtual Object driver.
+// ACMCertificate provider adapter — descriptor for the GenericAdapter.
 //
 // Key scope: region-scoped.
 // Key parts: region + certificate name.
-// ACM certificates are region-scoped; the key combines the AWS region and certificate name.
+// ACM certificates are region-scoped; the key combines the AWS region and the
+// certificate name (the metadata.name).
 package provider
 
 import (
@@ -25,162 +21,157 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// ACMCertificateAdapter is the descriptor-driven adapter for ACMCertificate,
+// extended with an import-key resolver that maps a certificate ARN to the
+// certificate's domain name when a static planning API is available.
 type ACMCertificateAdapter struct {
-	auth              authservice.AuthClient
+	*GenericAdapter[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs, acmcert.ObservedState]
 	staticPlanningAPI acmcert.CertificateAPI
-	apiFactory        func(aws.Config) acmcert.CertificateAPI
 }
 
-func NewACMCertificateAdapterWithAuth(auth authservice.AuthClient) *ACMCertificateAdapter {
-	return &ACMCertificateAdapter{
-		auth: auth,
-		apiFactory: func(cfg aws.Config) acmcert.CertificateAPI {
-			return acmcert.NewCertificateAPI(awsclient.NewACMClient(cfg))
+func acmCertificateDescriptor() GenericDescriptor[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs, acmcert.ObservedState] {
+	return GenericDescriptor[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs, acmcert.ObservedState]{
+		Kind:  acmcert.ServiceName,
+		Scope: KeyScopeRegion,
+
+		DecodeSpec: func(rawSpec json.RawMessage, metadataName string) (acmcert.ACMCertificateSpec, error) {
+			var spec acmcert.ACMCertificateSpec
+			if err := json.Unmarshal(rawSpec, &spec); err != nil {
+				return acmcert.ACMCertificateSpec{}, fmt.Errorf("decode ACMCertificate spec: %w", err)
+			}
+			name := strings.TrimSpace(metadataName)
+			if name == "" {
+				return acmcert.ACMCertificateSpec{}, fmt.Errorf("ACMCertificate metadata.name is required")
+			}
+			if strings.TrimSpace(spec.Region) == "" {
+				return acmcert.ACMCertificateSpec{}, fmt.Errorf("ACMCertificate spec.region is required")
+			}
+			if strings.TrimSpace(spec.DomainName) == "" {
+				return acmcert.ACMCertificateSpec{}, fmt.Errorf("ACMCertificate spec.domainName is required")
+			}
+			if spec.Tags == nil {
+				spec.Tags = make(map[string]string)
+			}
+			if spec.Tags["Name"] == "" {
+				spec.Tags["Name"] = name
+			}
+			if spec.ValidationMethod == "" {
+				spec.ValidationMethod = "DNS"
+			}
+			if spec.KeyAlgorithm == "" {
+				spec.KeyAlgorithm = "RSA_2048"
+			}
+			if spec.Options == nil {
+				spec.Options = &acmcert.CertificateOptions{CertificateTransparencyLoggingPreference: "ENABLED"}
+			}
+			spec.Account = ""
+			return spec, nil
+		},
+
+		KeyFromSpec: func(spec acmcert.ACMCertificateSpec, metadataName string) (string, error) {
+			if err := ValidateKeyPart("region", spec.Region); err != nil {
+				return "", err
+			}
+			name := strings.TrimSpace(metadataName)
+			if err := ValidateKeyPart("ACM certificate name", name); err != nil {
+				return "", err
+			}
+			return JoinKey(spec.Region, name), nil
+		},
+
+		ImportKey: func(region, resourceID string) (string, error) {
+			if err := ValidateKeyPart("region", region); err != nil {
+				return "", err
+			}
+			if err := ValidateKeyPart("resource ID", resourceID); err != nil {
+				return "", err
+			}
+			return JoinKey(region, resourceID), nil
+		},
+
+		PrepareSpec: func(spec acmcert.ACMCertificateSpec, key, account string) acmcert.ACMCertificateSpec {
+			spec.Account = account
+			spec.ManagedKey = key
+			return spec
+		},
+
+		NormalizeOutputs: func(out acmcert.ACMCertificateOutputs) map[string]any {
+			result := map[string]any{
+				"certificateArn": out.CertificateArn,
+				"domainName":     out.DomainName,
+				"status":         out.Status,
+			}
+			if out.NotBefore != "" {
+				result["notBefore"] = out.NotBefore
+			}
+			if out.NotAfter != "" {
+				result["notAfter"] = out.NotAfter
+			}
+			if len(out.DNSValidationRecords) > 0 {
+				records := make([]map[string]any, 0, len(out.DNSValidationRecords))
+				for _, record := range out.DNSValidationRecords {
+					records = append(records, map[string]any{
+						"domainName":          record.DomainName,
+						"resourceRecordName":  record.ResourceRecordName,
+						"resourceRecordType":  record.ResourceRecordType,
+						"resourceRecordValue": record.ResourceRecordValue,
+					})
+				}
+				result["dnsValidationRecords"] = records
+			}
+			return result
+		},
+
+		PlanID: func(out acmcert.ACMCertificateOutputs) string { return out.CertificateArn },
+
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[acmcert.ObservedState] {
+			return acmCertificateProbe(acmcert.NewCertificateAPI(awsclient.NewACMClient(cfg)))
+		},
+
+		DiffFields: func(desired acmcert.ACMCertificateSpec, observed acmcert.ObservedState) []types.FieldDiff {
+			rawDiffs := acmcert.ComputeFieldDiffs(desired, observed)
+			fields := make([]types.FieldDiff, 0, len(rawDiffs))
+			for _, diff := range rawDiffs {
+				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
+			}
+			return fields
 		},
 	}
 }
 
-func NewACMCertificateAdapterWithAPI(api acmcert.CertificateAPI) *ACMCertificateAdapter {
-	return &ACMCertificateAdapter{staticPlanningAPI: api}
-}
-
-func (a *ACMCertificateAdapter) Kind() string        { return acmcert.ServiceName }
-func (a *ACMCertificateAdapter) ServiceName() string { return acmcert.ServiceName }
-func (a *ACMCertificateAdapter) Scope() KeyScope     { return KeyScopeRegion }
-
-func (a *ACMCertificateAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return "", err
-	}
-	spec, err := a.decodeSpec(doc)
-	if err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("region", spec.Region); err != nil {
-		return "", err
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if err := ValidateKeyPart("ACM certificate name", name); err != nil {
-		return "", err
-	}
-	return JoinKey(spec.Region, name), nil
-}
-
-func (a *ACMCertificateAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return nil, err
-	}
-	return a.decodeSpec(doc)
-}
-
-func (a *ACMCertificateAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
-	typedSpec, err := castSpec[acmcert.ACMCertificateSpec](spec)
-	if err != nil {
-		return nil, err
-	}
-	typedSpec.Account = account
-	typedSpec.ManagedKey = key
-	fut := restate.WithRequestType[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs](
-		restate.Object[acmcert.ACMCertificateOutputs](ctx, a.ServiceName(), key, "Provision"),
-	).RequestFuture(typedSpec)
-	return &provisionHandle[acmcert.ACMCertificateOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
-}
-
-func (a *ACMCertificateAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
-	fut := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
-	).RequestFuture(restate.Void{})
-	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
-}
-
-func (a *ACMCertificateAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
-	out, err := castOutput[acmcert.ACMCertificateOutputs](raw)
-	if err != nil {
-		return nil, err
-	}
-	result := map[string]any{
-		"certificateArn": out.CertificateArn,
-		"domainName":     out.DomainName,
-		"status":         out.Status,
-	}
-	if out.NotBefore != "" {
-		result["notBefore"] = out.NotBefore
-	}
-	if out.NotAfter != "" {
-		result["notAfter"] = out.NotAfter
-	}
-	if len(out.DNSValidationRecords) > 0 {
-		records := make([]map[string]any, 0, len(out.DNSValidationRecords))
-		for _, record := range out.DNSValidationRecords {
-			records = append(records, map[string]any{
-				"domainName":          record.DomainName,
-				"resourceRecordName":  record.ResourceRecordName,
-				"resourceRecordType":  record.ResourceRecordType,
-				"resourceRecordValue": record.ResourceRecordValue,
-			})
-		}
-		result["dnsValidationRecords"] = records
-	}
-	return result, nil
-}
-
-func (a *ACMCertificateAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
-	desired, err := castSpec[acmcert.ACMCertificateSpec](desiredSpec)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, getErr := restate.Object[acmcert.ACMCertificateOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
-	if getErr != nil {
-		return "", nil, fmt.Errorf("ACMCertificate Plan: failed to read outputs for key %q: %w", key, getErr)
-	}
-	if outputs.CertificateArn == "" {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-	planningAPI, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return "", nil, err
-	}
-	type describePlanResult struct {
-		State acmcert.ObservedState
-		Found bool
-	}
-	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		obs, descErr := planningAPI.DescribeCertificate(runCtx, outputs.CertificateArn)
-		if descErr != nil {
-			if acmcert.IsNotFound(descErr) {
-				return describePlanResult{Found: false}, nil
+// acmCertificateProbe adapts the driver API to the generic plan probe shape.
+func acmCertificateProbe(api acmcert.CertificateAPI) PlanProbeFunc[acmcert.ObservedState] {
+	return func(runCtx restate.RunContext, certificateArn string) (acmcert.ObservedState, bool, error) {
+		obs, err := api.DescribeCertificate(runCtx, certificateArn)
+		if err != nil {
+			if acmcert.IsNotFound(err) {
+				return acmcert.ObservedState{}, false, nil
 			}
-			return describePlanResult{}, restate.TerminalError(descErr, 500)
+			return acmcert.ObservedState{}, false, err
 		}
-		return describePlanResult{State: obs, Found: true}, nil
-	})
-	if err != nil {
-		return "", nil, err
+		return obs, true, nil
 	}
-	if !result.Found {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-	rawDiffs := acmcert.ComputeFieldDiffs(desired, result.State)
-	if len(rawDiffs) == 0 {
-		return types.OpNoOp, nil, nil
-	}
-	fields := make([]types.FieldDiff, 0, len(rawDiffs))
-	for _, diff := range rawDiffs {
-		fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-	}
-	return types.OpUpdate, fields, nil
 }
 
+// NewACMCertificateAdapterWithAuth builds the production adapter; plan-time
+// credentials are resolved through the Auth Service.
+func NewACMCertificateAdapterWithAuth(auth authservice.AuthClient) *ACMCertificateAdapter {
+	return &ACMCertificateAdapter{GenericAdapter: NewGenericAdapter(acmCertificateDescriptor(), auth)}
+}
+
+// NewACMCertificateAdapterWithAPI builds an adapter with a fixed planning API.
+// Used by tests.
+func NewACMCertificateAdapterWithAPI(api acmcert.CertificateAPI) *ACMCertificateAdapter {
+	return &ACMCertificateAdapter{
+		GenericAdapter:    NewGenericAdapterWithProbe(acmCertificateDescriptor(), acmCertificateProbe(api)),
+		staticPlanningAPI: api,
+	}
+}
+
+// BuildImportKey derives the canonical Restate object key for importing an
+// existing ACMCertificate resource. When the resource ID is a certificate ARN
+// and a static planning API is available, the certificate's domain name is
+// resolved and used as the key part instead of the raw ARN.
 func (a *ACMCertificateAdapter) BuildImportKey(region, resourceID string) (string, error) {
 	if err := ValidateKeyPart("region", region); err != nil {
 		return "", err
@@ -195,67 +186,4 @@ func (a *ACMCertificateAdapter) BuildImportKey(region, resourceID string) (strin
 		}
 	}
 	return JoinKey(region, resourceID), nil
-}
-
-func (a *ACMCertificateAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
-	ref.Account = account
-	output, err := restate.WithRequestType[types.ImportRef, acmcert.ACMCertificateOutputs](
-		restate.Object[acmcert.ACMCertificateOutputs](ctx, a.ServiceName(), key, "Import"),
-	).Request(ref)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, err := a.NormalizeOutputs(output)
-	if err != nil {
-		return "", nil, err
-	}
-	return types.StatusReady, outputs, nil
-}
-
-func (a *ACMCertificateAdapter) decodeSpec(doc resourceDocument) (acmcert.ACMCertificateSpec, error) {
-	var spec acmcert.ACMCertificateSpec
-	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return acmcert.ACMCertificateSpec{}, fmt.Errorf("decode ACMCertificate spec: %w", err)
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if name == "" {
-		return acmcert.ACMCertificateSpec{}, fmt.Errorf("ACMCertificate metadata.name is required")
-	}
-	if strings.TrimSpace(spec.Region) == "" {
-		return acmcert.ACMCertificateSpec{}, fmt.Errorf("ACMCertificate spec.region is required")
-	}
-	if strings.TrimSpace(spec.DomainName) == "" {
-		return acmcert.ACMCertificateSpec{}, fmt.Errorf("ACMCertificate spec.domainName is required")
-	}
-	if spec.Tags == nil {
-		spec.Tags = make(map[string]string)
-	}
-	if spec.Tags["Name"] == "" {
-		spec.Tags["Name"] = name
-	}
-	if spec.ValidationMethod == "" {
-		spec.ValidationMethod = "DNS"
-	}
-	if spec.KeyAlgorithm == "" {
-		spec.KeyAlgorithm = "RSA_2048"
-	}
-	if spec.Options == nil {
-		spec.Options = &acmcert.CertificateOptions{CertificateTransparencyLoggingPreference: "ENABLED"}
-	}
-	spec.Account = ""
-	return spec, nil
-}
-
-func (a *ACMCertificateAdapter) planningAPI(ctx restate.Context, account string) (acmcert.CertificateAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("ACMCertificate adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve ACMCertificate planning account %q: %w", account, err)
-	}
-	return a.apiFactory(awsCfg), nil
 }

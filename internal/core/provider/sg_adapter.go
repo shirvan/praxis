@@ -19,6 +19,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/sg"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -180,6 +181,11 @@ func (a *SecurityGroupAdapter) Plan(ctx restate.Context, key string, account str
 		if descErr != nil {
 			if sg.IsNotFound(descErr) {
 				return describePlanResult{Found: false}, nil
+			}
+			// Throttled describes during a wide plan must retry, not fail
+			// the whole plan permanently.
+			if awserr.IsThrottled(descErr) {
+				return describePlanResult{}, descErr
 			}
 			return describePlanResult{}, restate.TerminalError(descErr, 500)
 		}

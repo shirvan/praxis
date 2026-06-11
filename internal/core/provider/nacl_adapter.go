@@ -1,9 +1,4 @@
-// NetworkACL provider adapter.
-//
-// This file implements the provider.Adapter interface for Amazon VPC (Network ACL)
-// resources. It translates between the generic JSON resource documents used by
-// the orchestrator / command service and the strongly typed Go structs expected
-// by the NetworkACL Restate Virtual Object driver.
+// NetworkACL provider adapter — descriptor for the GenericAdapter.
 //
 // Key scope: custom (VPC-scoped).
 // Key parts: VPC ID + ACL name.
@@ -24,275 +19,116 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// NetworkACLAdapter implements provider.Adapter for NetworkACL (Amazon VPC (Network ACL)) resources.
-// It holds an auth client for credential resolution and a factory for creating
-// AWS API clients scoped to the target account. A staticPlanningAPI field allows
-// tests to inject a mock API without requiring real AWS credentials.
-type NetworkACLAdapter struct {
-	auth              authservice.AuthClient
-	staticPlanningAPI nacl.NetworkACLAPI
-	apiFactory        func(aws.Config) nacl.NetworkACLAPI
-}
+// NetworkACLAdapter is the descriptor-driven adapter for NetworkACL.
+type NetworkACLAdapter = GenericAdapter[nacl.NetworkACLSpec, nacl.NetworkACLOutputs, nacl.ObservedState]
 
-// NewNetworkACLAdapterWithAuth creates a production NetworkACL adapter using
-// the given auth client for per-account credential resolution.
-// The apiFactory closure creates a real AWS API client from the resolved
-// aws.Config, ensuring each Plan/Provision call targets the correct account.
-func NewNetworkACLAdapterWithAuth(auth authservice.AuthClient) *NetworkACLAdapter {
-	return &NetworkACLAdapter{
-		auth: auth,
-		apiFactory: func(cfg aws.Config) nacl.NetworkACLAPI {
-			return nacl.NewNetworkACLAPI(awsclient.NewEC2Client(cfg))
+func naclDescriptor() GenericDescriptor[nacl.NetworkACLSpec, nacl.NetworkACLOutputs, nacl.ObservedState] {
+	return GenericDescriptor[nacl.NetworkACLSpec, nacl.NetworkACLOutputs, nacl.ObservedState]{
+		Kind:  nacl.ServiceName,
+		Scope: KeyScopeCustom,
+
+		DecodeSpec: func(spec json.RawMessage, metadataName string) (nacl.NetworkACLSpec, error) {
+			var parsed nacl.NetworkACLSpec
+			if err := json.Unmarshal(spec, &parsed); err != nil {
+				return nacl.NetworkACLSpec{}, fmt.Errorf("decode NetworkACL spec: %w", err)
+			}
+			name := strings.TrimSpace(metadataName)
+			if name == "" {
+				return nacl.NetworkACLSpec{}, fmt.Errorf("NetworkACL metadata.name is required")
+			}
+			if strings.TrimSpace(parsed.Region) == "" {
+				return nacl.NetworkACLSpec{}, fmt.Errorf("NetworkACL spec.region is required")
+			}
+			if strings.TrimSpace(parsed.VpcId) == "" {
+				return nacl.NetworkACLSpec{}, fmt.Errorf("NetworkACL spec.vpcId is required")
+			}
+			if parsed.Tags == nil {
+				parsed.Tags = make(map[string]string)
+			}
+			if parsed.Tags["Name"] == "" {
+				parsed.Tags["Name"] = name
+			}
+			parsed.Account = ""
+			return parsed, nil
+		},
+
+		KeyFromSpec: func(spec nacl.NetworkACLSpec, metadataName string) (string, error) {
+			if err := ValidateKeyPart("VPC ID", spec.VpcId); err != nil {
+				return "", err
+			}
+			name := strings.TrimSpace(metadataName)
+			if err := ValidateKeyPart("network ACL name", name); err != nil {
+				return "", err
+			}
+			return JoinKey(spec.VpcId, name), nil
+		},
+
+		ImportKey: func(region, resourceID string) (string, error) {
+			if err := ValidateKeyPart("region", region); err != nil {
+				return "", err
+			}
+			if err := ValidateKeyPart("resource ID", resourceID); err != nil {
+				return "", err
+			}
+			return JoinKey(region, resourceID), nil
+		},
+
+		PrepareSpec: func(spec nacl.NetworkACLSpec, key, account string) nacl.NetworkACLSpec {
+			spec.Account = account
+			spec.ManagedKey = key
+			return spec
+		},
+
+		NormalizeOutputs: func(out nacl.NetworkACLOutputs) map[string]any {
+			return map[string]any{
+				"networkAclId": out.NetworkAclId,
+				"vpcId":        out.VpcId,
+				"isDefault":    out.IsDefault,
+				"ingressRules": out.IngressRules,
+				"egressRules":  out.EgressRules,
+				"associations": out.Associations,
+			}
+		},
+
+		PlanID: func(out nacl.NetworkACLOutputs) string { return out.NetworkAclId },
+
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[nacl.ObservedState] {
+			return naclProbe(nacl.NewNetworkACLAPI(awsclient.NewEC2Client(cfg)))
+		},
+
+		DiffFields: func(desired nacl.NetworkACLSpec, observed nacl.ObservedState) []types.FieldDiff {
+			rawDiffs := nacl.ComputeFieldDiffs(desired, observed)
+			fields := make([]types.FieldDiff, 0, len(rawDiffs))
+			for _, diff := range rawDiffs {
+				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
+			}
+			return fields
 		},
 	}
 }
 
-// NewNetworkACLAdapterWithAPI creates a NetworkACL adapter with a pre-built API
-// client. This is primarily useful in tests that supply a mock implementation
-// and do not need per-account credential resolution.
-func NewNetworkACLAdapterWithAPI(api nacl.NetworkACLAPI) *NetworkACLAdapter {
-	return &NetworkACLAdapter{staticPlanningAPI: api}
-}
-
-// Kind returns the resource kind string "NetworkACL" that maps template
-// resource documents to this adapter in the provider registry.
-func (a *NetworkACLAdapter) Kind() string {
-	return nacl.ServiceName
-}
-
-// ServiceName returns the Restate Virtual Object service name for the
-// NetworkACL driver. The orchestrator uses this to dispatch durable RPCs.
-func (a *NetworkACLAdapter) ServiceName() string {
-	return nacl.ServiceName
-}
-
-// Scope returns the key-scope strategy for NetworkACL resources,
-// which controls how BuildKey assembles the canonical object key.
-func (a *NetworkACLAdapter) Scope() KeyScope {
-	return KeyScopeCustom
-}
-
-// BuildKey derives the canonical Restate object key for a NetworkACL resource
-// from the raw JSON resource document. The key is composed of VPC ID + ACL name,
-// ensuring uniqueness within the Restate Virtual Object namespace.
-func (a *NetworkACLAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return "", err
-	}
-	spec, err := a.decodeSpec(doc)
-	if err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("VPC ID", spec.VpcId); err != nil {
-		return "", err
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if err := ValidateKeyPart("network ACL name", name); err != nil {
-		return "", err
-	}
-	return JoinKey(spec.VpcId, name), nil
-}
-
-// DecodeSpec extracts the spec section from a raw JSON resource document and
-// returns it as the concrete NetworkACL spec struct expected by the driver.
-func (a *NetworkACLAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return nil, err
-	}
-	return a.decodeSpec(doc)
-}
-
-// Provision sends a durable Provision request to the NetworkACL Restate
-// Virtual Object keyed by the given key. It returns a ProvisionInvocation
-// handle that the orchestrator can await via restate.Wait/WaitFirst.
-// The account string is injected into the spec so the driver knows which
-// AWS account to target.
-func (a *NetworkACLAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
-	typedSpec, err := castSpec[nacl.NetworkACLSpec](spec)
-	if err != nil {
-		return nil, err
-	}
-	typedSpec.Account = account
-	typedSpec.ManagedKey = key
-
-	fut := restate.WithRequestType[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](
-		restate.Object[nacl.NetworkACLOutputs](ctx, a.ServiceName(), key, "Provision"),
-	).RequestFuture(typedSpec)
-
-	return &provisionHandle[nacl.NetworkACLOutputs]{
-		id:        fut.GetInvocationId(),
-		raw:       fut,
-		normalize: a.NormalizeOutputs,
-	}, nil
-}
-
-// Delete sends a durable Delete request to the NetworkACL Restate Virtual
-// Object keyed by the given key. It returns a DeleteInvocation handle
-// that the orchestrator can await alongside other parallel futures.
-func (a *NetworkACLAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
-	fut := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete"),
-	).RequestFuture(restate.Void{})
-	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
-}
-
-// NormalizeOutputs converts the typed NetworkACL driver output struct into
-// the generic map[string]any used by deployment state, CLI display,
-// and cross-resource expression interpolation.
-func (a *NetworkACLAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
-	out, err := castOutput[nacl.NetworkACLOutputs](raw)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"networkAclId": out.NetworkAclId,
-		"vpcId":        out.VpcId,
-		"isDefault":    out.IsDefault,
-		"ingressRules": out.IngressRules,
-		"egressRules":  out.EgressRules,
-		"associations": out.Associations,
-	}, nil
-}
-
-// Plan compares the desired NetworkACL spec against the current provider
-// state. It first checks whether the resource already exists (via cached
-// outputs or a Describe API call), then computes field-level diffs.
-// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
-// or OpNoOp if the resource matches the desired state.
-func (a *NetworkACLAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
-	desired, err := castSpec[nacl.NetworkACLSpec](desiredSpec)
-	if err != nil {
-		return "", nil, err
-	}
-
-	outputs, getErr := restate.Object[nacl.NetworkACLOutputs](ctx, a.ServiceName(), key, "GetOutputs").
-		Request(restate.Void{})
-	if getErr != nil {
-		return "", nil, fmt.Errorf("NetworkACL Plan: failed to read outputs for key %q: %w", key, getErr)
-	}
-	if outputs.NetworkAclId == "" {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-
-	planningAPI, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return "", nil, err
-	}
-
-	type describePlanResult struct {
-		State nacl.ObservedState
-		Found bool
-	}
-	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		obs, descErr := planningAPI.DescribeNetworkACL(runCtx, outputs.NetworkAclId)
-		if descErr != nil {
-			if nacl.IsNotFound(descErr) {
-				return describePlanResult{Found: false}, nil
+// naclProbe adapts the driver API to the generic plan probe shape.
+func naclProbe(api nacl.NetworkACLAPI) PlanProbeFunc[nacl.ObservedState] {
+	return func(runCtx restate.RunContext, networkACLID string) (nacl.ObservedState, bool, error) {
+		obs, err := api.DescribeNetworkACL(runCtx, networkACLID)
+		if err != nil {
+			if nacl.IsNotFound(err) {
+				return nacl.ObservedState{}, false, nil
 			}
-			return describePlanResult{}, restate.TerminalError(descErr, 500)
+			return nacl.ObservedState{}, false, err
 		}
-		return describePlanResult{State: obs, Found: true}, nil
-	})
-	if err != nil {
-		return "", nil, err
+		return obs, true, nil
 	}
-	if !result.Found {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-
-	rawDiffs := nacl.ComputeFieldDiffs(desired, result.State)
-	if len(rawDiffs) == 0 {
-		return types.OpNoOp, nil, nil
-	}
-
-	fields := make([]types.FieldDiff, 0, len(rawDiffs))
-	for _, diff := range rawDiffs {
-		fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-	}
-	return types.OpUpdate, fields, nil
 }
 
-// BuildImportKey derives the canonical Restate object key for importing
-// an existing NetworkACL resource by its region and provider-native ID.
-func (a *NetworkACLAdapter) BuildImportKey(region, resourceID string) (string, error) {
-	if err := ValidateKeyPart("region", region); err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("resource ID", resourceID); err != nil {
-		return "", err
-	}
-	return JoinKey(region, resourceID), nil
+// NewNetworkACLAdapterWithAuth builds the production adapter; plan-time
+// credentials are resolved through the Auth Service.
+func NewNetworkACLAdapterWithAuth(auth authservice.AuthClient) *NetworkACLAdapter {
+	return NewGenericAdapter(naclDescriptor(), auth)
 }
 
-// Import adopts an existing NetworkACL resource into Praxis management.
-// It delegates to the driver's Import handler and normalizes the outputs.
-func (a *NetworkACLAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
-	ref.Account = account
-	output, err := restate.WithRequestType[types.ImportRef, nacl.NetworkACLOutputs](
-		restate.Object[nacl.NetworkACLOutputs](ctx, a.ServiceName(), key, "Import"),
-	).Request(ref)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, err := a.NormalizeOutputs(output)
-	if err != nil {
-		return "", nil, err
-	}
-	return types.StatusReady, outputs, nil
-}
-
-// decodeSpec unmarshals the raw JSON spec from a resource document into
-// the typed NetworkACL spec struct, validates required fields, and applies
-// sensible defaults. The Account field is deliberately zeroed so that only
-// the orchestrator (not the template author) can set the target account.
-func (a *NetworkACLAdapter) decodeSpec(doc resourceDocument) (nacl.NetworkACLSpec, error) {
-	var spec nacl.NetworkACLSpec
-	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return nacl.NetworkACLSpec{}, fmt.Errorf("decode NetworkACL spec: %w", err)
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if name == "" {
-		return nacl.NetworkACLSpec{}, fmt.Errorf("NetworkACL metadata.name is required")
-	}
-	if strings.TrimSpace(spec.Region) == "" {
-		return nacl.NetworkACLSpec{}, fmt.Errorf("NetworkACL spec.region is required")
-	}
-	if strings.TrimSpace(spec.VpcId) == "" {
-		return nacl.NetworkACLSpec{}, fmt.Errorf("NetworkACL spec.vpcId is required")
-	}
-	if spec.Tags == nil {
-		spec.Tags = make(map[string]string)
-	}
-	if spec.Tags["Name"] == "" {
-		spec.Tags["Name"] = name
-	}
-	spec.Account = ""
-	return spec, nil
-}
-
-// planningAPI returns the AWS API client used for Plan (read-only) operations.
-// In production it resolves credentials for the given account via the auth
-// client and creates a fresh API. In tests it returns the staticPlanningAPI.
-func (a *NetworkACLAdapter) planningAPI(ctx restate.Context, account string) (nacl.NetworkACLAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("NetworkACL adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve NetworkACL planning account %q: %w", account, err)
-	}
-	return a.apiFactory(awsCfg), nil
+// NewNetworkACLAdapterWithAPI builds an adapter with a fixed planning API.
+// Used by tests.
+func NewNetworkACLAdapterWithAPI(api nacl.NetworkACLAPI) *NetworkACLAdapter {
+	return NewGenericAdapterWithProbe(naclDescriptor(), naclProbe(api))
 }

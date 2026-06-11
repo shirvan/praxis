@@ -5,6 +5,11 @@
 // the orchestrator / command service and the strongly typed Go structs expected
 // by the DBParameterGroup Restate Virtual Object driver.
 //
+// NOT ported to GenericAdapter: the plan-time describe call takes the desired
+// spec's type ("db" vs "cluster") in addition to the group name, which the
+// generic PlanProbeFunc (planID-only) cannot express. Kept hand-rolled, with
+// the throttle-retry fix applied to Plan.
+//
 // Key scope: region-scoped.
 // Key parts: region + parameter group name.
 // DB parameter groups are region-scoped; the key combines the AWS region and parameter group name.
@@ -19,6 +24,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/dbparametergroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -162,6 +168,11 @@ func (a *DBParameterGroupAdapter) Plan(ctx restate.Context, key string, account 
 		if descErr != nil {
 			if dbparametergroup.IsNotFound(descErr) {
 				return describePlanResult{Found: false}, nil
+			}
+			// Throttled describes during a wide plan must retry, not fail
+			// the whole plan permanently.
+			if awserr.IsThrottled(descErr) {
+				return describePlanResult{}, descErr
 			}
 			return describePlanResult{}, restate.TerminalError(descErr, 500)
 		}
