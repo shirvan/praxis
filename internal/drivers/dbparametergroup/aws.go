@@ -325,8 +325,13 @@ func toRDSTags(tags map[string]string) []rdstypes.Tag {
 }
 
 // IsNotFound returns true if the parameter group does not exist (DB or Cluster).
+// RDS wire codes drop the "Fault" suffix from the modeled shape names, so both
+// spellings are checked.
 func IsNotFound(err error) bool {
-	return awserr.HasCode(err, "DBParameterGroupNotFoundFault", "DBClusterParameterGroupNotFoundFault") || awserr.IsNotFoundErr(err)
+	return awserr.HasCode(err,
+		"DBParameterGroupNotFoundFault", "DBClusterParameterGroupNotFoundFault",
+		"DBParameterGroupNotFound", "DBClusterParameterGroupNotFound",
+	) || awserr.IsNotFoundErr(err)
 }
 
 // IsAlreadyExists returns true if a parameter group with the same name exists.
