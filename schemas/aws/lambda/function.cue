@@ -22,7 +22,8 @@ package lambda
 				key:            string
 				objectVersion?: string
 			}
-			zipFile?:  string
+			// zipFile must be a base64-encoded deployment package.
+			zipFile?:  string & =~"^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
 			imageUri?: string
 		}
 		memorySize?: int & >=128 & <=10240
