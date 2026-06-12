@@ -13,6 +13,7 @@ import (
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -172,6 +173,68 @@ func TestALBDelete(t *testing.T) {
 		LoadBalancerArns: []string{out.LoadBalancerArn},
 	})
 	assert.Error(t, descErr)
+}
+
+// elbTagValue returns the value of the named ELBv2 tag on the resource, or "" when absent.
+func elbTagValue(t *testing.T, elbClient *elbv2sdk.Client, arn, key string) string {
+	t.Helper()
+	out, err := elbClient.DescribeTags(context.Background(), &elbv2sdk.DescribeTagsInput{
+		ResourceArns: []string{arn},
+	})
+	require.NoError(t, err)
+	for _, desc := range out.TagDescriptions {
+		for _, tag := range desc.Tags {
+			if aws.ToString(tag.Key) == key {
+				return aws.ToString(tag.Value)
+			}
+		}
+	}
+	return ""
+}
+
+func TestALBReconcile_DetectsTagDrift(t *testing.T) {
+	client, elbClient, ec2Client := setupALBDriver(t)
+	name := uniqueALBName(t)
+	subnets := albSubnets(t, ec2Client)
+	sgId := albDefaultSgId(t, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	outputs, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+		client, "ALB", key, "Provision",
+	).Request(t.Context(), alb.ALBSpec{
+		Account:        integrationAccountName,
+		Region:         "us-east-1",
+		Name:           name,
+		Scheme:         "internet-facing",
+		IpAddressType:  "ipv4",
+		Subnets:        subnets,
+		SecurityGroups: []string{sgId},
+		IdleTimeout:    60,
+		Tags:           map[string]string{"Name": name, "env": "test"},
+	})
+	require.NoError(t, err)
+
+	// Externally overwrite a tag value to introduce drift.
+	_, err = elbClient.AddTags(context.Background(), &elbv2sdk.AddTagsInput{
+		ResourceArns: []string{outputs.LoadBalancerArn},
+		Tags:         []elbv2types.Tag{{Key: aws.String("env"), Value: aws.String("hacked")}},
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	if elbTagValue(t, elbClient, outputs.LoadBalancerArn, "env") != "hacked" {
+		t.Skip("Moto does not apply AddTags to load balancers")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "ALB", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	assert.Equal(t, "test", elbTagValue(t, elbClient, outputs.LoadBalancerArn, "env"), "tag should be restored to desired value")
 }
 
 func TestALBGetStatus(t *testing.T) {

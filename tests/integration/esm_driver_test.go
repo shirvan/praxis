@@ -191,6 +191,62 @@ func TestESMDelete_RemovesMapping(t *testing.T) {
 	require.Error(t, err, "event source mapping should be deleted")
 }
 
+func TestESMReconcile_DetectsBatchSizeDrift(t *testing.T) {
+	client, lambdaClient := setupESMDriver(t)
+	funcName := uniqueESMName(t)
+	queueName := fmt.Sprintf("queue-%s", funcName)
+
+	createTestFunctionForESM(t, lambdaClient, funcName)
+	queueArn := createTestSQSQueue(t, queueName)
+
+	encodedSource := base64.RawURLEncoding.EncodeToString([]byte(queueArn))
+	key := fmt.Sprintf("us-east-1~%s~%s", funcName, encodedSource)
+
+	outputs, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+		client, esm.ServiceName, key, "Provision",
+	).Request(t.Context(), esm.EventSourceMappingSpec{
+		Account:        integrationAccountName,
+		Region:         "us-east-1",
+		FunctionName:   funcName,
+		EventSourceArn: queueArn,
+		Enabled:        true,
+		BatchSize:      aws.Int32(10),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.UUID)
+
+	// Externally change the batch size to introduce drift.
+	_, err = lambdaClient.UpdateEventSourceMapping(context.Background(), &lambdasdk.UpdateEventSourceMappingInput{
+		UUID:      aws.String(outputs.UUID),
+		BatchSize: aws.Int32(25),
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	desc, err := lambdaClient.GetEventSourceMapping(context.Background(), &lambdasdk.GetEventSourceMappingInput{
+		UUID: aws.String(outputs.UUID),
+	})
+	require.NoError(t, err)
+	if aws.ToInt32(desc.BatchSize) != 25 {
+		t.Skip("Moto does not apply UpdateEventSourceMapping BatchSize")
+	}
+
+	// The ESM driver is detect-only: drift is reported but not auto-corrected.
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, esm.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.False(t, result.Correcting, "ESM driver is detect-only; no correction is performed")
+
+	desc, err = lambdaClient.GetEventSourceMapping(context.Background(), &lambdasdk.GetEventSourceMappingInput{
+		UUID: aws.String(outputs.UUID),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int32(25), aws.ToInt32(desc.BatchSize), "detect-only driver should leave the external value in place")
+}
+
 func TestESMGetStatus_ReturnsReady(t *testing.T) {
 	client, lambdaClient := setupESMDriver(t)
 	funcName := uniqueESMName(t)

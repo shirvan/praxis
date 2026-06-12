@@ -117,6 +117,59 @@ func TestSNSSubscription_Delete(t *testing.T) {
 	require.Error(t, err, "subscription should be deleted from Moto")
 }
 
+func TestSNSSubscription_Reconcile_DetectsRawMessageDeliveryDrift(t *testing.T) {
+	client, snsClient := setupSNSSubDriver(t)
+	topicName := uniqueTopicName(t)
+	topicArn := createTopicDirect(t, snsClient, topicName)
+	queueName := fmt.Sprintf("sub-queue-%s", topicName)
+	queueArn := createSQSQueueARNDirect(t, queueName)
+	key := fmt.Sprintf("us-east-1~%s~sqs~%s", topicName, queueName)
+
+	outputs, err := ingress.Object[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs](
+		client, snssub.ServiceName, key, "Provision",
+	).Request(t.Context(), snssub.SNSSubscriptionSpec{
+		Account:            integrationAccountName,
+		Region:             "us-east-1",
+		TopicArn:           topicArn,
+		Protocol:           "sqs",
+		Endpoint:           queueArn,
+		RawMessageDelivery: false,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.SubscriptionArn)
+
+	// Externally enable raw message delivery to introduce drift.
+	_, err = snsClient.SetSubscriptionAttributes(context.Background(), &snssdk.SetSubscriptionAttributesInput{
+		SubscriptionArn: aws.String(outputs.SubscriptionArn),
+		AttributeName:   aws.String("RawMessageDelivery"),
+		AttributeValue:  aws.String("true"),
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	attrs, err := snsClient.GetSubscriptionAttributes(context.Background(), &snssdk.GetSubscriptionAttributesInput{
+		SubscriptionArn: aws.String(outputs.SubscriptionArn),
+	})
+	require.NoError(t, err)
+	if attrs.Attributes["RawMessageDelivery"] != "true" {
+		t.Skip("Moto does not apply SetSubscriptionAttributes RawMessageDelivery")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, snssub.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	attrs, err = snsClient.GetSubscriptionAttributes(context.Background(), &snssdk.GetSubscriptionAttributesInput{
+		SubscriptionArn: aws.String(outputs.SubscriptionArn),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "false", attrs.Attributes["RawMessageDelivery"], "raw message delivery should be restored to desired value")
+}
+
 func TestSNSSubscription_GetStatus(t *testing.T) {
 	client, snsClient := setupSNSSubDriver(t)
 	topicName := uniqueTopicName(t)

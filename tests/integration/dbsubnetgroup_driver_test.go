@@ -13,6 +13,7 @@ import (
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
+	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -175,6 +176,61 @@ func TestDBSubnetGroupDelete_Removes(t *testing.T) {
 		DBSubnetGroupName: aws.String(name),
 	})
 	require.Error(t, err, "subnet group should be gone")
+}
+
+// Note: description drift cannot be exercised against Moto — its
+// ModifyDBSubnetGroup handler accepts the change but the group is no longer
+// returned by DescribeDBSubnetGroups afterwards (the resource effectively
+// vanishes). Tags are the other mutable field HasDrift compares, and Moto
+// persists AddTagsToResource, so tag drift is used here.
+func TestDBSubnetGroupReconcile_DetectsTagDrift(t *testing.T) {
+	client, rdsClient, ec2Client := setupDBSubnetGroupDriver(t)
+	name := uniqueSubnetGroupName(t)
+	subnetIds := getDefaultSubnetIds(t, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	outputs, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+		client, "DBSubnetGroup", key, "Provision",
+	).Request(t.Context(), dbsubnetgroup.DBSubnetGroupSpec{
+		Account:     integrationAccountName,
+		Region:      "us-east-1",
+		GroupName:   name,
+		Description: "Integration test subnet group",
+		SubnetIds:   subnetIds[:2],
+		Tags:        map[string]string{"env": "test"},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.ARN)
+
+	// Externally overwrite a tag value to introduce drift.
+	_, err = rdsClient.AddTagsToResource(context.Background(), &rdssdk.AddTagsToResourceInput{
+		ResourceName: aws.String(outputs.ARN),
+		Tags:         []rdstypes.Tag{{Key: aws.String("env"), Value: aws.String("hacked")}},
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	tagsOut, err := rdsClient.ListTagsForResource(context.Background(), &rdssdk.ListTagsForResourceInput{
+		ResourceName: aws.String(outputs.ARN),
+	})
+	require.NoError(t, err)
+	if tagValue(tagsOut.TagList, "env") != "hacked" {
+		t.Skip("Moto does not apply AddTagsToResource to DB subnet groups")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "DBSubnetGroup", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	tagsOut, err = rdsClient.ListTagsForResource(context.Background(), &rdssdk.ListTagsForResourceInput{
+		ResourceName: aws.String(outputs.ARN),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "test", tagValue(tagsOut.TagList, "env"), "tag should be restored to desired value")
 }
 
 func TestDBSubnetGroupGetStatus_ReturnsReady(t *testing.T) {

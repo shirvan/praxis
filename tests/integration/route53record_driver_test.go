@@ -201,6 +201,137 @@ func TestRoute53RecordDelete_RemovesRecord(t *testing.T) {
 	}
 }
 
+func TestRoute53RecordReconcile_DetectsTTLDrift(t *testing.T) {
+	client, r53Client := setupRoute53RecordDriver(t)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+	recordName := fmt.Sprintf("drift-%d.%s", time.Now().UnixNano()%100000, zoneName)
+	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
+
+	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+		client, route53record.ServiceName, key, "Provision",
+	).Request(t.Context(), route53record.RecordSpec{
+		Account:         integrationAccountName,
+		HostedZoneId:    zoneID,
+		Name:            recordName,
+		Type:            "A",
+		TTL:             300,
+		ResourceRecords: []string{"1.2.3.4"},
+	})
+	require.NoError(t, err)
+
+	// Externally change the TTL to introduce drift.
+	_, err = r53Client.ChangeResourceRecordSets(context.Background(), &route53sdk.ChangeResourceRecordSetsInput{
+		HostedZoneId: aws.String(zoneID),
+		ChangeBatch: &route53types.ChangeBatch{
+			Changes: []route53types.Change{{
+				Action: route53types.ChangeActionUpsert,
+				ResourceRecordSet: &route53types.ResourceRecordSet{
+					Name:            aws.String(recordName),
+					Type:            route53types.RRTypeA,
+					TTL:             aws.Int64(600),
+					ResourceRecords: []route53types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	if route53RecordTTL(t, r53Client, zoneID, recordName) != 600 {
+		t.Skip("Moto does not apply ChangeResourceRecordSets UPSERT TTL")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, route53record.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	assert.Equal(t, int64(300), route53RecordTTL(t, r53Client, zoneID, recordName), "TTL should be restored to desired value")
+}
+
+// route53RecordTTL returns the TTL of the named A record in the zone, or 0 when absent.
+func route53RecordTTL(t *testing.T, r53Client *route53sdk.Client, zoneID, recordName string) int64 {
+	t.Helper()
+	listOut, err := r53Client.ListResourceRecordSets(context.Background(), &route53sdk.ListResourceRecordSetsInput{
+		HostedZoneId: aws.String(zoneID),
+	})
+	require.NoError(t, err)
+	for _, rr := range listOut.ResourceRecordSets {
+		if strings.TrimSuffix(aws.ToString(rr.Name), ".") == recordName && rr.Type == route53types.RRTypeA {
+			return aws.ToInt64(rr.TTL)
+		}
+	}
+	return 0
+}
+
+func TestRoute53RecordImport_FindsRecordBeyondFirstPage(t *testing.T) {
+	client, r53Client := setupRoute53RecordDriver(t)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+
+	// Fill the zone with 120 A records that all sort before the target so the
+	// target lands beyond the driver's 100-item ListResourceRecordSets page.
+	const fillerCount = 120
+	const batchSize = 50
+	for start := 0; start < fillerCount; start += batchSize {
+		end := start + batchSize
+		if end > fillerCount {
+			end = fillerCount
+		}
+		changes := make([]route53types.Change, 0, end-start)
+		for i := start; i < end; i++ {
+			changes = append(changes, route53types.Change{
+				Action: route53types.ChangeActionCreate,
+				ResourceRecordSet: &route53types.ResourceRecordSet{
+					Name:            aws.String(fmt.Sprintf("a-%03d.%s", i, zoneName)),
+					Type:            route53types.RRTypeA,
+					TTL:             aws.Int64(300),
+					ResourceRecords: []route53types.ResourceRecord{{Value: aws.String("10.0.0.1")}},
+				},
+			})
+		}
+		_, err := r53Client.ChangeResourceRecordSets(context.Background(), &route53sdk.ChangeResourceRecordSetsInput{
+			HostedZoneId: aws.String(zoneID),
+			ChangeBatch:  &route53types.ChangeBatch{Changes: changes},
+		})
+		require.NoError(t, err)
+	}
+
+	// Create the target record whose name sorts after every filler record.
+	targetName := fmt.Sprintf("zzz-last.%s", zoneName)
+	_, err := r53Client.ChangeResourceRecordSets(context.Background(), &route53sdk.ChangeResourceRecordSetsInput{
+		HostedZoneId: aws.String(zoneID),
+		ChangeBatch: &route53types.ChangeBatch{
+			Changes: []route53types.Change{{
+				Action: route53types.ChangeActionCreate,
+				ResourceRecordSet: &route53types.ResourceRecordSet{
+					Name:            aws.String(targetName),
+					Type:            route53types.RRTypeA,
+					TTL:             aws.Int64(300),
+					ResourceRecords: []route53types.ResourceRecord{{Value: aws.String("9.9.9.9")}},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// Import observes via the driver's paginated DescribeRecord; it must find
+	// the record even though it is not on the first 100-item page.
+	key := fmt.Sprintf("%s~%s~A", zoneID, targetName)
+	outputs, err := ingress.Object[types.ImportRef, route53record.RecordOutputs](
+		client, route53record.ServiceName, key, "Import",
+	).Request(t.Context(), types.ImportRef{
+		ResourceID: fmt.Sprintf("%s~%s~A", zoneID, targetName),
+		Account:    integrationAccountName,
+	})
+	require.NoError(t, err, "driver should find the record beyond the first ListResourceRecordSets page")
+	assert.Equal(t, zoneID, outputs.HostedZoneId)
+	assert.Equal(t, targetName, outputs.FQDN)
+	assert.Equal(t, "A", outputs.Type)
+}
+
 func TestRoute53RecordGetStatus_ReturnsReady(t *testing.T) {
 	client, r53Client := setupRoute53RecordDriver(t)
 	zoneID, zoneName := createTestHostedZone(t, r53Client)

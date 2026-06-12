@@ -120,6 +120,56 @@ func TestRoute53HealthCheckDelete_RemovesCheck(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRoute53HealthCheckReconcile_DetectsFailureThresholdDrift(t *testing.T) {
+	client, r53Client := setupRoute53HealthCheckDriver(t)
+	key := "integ-failure-threshold-drift"
+
+	outputs, err := ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+		client, route53healthcheck.ServiceName, key, "Provision",
+	).Request(t.Context(), route53healthcheck.HealthCheckSpec{
+		Account:          integrationAccountName,
+		Type:             "HTTP",
+		FQDN:             "example.com",
+		Port:             80,
+		ResourcePath:     "/health",
+		RequestInterval:  30,
+		FailureThreshold: 3,
+		Tags:             map[string]string{},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.HealthCheckId)
+
+	// Externally change the failure threshold to introduce drift.
+	_, err = r53Client.UpdateHealthCheck(context.Background(), &route53sdk.UpdateHealthCheckInput{
+		HealthCheckId:    aws.String(outputs.HealthCheckId),
+		FailureThreshold: aws.Int32(5),
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	desc, err := r53Client.GetHealthCheck(context.Background(), &route53sdk.GetHealthCheckInput{
+		HealthCheckId: aws.String(outputs.HealthCheckId),
+	})
+	require.NoError(t, err)
+	if aws.ToInt32(desc.HealthCheck.HealthCheckConfig.FailureThreshold) != 5 {
+		t.Skip("Moto does not apply UpdateHealthCheck FailureThreshold")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, route53healthcheck.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	desc, err = r53Client.GetHealthCheck(context.Background(), &route53sdk.GetHealthCheckInput{
+		HealthCheckId: aws.String(outputs.HealthCheckId),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), aws.ToInt32(desc.HealthCheck.HealthCheckConfig.FailureThreshold), "failure threshold should be restored to desired value")
+}
+
 func TestRoute53HealthCheckGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupRoute53HealthCheckDriver(t)
 	key := "integ-status-check"

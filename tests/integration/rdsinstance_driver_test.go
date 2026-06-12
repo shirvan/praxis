@@ -199,6 +199,63 @@ func TestRDSInstanceDelete_ObservedModeBlocked(t *testing.T) {
 	assert.Contains(t, err.Error(), "Observed mode")
 }
 
+func TestRDSInstanceReconcile_DetectsBackupRetentionDrift(t *testing.T) {
+	client, rdsClient := setupRDSInstanceDriver(t)
+	name := uniqueDBInstanceName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	_, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+		client, "RDSInstance", key, "Provision",
+	).Request(t.Context(), rdsinstance.RDSInstanceSpec{
+		Account:               integrationAccountName,
+		Region:                "us-east-1",
+		DBIdentifier:          name,
+		Engine:                "mysql",
+		EngineVersion:         "8.0",
+		InstanceClass:         "db.t3.micro",
+		AllocatedStorage:      20,
+		StorageType:           "gp3",
+		MasterUsername:        "admin",
+		MasterUserPassword:    "TestPass1234!",
+		BackupRetentionPeriod: 7,
+		Tags:                  map[string]string{"env": "test"},
+	})
+	require.NoError(t, err)
+
+	// Externally change the backup retention period to introduce drift.
+	_, err = rdsClient.ModifyDBInstance(context.Background(), &rdssdk.ModifyDBInstanceInput{
+		DBInstanceIdentifier:  aws.String(name),
+		BackupRetentionPeriod: aws.Int32(14),
+		ApplyImmediately:      aws.Bool(true),
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	desc, err := rdsClient.DescribeDBInstances(context.Background(), &rdssdk.DescribeDBInstancesInput{
+		DBInstanceIdentifier: aws.String(name),
+	})
+	require.NoError(t, err)
+	require.Len(t, desc.DBInstances, 1)
+	if aws.ToInt32(desc.DBInstances[0].BackupRetentionPeriod) != 14 {
+		t.Skip("Moto does not apply ModifyDBInstance BackupRetentionPeriod")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "RDSInstance", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	desc, err = rdsClient.DescribeDBInstances(context.Background(), &rdssdk.DescribeDBInstancesInput{
+		DBInstanceIdentifier: aws.String(name),
+	})
+	require.NoError(t, err)
+	require.Len(t, desc.DBInstances, 1)
+	assert.Equal(t, int32(7), aws.ToInt32(desc.DBInstances[0].BackupRetentionPeriod), "backup retention should be restored to desired value")
+}
+
 func TestRDSInstanceGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupRDSInstanceDriver(t)
 	name := uniqueDBInstanceName(t)

@@ -161,6 +161,60 @@ func TestAuroraClusterDelete_Removes(t *testing.T) {
 	require.Error(t, err, "cluster should be gone")
 }
 
+func TestAuroraClusterReconcile_DetectsBackupRetentionDrift(t *testing.T) {
+	client, rdsClient := setupAuroraClusterDriver(t)
+	name := uniqueClusterName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	_, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+		client, "AuroraCluster", key, "Provision",
+	).Request(t.Context(), auroracluster.AuroraClusterSpec{
+		Account:               integrationAccountName,
+		Region:                "us-east-1",
+		ClusterIdentifier:     name,
+		Engine:                "aurora-mysql",
+		EngineVersion:         "8.0.mysql_aurora.3.04.0",
+		MasterUsername:        "admin",
+		MasterUserPassword:    "TestPass1234!",
+		BackupRetentionPeriod: 7,
+		Tags:                  map[string]string{"env": "test"},
+	})
+	require.NoError(t, err)
+
+	// Externally change the backup retention period to introduce drift.
+	_, err = rdsClient.ModifyDBCluster(context.Background(), &rdssdk.ModifyDBClusterInput{
+		DBClusterIdentifier:   aws.String(name),
+		BackupRetentionPeriod: aws.Int32(14),
+		ApplyImmediately:      aws.Bool(true),
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	desc, err := rdsClient.DescribeDBClusters(context.Background(), &rdssdk.DescribeDBClustersInput{
+		DBClusterIdentifier: aws.String(name),
+	})
+	require.NoError(t, err)
+	require.Len(t, desc.DBClusters, 1)
+	if aws.ToInt32(desc.DBClusters[0].BackupRetentionPeriod) != 14 {
+		t.Skip("Moto does not apply ModifyDBCluster BackupRetentionPeriod")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "AuroraCluster", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	desc, err = rdsClient.DescribeDBClusters(context.Background(), &rdssdk.DescribeDBClustersInput{
+		DBClusterIdentifier: aws.String(name),
+	})
+	require.NoError(t, err)
+	require.Len(t, desc.DBClusters, 1)
+	assert.Equal(t, int32(7), aws.ToInt32(desc.DBClusters[0].BackupRetentionPeriod), "backup retention should be restored to desired value")
+}
+
 func TestAuroraClusterGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupAuroraClusterDriver(t)
 	name := uniqueClusterName(t)
