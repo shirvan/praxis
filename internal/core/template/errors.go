@@ -90,6 +90,9 @@ func (e TemplateErrors) Error() string {
 	for _, te := range e {
 		b.WriteString("\n")
 		fmt.Fprintf(&b, "  %s\n", te.Path)
+		if te.PolicyName != "" {
+			fmt.Fprintf(&b, "  |-- violates policy %q\n", te.PolicyName)
+		}
 		if te.Source != "" {
 			fmt.Fprintf(&b, "  |-- %s\n", te.Source)
 		}

@@ -302,6 +302,7 @@ var kindScopes = map[string]keyScope{
 	"SNSTopic":             scopeRegion,
 	"SQSQueue":             scopeRegion,
 	"SQSQueuePolicy":       scopeRegion,
+	"SSMParameter":         scopeRegion,
 	"TargetGroup":          scopeRegion,
 	"VPC":                  scopeRegion,
 	"VPCPeeringConnection": scopeRegion,
