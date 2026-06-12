@@ -131,7 +131,7 @@ func TestLoadBootstrapFromEnv_Defaults(t *testing.T) {
 }
 
 func TestLoadBootstrapFromEnv_CustomValues(t *testing.T) {
-	t.Setenv("PRAXIS_ACCOUNT_NAME", "localstack")
+	t.Setenv("PRAXIS_ACCOUNT_NAME", "moto")
 	t.Setenv("PRAXIS_ACCOUNT_REGION", "eu-central-1")
 	t.Setenv("PRAXIS_ACCOUNT_CREDENTIAL_SOURCE", "static")
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
@@ -142,8 +142,8 @@ func TestLoadBootstrapFromEnv_CustomValues(t *testing.T) {
 
 	cfg := LoadBootstrapFromEnv()
 	require.NotNil(t, cfg)
-	require.Contains(t, cfg.Accounts, "localstack")
-	acc := cfg.Accounts["localstack"]
+	require.Contains(t, cfg.Accounts, "moto")
+	acc := cfg.Accounts["moto"]
 	assert.Equal(t, "eu-central-1", acc.Region)
 	assert.Equal(t, "static", acc.CredentialSource)
 	assert.Equal(t, "test", acc.AccessKeyID)

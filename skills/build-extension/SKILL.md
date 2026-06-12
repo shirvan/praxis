@@ -120,10 +120,11 @@ praxis-myextension:
     CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
 ```
 
-Register in Restate:
-```yaml
-localstack-init:
-  # add a curl to register the new deployment
+Register in Restate (one call to the admin API, same as `just register`):
+```bash
+curl -X POST http://localhost:9070/deployments \
+  -H 'content-type: application/json' \
+  -d '{"uri": "http://praxis-myextension:9085"}' | jq .
 ```
 
 ---

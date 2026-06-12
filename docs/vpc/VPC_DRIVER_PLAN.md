@@ -2186,7 +2186,7 @@ func setupVPCDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
     t.Helper()
     configureLocalAccount(t)
 
-    awsCfg := localstackAWSConfig(t)
+    awsCfg := motoAWSConfig(t)
     ec2Client := awsclient.NewEC2Client(awsCfg)
     driver := vpc.NewVPCDriver(nil)
 

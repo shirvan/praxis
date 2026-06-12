@@ -166,7 +166,7 @@ import (
 
 func setup{Resource}Driver(t *testing.T) (*ingress.Client, *awssdk.Client) {
     configureLocalAccount(t)  // Set PRAXIS_ACCOUNT_* env vars
-    awsCfg := localstackAWSConfig(t)
+    awsCfg := motoAWSConfig(t)
     awsClient := awsclient.New{Service}Client(awsCfg)
     driver := {resource}.New{Resource}Driver(nil)
     env := restatetest.Start(t, restate.Reflect(driver))

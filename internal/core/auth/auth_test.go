@@ -14,7 +14,7 @@ func TestLoadFromEnv_StaticAccount(t *testing.T) {
 	t.Setenv("PRAXIS_ACCOUNT_CREDENTIAL_SOURCE", CredentialSourceStatic)
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test-key")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test-secret")
-	t.Setenv("AWS_ENDPOINT_URL", "http://localstack:4566")
+	t.Setenv("AWS_ENDPOINT_URL", "http://moto:4566")
 
 	registry := LoadFromEnv()
 	account, err := registry.Lookup("")
@@ -25,7 +25,7 @@ func TestLoadFromEnv_StaticAccount(t *testing.T) {
 	assert.Equal(t, CredentialSourceStatic, account.CredentialSource)
 	assert.Equal(t, "test-key", account.AccessKeyID)
 	assert.Equal(t, "test-secret", account.SecretAccessKey)
-	assert.Equal(t, "http://localstack:4566", account.EndpointURL)
+	assert.Equal(t, "http://moto:4566", account.EndpointURL)
 
 	cfg, err := registry.Resolve("")
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestLoadFromEnv_StaticAccount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, aws.Credentials{AccessKeyID: "test-key", SecretAccessKey: "test-secret", Source: "StaticCredentials"}, creds)
 	require.NotNil(t, cfg.BaseEndpoint)
-	assert.Equal(t, "http://localstack:4566", *cfg.BaseEndpoint)
+	assert.Equal(t, "http://moto:4566", *cfg.BaseEndpoint)
 	assert.Equal(t, "us-west-2", cfg.Region)
 }
 
