@@ -127,6 +127,29 @@ func TestSNSTopic_Delete(t *testing.T) {
 	require.Error(t, err, "topic should be deleted from Moto")
 }
 
+func TestSNSTopicDelete_ObservedModeBlocked(t *testing.T) {
+	client, snsClient := setupSNSTopicDriver(t)
+	topicName := uniqueTopicName(t)
+
+	// Create topic directly in Moto
+	created, err := snsClient.CreateTopic(context.Background(), &snssdk.CreateTopicInput{
+		Name: aws.String(topicName),
+	})
+	require.NoError(t, err)
+
+	key := fmt.Sprintf("us-east-1~%s", topicName)
+	_, err = ingress.Object[types.ImportRef, snstopic.SNSTopicOutputs](
+		client, snstopic.ServiceName, key, "Import",
+	).Request(t.Context(), types.ImportRef{ResourceID: aws.ToString(created.TopicArn), Account: integrationAccountName})
+	require.NoError(t, err)
+
+	_, err = ingress.Object[restate.Void, restate.Void](
+		client, snstopic.ServiceName, key, "Delete",
+	).Request(t.Context(), restate.Void{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Observed mode")
+}
+
 func TestSNSTopic_Reconcile_DetectsDisplayNameDrift(t *testing.T) {
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
@@ -158,6 +181,13 @@ func TestSNSTopic_Reconcile_DetectsDisplayNameDrift(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "drift should be detected")
 	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	// Verify the display name was restored to the desired value
+	attrs, err := snsClient.GetTopicAttributes(context.Background(), &snssdk.GetTopicAttributesInput{
+		TopicArn: aws.String(outputs.TopicArn),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Original Name", attrs.Attributes["DisplayName"], "display name should be restored to desired value")
 }
 
 func TestSNSTopic_GetStatus(t *testing.T) {

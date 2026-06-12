@@ -172,6 +172,33 @@ func TestRDSInstanceDelete_Removes(t *testing.T) {
 	require.Error(t, err, "instance should be gone")
 }
 
+func TestRDSInstanceDelete_ObservedModeBlocked(t *testing.T) {
+	client, rdsClient := setupRDSInstanceDriver(t)
+	name := uniqueDBInstanceName(t)
+
+	_, err := rdsClient.CreateDBInstance(context.Background(), &rdssdk.CreateDBInstanceInput{
+		DBInstanceIdentifier: aws.String(name),
+		DBInstanceClass:      aws.String("db.t3.micro"),
+		Engine:               aws.String("mysql"),
+		MasterUsername:       aws.String("admin"),
+		MasterUserPassword:   aws.String("TestPass1234!"),
+		AllocatedStorage:     aws.Int32(20),
+	})
+	require.NoError(t, err)
+
+	key := fmt.Sprintf("us-east-1~%s", name)
+	_, err = ingress.Object[types.ImportRef, rdsinstance.RDSInstanceOutputs](
+		client, "RDSInstance", key, "Import",
+	).Request(t.Context(), types.ImportRef{ResourceID: name, Account: integrationAccountName})
+	require.NoError(t, err)
+
+	_, err = ingress.Object[restate.Void, restate.Void](
+		client, "RDSInstance", key, "Delete",
+	).Request(t.Context(), restate.Void{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Observed mode")
+}
+
 func TestRDSInstanceGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupRDSInstanceDriver(t)
 	name := uniqueDBInstanceName(t)

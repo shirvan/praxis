@@ -135,6 +135,25 @@ func TestGetCmd_Resource(t *testing.T) {
 	require.GreaterOrEqual(t, len(paths), 1)
 }
 
+// Canonical resource keys may contain slashes (e.g. hierarchical log group or
+// SSM parameter names). The ingress client splices the key into the URL path
+// verbatim, so the CLI must percent-encode it — otherwise the key's slashes
+// are parsed as extra path segments and Restate rejects the request.
+func TestGetCmd_Resource_SlashKeyIsEscaped(t *testing.T) {
+	var escapedPaths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		escapedPaths = append(escapedPaths, r.URL.EscapedPath())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "Ready"})
+	}))
+	defer srv.Close()
+
+	_, _, err := executeCmd(t, []string{"get", "LogGroup/us-east-1~/aws/lambda/app"}, srv.URL)
+	require.NoError(t, err)
+	require.NotEmpty(t, escapedPaths)
+	assert.Equal(t, "/LogGroup/us-east-1~%2Faws%2Flambda%2Fapp/GetStatus", escapedPaths[0])
+}
+
 // ---------------------------------------------------------------------------
 // delete
 // ---------------------------------------------------------------------------

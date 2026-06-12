@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/shirvan/praxis/internal/core/authservice"
 
@@ -128,4 +129,80 @@ func TestRouteTableImport_Existing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, routeTableID, outputs.RouteTableId)
 	assert.Equal(t, vpcID, outputs.VpcId)
+}
+
+func TestRouteTableDelete_Removes(t *testing.T) {
+	client, ec2Client := setupRouteTableDriverIntegration(t)
+	vpcID := createRouteTableTestVPC(t, ec2Client, "10.33.0.0/16")
+	igwID := createInternetGateway(t, ec2Client, vpcID)
+	name := uniqueRouteTableName(t)
+	key := fmt.Sprintf("%s~%s", vpcID, name)
+
+	outputs, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+		Account:    integrationAccountName,
+		Region:     "us-east-1",
+		VpcId:      vpcID,
+		ManagedKey: key,
+		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
+		Tags:       map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.RouteTableId)
+
+	_, err = ingress.Object[restate.Void, restate.Void](client, routetable.ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+
+	desc, err := ec2Client.DescribeRouteTables(context.Background(), &ec2sdk.DescribeRouteTablesInput{RouteTableIds: []string{outputs.RouteTableId}})
+	if err != nil {
+		assert.Contains(t, err.Error(), "InvalidRouteTableID", "describe should fail with not-found for deleted route table")
+	} else {
+		assert.Empty(t, desc.RouteTables, "route table should be deleted")
+	}
+}
+
+func TestRouteTableGetStatus_ReturnsReady(t *testing.T) {
+	client, ec2Client := setupRouteTableDriverIntegration(t)
+	vpcID := createRouteTableTestVPC(t, ec2Client, "10.34.0.0/16")
+	igwID := createInternetGateway(t, ec2Client, vpcID)
+	name := uniqueRouteTableName(t)
+	key := fmt.Sprintf("%s~%s", vpcID, name)
+
+	_, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+		Account:    integrationAccountName,
+		Region:     "us-east-1",
+		VpcId:      vpcID,
+		ManagedKey: key,
+		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
+		Tags:       map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+
+	status, err := ingress.Object[restate.Void, types.StatusResponse](client, routetable.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusReady, status.Status)
+	assert.Equal(t, types.ModeManaged, status.Mode)
+	assert.Greater(t, status.Generation, int64(0))
+}
+
+func TestRouteTableReconcile_NoDrift(t *testing.T) {
+	client, ec2Client := setupRouteTableDriverIntegration(t)
+	vpcID := createRouteTableTestVPC(t, ec2Client, "10.35.0.0/16")
+	igwID := createInternetGateway(t, ec2Client, vpcID)
+	name := uniqueRouteTableName(t)
+	key := fmt.Sprintf("%s~%s", vpcID, name)
+
+	_, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+		Account:    integrationAccountName,
+		Region:     "us-east-1",
+		VpcId:      vpcID,
+		ManagedKey: key,
+		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
+		Tags:       map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, routetable.ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.False(t, result.Drift, "freshly provisioned route table should have no drift")
+	assert.Empty(t, result.Error)
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1131,6 +1132,42 @@ func exampleCases() []exampleCase {
 			vars:         map[string]any{"name": "analytics", "environment": "dev"},
 			minResources: 7,
 		},
+		{
+			name: "stacks/end-to-end",
+			path: "examples/stacks/end-to-end.cue",
+			vars: map[string]any{
+				"name":        "e2e",
+				"environment": "dev",
+				"domainName":  "e2e.example.com",
+			},
+			minResources: 10,
+		},
+	}
+}
+
+// TestEngine_ExampleCases_CoverAllExamples fails when a template under
+// examples/ has no exampleCases entry, so new or renamed examples cannot
+// silently escape schema validation (examples/policies are CUE policy files,
+// not resource templates, and are validated by the policy engine instead).
+func TestEngine_ExampleCases_CoverAllExamples(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	require.NoError(t, err)
+	files, err := filepath.Glob(filepath.Join(root, "examples", "*", "*.cue"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	covered := make(map[string]bool)
+	for _, tc := range exampleCases() {
+		covered[tc.path] = true
+	}
+	for _, file := range files {
+		rel, err := filepath.Rel(root, file)
+		require.NoError(t, err)
+		rel = filepath.ToSlash(rel)
+		if strings.HasPrefix(rel, "examples/policies/") {
+			continue
+		}
+		assert.True(t, covered[rel], "%s has no exampleCases entry — add one so it is validated against the schemas", rel)
 	}
 }
 
