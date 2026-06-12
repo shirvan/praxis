@@ -276,6 +276,36 @@ func TestTargetGroupDeleteObservedBlocked(t *testing.T) {
 	assert.Contains(t, err.Error(), "Observed mode")
 }
 
+func TestTargetGroupProvision_ImmutableConflict(t *testing.T) {
+	client, _, ec2Client := setupTargetGroupDriver(t)
+	name := uniqueTGName(t)
+	vpcId := tgDefaultVpcId(t, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	spec := targetgroup.TargetGroupSpec{
+		Account:  integrationAccountName,
+		Region:   "us-east-1",
+		Name:     name,
+		Protocol: "HTTP",
+		Port:     8080,
+		VpcId:    vpcId,
+		Tags:     map[string]string{"Name": name},
+	}
+
+	_, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+		client, "TargetGroup", key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+
+	// Re-provision the same key with a changed immutable field (Port)
+	spec.Port = 9090
+	_, err = ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+		client, "TargetGroup", key, "Provision",
+	).Request(t.Context(), spec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "immutable")
+}
+
 func TestTargetGroupGetStatus(t *testing.T) {
 	client, _, ec2Client := setupTargetGroupDriver(t)
 	name := uniqueTGName(t)

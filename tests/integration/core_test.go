@@ -551,6 +551,92 @@ resources: {
 //  4. Verify the S3 bucket was actually created in Moto
 //  5. Verify the deployment state contains the correct resource outputs
 //  6. Verify the deployment appears in the global listing index
+//
+// TestCore_Plan_FieldDiffContent verifies that plan output carries field-level
+// old/new values for updates — not just summary counts. A plan that reports
+// ToUpdate=1 with wrong or empty field diffs would mislead every `praxis plan`
+// review, so the content itself is the contract.
+func TestCore_Plan_FieldDiffContent(t *testing.T) {
+	env := setupCoreStack(t)
+	bucketName := uniqueName(t, "fd")
+	deployKey := "test-fielddiff-" + bucketName
+
+	_, err := ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      simpleS3Template(bucketName),
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+	})
+	require.NoError(t, err)
+	pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete}, 60*time.Second)
+
+	// Same bucket, one mutated field: versioning true -> false.
+	changed := strings.Replace(simpleS3Template(bucketName), "versioning: true", "versioning: false", 1)
+	require.NotEqual(t, simpleS3Template(bucketName), changed)
+
+	resp, err := ingress.Service[command.PlanRequest, command.PlanResponse](
+		env.ingress, "PraxisCommandService", "Plan",
+	).Request(t.Context(), command.PlanRequest{
+		Template:      changed,
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Plan)
+	assert.Equal(t, 1, resp.Plan.Summary.ToUpdate, "exactly the bucket should be an update")
+	assert.Equal(t, 0, resp.Plan.Summary.ToCreate)
+
+	var bucketDiff *types.ResourceDiff
+	for i := range resp.Plan.Resources {
+		if resp.Plan.Resources[i].ResourceType == "S3Bucket" {
+			bucketDiff = &resp.Plan.Resources[i]
+		}
+	}
+	require.NotNil(t, bucketDiff, "plan should contain the S3Bucket resource diff")
+	require.Equal(t, types.OpUpdate, bucketDiff.Operation)
+
+	found := false
+	for _, fd := range bucketDiff.FieldDiffs {
+		if strings.Contains(fd.Path, "versioning") {
+			found = true
+			// The S3 driver reports versioning in the S3 API's native terms.
+			assert.Equal(t, "Enabled", fd.OldValue, "old value should be the live setting")
+			assert.Equal(t, "Suspended", fd.NewValue, "new value should be the desired setting")
+		}
+	}
+	assert.True(t, found, "field diffs should include the versioning change, got %+v", bucketDiff.FieldDiffs)
+}
+
+// TestCore_Apply_SubmitGuardRejectsBusyDeployment verifies the submit guard:
+// applying onto a deployment key that is currently Pending/Running/Deleting
+// must be rejected with a conflict instead of racing the in-flight workflow.
+func TestCore_Apply_SubmitGuardRejectsBusyDeployment(t *testing.T) {
+	env := setupCoreStack(t)
+	deployKey := "test-submit-guard-" + uniqueName(t, "dep")
+
+	// InitDeployment puts the deployment state into Pending without running
+	// a workflow — a deterministic stand-in for an in-flight deployment.
+	_, err := ingress.Object[orchestrator.DeploymentPlan, int64](
+		env.ingress, orchestrator.DeploymentStateServiceName, deployKey, "InitDeployment",
+	).Request(t.Context(), orchestrator.DeploymentPlan{
+		Key:       deployKey,
+		CreatedAt: time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	_, err = ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      simpleS3Template(uniqueName(t, "guard")),
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+	})
+	require.Error(t, err, "apply onto a busy deployment must be rejected")
+	assert.Contains(t, err.Error(), "409")
+}
+
 func TestCore_Apply_SingleS3(t *testing.T) {
 	env := setupCoreStack(t)
 	bucketName := uniqueName(t, "s3e2e")

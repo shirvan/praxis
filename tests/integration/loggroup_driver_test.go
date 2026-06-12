@@ -158,6 +158,28 @@ func TestLogGroupDelete_RemovesLogGroup(t *testing.T) {
 	}
 }
 
+func TestLogGroupDelete_ObservedModeBlocked(t *testing.T) {
+	client, cwClient := setupLogGroupDriver(t)
+	name := uniqueLogGroupName(t)
+
+	_, err := cwClient.CreateLogGroup(context.Background(), &cwlogssdk.CreateLogGroupInput{
+		LogGroupName: aws.String(name),
+	})
+	require.NoError(t, err)
+
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
+	_, err = ingress.Object[types.ImportRef, loggroup.LogGroupOutputs](
+		client, loggroup.ServiceName, key, "Import",
+	).Request(t.Context(), types.ImportRef{ResourceID: name, Account: integrationAccountName})
+	require.NoError(t, err)
+
+	_, err = ingress.Object[restate.Void, restate.Void](
+		client, loggroup.ServiceName, key, "Delete",
+	).Request(t.Context(), restate.Void{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Observed mode")
+}
+
 func TestLogGroupReconcile_DetectsRetentionDrift(t *testing.T) {
 	client, cwClient := setupLogGroupDriver(t)
 	name := uniqueLogGroupName(t)
@@ -187,4 +209,12 @@ func TestLogGroupReconcile_DetectsRetentionDrift(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "drift should be detected")
 	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	// Verify the retention was restored to the desired value
+	desc, err := cwClient.DescribeLogGroups(context.Background(), &cwlogssdk.DescribeLogGroupsInput{
+		LogGroupNamePrefix: aws.String(name),
+	})
+	require.NoError(t, err)
+	require.Len(t, desc.LogGroups, 1)
+	require.Equal(t, int32(14), aws.ToInt32(desc.LogGroups[0].RetentionInDays), "retention should be restored to desired value")
 }

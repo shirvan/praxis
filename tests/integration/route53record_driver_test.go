@@ -115,11 +115,55 @@ func TestRoute53RecordProvision_UpdatesTTL(t *testing.T) {
 		HostedZoneId: aws.String(zoneID),
 	})
 	require.NoError(t, err)
+	found := false
 	for _, rr := range listOut.ResourceRecordSets {
 		if strings.TrimSuffix(aws.ToString(rr.Name), ".") == recordName && rr.Type == route53types.RRTypeA {
+			found = true
 			assert.Equal(t, int64(60), aws.ToInt64(rr.TTL))
 		}
 	}
+	assert.True(t, found, "A record should exist in hosted zone")
+}
+
+func TestRoute53RecordImport_ExistingRecord(t *testing.T) {
+	client, r53Client := setupRoute53RecordDriver(t)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+	recordName := fmt.Sprintf("import-%d.%s", time.Now().UnixNano()%100000, zoneName)
+
+	// Create the record directly via the raw Route53 client
+	_, err := r53Client.ChangeResourceRecordSets(context.Background(), &route53sdk.ChangeResourceRecordSetsInput{
+		HostedZoneId: aws.String(zoneID),
+		ChangeBatch: &route53types.ChangeBatch{
+			Changes: []route53types.Change{{
+				Action: route53types.ChangeActionCreate,
+				ResourceRecordSet: &route53types.ResourceRecordSet{
+					Name:            aws.String(recordName),
+					Type:            route53types.RRTypeA,
+					TTL:             aws.Int64(300),
+					ResourceRecords: []route53types.ResourceRecord{{Value: aws.String("5.6.7.8")}},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
+	outputs, err := ingress.Object[types.ImportRef, route53record.RecordOutputs](
+		client, route53record.ServiceName, key, "Import",
+	).Request(t.Context(), types.ImportRef{
+		ResourceID: fmt.Sprintf("%s~%s~A", zoneID, recordName),
+		Account:    integrationAccountName,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, zoneID, outputs.HostedZoneId)
+	assert.Equal(t, recordName, outputs.FQDN)
+	assert.Equal(t, "A", outputs.Type)
+
+	status, err := ingress.Object[restate.Void, types.StatusResponse](
+		client, route53record.ServiceName, key, "GetStatus",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, types.ModeObserved, status.Mode)
 }
 
 func TestRoute53RecordDelete_RemovesRecord(t *testing.T) {
