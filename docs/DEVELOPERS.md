@@ -320,7 +320,7 @@ just test-integration
 # Core integration tests (Restate + Moto — deploys, plans, deletes, events)
 just test-core-integration
 
-# Full lifecycle tests (all 45 drivers, saas-platform.cue — requires Docker)
+# Full lifecycle tests (all 46 drivers, saas-platform.cue — requires Docker)
 just test-lifecycle
 
 # Full local CI (lint → unit → integration)

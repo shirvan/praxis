@@ -22,6 +22,7 @@ import (
 	"github.com/shirvan/praxis/internal/drivers/snstopic"
 	"github.com/shirvan/praxis/internal/drivers/sqs"
 	"github.com/shirvan/praxis/internal/drivers/sqspolicy"
+	"github.com/shirvan/praxis/internal/drivers/ssmparameter"
 )
 
 func main() {
@@ -39,7 +40,8 @@ func main() {
 		Bind(restate.Reflect(snstopic.NewSNSTopicDriver(auth), rp)).
 		Bind(restate.Reflect(snssub.NewSNSSubscriptionDriver(auth), rp)).
 		Bind(restate.Reflect(sqs.NewSQSQueueDriver(auth), rp)).
-		Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth), rp))
+		Bind(restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(auth), rp)).
+		Bind(restate.Reflect(ssmparameter.NewSSMParameterDriver(auth), rp))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
