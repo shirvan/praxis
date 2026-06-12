@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,9 +47,59 @@ const (
 // tests use.
 type TestEnvironment struct {
 	ingressClient *ingress.Client
+	container     testcontainers.Container
 }
 
 func (e *TestEnvironment) Ingress() *ingress.Client { return e.ingressClient }
+
+// RestartRestate stops and restarts the Restate container in place. Container
+// state (the journal and K/V store under /restate-data) and the host port
+// bindings survive a stop/start cycle, so in-flight invocations resume from
+// their journals once the server is healthy again. Crash-resume tests use
+// this to verify Praxis's durability promise.
+func (e *TestEnvironment) RestartRestate(t *testing.T) {
+	t.Helper()
+	// Plain docker stop/start instead of the testcontainers Stop/Start
+	// methods: those re-run lifecycle hooks, and the host-port-access hook
+	// tears down (and fails to re-establish) the SSH forwarder that lets the
+	// container reach the SDK server on the host. A raw restart preserves the
+	// container's state, port bindings, and the forwarder session.
+	id := e.container.GetContainerID()
+	stop := exec.Command("docker", "stop", "-t", "10", id)
+	out, err := stop.CombinedOutput()
+	require.NoError(t, err, "docker stop: %s", out)
+	start := exec.Command("docker", "start", id)
+	out, err = start.CombinedOutput()
+	require.NoError(t, err, "docker start: %s", out)
+
+	mappedAdmin, err := e.container.MappedPort(t.Context(), adminPort)
+	require.NoError(t, err)
+	mappedIngress, err := e.container.MappedPort(t.Context(), ingressPort)
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(startupDeadline)
+	for _, probe := range []string{
+		fmt.Sprintf("http://localhost:%d/health", mappedAdmin.Int()),
+		fmt.Sprintf("http://localhost:%d/restate/health", mappedIngress.Int()),
+	} {
+		for {
+			res, err := http.Get(probe) //nolint:noctx // bounded by the deadline loop
+			if err == nil {
+				_ = res.Body.Close()
+				if res.StatusCode == http.StatusOK {
+					break
+				}
+			}
+			require.True(t, time.Now().Before(deadline), "restate did not become healthy after restart (probe %s)", probe)
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	// Docker assigns fresh ephemeral host ports on restart, so any ingress
+	// client created before the restart points at a dead port. Re-bind; tests
+	// must re-fetch the client via Ingress() after calling RestartRestate.
+	e.ingressClient = ingress.NewClient(fmt.Sprintf("http://localhost:%d", mappedIngress.Int()))
+}
 
 // Start mirrors the signature of the SDK's testing.Start so call sites only
 // swap the import path.
@@ -133,5 +184,6 @@ func Start(t *testing.T, services ...restate.ServiceDefinition) *TestEnvironment
 
 	return &TestEnvironment{
 		ingressClient: ingress.NewClient(fmt.Sprintf("http://localhost:%d", mappedIngress.Int())),
+		container:     restateC,
 	}
 }
