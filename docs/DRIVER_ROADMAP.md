@@ -6,7 +6,7 @@ This document tracks current and available AWS driver coverage. Driver priority 
 
 ## Currently Available
 
-45 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, observability, container registry management, and messaging.
+46 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, observability, container registry management, messaging, and configuration management.
 
 | Pack | Driver | Resource Types | Key Scope |
 |---|---|---|---|
@@ -47,6 +47,7 @@ This document tracks current and available AWS driver coverage. Driver priority 
 | | SNS Subscription | SNS subscriptions | Custom (`region~subscriptionName`) |
 | | SQS Queue | SQS queues | Region (`region~queueName`) |
 | | SQS Queue Policy | SQS queue resource policies | Region (`region~queueName`) |
+| | SSM Parameter | SSM Parameter Store parameters | Region (`region~paramName`) |
 | **Monitoring** | Log Group | CloudWatch log groups | Region (`region~logGroupName`) |
 | | Metric Alarm | CloudWatch metric alarms | Region (`region~alarmName`) |
 | | Dashboard | CloudWatch dashboards | Region (`region~dashboardName`) |
@@ -69,21 +70,20 @@ Ranking is based on two independent signals, collected June 2026:
 
 ### Tier 1 — Core Platform Services
 
-Services present in most production AWS accounts. The EKS Terraform module is the third most-downloaded AWS module overall (157M); KMS (121M), DynamoDB (31M/32M npm), and Secrets Manager (34.5M npm — the highest runtime signal of any candidate) are similarly ubiquitous. SSM Parameter is placed here ahead of its raw signal because Praxis already resolves `ssm://` references natively — managing the parameters it reads closes the loop.
+Services present in most production AWS accounts. The EKS Terraform module is the third most-downloaded AWS module overall (157M); KMS (121M), DynamoDB (31M/32M npm), and Secrets Manager (34.5M npm — the highest runtime signal of any candidate) are similarly ubiquitous.
 
 | # | Driver | Resource Types | Key Scope |
 |---|---|---|---|
 | 1 | **EKS** | Clusters, managed node groups, Fargate profiles, add-ons | Region (`region~clusterName`) |
 | 2 | **KMS** | Keys, aliases, grants, key policies | Region (`region~keyAlias`) |
 | 3 | **Secrets Manager** | Secrets, versions, rotation configuration | Region (`region~secretName`) |
-| 4 | **SSM Parameter** | Parameters, documents | Region (`region~paramName`) |
-| 5 | **DynamoDB** | Tables, global tables, global secondary indexes | Region (`region~tableName`) |
-| 6 | **ECS** | Clusters, services, task definitions, capacity providers | Region (`region~clusterName`) |
-| 7 | **CloudFront** | Distributions, OAC, cache policies, functions | Global (`distributionId`) |
-| 8 | **EventBridge** | Event buses, rules, targets, pipes, schedules | Region (`region~busName`) |
-| 9 | **Auto Scaling** | Groups, policies, scheduled actions, launch configurations | Region (`region~asgName`) |
-| 10 | **Launch Template** | EC2 launch templates, versions | Region (`region~templateName`) |
-| 11 | **API Gateway** | REST APIs, HTTP APIs, stages, routes, authorizers | Region (`region~apiId`) |
+| 4 | **DynamoDB** | Tables, global tables, global secondary indexes | Region (`region~tableName`) |
+| 5 | **ECS** | Clusters, services, task definitions, capacity providers | Region (`region~clusterName`) |
+| 6 | **CloudFront** | Distributions, OAC, cache policies, functions | Global (`distributionId`) |
+| 7 | **EventBridge** | Event buses, rules, targets, pipes, schedules | Region (`region~busName`) |
+| 8 | **Auto Scaling** | Groups, policies, scheduled actions, launch configurations | Region (`region~asgName`) |
+| 9 | **Launch Template** | EC2 launch templates, versions | Region (`region~templateName`) |
+| 10 | **API Gateway** | REST APIs, HTTP APIs, stages, routes, authorizers | Region (`region~apiId`) |
 
 ### Tier 2 — Workflows, Data & Security
 
@@ -91,14 +91,14 @@ Services that complete identity, streaming, workflow, and security patterns. Kin
 
 | # | Driver | Resource Types | Key Scope |
 |---|---|---|---|
-| 12 | **Cognito** | User pools, identity pools, user pool clients, domains | Region (`region~poolName`) |
-| 13 | **Kinesis** | Data streams, Firehose delivery streams | Region (`region~streamName`) |
-| 14 | **Step Functions** | State machines, activities | Region (`region~stateMachineName`) |
-| 15 | **SES** | Domain identities, email identities, receipt rules, templates | Region (`region~identityName`) |
-| 16 | **ElastiCache** | Clusters, replication groups, parameter groups, subnet groups | Region (`region~clusterName`) |
-| 17 | **EFS** | File systems, mount targets, access points | Region (`region~fsName`) |
-| 18 | **WAFv2** | Web ACLs, rule groups, IP sets, regex pattern sets | Region/Global (`region~aclName`) |
-| 19 | **Bedrock** | Guardrails, knowledge bases, provisioned model throughput | Region (`region~resourceName`) |
+| 11 | **Cognito** | User pools, identity pools, user pool clients, domains | Region (`region~poolName`) |
+| 12 | **Kinesis** | Data streams, Firehose delivery streams | Region (`region~streamName`) |
+| 13 | **Step Functions** | State machines, activities | Region (`region~stateMachineName`) |
+| 14 | **SES** | Domain identities, email identities, receipt rules, templates | Region (`region~identityName`) |
+| 15 | **ElastiCache** | Clusters, replication groups, parameter groups, subnet groups | Region (`region~clusterName`) |
+| 16 | **EFS** | File systems, mount targets, access points | Region (`region~fsName`) |
+| 17 | **WAFv2** | Web ACLs, rule groups, IP sets, regex pattern sets | Region/Global (`region~aclName`) |
+| 18 | **Bedrock** | Guardrails, knowledge bases, provisioned model throughput | Region (`region~resourceName`) |
 
 ### Tier 3 — Enterprise Networking, CI/CD & Governance
 
@@ -106,29 +106,30 @@ Multi-account networking, deployment pipelines, analytics, and organizational go
 
 | # | Driver | Resource Types | Key Scope |
 |---|---|---|---|
-| 20 | **Transit Gateway** | Transit gateways, attachments, route tables, peering | Region (`region~tgwName`) |
-| 21 | **VPC Endpoints** | Interface/Gateway endpoints, endpoint services (PrivateLink) | Region (`region~endpointId`) |
-| 22 | **Athena** | Workgroups, data catalogs | Region (`region~workgroupName`) |
-| 23 | **CodeBuild** | Projects, webhooks, source credentials | Region (`region~projectName`) |
-| 24 | **CodePipeline** | Pipelines, webhooks, custom action types | Region (`region~pipelineName`) |
-| 25 | **CloudTrail** | Trails, event data stores | Region (`region~trailName`) |
-| 26 | **Organizations** | Accounts, OUs, policies, SCPs, delegated admins | Global (`orgId`) |
-| 27 | **Glue** | Catalog databases, tables, crawlers, jobs, connections | Region (`region~resourceName`) |
+| 19 | **Transit Gateway** | Transit gateways, attachments, route tables, peering | Region (`region~tgwName`) |
+| 20 | **VPC Endpoints** | Interface/Gateway endpoints, endpoint services (PrivateLink) | Region (`region~endpointId`) |
+| 21 | **Athena** | Workgroups, data catalogs | Region (`region~workgroupName`) |
+| 22 | **CodeBuild** | Projects, webhooks, source credentials | Region (`region~projectName`) |
+| 23 | **CodePipeline** | Pipelines, webhooks, custom action types | Region (`region~pipelineName`) |
+| 24 | **CloudTrail** | Trails, event data stores | Region (`region~trailName`) |
+| 25 | **Organizations** | Accounts, OUs, policies, SCPs, delegated admins | Global (`orgId`) |
+| 26 | **Glue** | Catalog databases, tables, crawlers, jobs, connections | Region (`region~resourceName`) |
 
 ### Tier 4 — Specialized Workloads
 
-Data processing, compliance, managed services, and communication.
+Data processing, compliance, managed services, and communication. SSM documents were split out of the shipped SSM Parameter driver: the SDK download signal for SSM is dominated by parameter reads, so document management ranks here on its own merits.
 
 | # | Driver | Resource Types | Key Scope |
 |---|---|---|---|
-| 28 | **Batch** | Compute environments, job queues, job definitions | Region (`region~resourceName`) |
-| 29 | **Redshift** | Clusters, parameter groups, subnet groups | Region (`region~clusterName`) |
-| 30 | **OpenSearch** | Domains, access policies | Region (`region~domainName`) |
-| 31 | **MSK** | Clusters, configurations, serverless clusters | Region (`region~clusterName`) |
-| 32 | **AppSync** | GraphQL APIs, data sources, resolvers, functions | Region (`region~apiName`) |
-| 33 | **Backup** | Plans, vaults, selections, vault policies | Region (`region~planName`) |
-| 34 | **Config** | Config rules, recorders, aggregators, conformance packs | Region (`region~ruleName`) |
-| 35 | **Network Firewall** | Firewalls, firewall policies, rule groups | Region (`region~firewallName`) |
+| 27 | **Batch** | Compute environments, job queues, job definitions | Region (`region~resourceName`) |
+| 28 | **Redshift** | Clusters, parameter groups, subnet groups | Region (`region~clusterName`) |
+| 29 | **OpenSearch** | Domains, access policies | Region (`region~domainName`) |
+| 30 | **MSK** | Clusters, configurations, serverless clusters | Region (`region~clusterName`) |
+| 31 | **AppSync** | GraphQL APIs, data sources, resolvers, functions | Region (`region~apiName`) |
+| 32 | **Backup** | Plans, vaults, selections, vault policies | Region (`region~planName`) |
+| 33 | **Config** | Config rules, recorders, aggregators, conformance packs | Region (`region~ruleName`) |
+| 34 | **Network Firewall** | Firewalls, firewall policies, rule groups | Region (`region~firewallName`) |
+| 35 | **SSM Document** | SSM documents | Region (`region~documentName`) |
 
 ### Evaluated and excluded
 

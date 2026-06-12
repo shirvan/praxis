@@ -364,6 +364,14 @@ test-sqs-integration:
 test-sqspolicy-integration:
 	go test ./tests/integration/ -run TestSQSQueuePolicy -v -count=1 -tags=integration -timeout=5m
 
+# Run SSM parameter driver unit tests
+test-ssmparameter:
+    go test ./internal/drivers/ssmparameter/... -v -count=1 -race
+
+# Run SSM parameter integration tests
+test-ssmparameter-integration:
+	go test ./tests/integration/ -run TestSSMParameter -v -count=1 -tags=integration -timeout=5m
+
 # Run CloudWatch monitoring driver tests.
 test-monitoring:
     go test ./internal/drivers/loggroup/... ./internal/drivers/metricalarm/... ./internal/drivers/dashboard/... ./internal/core/provider/... -v -count=1 -race

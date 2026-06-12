@@ -341,6 +341,7 @@ Each driver owns its key format, producing the shortest natural key for its reso
 | SNSSubscription | Custom | `<region>~<topicArn>~<protocol>~<endpoint>` | `us-east-1~arn:aws:sns:us-east-1:123456789012:alerts~sqs~arn:aws:sqs:us-east-1:123456789012:queue` |
 | SQSQueue | Region | `<region>~<queueName>` | `us-east-1~order-events` |
 | SQSQueuePolicy | Region | `<region>~<queueName>` | `us-east-1~order-events` |
+| SSMParameter | Region | `<region>~<parameterName>` | `us-east-1~/praxis/prod/db-host` |
 | LogGroup | Region | `<region>~<name>` | `us-east-1~app-logs` |
 | MetricAlarm | Region | `<region>~<name>` | `us-east-1~cpu-alarm` |
 | Dashboard | Region | `<region>~<name>` | `us-east-1~ops-dashboard` |
@@ -447,7 +448,7 @@ cmd/praxis-<pack>/
 
 | Pack | Binary | Drivers |
 | --- | --- | --- |
-| Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription, SQSQueue, SQSQueuePolicy |
+| Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription, SQSQueue, SQSQueuePolicy, SSMParameter |
 | Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule, ACMCertificate |
 | Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy |
 | Identity | `cmd/praxis-identity/` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile |
@@ -713,6 +714,14 @@ Manages AWS SQS queue resource-based policies (sub-resource of an SQS queue). Sp
 Outputs: `queueUrl`, `queueArn`, `queueName`.
 
 Key: `<region>~<queueName>`. Scope: Region.
+
+### SSMParameter
+
+Manages AWS SSM Parameter Store parameters. Spec fields: `region`, `parameterName`, `type`, `value`, `description`, `tier`, `kmsKeyId`, `allowedPattern`, `dataType`, `tags`.
+
+Outputs: `arn`, `parameterName`, `type`, `version`, `tier`, `dataType`. The parameter value is intentionally excluded from outputs so SecureString values never flow into deployment state; reference values with the `ssm://` resolver instead. SecureString values are masked as `(sensitive)` in plan diffs.
+
+Key: `<region>~<parameterName>`. Scope: Region.
 
 ### LogGroup
 

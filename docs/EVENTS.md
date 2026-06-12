@@ -165,7 +165,7 @@ These events track the deployment and resource state machines. Emitted by `Deplo
 
 ### Drift Events (category: `drift`)
 
-Emitted by the reconciliation loop in all 45 drivers when actual state diverges from desired state. The `ResourceEventBridge` resolves the resource's owning deployment and workspace before constructing the CloudEvent.
+Emitted by the reconciliation loop in all 46 drivers when actual state diverges from desired state. The `ResourceEventBridge` resolves the resource's owning deployment and workspace before constructing the CloudEvent.
 
 | Type | Severity | Subject | Description |
 |------|----------|---------|-------------|

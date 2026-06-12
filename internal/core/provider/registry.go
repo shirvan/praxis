@@ -209,6 +209,7 @@ func NewRegistry(auth authservice.AuthClient) *Registry {
 		NewSNSSubscriptionAdapterWithAuth(auth),
 		NewSQSAdapterWithAuth(auth),
 		NewSQSQueuePolicyAdapterWithAuth(auth),
+		NewSSMParameterAdapterWithAuth(auth),
 	)
 }
 

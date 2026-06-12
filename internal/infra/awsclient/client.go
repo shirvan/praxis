@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 // NewS3Client returns an S3 client from the given config.
@@ -101,4 +102,9 @@ func NewSNSClient(cfg aws.Config) *sns.Client {
 // NewSQSClient returns an SQS client from the given config.
 func NewSQSClient(cfg aws.Config) *sqs.Client {
 	return sqs.NewFromConfig(cfg)
+}
+
+// NewSSMClient returns an SSM client from the given config.
+func NewSSMClient(cfg aws.Config) *ssm.Client {
+	return ssm.NewFromConfig(cfg)
 }
