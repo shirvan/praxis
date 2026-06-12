@@ -6,7 +6,7 @@
 
 Praxis centralizes AWS credential management and environment isolation through two co-dependent Restate Virtual Object services:
 
-1. **Auth Service** — Manages the lifecycle of AWS credentials for all driver packs and Core components. One Virtual Object per **account-alias** (e.g., `prod-us`, `staging`, `localstack`). Drivers call `Auth.GetCredentials` via Restate RPC instead of loading credentials independently.
+1. **Auth Service** — Manages the lifecycle of AWS credentials for all driver packs and Core components. One Virtual Object per **account-alias** (e.g., `prod-us`, `staging`, `moto`). Drivers call `Auth.GetCredentials` via Restate RPC instead of loading credentials independently.
 
 2. **Workspace Service** — Named environment contexts that bind deployments with shared defaults (account alias, region, variable overrides). One Virtual Object per **workspace name** (e.g., `dev`, `staging`, `prod`). Operators define workspaces; users select one before deploying. Deployed resources are tagged with their workspace for filtering and isolation.
 

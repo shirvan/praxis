@@ -526,7 +526,7 @@ test-lifecycle:
     done
     wait "$pid"
 
-# Run SG integration tests (requires Docker — Testcontainers + LocalStack)
+# Run SG integration tests (requires Docker — Testcontainers + Moto)
 test-sg-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -538,7 +538,7 @@ test-sg-integration:
     done
     wait "$pid"
 
-# Run IGW integration tests (requires Docker — Testcontainers + LocalStack)
+# Run IGW integration tests (requires Docker — Testcontainers + Moto)
 test-igw-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -550,7 +550,7 @@ test-igw-integration:
     done
     wait "$pid"
 
-# Run NATGateway integration tests (requires Docker — Testcontainers + LocalStack)
+# Run NATGateway integration tests (requires Docker — Testcontainers + Moto)
 test-natgw-integration:
 	#!/bin/sh
 	heartbeat={{test_heartbeat_seconds}}
@@ -562,7 +562,7 @@ test-natgw-integration:
 	done
 	wait "$pid"
 
-# Run NetworkACL integration tests (requires Docker — Testcontainers + LocalStack)
+# Run NetworkACL integration tests (requires Docker — Testcontainers + Moto)
 test-nacl-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -574,7 +574,7 @@ test-nacl-integration:
     done
     wait "$pid"
 
-# Run EC2 integration tests (requires Docker — Testcontainers + LocalStack)
+# Run EC2 integration tests (requires Docker — Testcontainers + Moto)
 test-ec2-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -586,7 +586,7 @@ test-ec2-integration:
     done
     wait "$pid"
 
-# Run AMI integration tests (requires Docker — Testcontainers + LocalStack)
+# Run AMI integration tests (requires Docker — Testcontainers + Moto)
 test-ami-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -598,7 +598,7 @@ test-ami-integration:
     done
     wait "$pid"
 
-# Run VPC integration tests (requires Docker — Testcontainers + LocalStack)
+# Run VPC integration tests (requires Docker — Testcontainers + Moto)
 test-vpc-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -610,7 +610,7 @@ test-vpc-integration:
     done
     wait "$pid"
 
-# Run EBS integration tests (requires Docker — Testcontainers + LocalStack)
+# Run EBS integration tests (requires Docker — Testcontainers + Moto)
 test-ebs-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -622,7 +622,7 @@ test-ebs-integration:
     done
     wait "$pid"
 
-# Run EIP integration tests (requires Docker — Testcontainers + LocalStack)
+# Run EIP integration tests (requires Docker — Testcontainers + Moto)
 test-eip-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -634,7 +634,7 @@ test-eip-integration:
     done
     wait "$pid"
 
-# Run KeyPair integration tests (requires Docker — Testcontainers + LocalStack)
+# Run KeyPair integration tests (requires Docker — Testcontainers + Moto)
 test-keypair-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -646,7 +646,7 @@ test-keypair-integration:
     done
     wait "$pid"
 
-# Run template integration tests (requires Docker — LocalStack SSM)
+# Run template integration tests (requires Docker — Moto SSM)
 test-template-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -658,7 +658,7 @@ test-template-integration:
     done
     wait "$pid"
 
-# Run DBSubnetGroup integration tests (requires Docker — Testcontainers + LocalStack)
+# Run DBSubnetGroup integration tests (requires Docker — Testcontainers + Moto)
 test-dbsubnetgroup-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -670,7 +670,7 @@ test-dbsubnetgroup-integration:
     done
     wait "$pid"
 
-# Run DBParameterGroup integration tests (requires Docker — Testcontainers + LocalStack)
+# Run DBParameterGroup integration tests (requires Docker — Testcontainers + Moto)
 test-dbparametergroup-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -682,7 +682,7 @@ test-dbparametergroup-integration:
     done
     wait "$pid"
 
-# Run RDSInstance integration tests (requires Docker — Testcontainers + LocalStack)
+# Run RDSInstance integration tests (requires Docker — Testcontainers + Moto)
 test-rdsinstance-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -694,7 +694,7 @@ test-rdsinstance-integration:
     done
     wait "$pid"
 
-# Run AuroraCluster integration tests (requires Docker — Testcontainers + LocalStack)
+# Run AuroraCluster integration tests (requires Docker — Testcontainers + Moto)
 test-auroracluster-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -706,7 +706,7 @@ test-auroracluster-integration:
     done
     wait "$pid"
 
-# Run ALB integration tests (requires Docker — Testcontainers + LocalStack)
+# Run ALB integration tests (requires Docker — Testcontainers + Moto)
 test-alb-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -718,7 +718,7 @@ test-alb-integration:
     done
     wait "$pid"
 
-# Run NLB integration tests (requires Docker — Testcontainers + LocalStack)
+# Run NLB integration tests (requires Docker — Testcontainers + Moto)
 test-nlb-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -730,7 +730,7 @@ test-nlb-integration:
     done
     wait "$pid"
 
-# Run Listener integration tests (requires Docker — Testcontainers + LocalStack)
+# Run Listener integration tests (requires Docker — Testcontainers + Moto)
 test-listener-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -742,7 +742,7 @@ test-listener-integration:
     done
     wait "$pid"
 
-# Run ListenerRule integration tests (requires Docker — Testcontainers + LocalStack)
+# Run ListenerRule integration tests (requires Docker — Testcontainers + Moto)
 test-listenerrule-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -754,7 +754,7 @@ test-listenerrule-integration:
     done
     wait "$pid"
 
-# Run ELB integration tests — all 5 ELB drivers (requires Docker — Testcontainers + LocalStack)
+# Run ELB integration tests — all 5 ELB drivers (requires Docker — Testcontainers + Moto)
 test-elb-integration:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
