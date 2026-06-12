@@ -3,8 +3,11 @@
 package integration
 
 import (
+	"context"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/stretchr/testify/assert"
@@ -49,6 +52,51 @@ resources: {
 	require.NotEmpty(t, resp.Errors)
 	assert.Equal(t, "PolicyViolation", resp.Errors[0].Kind)
 	assert.Equal(t, "require-encryption", resp.Errors[0].Policy)
+}
+
+// TestPolicy_GlobalPolicyBlocksApply verifies enforcement, not just static
+// validation: an Apply whose template violates a registered global policy must
+// be rejected terminally and must not provision anything.
+func TestPolicy_GlobalPolicyBlocksApply(t *testing.T) {
+	env := setupCoreStack(t)
+	bucketName := uniqueName(t, "policy-apply")
+	deployKey := "test-policy-apply-" + bucketName
+
+	_, err := ingress.Service[command.AddPolicyRequest, restate.Void](
+		env.ingress, "PraxisCommandService", "AddPolicy",
+	).Request(t.Context(), command.AddPolicyRequest{
+		Name:   "require-encryption-apply",
+		Scope:  types.PolicyScopeGlobal,
+		Source: `resources: [_]: spec: encryption: enabled: true`,
+	})
+	require.NoError(t, err)
+
+	_, err = ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template: `
+resources: {
+	bucket: {
+		apiVersion: "praxis.io/v1"
+		kind: "S3Bucket"
+		metadata: { name: "` + bucketName + `" }
+		spec: {
+			region: "us-east-1"
+			encryption: enabled: false
+		}
+	}
+}`,
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+	})
+	require.Error(t, err, "apply violating a global policy must be rejected")
+	// The Apply path surfaces the CUE unification failure with the violating
+	// path (the policy name is only structured in ValidateTemplate responses).
+	assert.Contains(t, err.Error(), "encryption.enabled")
+
+	// Nothing may have been provisioned.
+	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketName)})
+	require.Error(t, err, "the bucket must not exist after a policy-rejected apply")
 }
 
 func TestPolicy_TemplateScopedPolicyAppliesOnlyToTemplateRef(t *testing.T) {

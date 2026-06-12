@@ -556,6 +556,271 @@ resources: {
 // old/new values for updates — not just summary counts. A plan that reports
 // ToUpdate=1 with wrong or empty field diffs would mislead every `praxis plan`
 // review, so the content itself is the contract.
+func twoBucketTemplate(bucketA, bucketB string) string {
+	return fmt.Sprintf(`
+resources: {
+	bucketA: {
+		apiVersion: "praxis.io/v1"
+		kind:       "S3Bucket"
+		metadata: { name: %q }
+		spec: { region: "us-east-1" }
+	}
+	bucketB: {
+		apiVersion: "praxis.io/v1"
+		kind:       "S3Bucket"
+		metadata: { name: %q }
+		spec: { region: "us-east-1" }
+	}
+}
+`, bucketA, bucketB)
+}
+
+func oneBucketTemplate(bucketA string) string {
+	return fmt.Sprintf(`
+resources: {
+	bucketA: {
+		apiVersion: "praxis.io/v1"
+		kind:       "S3Bucket"
+		metadata: { name: %q }
+		spec: { region: "us-east-1" }
+	}
+}
+`, bucketA)
+}
+
+func applyAndWaitComplete(t *testing.T, env *coreTestEnv, deployKey, template string, orphanRemoved bool) {
+	t.Helper()
+	_, err := ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      template,
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+		OrphanRemoved: orphanRemoved,
+	})
+	require.NoError(t, err)
+	pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete}, 60*time.Second)
+}
+
+// TestCore_Apply_RemovedResourceIsDeleted verifies the default removed-resource
+// behavior: a resource dropped from the template on re-apply is deleted from
+// the cloud, while the surviving resource is untouched.
+func TestCore_Apply_RemovedResourceIsDeleted(t *testing.T) {
+	env := setupCoreStack(t)
+	bucketA := uniqueName(t, "keep")
+	bucketB := uniqueName(t, "drop")
+	deployKey := "test-removed-" + bucketA
+
+	applyAndWaitComplete(t, env, deployKey, twoBucketTemplate(bucketA, bucketB), false)
+	applyAndWaitComplete(t, env, deployKey, oneBucketTemplate(bucketA), false)
+
+	_, err := env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketA)})
+	require.NoError(t, err, "surviving resource must remain")
+	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketB)})
+	require.Error(t, err, "removed resource must be deleted from the cloud")
+}
+
+// TestCore_Apply_RemovedResourceOrphaned verifies OrphanRemoved: the dropped
+// resource is released from management but kept running in the cloud.
+func TestCore_Apply_RemovedResourceOrphaned(t *testing.T) {
+	env := setupCoreStack(t)
+	bucketA := uniqueName(t, "keep")
+	bucketB := uniqueName(t, "orphan")
+	deployKey := "test-orphaned-" + bucketA
+
+	applyAndWaitComplete(t, env, deployKey, twoBucketTemplate(bucketA, bucketB), false)
+	applyAndWaitComplete(t, env, deployKey, oneBucketTemplate(bucketA), true)
+
+	_, err := env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketB)})
+	require.NoError(t, err, "orphaned resource must keep running in the cloud")
+}
+
+// TestCore_Apply_ForceReplace verifies `--replace`: the named resource is
+// destroyed and recreated (new provider-native ID), not updated in place.
+func TestCore_Apply_ForceReplace(t *testing.T) {
+	env := setupCoreStack(t)
+	vpcId := defaultVpcId(t, env.ec2Client)
+	sgName := uniqueName(t, "replace-sg")
+	deployKey := "test-replace-" + sgName
+	template := fmt.Sprintf(`
+resources: {
+	webSG: {
+		apiVersion: "praxis.io/v1"
+		kind:       "SecurityGroup"
+		metadata: { name: %q }
+		spec: {
+			groupName:   %q
+			description: "force-replace test"
+			vpcId:       %q
+		}
+	}
+}
+`, sgName, sgName, vpcId)
+
+	applyAndWaitComplete(t, env, deployKey, template, false)
+	state := pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete}, 30*time.Second)
+	originalID, _ := state.Outputs["webSG"]["groupId"].(string)
+	require.NotEmpty(t, originalID, "first apply should record the security group ID, got outputs %+v", state.Outputs)
+
+	_, err := ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      template,
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+		Replace:       []string{"webSG"},
+	})
+	require.NoError(t, err)
+	state = pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete}, 60*time.Second)
+
+	replacedID, _ := state.Outputs["webSG"]["groupId"].(string)
+	require.NotEmpty(t, replacedID)
+	assert.NotEqual(t, originalID, replacedID, "force-replace must produce a new security group")
+
+	// The original group must be gone from the cloud.
+	desc, err := env.ec2Client.DescribeSecurityGroups(context.Background(), &ec2sdk.DescribeSecurityGroupsInput{
+		GroupIds: []string{originalID},
+	})
+	if err == nil {
+		require.Empty(t, desc.SecurityGroups, "the replaced security group must be deleted")
+	}
+}
+
+// TestCore_Apply_ReplaceUnknownResourceRejected guards the --replace
+// validation: naming a resource that is not in the plan is a terminal error.
+func TestCore_Apply_ReplaceUnknownResourceRejected(t *testing.T) {
+	env := setupCoreStack(t)
+	bucketName := uniqueName(t, "replace-missing")
+	_, err := ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      simpleS3Template(bucketName),
+		DeploymentKey: "test-replace-missing-" + bucketName,
+		Variables:     accountVariables(),
+		Replace:       []string{"nonexistent"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+// TestCore_Apply_WorkspaceDefaults verifies that a deployment submitted with
+// only a workspace picks up the workspace's default account and variables,
+// and that request-level variables take precedence over workspace defaults.
+func TestCore_Apply_WorkspaceDefaults(t *testing.T) {
+	env := setupCoreStack(t)
+	workspaceName := "wsdefaults-" + uniqueName(t, "ws")
+	bucketName := uniqueName(t, "wsd")
+	deployKey := "test-wsdefaults-" + bucketName
+
+	_, err := ingress.Object[workspace.WorkspaceConfig, restate.Void](
+		env.ingress, workspace.WorkspaceServiceName, workspaceName, "Configure",
+	).Request(t.Context(), workspace.WorkspaceConfig{
+		Name:    workspaceName,
+		Account: integrationAccountName,
+		Region:  "us-east-1",
+		Variables: map[string]string{
+			"env":  "from-workspace",
+			"team": "platform",
+		},
+	})
+	require.NoError(t, err)
+
+	template := fmt.Sprintf(`
+variables: {
+	env:  string
+	team: string
+}
+resources: {
+	bucket: {
+		apiVersion: "praxis.io/v1"
+		kind:       "S3Bucket"
+		metadata: { name: %q }
+		spec: {
+			region: "us-east-1"
+			tags: {
+				env:  variables.env
+				team: variables.team
+			}
+		}
+	}
+}
+`, bucketName)
+
+	// No Account, no "account" variable: the workspace must supply it.
+	// env is overridden at the request level; team comes from the workspace.
+	_, err = ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      template,
+		DeploymentKey: deployKey,
+		Workspace:     workspaceName,
+		Variables:     map[string]any{"env": "from-request"},
+	})
+	require.NoError(t, err)
+	pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete}, 60*time.Second)
+
+	tags, err := env.s3Client.GetBucketTagging(context.Background(), &s3sdk.GetBucketTaggingInput{
+		Bucket: aws.String(bucketName),
+	})
+	require.NoError(t, err)
+	got := map[string]string{}
+	for _, tag := range tags.TagSet {
+		got[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+	}
+	assert.Equal(t, "from-request", got["env"], "request variables must override workspace defaults")
+	assert.Equal(t, "platform", got["team"], "workspace default variables must be applied")
+}
+
+// TestCore_ApplySavedPlan_E2E verifies the plan → save → apply-saved-plan
+// path: the execution plan returned by Plan can be submitted directly and
+// provisions exactly the planned resources.
+func TestCore_ApplySavedPlan_E2E(t *testing.T) {
+	env := setupCoreStack(t)
+	bucketName := uniqueName(t, "savedplan")
+	deployKey := "test-savedplan-" + bucketName
+
+	planResp, err := ingress.Service[command.PlanRequest, command.PlanResponse](
+		env.ingress, "PraxisCommandService", "Plan",
+	).Request(t.Context(), command.PlanRequest{
+		Template:      simpleS3Template(bucketName),
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, planResp.ExecutionPlan, "plan response should carry a saveable execution plan")
+	require.Equal(t, deployKey, planResp.ExecutionPlan.DeploymentKey)
+	require.NotEmpty(t, planResp.ExecutionPlan.Resources)
+
+	deployResp, err := ingress.Service[command.ApplySavedPlanRequest, command.DeployResponse](
+		env.ingress, "PraxisCommandService", "ApplySavedPlan",
+	).Request(t.Context(), command.ApplySavedPlanRequest{Plan: *planResp.ExecutionPlan})
+	require.NoError(t, err)
+	require.Equal(t, deployKey, deployResp.DeploymentKey)
+
+	state := pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete}, 60*time.Second)
+	require.Equal(t, types.DeploymentComplete, state.Status)
+
+	_, err = env.s3Client.HeadBucket(context.Background(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketName)})
+	require.NoError(t, err, "the planned bucket must exist after applying the saved plan")
+}
+
+// TestCore_ApplySavedPlan_RejectsEmptyPlan guards the saved-plan validation.
+func TestCore_ApplySavedPlan_RejectsEmptyPlan(t *testing.T) {
+	env := setupCoreStack(t)
+	_, err := ingress.Service[command.ApplySavedPlanRequest, command.DeployResponse](
+		env.ingress, "PraxisCommandService", "ApplySavedPlan",
+	).Request(t.Context(), command.ApplySavedPlanRequest{
+		Plan: types.ExecutionPlan{DeploymentKey: "empty-plan-key"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no resources")
+}
+
 func TestCore_Plan_FieldDiffContent(t *testing.T) {
 	env := setupCoreStack(t)
 	bucketName := uniqueName(t, "fd")
