@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/route53record"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -28,16 +28,16 @@ func setupRoute53RecordDriver(t *testing.T) (*ingress.Client, *route53sdk.Client
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	r53Client := awsclient.NewRoute53Client(awsCfg)
 	ensureRoute53Enabled(t, r53Client)
-	driver := route53record.NewDNSRecordDriver(nil)
+	driver := route53record.NewDNSRecordDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), r53Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, r53Client
 }
 
-func createTestHostedZone(t *testing.T, r53Client *route53sdk.Client) string {
+func createTestHostedZone(t *testing.T, r53Client *route53sdk.Client) (string, string) {
 	t.Helper()
 	zoneName := fmt.Sprintf("record-test-%d.example.com", time.Now().UnixNano()%1000000)
 	out, err := r53Client.CreateHostedZone(context.Background(), &route53sdk.CreateHostedZoneInput{
@@ -45,13 +45,13 @@ func createTestHostedZone(t *testing.T, r53Client *route53sdk.Client) string {
 		Name:            aws.String(zoneName),
 	})
 	require.NoError(t, err)
-	return strings.TrimPrefix(aws.ToString(out.HostedZone.Id), "/hostedzone/")
+	return strings.TrimPrefix(aws.ToString(out.HostedZone.Id), "/hostedzone/"), zoneName
 }
 
 func TestRoute53RecordProvision_CreatesARecord(t *testing.T) {
 	client, r53Client := setupRoute53RecordDriver(t)
-	zoneID := createTestHostedZone(t, r53Client)
-	recordName := fmt.Sprintf("web-%d.record-test.example.com", time.Now().UnixNano()%100000)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+	recordName := fmt.Sprintf("web-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
 	outputs, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
@@ -86,8 +86,8 @@ func TestRoute53RecordProvision_CreatesARecord(t *testing.T) {
 
 func TestRoute53RecordProvision_UpdatesTTL(t *testing.T) {
 	client, r53Client := setupRoute53RecordDriver(t)
-	zoneID := createTestHostedZone(t, r53Client)
-	recordName := fmt.Sprintf("ttl-%d.record-test.example.com", time.Now().UnixNano()%100000)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+	recordName := fmt.Sprintf("ttl-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 	spec := route53record.RecordSpec{
 		Account:         integrationAccountName,
@@ -124,8 +124,8 @@ func TestRoute53RecordProvision_UpdatesTTL(t *testing.T) {
 
 func TestRoute53RecordDelete_RemovesRecord(t *testing.T) {
 	client, r53Client := setupRoute53RecordDriver(t)
-	zoneID := createTestHostedZone(t, r53Client)
-	recordName := fmt.Sprintf("del-%d.record-test.example.com", time.Now().UnixNano()%100000)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+	recordName := fmt.Sprintf("del-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
 	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
@@ -159,8 +159,8 @@ func TestRoute53RecordDelete_RemovesRecord(t *testing.T) {
 
 func TestRoute53RecordGetStatus_ReturnsReady(t *testing.T) {
 	client, r53Client := setupRoute53RecordDriver(t)
-	zoneID := createTestHostedZone(t, r53Client)
-	recordName := fmt.Sprintf("status-%d.record-test.example.com", time.Now().UnixNano()%100000)
+	zoneID, zoneName := createTestHostedZone(t, r53Client)
+	recordName := fmt.Sprintf("status-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
 	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](

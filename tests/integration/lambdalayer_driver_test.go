@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/lambdalayer"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -38,12 +38,12 @@ func setupLambdaLayerDriver(t *testing.T) (*ingress.Client, *lambdasdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	lambdaClient := awsclient.NewLambdaClient(awsCfg)
-	driver := lambdalayer.NewLambdaLayerDriver(nil)
+	driver := lambdalayer.NewLambdaLayerDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), lambdaClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, lambdaClient
 }
 
 func defaultLayerSpec(name string) lambdalayer.LambdaLayerSpec {

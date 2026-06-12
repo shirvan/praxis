@@ -16,7 +16,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/dashboard"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -37,12 +37,12 @@ func setupDashboardDriver(t *testing.T) (*ingress.Client, *cwsdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	cwClient := awsclient.NewCloudWatchClient(awsCfg)
-	driver := dashboard.NewDashboardDriver(nil)
+	driver := dashboard.NewDashboardDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), cwClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, cwClient
 }
 
 const testDashboardBody = `{"widgets":[{"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"metrics":[["AWS/EC2","CPUUtilization"]],"period":300,"stat":"Average","region":"us-east-1","title":"EC2 CPU"}}]}`

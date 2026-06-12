@@ -18,17 +18,16 @@ import (
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/require"
 
-	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/s3"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 )
 
-// localstackEndpoint is the URL for the Moto (mock AWS) instance.
+// motoEndpoint is the URL for the Moto (mock AWS) instance.
 // In CI, this is the same host; in Docker-based tests, it's the container network.
-const localstackEndpoint = "http://localhost:4566"
+const motoEndpoint = "http://localhost:4566"
 
 const integrationAccountName = "local"
 
@@ -39,7 +38,7 @@ func configureLocalAccount(t *testing.T) {
 	t.Setenv("PRAXIS_ACCOUNT_CREDENTIAL_SOURCE", "static")
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
-	t.Setenv("AWS_ENDPOINT_URL", localstackEndpoint)
+	t.Setenv("AWS_ENDPOINT_URL", motoEndpoint)
 }
 
 func accountVariables() map[string]any {
@@ -53,17 +52,17 @@ func setupS3Driver(t *testing.T) (*ingress.Client, *s3sdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	s3Client := awsclient.NewS3Client(awsCfg)
-	driver := s3.NewS3BucketDriver(nil)
+	driver := s3.NewS3BucketDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), s3Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, s3Client
 }
 
-// localstackAWSConfig returns an AWS config pointing at Moto
+// motoAWSConfig returns an AWS config pointing at Moto
 // with dummy credentials (Moto accepts any credentials).
-func localstackAWSConfig(t *testing.T) aws.Config {
+func motoAWSConfig(t *testing.T) aws.Config {
 	t.Helper()
 
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
@@ -81,7 +80,7 @@ func localstackAWSConfig(t *testing.T) aws.Config {
 		t.Fatal(err)
 	}
 
-	cfg.BaseEndpoint = aws.String(localstackEndpoint)
+	cfg.BaseEndpoint = aws.String(motoEndpoint)
 	return cfg
 }
 
@@ -91,7 +90,7 @@ func localstackAWSConfig(t *testing.T) aws.Config {
 func resetMoto(t *testing.T) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
-		fmt.Sprintf("%s/moto-api/reset", localstackEndpoint), nil)
+		fmt.Sprintf("%s/moto-api/reset", motoEndpoint), nil)
 	require.NoError(t, err, "building moto reset request")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err, "resetting moto state")

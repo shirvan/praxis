@@ -16,7 +16,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/iaminstanceprofile"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -39,12 +39,12 @@ func setupIAMInstanceProfileIntegration(t *testing.T) (*ingress.Client, *iamsdk.
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	iamClient := awsclient.NewIAMClient(awsCfg)
-	driver := iaminstanceprofile.NewIAMInstanceProfileDriver(nil)
+	driver := iaminstanceprofile.NewIAMInstanceProfileDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), iamClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, iamClient
 }
 
 func createIAMRole(t *testing.T, iamClient *iamsdk.Client, roleName string) {

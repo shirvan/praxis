@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/stretchr/testify/assert"
@@ -20,14 +21,36 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/lambda"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-const testLambdaRole = "arn:aws:iam::000000000000:role/lambda-role"
+const testLambdaRole = "arn:aws:iam::123456789012:role/lambda-role"
+
+// ensureLambdaRole creates the IAM execution role the Lambda tests reference.
+// Moto validates that the role exists and is assumable by Lambda before
+// allowing CreateFunction. Creation is idempotent: EntityAlreadyExists is fine.
+func ensureLambdaRole(t *testing.T) {
+	t.Helper()
+	iamClient := awsclient.NewIAMClient(motoAWSConfig(t))
+	_, err := iamClient.CreateRole(context.Background(), &iamsdk.CreateRoleInput{
+		RoleName: aws.String("lambda-role"),
+		AssumeRolePolicyDocument: aws.String(`{
+			"Version": "2012-10-17",
+			"Statement": [{
+				"Effect": "Allow",
+				"Principal": {"Service": "lambda.amazonaws.com"},
+				"Action": "sts:AssumeRole"
+			}]
+		}`),
+	})
+	if err != nil && !strings.Contains(err.Error(), "EntityAlreadyExists") {
+		require.NoError(t, err, "creating lambda execution role")
+	}
+}
 
 func uniqueFunctionName(t *testing.T) string {
 	t.Helper()
@@ -62,13 +85,14 @@ func minimalLambdaZipBytes() []byte {
 func setupLambdaDriver(t *testing.T) (*ingress.Client, *lambdasdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
+	ensureLambdaRole(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	lambdaClient := awsclient.NewLambdaClient(awsCfg)
-	driver := lambda.NewLambdaFunctionDriver(nil)
+	driver := lambda.NewLambdaFunctionDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), lambdaClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, lambdaClient
 }
 
 func defaultLambdaSpec(name string) lambda.LambdaFunctionSpec {

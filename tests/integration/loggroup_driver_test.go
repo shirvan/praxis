@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/loggroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -37,18 +38,18 @@ func setupLogGroupDriver(t *testing.T) (*ingress.Client, *cwlogssdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	cwLogsClient := awsclient.NewCloudWatchLogsClient(awsCfg)
-	driver := loggroup.NewLogGroupDriver(nil)
+	driver := loggroup.NewLogGroupDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), cwLogsClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, cwLogsClient
 }
 
 func TestLogGroupProvision_CreatesLogGroup(t *testing.T) {
 	client, cwClient := setupLogGroupDriver(t)
 	name := uniqueLogGroupName(t)
-	key := fmt.Sprintf("us-east-1~%s", name)
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(14)
 
 	outputs, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
@@ -76,7 +77,7 @@ func TestLogGroupProvision_CreatesLogGroup(t *testing.T) {
 func TestLogGroupProvision_Idempotent(t *testing.T) {
 	client, _ := setupLogGroupDriver(t)
 	name := uniqueLogGroupName(t)
-	key := fmt.Sprintf("us-east-1~%s", name)
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(7)
 	spec := loggroup.LogGroupSpec{
 		Account:         integrationAccountName,
@@ -109,7 +110,7 @@ func TestLogGroupImport_ExistingLogGroup(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key := fmt.Sprintf("us-east-1~%s", name)
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	outputs, err := ingress.Object[types.ImportRef, loggroup.LogGroupOutputs](
 		client, loggroup.ServiceName, key, "Import",
 	).Request(t.Context(), types.ImportRef{
@@ -130,7 +131,7 @@ func TestLogGroupImport_ExistingLogGroup(t *testing.T) {
 func TestLogGroupDelete_RemovesLogGroup(t *testing.T) {
 	client, cwClient := setupLogGroupDriver(t)
 	name := uniqueLogGroupName(t)
-	key := fmt.Sprintf("us-east-1~%s", name)
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(7)
 
 	_, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
@@ -160,7 +161,7 @@ func TestLogGroupDelete_RemovesLogGroup(t *testing.T) {
 func TestLogGroupReconcile_DetectsRetentionDrift(t *testing.T) {
 	client, cwClient := setupLogGroupDriver(t)
 	name := uniqueLogGroupName(t)
-	key := fmt.Sprintf("us-east-1~%s", name)
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(14)
 
 	_, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](

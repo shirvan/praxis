@@ -20,7 +20,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/esm"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -40,13 +40,14 @@ func uniqueESMName(t *testing.T) string {
 func setupESMDriver(t *testing.T) (*ingress.Client, *lambdasdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
+	ensureLambdaRole(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	lambdaClient := awsclient.NewLambdaClient(awsCfg)
-	driver := esm.NewEventSourceMappingDriver(nil)
+	driver := esm.NewEventSourceMappingDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), lambdaClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, lambdaClient
 }
 
 // createTestFunctionForESM creates a Lambda function for ESM tests.
@@ -66,7 +67,7 @@ func createTestFunctionForESM(t *testing.T, lambdaClient *lambdasdk.Client, name
 // createTestSQSQueue creates an SQS queue and returns its ARN.
 func createTestSQSQueue(t *testing.T, name string) string {
 	t.Helper()
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	sqsClient := sqssdk.NewFromConfig(awsCfg)
 
 	out, err := sqsClient.CreateQueue(context.Background(), &sqssdk.CreateQueueInput{

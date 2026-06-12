@@ -11,9 +11,7 @@ import (
 
 	sqssdk "github.com/aws/aws-sdk-go-v2/service/sqs"
 
-	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/sqs"
@@ -47,28 +45,20 @@ func setupSQSQueueDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	sqsClient := awsclient.NewSQSClient(awsCfg)
 	skipIfSQSUnavailable(t, sqsClient)
 
-	env := restatetest.Start(t,
-		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
-		restate.Reflect(sqs.NewSQSQueueDriver(authservice.NewAuthClient())),
-	)
-	return env.Ingress(), sqsClient
+	return setupDriverEventingEnv(t, sqs.NewSQSQueueDriver(authservice.NewAuthClient())), sqsClient
 }
 
 func setupSQSQueuePolicyDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	sqsClient := awsclient.NewSQSClient(awsCfg)
 	skipIfSQSUnavailable(t, sqsClient)
 
-	env := restatetest.Start(t,
-		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
-		restate.Reflect(sqspolicy.NewSQSQueuePolicyDriver(authservice.NewAuthClient())),
-	)
-	return env.Ingress(), sqsClient
+	return setupDriverEventingEnv(t, sqspolicy.NewSQSQueuePolicyDriver(authservice.NewAuthClient())), sqsClient
 }

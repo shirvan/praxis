@@ -13,9 +13,7 @@ import (
 	sqssdk "github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 
-	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/snssub"
@@ -45,30 +43,22 @@ func setupSNSTopicDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	snsClient := awsclient.NewSNSClient(awsCfg)
 	skipIfSNSUnavailable(t, snsClient)
 
-	env := restatetest.Start(t,
-		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
-		restate.Reflect(snstopic.NewSNSTopicDriver(authservice.NewAuthClient())),
-	)
-	return env.Ingress(), snsClient
+	return setupDriverEventingEnv(t, snstopic.NewSNSTopicDriver(authservice.NewAuthClient())), snsClient
 }
 
 func setupSNSSubDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	snsClient := awsclient.NewSNSClient(awsCfg)
 	skipIfSNSUnavailable(t, snsClient)
 
-	env := restatetest.Start(t,
-		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
-		restate.Reflect(snssub.NewSNSSubscriptionDriver(authservice.NewAuthClient())),
-	)
-	return env.Ingress(), snsClient
+	return setupDriverEventingEnv(t, snssub.NewSNSSubscriptionDriver(authservice.NewAuthClient())), snsClient
 }
 
 // createTopicDirect creates an SNS topic directly via the SDK (for subscription tests).
@@ -86,7 +76,7 @@ func createTopicDirect(t *testing.T, snsClient *snssdk.Client, name string) stri
 // createSQSQueueARNDirect creates an SQS queue directly via the SDK and returns its ARN.
 func createSQSQueueARNDirect(t *testing.T, queueName string) string {
 	t.Helper()
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	sqsClient := awsclient.NewSQSClient(awsCfg)
 
 	out, err := sqsClient.CreateQueue(context.Background(), &sqssdk.CreateQueueInput{

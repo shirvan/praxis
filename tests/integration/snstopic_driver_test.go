@@ -20,7 +20,6 @@ import (
 )
 
 func TestSNSTopic_Provision(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
@@ -48,7 +47,6 @@ func TestSNSTopic_Provision(t *testing.T) {
 }
 
 func TestSNSTopic_Provision_Idempotent(t *testing.T) {
-	t.Parallel()
 	client, _ := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
@@ -74,7 +72,6 @@ func TestSNSTopic_Provision_Idempotent(t *testing.T) {
 }
 
 func TestSNSTopic_Import(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 
@@ -105,7 +102,6 @@ func TestSNSTopic_Import(t *testing.T) {
 }
 
 func TestSNSTopic_Delete(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
@@ -132,7 +128,6 @@ func TestSNSTopic_Delete(t *testing.T) {
 }
 
 func TestSNSTopic_Reconcile_DetectsDisplayNameDrift(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
@@ -166,7 +161,6 @@ func TestSNSTopic_Reconcile_DetectsDisplayNameDrift(t *testing.T) {
 }
 
 func TestSNSTopic_GetStatus(t *testing.T) {
-	t.Parallel()
 	client, _ := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)

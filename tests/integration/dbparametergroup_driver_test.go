@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/dbparametergroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -39,12 +39,12 @@ func setupDBParameterGroupDriver(t *testing.T) (*ingress.Client, *rdssdk.Client)
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
-	driver := dbparametergroup.NewDBParameterGroupDriver(nil)
+	driver := dbparametergroup.NewDBParameterGroupDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), rdsClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, rdsClient
 }
 
 func TestDBParameterGroupProvision_CreatesDB(t *testing.T) {
@@ -182,10 +182,14 @@ func TestDBParameterGroupDelete_Removes(t *testing.T) {
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 
-	_, err = rdsClient.DescribeDBParameterGroups(context.Background(), &rdssdk.DescribeDBParameterGroupsInput{
+	// AWS returns DBParameterGroupNotFound here; Moto returns an empty list.
+	// Accept either as proof of deletion.
+	desc, err := rdsClient.DescribeDBParameterGroups(context.Background(), &rdssdk.DescribeDBParameterGroupsInput{
 		DBParameterGroupName: aws.String(name),
 	})
-	require.Error(t, err, "parameter group should be gone")
+	if err == nil {
+		require.Empty(t, desc.DBParameterGroups, "parameter group should be gone")
+	}
 }
 
 func TestDBParameterGroupGetStatus_ReturnsReady(t *testing.T) {

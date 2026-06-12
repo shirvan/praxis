@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/keypair"
 	"github.com/shirvan/praxis/pkg/types"
@@ -37,12 +37,12 @@ func setupKeyPairDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	ec2Client := ec2sdk.NewFromConfig(awsCfg)
-	driver := keypair.NewKeyPairDriver(nil)
+	driver := keypair.NewKeyPairDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, ec2Client
 }
 
 func TestKeyPairProvision_CreatesKeyPair(t *testing.T) {

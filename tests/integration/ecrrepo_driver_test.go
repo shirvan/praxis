@@ -21,7 +21,6 @@ import (
 )
 
 func TestECRRepository_Provision(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
@@ -53,7 +52,6 @@ func TestECRRepository_Provision(t *testing.T) {
 }
 
 func TestECRRepository_Provision_Idempotent(t *testing.T) {
-	t.Parallel()
 	client, _ := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
@@ -80,7 +78,6 @@ func TestECRRepository_Provision_Idempotent(t *testing.T) {
 }
 
 func TestECRRepository_Import(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 
@@ -111,7 +108,6 @@ func TestECRRepository_Import(t *testing.T) {
 }
 
 func TestECRRepository_Delete(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
@@ -138,7 +134,6 @@ func TestECRRepository_Delete(t *testing.T) {
 }
 
 func TestECRRepository_Reconcile_DetectsScanningDrift(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
@@ -166,6 +161,18 @@ func TestECRRepository_Reconcile_DetectsScanningDrift(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Moto accepts PutImageScanningConfiguration but does not persist it; if
+	// the external change did not land there is no drift for the driver to
+	// observe, so the scenario can only be verified against real AWS.
+	desc, err := ecrClient.DescribeRepositories(context.Background(), &ecrsdk.DescribeRepositoriesInput{
+		RepositoryNames: []string{repoName},
+	})
+	require.NoError(t, err)
+	if len(desc.Repositories) == 1 && desc.Repositories[0].ImageScanningConfiguration != nil &&
+		desc.Repositories[0].ImageScanningConfiguration.ScanOnPush {
+		t.Skip("Moto does not apply PutImageScanningConfiguration")
+	}
+
 	// Trigger reconcile
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](
 		client, ecrrepo.ServiceName, key, "Reconcile",
@@ -176,7 +183,6 @@ func TestECRRepository_Reconcile_DetectsScanningDrift(t *testing.T) {
 }
 
 func TestECRRepository_GetStatus(t *testing.T) {
-	t.Parallel()
 	client, _ := setupECRRepoDriver(t)
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)

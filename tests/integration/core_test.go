@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -101,7 +102,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	configureLocalAccount(t)
 
 	// --- AWS clients pointing at Moto ---
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	s3Client := awsclient.NewS3Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
 	authClient := authservice.NewAuthClient()
@@ -157,6 +158,8 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 		restate.Reflect(orchestrator.DeploymentStateObj{}),
 		// Global deployment index
 		restate.Reflect(orchestrator.DeploymentIndex{}),
+		// Global resource index
+		restate.Reflect(orchestrator.ResourceIndex{}),
 		// CloudEvents event system
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
@@ -272,12 +275,12 @@ func pollDeploymentList(
 
 	deadline := time.Now().Add(timeout)
 	for {
-		summaries, err := ingress.Object[restate.Void, []types.DeploymentSummary](
+		summaries, err := ingress.Object[orchestrator.ListFilter, []types.DeploymentSummary](
 			client,
 			orchestrator.DeploymentIndexServiceName,
 			orchestrator.DeploymentIndexGlobalKey,
 			"List",
-		).Request(t.Context(), restate.Void{})
+		).Request(t.Context(), orchestrator.ListFilter{})
 		require.NoError(t, err, "polling DeploymentIndex should not fail")
 
 		found := false
@@ -1013,7 +1016,7 @@ func TestCore_SystemAndPolicyEvents(t *testing.T) {
 	systemEvents, err := ingress.Object[string, []orchestrator.SequencedCloudEvent](
 		env.ingress,
 		orchestrator.DeploymentEventStoreServiceName,
-		"__system__/sinks",
+		url.PathEscape("__system__/sinks"),
 		"ListByType",
 	).Request(t.Context(), "dev.praxis.system.sink.")
 	require.NoError(t, err)
@@ -1363,18 +1366,23 @@ func TestCore_RetentionSweep_Prunes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	for index := 0; index < 3; index++ {
+	// Seed a mix of stale and fresh events: the 48h-old ones fall outside the
+	// 1d retention window and must be pruned, the recent ones must survive.
+	// Pruning operates at chunk granularity (100 events per chunk), so the
+	// stale events must fill a complete chunk to be eligible; the fresh
+	// events then land in the next chunk.
+	seedEvent := func(eventTime time.Time, message string) {
 		event := cloudevents.NewEvent(cloudevents.VersionV1)
 		event.SetSource(fmt.Sprintf("/praxis/%s/%s", workspaceName, deployKey))
 		event.SetType(orchestrator.EventTypeDeploymentStarted)
-		event.SetTime(oldTime.Add(time.Duration(index) * time.Minute))
+		event.SetTime(eventTime)
 		event.SetExtension(orchestrator.EventExtensionDeployment, deployKey)
 		event.SetExtension(orchestrator.EventExtensionWorkspace, workspaceName)
 		event.SetExtension(orchestrator.EventExtensionGeneration, int64(1))
 		event.SetExtension(orchestrator.EventExtensionCategory, orchestrator.EventCategoryLifecycle)
 		event.SetExtension(orchestrator.EventExtensionSeverity, orchestrator.EventSeverityInfo)
-		err = event.SetData(cloudevents.ApplicationJSON, map[string]any{
-			"message": fmt.Sprintf("old event %d", index+1),
+		err := event.SetData(cloudevents.ApplicationJSON, map[string]any{
+			"message": message,
 		})
 		require.NoError(t, err)
 
@@ -1385,6 +1393,13 @@ func TestCore_RetentionSweep_Prunes(t *testing.T) {
 			"Emit",
 		).Request(t.Context(), event)
 		require.NoError(t, err)
+	}
+	for index := 0; index < 100; index++ {
+		seedEvent(oldTime.Add(time.Duration(index)*time.Second), fmt.Sprintf("old event %d", index+1))
+	}
+	recentTime := time.Now().UTC()
+	for index := 0; index < 2; index++ {
+		seedEvent(recentTime.Add(time.Duration(index)*time.Minute), fmt.Sprintf("recent event %d", index+1))
 	}
 
 	beforeEvents, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
@@ -1438,7 +1453,7 @@ func TestCore_RetentionSweep_Prunes(t *testing.T) {
 	retentionEvents, err := ingress.Object[string, []orchestrator.SequencedCloudEvent](
 		env.ingress,
 		orchestrator.DeploymentEventStoreServiceName,
-		"__system__/retention/"+workspaceName,
+		url.PathEscape("__system__/retention/"+workspaceName),
 		"ListByType",
 	).Request(t.Context(), "dev.praxis.system.retention.")
 	require.NoError(t, err)
@@ -1812,7 +1827,13 @@ func TestCore_EventStore_TypeAndResourceFilters(t *testing.T) {
 		event.SetExtension(orchestrator.EventExtensionGeneration, int64(1))
 		event.SetExtension(orchestrator.EventExtensionCategory, category)
 		event.SetExtension(orchestrator.EventExtensionSeverity, severity)
-		err := event.SetData(cloudevents.ApplicationJSON, map[string]any{"message": eventType})
+		// Resource event schemas require resourceName/resourceKind; deployment
+		// event schemas are open structs, so the extra fields are harmless there.
+		err := event.SetData(cloudevents.ApplicationJSON, map[string]any{
+			"message":      eventType,
+			"resourceName": "query-filter-resource",
+			"resourceKind": "S3Bucket",
+		})
 		require.NoError(t, err)
 
 		_, err = ingress.Object[cloudevents.Event, restate.Void](

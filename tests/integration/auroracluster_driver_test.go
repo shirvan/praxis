@@ -16,7 +16,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/auroracluster"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -38,12 +38,12 @@ func setupAuroraClusterDriver(t *testing.T) (*ingress.Client, *rdssdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
-	driver := auroracluster.NewAuroraClusterDriver(nil)
+	driver := auroracluster.NewAuroraClusterDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), rdsClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, rdsClient
 }
 
 func TestAuroraClusterProvision_Creates(t *testing.T) {

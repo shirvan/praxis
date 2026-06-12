@@ -20,7 +20,6 @@ import (
 )
 
 func TestSNSSubscription_Provision(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSSubDriver(t)
 	topicName := uniqueTopicName(t)
 	topicArn := createTopicDirect(t, snsClient, topicName)
@@ -52,7 +51,6 @@ func TestSNSSubscription_Provision(t *testing.T) {
 }
 
 func TestSNSSubscription_Import(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSSubDriver(t)
 	topicName := uniqueTopicName(t)
 	topicArn := createTopicDirect(t, snsClient, topicName)
@@ -89,7 +87,6 @@ func TestSNSSubscription_Import(t *testing.T) {
 }
 
 func TestSNSSubscription_Delete(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSSubDriver(t)
 	topicName := uniqueTopicName(t)
 	topicArn := createTopicDirect(t, snsClient, topicName)
@@ -121,7 +118,6 @@ func TestSNSSubscription_Delete(t *testing.T) {
 }
 
 func TestSNSSubscription_GetStatus(t *testing.T) {
-	t.Parallel()
 	client, snsClient := setupSNSSubDriver(t)
 	topicName := uniqueTopicName(t)
 	topicArn := createTopicDirect(t, snsClient, topicName)
