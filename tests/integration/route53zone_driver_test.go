@@ -16,7 +16,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/route53zone"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -27,13 +27,13 @@ func setupRoute53ZoneDriver(t *testing.T) (*ingress.Client, *route53sdk.Client) 
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	r53Client := awsclient.NewRoute53Client(awsCfg)
 	ensureRoute53Enabled(t, r53Client)
-	driver := route53zone.NewHostedZoneDriver(nil)
+	driver := route53zone.NewHostedZoneDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), r53Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, r53Client
 }
 
 func ensureRoute53Enabled(t *testing.T, client *route53sdk.Client) {

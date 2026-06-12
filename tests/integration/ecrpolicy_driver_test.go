@@ -65,7 +65,6 @@ func createRepoForPolicy(t *testing.T, ecrClient *ecrsdk.Client, name string) {
 }
 
 func TestECRLifecyclePolicy_Provision(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRPolicyDriver(t)
 	repoName := uniqueRepoName(t)
 	createRepoForPolicy(t, ecrClient, repoName)
@@ -91,7 +90,6 @@ func TestECRLifecyclePolicy_Provision(t *testing.T) {
 }
 
 func TestECRLifecyclePolicy_Provision_Idempotent(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRPolicyDriver(t)
 	repoName := uniqueRepoName(t)
 	createRepoForPolicy(t, ecrClient, repoName)
@@ -117,7 +115,6 @@ func TestECRLifecyclePolicy_Provision_Idempotent(t *testing.T) {
 }
 
 func TestECRLifecyclePolicy_Import(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRPolicyDriver(t)
 	repoName := uniqueRepoName(t)
 	createRepoForPolicy(t, ecrClient, repoName)
@@ -149,7 +146,6 @@ func TestECRLifecyclePolicy_Import(t *testing.T) {
 }
 
 func TestECRLifecyclePolicy_Delete(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRPolicyDriver(t)
 	repoName := uniqueRepoName(t)
 	createRepoForPolicy(t, ecrClient, repoName)
@@ -178,7 +174,6 @@ func TestECRLifecyclePolicy_Delete(t *testing.T) {
 }
 
 func TestECRLifecyclePolicy_Reconcile_DetectsPolicyDrift(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRPolicyDriver(t)
 	repoName := uniqueRepoName(t)
 	createRepoForPolicy(t, ecrClient, repoName)
@@ -211,7 +206,6 @@ func TestECRLifecyclePolicy_Reconcile_DetectsPolicyDrift(t *testing.T) {
 }
 
 func TestECRLifecyclePolicy_GetStatus(t *testing.T) {
-	t.Parallel()
 	client, ecrClient := setupECRPolicyDriver(t)
 	repoName := uniqueRepoName(t)
 	createRepoForPolicy(t, ecrClient, repoName)

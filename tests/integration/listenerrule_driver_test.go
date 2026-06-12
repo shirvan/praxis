@@ -19,7 +19,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/listenerrule"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -31,8 +31,10 @@ func uniqueRuleName(t *testing.T) string {
 	name := strings.ReplaceAll(t.Name(), "/", "-")
 	name = strings.ReplaceAll(name, "_", "-")
 	name = strings.ToLower(name)
-	if len(name) > 24 {
-		name = name[:24]
+	// Budget: base(22) + "-" + 5-digit suffix + "-tg"/"-lb" stays within the
+	// 32-character ELB name limit.
+	if len(name) > 22 {
+		name = name[:22]
 	}
 	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%100000)
 }
@@ -124,13 +126,13 @@ func setupListenerRuleDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *
 	configureLocalAccount(t)
 	skipIfELBv2Unavailable(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := listenerrule.NewListenerRuleDriver(nil)
+	driver := listenerrule.NewListenerRuleDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), elbClient, ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, elbClient, ec2Client
 }
 
 func TestListenerRuleProvision(t *testing.T) {

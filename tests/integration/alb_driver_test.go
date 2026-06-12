@@ -18,7 +18,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/alb"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -69,13 +69,13 @@ func setupALBDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *ec2sdk.Cl
 	configureLocalAccount(t)
 	skipIfELBv2Unavailable(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := alb.NewALBDriver(nil)
+	driver := alb.NewALBDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), elbClient, ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, elbClient, ec2Client
 }
 
 func TestALBProvision(t *testing.T) {

@@ -21,8 +21,11 @@ import (
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/command"
 	"github.com/shirvan/praxis/internal/core/config"
+	"github.com/shirvan/praxis/internal/core/orchestrator"
 	"github.com/shirvan/praxis/internal/core/provider"
 	"github.com/shirvan/praxis/internal/core/registry"
+	s3driver "github.com/shirvan/praxis/internal/drivers/s3"
+	sgdriver "github.com/shirvan/praxis/internal/drivers/sg"
 )
 
 type dataSourcePlanEnv struct {
@@ -35,7 +38,7 @@ func setupDataSourcePlanStack(t *testing.T) *dataSourcePlanEnv {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	authClient := authservice.NewAuthClient()
 	providers := provider.NewRegistry(authClient)
 	absSchemaDir, err := filepath.Abs("../../schemas")
@@ -46,6 +49,11 @@ func setupDataSourcePlanStack(t *testing.T) *dataSourcePlanEnv {
 		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
 		restate.Reflect(cmdService),
 		restate.Reflect(registry.PolicyRegistry{}),
+		// Plan consults prior deployment state for diff computation and
+		// collects live outputs from the drivers of expression-bearing resources.
+		restate.Reflect(orchestrator.DeploymentStateObj{}),
+		restate.Reflect(s3driver.NewS3BucketDriver(authClient)),
+		restate.Reflect(sgdriver.NewSecurityGroupDriver(authClient)),
 	)
 
 	return &dataSourcePlanEnv{
@@ -70,7 +78,7 @@ func TestDataSourcePlan_VPCLookup_Integration(t *testing.T) {
 
 	resp, err := ingress.Service[command.PlanRequest, command.PlanResponse](
 		env.ingress, "PraxisCommandService", "Plan",
-	).Request(t.Context(), command.PlanRequest{Template: `
+	).Request(t.Context(), command.PlanRequest{Account: integrationAccountName, Template: `
 data: {
 	existingVpc: {
 		kind: "VPC"
@@ -108,7 +116,7 @@ func TestDataSourcePlan_S3Lookup_Integration(t *testing.T) {
 
 	resp, err := ingress.Service[command.PlanRequest, command.PlanResponse](
 		env.ingress, "PraxisCommandService", "Plan",
-	).Request(t.Context(), command.PlanRequest{Template: `
+	).Request(t.Context(), command.PlanRequest{Account: integrationAccountName, Template: `
 data: {
 	existingBucket: {
 		kind: "S3Bucket"
@@ -140,7 +148,7 @@ func TestDataSourcePlan_NotFound_Integration(t *testing.T) {
 	env := setupDataSourcePlanStack(t)
 	_, err := ingress.Service[command.PlanRequest, command.PlanResponse](
 		env.ingress, "PraxisCommandService", "Plan",
-	).Request(t.Context(), command.PlanRequest{Template: `
+	).Request(t.Context(), command.PlanRequest{Account: integrationAccountName, Template: `
 data: {
 	missingBucket: {
 		kind: "S3Bucket"

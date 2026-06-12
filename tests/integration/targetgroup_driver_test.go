@@ -18,7 +18,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/targetgroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -41,20 +41,20 @@ func setupTargetGroupDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *e
 	configureLocalAccount(t)
 	skipIfELBv2Unavailable(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := targetgroup.NewTargetGroupDriver(nil)
+	driver := targetgroup.NewTargetGroupDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), elbClient, ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, elbClient, ec2Client
 }
 
 // skipIfELBv2Unavailable skips the test when the ELBv2 service is not
 // reachable (e.g., mock server not running).
 func skipIfELBv2Unavailable(t *testing.T) {
 	t.Helper()
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	_, err := elbClient.DescribeTargetGroups(context.Background(), &elbv2sdk.DescribeTargetGroupsInput{})
 	if err != nil {

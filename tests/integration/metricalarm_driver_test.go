@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/metricalarm"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -38,12 +38,12 @@ func setupMetricAlarmDriver(t *testing.T) (*ingress.Client, *cwsdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	cwClient := awsclient.NewCloudWatchClient(awsCfg)
-	driver := metricalarm.NewMetricAlarmDriver(nil)
+	driver := metricalarm.NewMetricAlarmDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), cwClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, cwClient
 }
 
 func defaultAlarmSpec(name string) metricalarm.MetricAlarmSpec {

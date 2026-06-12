@@ -16,7 +16,6 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/acmcert"
@@ -45,12 +44,12 @@ func skipIfACMUnavailable(t *testing.T, client *acmsdk.Client) {
 func setupACMCertificateDriver(t *testing.T) (*ingress.Client, *acmsdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	acmClient := awsclient.NewACMClient(awsCfg)
 	skipIfACMUnavailable(t, acmClient)
 	driver := acmcert.NewACMCertificateDriver(authservice.NewAuthClient())
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), acmClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, acmClient
 }
 
 func TestACMCertificateProvision(t *testing.T) {

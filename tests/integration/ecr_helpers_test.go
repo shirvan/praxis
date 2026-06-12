@@ -11,9 +11,7 @@ import (
 
 	ecrsdk "github.com/aws/aws-sdk-go-v2/service/ecr"
 
-	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/ecrpolicy"
@@ -43,28 +41,20 @@ func setupECRRepoDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	ecrClient := awsclient.NewECRClient(awsCfg)
 	skipIfECRUnavailable(t, ecrClient)
 
-	env := restatetest.Start(t,
-		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
-		restate.Reflect(ecrrepo.NewECRRepositoryDriver(authservice.NewAuthClient())),
-	)
-	return env.Ingress(), ecrClient
+	return setupDriverEventingEnv(t, ecrrepo.NewECRRepositoryDriver(authservice.NewAuthClient())), ecrClient
 }
 
 func setupECRPolicyDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	ecrClient := awsclient.NewECRClient(awsCfg)
 	skipIfECRUnavailable(t, ecrClient)
 
-	env := restatetest.Start(t,
-		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
-		restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(authservice.NewAuthClient())),
-	)
-	return env.Ingress(), ecrClient
+	return setupDriverEventingEnv(t, ecrpolicy.NewECRLifecyclePolicyDriver(authservice.NewAuthClient())), ecrClient
 }

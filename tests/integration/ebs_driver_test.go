@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/ebs"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -38,12 +38,12 @@ func setupEBSDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := ebs.NewEBSVolumeDriver(nil)
+	driver := ebs.NewEBSVolumeDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, ec2Client
 }
 
 func defaultSubnetAndAZ(t *testing.T, ec2Client *ec2sdk.Client) (string, string) {

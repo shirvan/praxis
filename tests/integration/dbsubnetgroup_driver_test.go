@@ -18,7 +18,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -40,13 +40,13 @@ func setupDBSubnetGroupDriver(t *testing.T) (*ingress.Client, *rdssdk.Client, *e
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := dbsubnetgroup.NewDBSubnetGroupDriver(nil)
+	driver := dbsubnetgroup.NewDBSubnetGroupDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), rdsClient, ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, rdsClient, ec2Client
 }
 
 func getDefaultSubnetIds(t *testing.T, ec2Client *ec2sdk.Client) []string {

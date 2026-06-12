@@ -17,7 +17,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/lambdaperm"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -50,13 +50,14 @@ func createTestFunction(t *testing.T, lambdaClient *lambdasdk.Client, name strin
 func setupPermissionDriver(t *testing.T) (*ingress.Client, *lambdasdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
+	ensureLambdaRole(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	lambdaClient := awsclient.NewLambdaClient(awsCfg)
-	driver := lambdaperm.NewLambdaPermissionDriver(nil)
+	driver := lambdaperm.NewLambdaPermissionDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), lambdaClient
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, lambdaClient
 }
 
 func TestLambdaPermissionProvision_AddsPermission(t *testing.T) {

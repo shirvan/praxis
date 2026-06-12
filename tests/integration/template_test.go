@@ -16,7 +16,7 @@ import (
 	"github.com/shirvan/praxis/internal/core/resolver"
 )
 
-func localstackSSMClient(t *testing.T) *ssm.Client {
+func motoSSMClient(t *testing.T) *ssm.Client {
 	t.Helper()
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
 		awsconfig.WithRegion("us-east-1"),
@@ -30,14 +30,23 @@ func localstackSSMClient(t *testing.T) *ssm.Client {
 		)),
 	)
 	require.NoError(t, err)
-	cfg.BaseEndpoint = aws.String(localstackEndpoint)
+	cfg.BaseEndpoint = aws.String(motoEndpoint)
 	return ssm.NewFromConfig(cfg)
 }
 
 func TestTemplate_SSMResolution_Integration(t *testing.T) {
-	ssmClient := localstackSSMClient(t)
+	ssmClient := motoSSMClient(t)
 
-	// The Moto init script creates /praxis/dev/db-password with value "test-password-dev"
+	// Seed the parameter directly: moto-init also creates it, but tests that
+	// reset Moto (lifecycle) wipe that seed, so this test provides its own.
+	_, err := ssmClient.PutParameter(context.Background(), &ssm.PutParameterInput{
+		Name:      aws.String("/praxis/dev/db-password"),
+		Value:     aws.String("test-password-dev"),
+		Type:      "SecureString",
+		Overwrite: aws.Bool(true),
+	})
+	require.NoError(t, err)
+
 	r := resolver.NewSSMResolver(ssmClient)
 
 	specs := map[string]json.RawMessage{
@@ -54,7 +63,7 @@ func TestTemplate_SSMResolution_Integration(t *testing.T) {
 }
 
 func TestTemplate_SSMResolution_MissingParam_Integration(t *testing.T) {
-	ssmClient := localstackSSMClient(t)
+	ssmClient := motoSSMClient(t)
 	r := resolver.NewSSMResolver(ssmClient)
 
 	specs := map[string]json.RawMessage{

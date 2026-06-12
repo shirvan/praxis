@@ -19,7 +19,7 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/ingress"
-	restatetest "github.com/shirvan/praxis/internal/restatetest"
+	"github.com/shirvan/praxis/internal/core/authservice"
 
 	"github.com/shirvan/praxis/internal/drivers/listener"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
@@ -110,13 +110,13 @@ func setupListenerDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *ec2s
 	configureLocalAccount(t)
 	skipIfELBv2Unavailable(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := listener.NewListenerDriver(nil)
+	driver := listener.NewListenerDriver(authservice.NewAuthClient())
 
-	env := restatetest.Start(t, restate.Reflect(driver))
-	return env.Ingress(), elbClient, ec2Client
+	ingressClient := setupDriverEventingEnv(t, driver)
+	return ingressClient, elbClient, ec2Client
 }
 
 func TestListenerProvision(t *testing.T) {

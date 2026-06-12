@@ -121,7 +121,7 @@ func setupFullStack(t *testing.T) *lifecycleTestEnv {
 	t.Helper()
 	configureLocalAccount(t)
 
-	awsCfg := localstackAWSConfig(t)
+	awsCfg := motoAWSConfig(t)
 	s3Client := awsclient.NewS3Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
 	ssmClient := ssmsdk.NewFromConfig(awsCfg)
@@ -151,6 +151,7 @@ func setupFullStack(t *testing.T) *lifecycleTestEnv {
 		restate.Reflect(rollbackWorkflow),
 		restate.Reflect(orchestrator.DeploymentStateObj{}),
 		restate.Reflect(orchestrator.DeploymentIndex{}),
+		restate.Reflect(orchestrator.ResourceIndex{}),
 		restate.Reflect(orchestrator.NewEventBus(absSchemaDir)),
 		restate.Reflect(orchestrator.DeploymentEventStore{}),
 		restate.Reflect(orchestrator.ResourceEventOwnerObj{}),
