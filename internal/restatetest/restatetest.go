@@ -73,25 +73,36 @@ func Start(t *testing.T, services ...restate.ServiceDefinition) *TestEnvironment
 	sdkPort, err := strconv.Atoi(strings.Split(srv.URL, ":")[2])
 	require.NoError(t, err)
 
-	restateC, err := testcontainers.Run(
-		t.Context(), image,
-		testcontainers.WithEnv(map[string]string{
-			"RUST_LOG":                              "warn",
-			"RESTATE_DEFAULT_NUM_PARTITIONS":        "1",
-			"RESTATE_META__REST_ADDRESS":            "0.0.0.0:" + adminPort,
-			"RESTATE_WORKER__INGRESS__BIND_ADDRESS": "0.0.0.0:" + ingressPort,
-		}),
-		testcontainers.WithExposedPorts(adminPort+"/tcp", ingressPort+"/tcp"),
-		testcontainers.WithWaitStrategyAndDeadline(
-			startupDeadline,
-			wait.ForAll(
-				wait.ForHTTP("/health").WithPort(adminPort+"/tcp"),
-				wait.ForHTTP("/restate/health").WithPort(ingressPort+"/tcp"),
+	// One bounded retry: under heavy container churn Docker occasionally
+	// fails a start with transient errors ("port not found" before the
+	// mapping is visible). A single retry absorbs that class without
+	// masking persistent environment problems.
+	var restateC testcontainers.Container
+	for attempt := 1; attempt <= 2; attempt++ {
+		restateC, err = testcontainers.Run(
+			t.Context(), image,
+			testcontainers.WithEnv(map[string]string{
+				"RUST_LOG":                              "warn",
+				"RESTATE_DEFAULT_NUM_PARTITIONS":        "1",
+				"RESTATE_META__REST_ADDRESS":            "0.0.0.0:" + adminPort,
+				"RESTATE_WORKER__INGRESS__BIND_ADDRESS": "0.0.0.0:" + ingressPort,
+			}),
+			testcontainers.WithExposedPorts(adminPort+"/tcp", ingressPort+"/tcp"),
+			testcontainers.WithWaitStrategyAndDeadline(
+				startupDeadline,
+				wait.ForAll(
+					wait.ForHTTP("/health").WithPort(adminPort+"/tcp"),
+					wait.ForHTTP("/restate/health").WithPort(ingressPort+"/tcp"),
+				),
 			),
-		),
-		testcontainers.WithHostPortAccess(sdkPort),
-	)
-	testcontainers.CleanupContainer(t, restateC)
+			testcontainers.WithHostPortAccess(sdkPort),
+		)
+		testcontainers.CleanupContainer(t, restateC)
+		if err == nil {
+			break
+		}
+		t.Logf("restatetest: container start attempt %d failed: %v", attempt, err)
+	}
 	require.NoError(t, err)
 
 	logReader, err := restateC.Logs(t.Context())
