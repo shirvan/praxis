@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	restate "github.com/restatedev/sdk-go"
@@ -272,12 +273,20 @@ func (c *Client) TestNotificationSink(ctx context.Context, name string) error {
 // Resource reads (direct driver queries)
 // --------------------------------------------------------------------------
 
+// escapeKey percent-encodes a resource key for use as a URL path segment.
+// Canonical keys may contain slashes (e.g. "us-east-1~/praxis/prod/db-host");
+// the ingress client splices the key into the request path verbatim, so
+// unescaped slashes would be parsed as extra path segments.
+func escapeKey(key string) string {
+	return url.PathEscape(key)
+}
+
 // GetResourceStatus reads a resource's current status from its driver service.
 // kind is the Restate service name (e.g., "S3Bucket"), key is the canonical
 // resource key (e.g., "my-bucket" or "vpc-123~web-sg").
 func (c *Client) GetResourceStatus(ctx context.Context, kind, key string) (*types.StatusResponse, error) {
 	resp, err := ingress.Object[restate.Void, types.StatusResponse](
-		c.rc, kind, key, "GetStatus",
+		c.rc, kind, escapeKey(key), "GetStatus",
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, fmt.Errorf("get resource status %s/%s: %w", kind, key, err)
@@ -291,7 +300,7 @@ func (c *Client) GetResourceStatus(ctx context.Context, kind, key string) (*type
 // spec and, in Managed mode, corrects any drift.
 func (c *Client) ReconcileResource(ctx context.Context, kind, key string) (*types.ReconcileResult, error) {
 	resp, err := ingress.Object[restate.Void, types.ReconcileResult](
-		c.rc, kind, key, "Reconcile",
+		c.rc, kind, escapeKey(key), "Reconcile",
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, fmt.Errorf("reconcile %s/%s: %w", kind, key, err)
@@ -315,7 +324,7 @@ func (c *Client) ReconcileDeployment(ctx context.Context, deploymentKey string, 
 // different typed structs.
 func (c *Client) GetResourceOutputs(ctx context.Context, kind, key string) (map[string]any, error) {
 	resp, err := ingress.Object[restate.Void, json.RawMessage](
-		c.rc, kind, key, "GetOutputs",
+		c.rc, kind, escapeKey(key), "GetOutputs",
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, fmt.Errorf("get resource outputs %s/%s: %w", kind, key, err)
@@ -335,7 +344,7 @@ func (c *Client) GetResourceOutputs(ctx context.Context, kind, key string) (map[
 // define different typed spec structs.
 func (c *Client) GetResourceInputs(ctx context.Context, kind, key string) (map[string]any, error) {
 	resp, err := ingress.Object[restate.Void, json.RawMessage](
-		c.rc, kind, key, "GetInputs",
+		c.rc, kind, escapeKey(key), "GetInputs",
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return nil, fmt.Errorf("get resource inputs %s/%s: %w", kind, key, err)
@@ -355,7 +364,7 @@ func (c *Client) GetResourceInputs(ctx context.Context, kind, key string) (map[s
 // and clears its local state.
 func (c *Client) DeleteResource(ctx context.Context, kind, key string) error {
 	_, err := ingress.Object[restate.Void, restate.Void](
-		c.rc, kind, key, "Delete",
+		c.rc, kind, escapeKey(key), "Delete",
 	).Request(ctx, restate.Void{})
 	if err != nil {
 		return fmt.Errorf("delete %s/%s: %w", kind, key, err)

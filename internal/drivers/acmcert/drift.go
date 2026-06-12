@@ -46,7 +46,7 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 			NewValue: normDesired.DomainName,
 		})
 	}
-	if normObserved.DomainName != "" && !slicesEqual(normDesired.SubjectAlternativeNames, normObserved.SubjectAlternativeNames) {
+	if normObserved.DomainName != "" && !EquivalentSANs(normDesired.DomainName, normDesired.SubjectAlternativeNames, normObserved.DomainName, normObserved.SubjectAlternativeNames) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.subjectAlternativeNames (immutable, requires replacement)",
 			OldValue: normObserved.SubjectAlternativeNames,

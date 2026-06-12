@@ -514,6 +514,17 @@ func normalizeDomainName(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+// EquivalentSANs compares SAN sets accounting for ACM's behavior of always
+// including the primary domain name in a certificate's subjectAlternativeNames:
+// a request that omits the primary domain from SANs still yields a certificate
+// whose SAN list contains it, so both sides are compared with their primary
+// domain folded in.
+func EquivalentSANs(desiredDomain string, desiredSANs []string, observedDomain string, observedSANs []string) bool {
+	want := normalizeSANs(append(append([]string(nil), desiredSANs...), desiredDomain))
+	have := normalizeSANs(append(append([]string(nil), observedSANs...), observedDomain))
+	return slices.Equal(want, have)
+}
+
 func normalizeSANs(values []string) []string {
 	if len(values) == 0 {
 		return nil
@@ -548,7 +559,7 @@ func validateImmutableFields(desired ACMCertificateSpec, observed ObservedState)
 	if desired.DomainName != observed.DomainName {
 		return fmt.Errorf("certificate %s already exists with domainName %s; requested domainName %s cannot be changed", observed.CertificateArn, observed.DomainName, desired.DomainName)
 	}
-	if !slices.Equal(desired.SubjectAlternativeNames, observed.SubjectAlternativeNames) {
+	if !EquivalentSANs(desired.DomainName, desired.SubjectAlternativeNames, observed.DomainName, observed.SubjectAlternativeNames) {
 		return fmt.Errorf("certificate %s already exists with different subjectAlternativeNames; requested SANs cannot be changed in place", observed.CertificateArn)
 	}
 	if desired.ValidationMethod != "" && observed.ValidationMethod != "" && desired.ValidationMethod != observed.ValidationMethod {

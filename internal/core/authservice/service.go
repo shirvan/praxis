@@ -163,6 +163,21 @@ func (a *AuthService) GetStatus(ctx restate.ObjectSharedContext) (CredentialStat
 		return CredentialStatus{}, err
 	}
 	if state == nil {
+		// Mirror resolveConfig's bootstrap fallback so bootstrap-configured
+		// accounts report as known before their first credential resolution.
+		// GetStatus is a shared handler and cannot persist state, so only
+		// the config fields are reported; Valid stays false until the first
+		// GetCredentials call caches a credential.
+		if a.bootstrap != nil {
+			if cfg, ok := a.bootstrap.Accounts[alias]; ok {
+				return CredentialStatus{
+					AccountAlias:     alias,
+					CredentialSource: cfg.CredentialSource,
+					Region:           cfg.Region,
+					Valid:            false,
+				}, nil
+			}
+		}
 		return CredentialStatus{
 			AccountAlias: alias,
 			Valid:        false,

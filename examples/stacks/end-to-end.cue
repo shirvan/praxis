@@ -1005,7 +1005,9 @@ resources: {
 			runtime: "provided.al2023"
 			handler: "bootstrap"
 			role:    "${resources.appRole.outputs.arn}"
-			code: zipFile: "bootstrap-placeholder"
+			// Minimal valid deployment package: a zip containing an executable
+			// "bootstrap" stub. Replace with your real build artifact.
+			code: zipFile: "UEsDBAoAAAAAAJh5y1zihkXDEQAAABEAAAAJAAAAYm9vdHN0cmFwIyEvYmluL3NoCmV4aXQgMApQSwECHgMKAAAAAACYectc4oZFwxEAAAARAAAACQAAAAAAAAABAAAA7YEAAAAAYm9vdHN0cmFwUEsFBgAAAAABAAEANwAAADgAAAAAAA=="
 			memorySize:   256
 			timeout:      60
 			environment: {
