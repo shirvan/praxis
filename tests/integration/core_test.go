@@ -82,6 +82,10 @@ type coreTestEnv struct {
 	// Tests use it to verify SecurityGroup resources and to resolve the
 	// default VPC ID.
 	ec2Client *ec2sdk.Client
+
+	// env is the underlying Restate test environment; crash-resume tests use
+	// it to restart the Restate container mid-deployment.
+	env *restatetest.TestEnvironment
 }
 
 // setupCoreStack boots the entire in-process Praxis stack:
@@ -97,7 +101,7 @@ type coreTestEnv struct {
 //
 // The Testcontainers-managed Restate instance is automatically torn down when
 // the test completes.
-func setupCoreStack(t *testing.T) *coreTestEnv {
+func setupCoreStack(t *testing.T, extraServices ...restate.ServiceDefinition) *coreTestEnv {
 	t.Helper()
 	configureLocalAccount(t)
 
@@ -142,7 +146,7 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 	// restatetest.Start starts a real Restate container via Testcontainers,
 	// registers every service, and returns an environment whose Ingress()
 	// client routes through the actual Restate runtime.
-	env := restatetest.Start(t,
+	services := []restate.ServiceDefinition{
 		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
 		restate.Reflect(workspace.NewWorkspaceService(absSchemaDir)),
 		restate.Reflect(workspace.WorkspaceIndex{}),
@@ -177,12 +181,15 @@ func setupCoreStack(t *testing.T) *coreTestEnv {
 		restate.Reflect(ec2Driver),
 		restate.Reflect(keyPairDriver),
 		restate.Reflect(sgDriver),
-	)
+	}
+	services = append(services, extraServices...)
+	env := restatetest.Start(t, services...)
 
 	return &coreTestEnv{
 		ingress:   env.Ingress(),
 		s3Client:  s3Client,
 		ec2Client: ec2Client,
+		env:       env,
 	}
 }
 
