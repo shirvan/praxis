@@ -155,6 +155,45 @@ func TestLambdaLayerDelete_RemovesLayer(t *testing.T) {
 	require.Error(t, err, "layer version should be deleted from Moto")
 }
 
+func TestLambdaLayerReconcile_DetectsExternalPublish(t *testing.T) {
+	client, lambdaClient := setupLambdaLayerDriver(t)
+	name := uniqueLayerName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	outputs, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+		client, lambdalayer.ServiceName, key, "Provision",
+	).Request(t.Context(), defaultLayerSpec(name))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), outputs.Version)
+
+	// Externally publish a new layer version to introduce drift.
+	pubOut, err := lambdaClient.PublishLayerVersion(context.Background(), &lambdasdk.PublishLayerVersionInput{
+		LayerName:          aws.String(name),
+		Description:        aws.String("externally published version"),
+		CompatibleRuntimes: []lambdatypes.Runtime{lambdatypes.RuntimePython312},
+		Content:            &lambdatypes.LayerVersionContentInput{ZipFile: minimalLambdaZipBytes()},
+	})
+	require.NoError(t, err)
+	require.Greater(t, pubOut.Version, int64(1), "external publish should create a newer version")
+
+	// Layer versions are immutable, so the driver detects drift but cannot
+	// correct in place — Reconcile is detect-only for Lambda layers.
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, lambdalayer.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "external publish should be detected as drift")
+	assert.False(t, result.Correcting, "layer driver is detect-only; no correction is performed")
+
+	// The externally published version must remain untouched.
+	desc, err := lambdaClient.GetLayerVersion(context.Background(), &lambdasdk.GetLayerVersionInput{
+		LayerName:     aws.String(name),
+		VersionNumber: aws.Int64(pubOut.Version),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "externally published version", aws.ToString(desc.Description))
+}
+
 func TestLambdaLayerGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupLambdaLayerDriver(t)
 	name := uniqueLayerName(t)

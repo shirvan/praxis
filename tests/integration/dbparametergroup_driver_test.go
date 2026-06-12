@@ -192,6 +192,66 @@ func TestDBParameterGroupDelete_Removes(t *testing.T) {
 	}
 }
 
+func TestDBParameterGroupReconcile_DetectsTagDrift(t *testing.T) {
+	client, rdsClient := setupDBParameterGroupDriver(t)
+	name := uniqueParamGroupName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	outputs, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+		client, "DBParameterGroup", key, "Provision",
+	).Request(t.Context(), dbparametergroup.DBParameterGroupSpec{
+		Account:     integrationAccountName,
+		Region:      "us-east-1",
+		GroupName:   name,
+		Type:        "db",
+		Family:      "mysql8.0",
+		Description: "Tag drift test",
+		Tags:        map[string]string{"env": "test"},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.ARN)
+
+	// Externally overwrite a tag value to introduce drift.
+	_, err = rdsClient.AddTagsToResource(context.Background(), &rdssdk.AddTagsToResourceInput{
+		ResourceName: aws.String(outputs.ARN),
+		Tags:         []rdstypes.Tag{{Key: aws.String("env"), Value: aws.String("hacked")}},
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	tagsOut, err := rdsClient.ListTagsForResource(context.Background(), &rdssdk.ListTagsForResourceInput{
+		ResourceName: aws.String(outputs.ARN),
+	})
+	require.NoError(t, err)
+	if tagValue(tagsOut.TagList, "env") != "hacked" {
+		t.Skip("Moto does not apply AddTagsToResource to DB parameter groups")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "DBParameterGroup", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	tagsOut, err = rdsClient.ListTagsForResource(context.Background(), &rdssdk.ListTagsForResourceInput{
+		ResourceName: aws.String(outputs.ARN),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "test", tagValue(tagsOut.TagList, "env"), "tag should be restored to desired value")
+}
+
+// tagValue returns the value of the named RDS tag, or "" when absent.
+func tagValue(tags []rdstypes.Tag, key string) string {
+	for _, tag := range tags {
+		if aws.ToString(tag.Key) == key {
+			return aws.ToString(tag.Value)
+		}
+	}
+	return ""
+}
+
 func TestDBParameterGroupGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupDBParameterGroupDriver(t)
 	name := uniqueParamGroupName(t)

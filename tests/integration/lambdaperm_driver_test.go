@@ -156,6 +156,49 @@ func TestLambdaPermissionDelete_RemovesPermission(t *testing.T) {
 	}
 }
 
+func TestLambdaPermissionReconcile_DetectsExternalDelete(t *testing.T) {
+	client, lambdaClient := setupPermissionDriver(t)
+	funcName := uniqueFunctionName(t)
+	stmtId := uniqueStatementId(t)
+	createTestFunction(t, lambdaClient, funcName)
+
+	key := fmt.Sprintf("us-east-1~%s~%s", funcName, stmtId)
+	_, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+		client, lambdaperm.ServiceName, key, "Provision",
+	).Request(t.Context(), lambdaperm.LambdaPermissionSpec{
+		Account:      integrationAccountName,
+		Region:       "us-east-1",
+		FunctionName: funcName,
+		StatementId:  stmtId,
+		Action:       "lambda:InvokeFunction",
+		Principal:    "s3.amazonaws.com",
+		SourceArn:    "arn:aws:s3:::my-bucket",
+	})
+	require.NoError(t, err)
+
+	// Externally remove the permission to introduce drift.
+	_, err = lambdaClient.RemovePermission(context.Background(), &lambdasdk.RemovePermissionInput{
+		FunctionName: aws.String(funcName),
+		StatementId:  aws.String(stmtId),
+	})
+	require.NoError(t, err)
+
+	// Permissions are replace-only: the driver flags the external delete as an
+	// error rather than re-adding the statement (detect-only behavior).
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, lambdaperm.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Error, "deleted externally", "external delete should be reported")
+	assert.False(t, result.Correcting, "permission driver is detect-only; no correction is performed")
+
+	status, err := ingress.Object[restate.Void, types.StatusResponse](
+		client, lambdaperm.ServiceName, key, "GetStatus",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusError, status.Status, "status should flag the external delete")
+}
+
 func TestLambdaPermissionGetStatus_ReturnsReady(t *testing.T) {
 	client, lambdaClient := setupPermissionDriver(t)
 	funcName := uniqueFunctionName(t)

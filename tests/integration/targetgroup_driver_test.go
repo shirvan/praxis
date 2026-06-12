@@ -13,6 +13,7 @@ import (
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	elbv2sdk "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -304,6 +305,68 @@ func TestTargetGroupProvision_ImmutableConflict(t *testing.T) {
 	).Request(t.Context(), spec)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
+}
+
+func TestTargetGroupReconcile_DetectsDeregistrationDelayDrift(t *testing.T) {
+	client, elbClient, ec2Client := setupTargetGroupDriver(t)
+	name := uniqueTGName(t)
+	vpcId := tgDefaultVpcId(t, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	outputs, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+		client, "TargetGroup", key, "Provision",
+	).Request(t.Context(), targetgroup.TargetGroupSpec{
+		Account:             integrationAccountName,
+		Region:              "us-east-1",
+		Name:                name,
+		Protocol:            "HTTP",
+		Port:                8080,
+		VpcId:               vpcId,
+		DeregistrationDelay: 60,
+		Tags:                map[string]string{"Name": name},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.TargetGroupArn)
+
+	// Externally change the deregistration delay to introduce drift.
+	_, err = elbClient.ModifyTargetGroupAttributes(context.Background(), &elbv2sdk.ModifyTargetGroupAttributesInput{
+		TargetGroupArn: aws.String(outputs.TargetGroupArn),
+		Attributes: []elbv2types.TargetGroupAttribute{
+			{Key: aws.String("deregistration_delay.timeout_seconds"), Value: aws.String("120")},
+		},
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	if tgAttributeValue(t, elbClient, outputs.TargetGroupArn, "deregistration_delay.timeout_seconds") != "120" {
+		t.Skip("Moto does not apply ModifyTargetGroupAttributes deregistration_delay")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "TargetGroup", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	assert.Equal(t, "60", tgAttributeValue(t, elbClient, outputs.TargetGroupArn, "deregistration_delay.timeout_seconds"),
+		"deregistration delay should be restored to desired value")
+}
+
+// tgAttributeValue returns the named target group attribute value, or "" when absent.
+func tgAttributeValue(t *testing.T, elbClient *elbv2sdk.Client, arn, key string) string {
+	t.Helper()
+	out, err := elbClient.DescribeTargetGroupAttributes(context.Background(), &elbv2sdk.DescribeTargetGroupAttributesInput{
+		TargetGroupArn: aws.String(arn),
+	})
+	require.NoError(t, err)
+	for _, attr := range out.Attributes {
+		if aws.ToString(attr.Key) == key {
+			return aws.ToString(attr.Value)
+		}
+	}
+	return ""
 }
 
 func TestTargetGroupGetStatus(t *testing.T) {

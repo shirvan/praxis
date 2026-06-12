@@ -31,8 +31,10 @@ func uniqueListenerName(t *testing.T) string {
 	name := strings.ReplaceAll(t.Name(), "/", "-")
 	name = strings.ReplaceAll(name, "_", "-")
 	name = strings.ToLower(name)
-	if len(name) > 24 {
-		name = name[:24]
+	// Cap at 20 chars so name + "-" + 5-digit suffix + "-tg" (listenerPrereqs)
+	// stays within the 32-char ELBv2 target group name limit.
+	if len(name) > 20 {
+		name = name[:20]
 	}
 	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%100000)
 }
@@ -177,6 +179,50 @@ func TestListenerDelete(t *testing.T) {
 		ListenerArns: []string{out.ListenerArn},
 	})
 	assert.Error(t, descErr)
+}
+
+func TestListenerReconcile_DetectsTagDrift(t *testing.T) {
+	client, elbClient, ec2Client := setupListenerDriver(t)
+	lbArn, tgArn := listenerPrereqs(t, elbClient, ec2Client)
+	key := fmt.Sprintf("us-east-1~%s", uniqueListenerName(t))
+
+	outputs, err := ingress.Object[listener.ListenerSpec, listener.ListenerOutputs](
+		client, "Listener", key, "Provision",
+	).Request(t.Context(), listener.ListenerSpec{
+		Account:         integrationAccountName,
+		LoadBalancerArn: lbArn,
+		Port:            80,
+		Protocol:        "HTTP",
+		DefaultActions: []listener.ListenerAction{{
+			Type:           "forward",
+			TargetGroupArn: tgArn,
+		}},
+		Tags: map[string]string{"env": "test"},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, outputs.ListenerArn)
+
+	// Externally overwrite a tag value to introduce drift.
+	_, err = elbClient.AddTags(context.Background(), &elbv2sdk.AddTagsInput{
+		ResourceArns: []string{outputs.ListenerArn},
+		Tags:         []elbv2types.Tag{{Key: aws.String("env"), Value: aws.String("hacked")}},
+	})
+	require.NoError(t, err)
+
+	// Verify the external mutation landed before reconciling; otherwise there
+	// is no observable drift and the scenario can only run against real AWS.
+	if elbTagValue(t, elbClient, outputs.ListenerArn, "env") != "hacked" {
+		t.Skip("Moto does not apply AddTags to listeners")
+	}
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, "Listener", key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.Drift, "drift should be detected")
+	assert.True(t, result.Correcting, "managed mode should correct drift")
+
+	assert.Equal(t, "test", elbTagValue(t, elbClient, outputs.ListenerArn, "env"), "tag should be restored to desired value")
 }
 
 func TestListenerGetStatus(t *testing.T) {
