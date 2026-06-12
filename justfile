@@ -244,10 +244,6 @@ test-ecr-policy:
 test-ecr: test-ecr-repo test-ecr-policy
 
 # Run ACM certificate driver unit tests only
-test-acm:
-    go test ./internal/drivers/acmcert/... -v -count=1 -race
-
-# Run ACM certificate driver unit tests only
 test-acmcert:
     go test ./internal/drivers/acmcert/... -v -count=1 -race
 
@@ -878,9 +874,9 @@ _validate-version VERSION:
 _validate-service SERVICE:
     #!/bin/sh
     case "{{SERVICE}}" in
-        praxis|praxis-core|praxis-storage|praxis-network|praxis-compute|praxis-identity) ;;
+        praxis|praxis-core|praxis-storage|praxis-network|praxis-compute|praxis-identity|praxis-monitoring) ;;
         *) echo "Unknown service: {{SERVICE}}"
-           echo "Valid services: praxis, praxis-core, praxis-storage, praxis-network, praxis-compute, praxis-identity"
+           echo "Valid services: praxis, praxis-core, praxis-storage, praxis-network, praxis-compute, praxis-identity, praxis-monitoring"
            exit 1 ;;
     esac
     echo "✓ Service {{SERVICE}} is valid"
@@ -1020,11 +1016,14 @@ release-service-preflight SERVICE VERSION: (_validate-service SERVICE) (_validat
     echo ""
     echo "→ Running {{SERVICE}} tests..."
     case "{{SERVICE}}" in
-        praxis)          go test ./internal/cli/... -v -count=1 -race ;;
-        praxis-core)     go test ./internal/core/command/... ./internal/core/dag/... ./internal/core/orchestrator/... -v -count=1 -race ;;
-        praxis-storage)  go test ./internal/drivers/s3/... -v -count=1 -race ;;
-        praxis-network)  go test ./internal/drivers/sg/... ./internal/drivers/vpc/... -v -count=1 -race ;;
-        praxis-compute)  go test ./internal/drivers/ec2/... -v -count=1 -race ;;
+        praxis)            go test ./internal/cli/... -v -count=1 -race ;;
+        praxis-core)       go test ./internal/core/... -v -count=1 -race ;;
+        praxis-storage)    go test ./internal/drivers/s3/... ./internal/drivers/ebs/... ./internal/drivers/dbsubnetgroup/... ./internal/drivers/dbparametergroup/... ./internal/drivers/rdsinstance/... ./internal/drivers/auroracluster/... ./internal/drivers/snstopic/... ./internal/drivers/snssub/... ./internal/drivers/sqs/... ./internal/drivers/sqspolicy/... ./internal/drivers/ssmparameter/... -v -count=1 -race ;;
+        praxis-network)    go test ./internal/drivers/sg/... ./internal/drivers/vpc/... ./internal/drivers/eip/... ./internal/drivers/igw/... ./internal/drivers/nacl/... ./internal/drivers/natgw/... ./internal/drivers/routetable/... ./internal/drivers/subnet/... ./internal/drivers/vpcpeering/... ./internal/drivers/route53zone/... ./internal/drivers/route53record/... ./internal/drivers/route53healthcheck/... ./internal/drivers/alb/... ./internal/drivers/nlb/... ./internal/drivers/targetgroup/... ./internal/drivers/listener/... ./internal/drivers/listenerrule/... ./internal/drivers/acmcert/... -v -count=1 -race ;;
+        praxis-compute)    go test ./internal/drivers/ec2/... ./internal/drivers/ami/... ./internal/drivers/keypair/... ./internal/drivers/lambda/... ./internal/drivers/lambdalayer/... ./internal/drivers/lambdaperm/... ./internal/drivers/esm/... ./internal/drivers/ecrrepo/... ./internal/drivers/ecrpolicy/... -v -count=1 -race ;;
+        praxis-identity)   go test ./internal/drivers/iamrole/... ./internal/drivers/iampolicy/... ./internal/drivers/iamuser/... ./internal/drivers/iamgroup/... ./internal/drivers/iaminstanceprofile/... -v -count=1 -race ;;
+        praxis-monitoring) go test ./internal/drivers/loggroup/... ./internal/drivers/metricalarm/... ./internal/drivers/dashboard/... -v -count=1 -race ;;
+        *) echo "ERROR: no test set defined for {{SERVICE}} — refusing to release untested" && exit 1 ;;
     esac
     echo ""
     echo "→ Building {{SERVICE}}..."

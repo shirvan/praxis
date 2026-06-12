@@ -41,6 +41,19 @@ jobs:
       - name: Build
         run: just build
 
+      # Generated JSON Schemas under schemas/events/gen must match their CUE
+      # sources; drift means someone edited one side without the other.
+      - name: Event schema generation drift
+        run: |
+          go install cuelang.org/go/cmd/cue
+          just generate-event-schemas
+          git diff --exit-code schemas/events/gen
+
+      - name: Helm chart lint
+        run: |
+          helm lint charts/praxis
+          helm template charts/praxis > /dev/null
+
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 50
