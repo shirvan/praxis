@@ -90,8 +90,8 @@ resources: {
 		Variables:     accountVariables(),
 	})
 	require.Error(t, err, "apply violating a global policy must be rejected")
-	// The Apply path surfaces the CUE unification failure with the violating
-	// path (the policy name is only structured in ValidateTemplate responses).
+	assert.Contains(t, err.Error(), "require-encryption-apply",
+		"the rejection must name the violated policy")
 	assert.Contains(t, err.Error(), "encryption.enabled")
 
 	// Nothing may have been provisioned.
