@@ -24,6 +24,9 @@ praxis <VERB> [<RESOURCE>] [flags]
 | `move`     | Relocate it       | Rename resource or move between deployments                                |
 | `import`   | Adopt it          | Adopt an existing cloud resource                                           |
 | `reconcile`| Drift-check it    | On-demand reconciliation of a resource                                     |
+| `approve`  | Resume it         | Approve a deployment suspended at an approval gate                         |
+| `reject`   | Refuse it         | Reject a suspended deployment (finalizes as Cancelled)                     |
+| `rollback` | Restore it        | Point-in-time rollback to a previous known-good generation                 |
 | `observe`  | Watch it          | Real-time event stream for any resource: deployments, individual resources |
 | `test`     | Verify it         | Test delivery of an integration (notification sinks)                       |
 | `fmt`      | Format it         | Format CUE template files                                                  |
@@ -56,6 +59,7 @@ praxis <VERB> [<RESOURCE>] [flags]
 | `list sinks`         | Both     | List notification sinks                          |
 | `list schemas`       | Both     | List resource kinds and their CUE schemas        |
 | `list events`        | Both     | List events for a deployment                     |
+| `list generations`   | Operators| Apply history / rollback targets for a deployment|
 | `delete <Kind/Key>`  | Both     | Delete a deployment, workspace, template, or sink |
 | `create workspace`   | Operators| Create or update a workspace                     |
 | `create template`    | Operators| Register or update a CUE template                |
@@ -492,7 +496,7 @@ List known resources of a given type.
 praxis list <resource-type> [scope] [flags]
 ```
 
-Accepted values: `deployments` (aliases: `deployment`, `deploy`), `templates`, `workspaces`, `sinks`, `schemas`, `events`, or any cloud resource Kind (e.g. `S3Bucket`, `EC2Instance`, `VPC`).
+Accepted values: `deployments` (aliases: `deployment`, `deploy`), `templates`, `workspaces`, `sinks`, `schemas`, `events`, `generations`, or any cloud resource Kind (e.g. `S3Bucket`, `EC2Instance`, `VPC`).
 
 **Flags:**
 
@@ -539,6 +543,8 @@ praxis list EC2Instance -o json
 The `--since` flag accepts Go-style durations (`1h`, `30m`, `2h30m`) plus a `d` suffix for days (`7d`).
 
 **Events:**
+
+`praxis list generations <key>` (bare key or `Deployment/<key>`) shows the deployment's bounded apply history — generation number, creation time, final status, resource count, and template provenance. Generations whose status is `Complete` are valid `praxis rollback --to` targets.
 
 `praxis list events` requires a `Deployment/<key>` scope — events are stored per deployment, and calling the command without a scope is an error. The `--since`, `--type`, `--severity`, `--resource`, and `--limit` filters are applied client-side to the deployment's event stream. The `--workspace` filter does not apply to events.
 
@@ -738,6 +744,84 @@ This command is useful for:
 
 ---
 
+## rollback
+
+Revert a deployment to a previous known-good generation. Every apply
+snapshots its plan; rollback replays the stored plan so changed specs are
+reverted, resources added since are deleted, and resources removed since are
+re-provisioned. (For cleaning up a *failed* deployment instead, see
+`praxis delete --rollback`.)
+
+```bash
+praxis rollback <deployment-key> --to <generation> [--wait]
+```
+
+**Flags:**
+
+| Flag             | Default | Description                                        |
+|------------------|---------|----------------------------------------------------|
+| `--to`           | —       | Target generation (required; must be `Complete`)   |
+| `--wait`         | false   | Poll until the rollback deployment finishes        |
+| `--poll-interval`| 2s      | Polling interval when `--wait` is set              |
+
+**Examples:**
+
+```bash
+# Inspect available targets, then roll back
+praxis list generations payments
+praxis rollback payments --to 1 --wait
+
+# Machine-readable submission result
+praxis rollback payments --to 1 -o json
+```
+
+Only the most recent generations are retained (currently 10); only
+generations whose final status is `Complete` are accepted. The rollback
+becomes a new generation itself — visible in `praxis list generations` with
+a `rollback://gen-<N>` template path — and honors approval gates in
+protected workspaces.
+
+## approve / reject
+
+Decide the fate of a deployment that is suspended at an approval gate.
+Deployments into a [protected workspace](#create-workspace) compute their plan
+and then park in `AwaitingApproval` — durably, surviving restarts — until one
+of these commands resolves the gate.
+
+```bash
+praxis approve <deployment-key> [--comment <text>] [--decided-by <identity>]
+praxis reject  <deployment-key> [--comment <text>] [--decided-by <identity>]
+```
+
+`approve` resumes the workflow exactly where it suspended; `reject` finalizes
+the deployment as `Cancelled` without dispatching any resource. Both decisions
+are recorded in the deployment event stream
+(`dev.praxis.deployment.approval.approved` / `.rejected`) together with
+`decidedBy` (defaults to the local OS username) and the optional comment.
+
+**Flags:**
+
+| Flag           | Default        | Description                                  |
+|----------------|----------------|----------------------------------------------|
+| `--comment`    | —              | Rationale recorded in the audit event        |
+| `--decided-by` | local username | Identity recorded in the audit event         |
+
+**Examples:**
+
+```bash
+# Approve with a change-management reference
+praxis approve payments --comment "CAB-1402"
+
+# Reject from an automation identity
+praxis reject payments --decided-by release-bot --comment "freeze window"
+
+# Machine-readable result
+praxis approve payments -o json
+```
+
+Approving or rejecting a deployment that is not `AwaitingApproval` fails with
+a conflict — decisions never apply to the wrong run.
+
 ## observe
 
 Watch a resource's status changes in real time.
@@ -801,6 +885,7 @@ praxis create workspace <name> --account <acct> --region <region> [flags]
 | `--region` | —       | Default AWS region (required)                   |
 | `--var`    | —       | Default variable key=value (repeatable)         |
 | `--select` | false   | Set as active workspace after creation          |
+| `--protected` | false | Require `praxis approve` for every deployment into this workspace |
 
 ### create template
 

@@ -490,6 +490,15 @@ func finalizeDeployment(ctx restate.Context, deploymentKey string, final Finaliz
 	return err
 }
 
+// requestApproval parks the deployment behind its approval gate via the
+// DeploymentState Virtual Object.
+func requestApproval(ctx restate.Context, deploymentKey string, gate ApprovalGate) error {
+	_, err := restate.WithRequestType[ApprovalGate, restate.Void](
+		restate.Object[restate.Void](ctx, DeploymentStateServiceName, deploymentKey, "AwaitApproval"),
+	).Request(gate)
+	return err
+}
+
 // deploymentCancelled checks whether a cancellation has been requested for the
 // given deployment, used by the dispatch loop to break early.
 func deploymentCancelled(ctx restate.Context, deploymentKey string) (bool, error) {

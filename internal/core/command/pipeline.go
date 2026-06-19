@@ -384,18 +384,30 @@ func (s *PraxisCommandService) submitPlanResources(
 		}
 	}
 
+	// Protected workspaces gate every deployment behind operator approval.
+	// Evaluated at submit time (not plan time) so saved plans applied later
+	// still honor the workspace's current protection setting.
+	requiresApproval := false
+	if workspace != "" {
+		requiresApproval, err = s.workspaceRequiresApproval(ctx, workspace)
+		if err != nil {
+			return "", "", err
+		}
+	}
+
 	plan := orchestrator.DeploymentPlan{
-		Key:            deploymentKey,
-		Account:        account,
-		Workspace:      workspace,
-		Resources:      planResources,
-		Variables:      variables,
-		CreatedAt:      createdAt,
-		TemplatePath:   templatePath,
-		ForceReplace:   forceReplace,
-		AllowReplace:   allowReplace,
-		MaxParallelism: maxParallelism,
-		RetryConfig:    retryConfig,
+		Key:              deploymentKey,
+		Account:          account,
+		Workspace:        workspace,
+		Resources:        planResources,
+		Variables:        variables,
+		CreatedAt:        createdAt,
+		TemplatePath:     templatePath,
+		ForceReplace:     forceReplace,
+		AllowReplace:     allowReplace,
+		MaxParallelism:   maxParallelism,
+		RetryConfig:      retryConfig,
+		RequiresApproval: requiresApproval,
 	}
 
 	// Initialize the durable DeploymentStateObj. This is the central
@@ -869,6 +881,9 @@ func checkSubmitGuard(deploymentKey string, status types.DeploymentStatus) error
 	case types.DeploymentRunning, types.DeploymentPending:
 		return restate.TerminalError(
 			fmt.Errorf("deployment %q is currently %s; wait for completion, cancel, or delete before re-applying", deploymentKey, status), 409)
+	case types.DeploymentAwaitingApproval:
+		return restate.TerminalError(
+			fmt.Errorf("deployment %q is awaiting approval; run 'praxis approve %s' or 'praxis reject %s' before re-applying", deploymentKey, deploymentKey, deploymentKey), 409)
 	default:
 		return nil
 	}

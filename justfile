@@ -179,6 +179,9 @@ generate-event-schemas:
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteStartedData' > schemas/events/gen/deployment-delete-started.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteCompletedData' > schemas/events/gen/deployment-delete-completed.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentDeleteFailedData' > schemas/events/gen/deployment-delete-failed.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentApprovalRequestedData' > schemas/events/gen/deployment-approval-requested.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentApprovalApprovedData' > schemas/events/gen/deployment-approval-approved.json
+    cue export schemas/events/lifecycle.cue --out jsonschema -e '#DeploymentApprovalRejectedData' > schemas/events/gen/deployment-approval-rejected.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceReplaceStartedData' > schemas/events/gen/resource-replace-started.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceAutoReplaceStartedData' > schemas/events/gen/resource-auto-replace-started.json
     cue export schemas/events/lifecycle.cue --out jsonschema -e '#ResourceDispatchedData' > schemas/events/gen/resource-dispatched.json

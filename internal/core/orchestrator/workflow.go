@@ -99,6 +99,87 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	}
 
 	// ---------------------------------------------------------------
+	// Phase 1b: Approval gate (protected workspaces)
+	// ---------------------------------------------------------------
+	// The plan is fully computed and validated but nothing has been
+	// dispatched. A protected deployment suspends here on a durable
+	// awakeable until the command service's Approve/Reject handler resolves
+	// it — the suspension survives crashes and costs nothing while parked.
+	if plan.RequiresApproval {
+		approval := restate.Awakeable[types.ApprovalDecision](ctx)
+		gateTime, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		if err := requestApproval(ctx, plan.Key, ApprovalGate{
+			AwakeableID: approval.Id(),
+			RequestedAt: gateTime,
+		}); err != nil {
+			return DeploymentResult{}, err
+		}
+		state.Status = types.DeploymentAwaitingApproval
+		state.UpdatedAt = gateTime
+		if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
+			return DeploymentResult{}, err
+		}
+		requestedEvent, err := NewDeploymentApprovalRequestedEvent(plan.Key, plan.Workspace, state.Generation, gateTime)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		if err := EmitDeploymentCloudEvent(ctx, requestedEvent); err != nil {
+			return DeploymentResult{}, err
+		}
+
+		decision, decisionErr := approval.Result()
+		if decisionErr != nil {
+			// A rejected awakeable surfaces as an error; treat it as a
+			// rejection so the deployment still terminates cleanly.
+			decision = types.ApprovalDecision{Approved: false, Comment: decisionErr.Error()}
+		}
+		decidedAt, err := currentTime(ctx)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		decidedEvent, err := NewDeploymentApprovalDecidedEvent(plan.Key, plan.Workspace, state.Generation, decidedAt, decision)
+		if err != nil {
+			return DeploymentResult{}, err
+		}
+		if err := EmitDeploymentCloudEvent(ctx, decidedEvent); err != nil {
+			return DeploymentResult{}, err
+		}
+		if !decision.Approved {
+			message := "deployment rejected"
+			if decision.DecidedBy != "" {
+				message += " by " + decision.DecidedBy
+			}
+			if decision.Comment != "" {
+				message += ": " + decision.Comment
+			}
+			if err := finalizeDeployment(ctx, plan.Key, FinalizeRequest{
+				Status:    types.DeploymentCancelled,
+				Error:     message,
+				UpdatedAt: decidedAt,
+			}); err != nil {
+				return DeploymentResult{}, err
+			}
+			state.Status = types.DeploymentCancelled
+			state.Error = message
+			state.UpdatedAt = decidedAt
+			if err := upsertDeploymentSummary(ctx, deploymentSummaryFromState(state)); err != nil {
+				return DeploymentResult{}, err
+			}
+			terminalEvent, err := NewDeploymentTerminalEvent(plan.Key, plan.Workspace, state.Generation, decidedAt, types.DeploymentCancelled, message)
+			if err != nil {
+				return DeploymentResult{}, err
+			}
+			if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
+				return DeploymentResult{}, err
+			}
+			return DeploymentResult{Key: plan.Key, Status: types.DeploymentCancelled, Error: message}, nil
+		}
+	}
+
+	// ---------------------------------------------------------------
 	// Phase 2: Transition to Running
 	// ---------------------------------------------------------------
 	// currentTime is wrapped in restate.Run so Restate journals the timestamp,

@@ -121,6 +121,10 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **Lifecycle Protection.** Mark resources with `preventDestroy` to block accidental deletion, or `ignoreChanges` to let external systems co-manage specific fields without Praxis fighting for control.
 
+**Approval Gates.** Mark a workspace as protected and every deployment into it suspends — durably, at zero cost, for as long as it takes — until an operator runs `praxis approve` or `praxis reject`. Decisions land in the deployment event stream as an audit trail of who approved what, when, and why.
+
+**Point-in-Time Rollback.** Every apply snapshots its plan as a generation. `praxis rollback <key> --to <generation>` replays a known-good generation: changed specs are reverted, resources added since are deleted, resources removed since are re-provisioned — and the rollback itself becomes a new, roll-back-able generation.
+
 **Lightweight Operations.** The entire stack runs in Docker Compose. No etcd, no API server, no cluster to maintain. Drivers are grouped by AWS domain into independent driver packs that register with Restate.
 
 **Extensible Without Forking.** Praxis runs on [Restate](https://restate.dev), and Restate doesn't distinguish between built-in and external services. Write a custom driver in Python, TypeScript, Go, Java, Kotlin, or Rust from your own repository, register it with the same Restate instance, and it participates in DAG orchestration, output expression hydration, state tracking, and event streaming alongside built-in drivers. No plugin SDK, no fork, no code changes to Praxis. See the [Extending Guide](docs/EXTENDING.md).

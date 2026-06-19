@@ -9,7 +9,8 @@
                 "Failed",
                 "Deleting",
                 "Deleted",
-                "Cancelled"
+                "Cancelled",
+                "AwaitingApproval"
             ]
         },
         "#ResourceEventData": {

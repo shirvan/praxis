@@ -199,6 +199,19 @@ func (s *PraxisCommandService) resolveWorkspaceDefaults(
 	return account, mergedVars, nil
 }
 
+// workspaceRequiresApproval reports whether the workspace gates deployments
+// behind an approval. A missing workspace surfaces as an error so a typo'd
+// workspace name cannot silently bypass protection.
+func (s *PraxisCommandService) workspaceRequiresApproval(ctx restate.Context, requestWorkspace string) (bool, error) {
+	wsInfo, err := restate.Object[workspace.WorkspaceInfo](
+		ctx, workspace.WorkspaceServiceName, requestWorkspace, "Get",
+	).Request(restate.Void{})
+	if err != nil {
+		return false, fmt.Errorf("workspace %q: %w", requestWorkspace, err)
+	}
+	return wsInfo.Protected, nil
+}
+
 // newSSMResolver creates an SSM parameter resolver for the given account.
 // The resolver is wrapped in a Restate-aware layer (RestateSSMResolver) that
 // performs SSM GetParameter calls inside restate.Run blocks, ensuring that

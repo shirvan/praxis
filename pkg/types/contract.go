@@ -575,6 +575,52 @@ type ApplySavedPlanRequest struct {
 	MaxRetries *int `json:"maxRetries,omitempty"`
 }
 
+// RollbackToRequest asks the command service to revert a deployment to the
+// state captured by a previous known-good generation.
+type RollbackToRequest struct {
+	// DeploymentKey identifies the deployment to roll back.
+	DeploymentKey string `json:"deploymentKey"`
+
+	// ToGeneration selects the historical generation whose plan should be
+	// replayed. The generation must have finished Complete and still be
+	// within the retention window.
+	ToGeneration int64 `json:"toGeneration"`
+}
+
+// ApprovalDecision is the value an approval gate's awakeable resolves with.
+// It records who decided and why, for the deployment event audit trail.
+type ApprovalDecision struct {
+	// Approved is true to resume the deployment, false to reject it.
+	Approved bool `json:"approved"`
+
+	// DecidedBy identifies the operator who made the decision.
+	DecidedBy string `json:"decidedBy,omitempty"`
+
+	// Comment is an optional free-text rationale.
+	Comment string `json:"comment,omitempty"`
+}
+
+// ApprovalRequest asks the command service to approve or reject a deployment
+// that is suspended in AwaitingApproval.
+type ApprovalRequest struct {
+	// DeploymentKey identifies the suspended deployment.
+	DeploymentKey string `json:"deploymentKey"`
+
+	// DecidedBy identifies the operator (the CLI defaults this to the local
+	// OS username).
+	DecidedBy string `json:"decidedBy,omitempty"`
+
+	// Comment is an optional free-text rationale recorded in the audit event.
+	Comment string `json:"comment,omitempty"`
+}
+
+// ApprovalResponse reports the deployment's key and status after an
+// approve/reject decision was delivered.
+type ApprovalResponse struct {
+	DeploymentKey string           `json:"deploymentKey"`
+	Status        DeploymentStatus `json:"status"`
+}
+
 // SavedPlan captures a workflow-ready execution plan plus the dry-run diff and
 // integrity metadata used for plan file workflows.
 type SavedPlan struct {

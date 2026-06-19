@@ -163,6 +163,50 @@ The scheduler achieves maximum parallelism limited only by the dependency graph.
 
 ---
 
+## Approval Gate
+
+Deployments whose plan carries `RequiresApproval` (stamped at submit time
+from the target workspace's `Protected` flag) pause between graph validation
+and the Running transition:
+
+1. The workflow creates a durable **awakeable** and records its ID on the
+   deployment state (`DeploymentStateObj.AwaitApproval`), moving the status
+   to `AwaitingApproval` and emitting `deployment.approval.requested`.
+2. `awakeable.Result()` suspends the workflow. Suspension is journal-backed:
+   it costs nothing while parked and survives server restarts — the gate is
+   still resolvable after a crash.
+3. The command service's `Approve`/`Reject` handlers validate that the
+   deployment is actually waiting, then resolve the awakeable with an
+   `ApprovalDecision{Approved, DecidedBy, Comment}`.
+4. The workflow — the single writer of deployment status — emits the
+   `approval.approved` or `approval.rejected` audit event and either falls
+   through to the normal Running transition (which clears the gate) or
+   finalizes the deployment as `Cancelled` without dispatching anything.
+
+While suspended, re-applies onto the same deployment key are rejected by the
+submit guard (409), exactly like applies onto a Running deployment.
+
+## Deployment History & Point-in-Time Rollback
+
+`InitDeployment` snapshots every generation's full `DeploymentPlan` under a
+per-generation K/V key (`plan-gen-<N>`, mirroring the event store's
+keyed-chunk pattern) and appends a `GenerationRecord` to a bounded history
+index (last 10 generations; older snapshots are pruned). `Finalize` stamps
+each record's terminal status.
+
+`PraxisCommandService.RollbackTo` is deliberately a **replay, not an inverse
+diff**: it fetches the target generation's stored plan (rejecting anything
+that did not finish `Complete`) and resubmits it through the same
+`submitPlanResources` path as apply. The existing machinery then produces
+the inverse changes — drivers converge specs that changed, `removeMissing`
+deletes resources added since the target generation in reverse dependency
+order, and resources removed since are re-provisioned. The rollback becomes
+a new generation (template path `rollback://gen-<N>`), passes the submit
+guard, and honors workspace protection.
+
+Read handlers: `DeploymentStateObj/ListGenerations` (the history index) and
+`DeploymentStateObj/GetPlanSnapshot` (one generation's stored plan).
+
 ## Delete Flow
 
 The `DeploymentDeleteWorkflow` handles deployment teardown:
@@ -196,6 +240,9 @@ Delete is a separate workflow from apply because:
 ```mermaid
 stateDiagram-v2
     [*] --> Pending
+    Pending --> AwaitingApproval: protected workspace
+    AwaitingApproval --> Running: praxis approve
+    AwaitingApproval --> Cancelled: praxis reject
     Pending --> Running
     Running --> Complete
     Running --> Failed

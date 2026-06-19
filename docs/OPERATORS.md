@@ -390,6 +390,110 @@ During orchestration, each resource transitions through these statuses:
 | `Deleting` | Delete operation in progress |
 | `Deleted` | Successfully removed |
 
+## Approval Gates
+
+Protected workspaces require an explicit operator decision before any
+deployment into them dispatches a single resource. The deployment workflow
+computes its full plan, transitions to `AwaitingApproval`, and suspends on a
+Restate durable promise — at zero cost, surviving restarts, for as long as the
+decision takes.
+
+### Protecting a Workspace
+
+```bash
+# At creation
+praxis create workspace prod --account prod-us --region us-east-1 --protected
+
+# Existing workspaces: re-run Configure with the flag (configuration is an upsert)
+praxis create workspace prod --account prod-us --region us-east-1 --protected
+```
+
+Every subsequent `praxis deploy`/`praxis apply` targeting the workspace stops
+at the gate. Deployments without a workspace, or into unprotected workspaces,
+are unaffected.
+
+### The Operator Flow
+
+```bash
+# 1. Someone deploys into the protected workspace
+praxis deploy stack.cue --workspace prod --key payments --wait
+# → Status: AwaitingApproval
+# → Deployment "payments" is awaiting approval.
+#   Run 'praxis approve payments' to resume it or 'praxis reject payments' to cancel it.
+
+# 2. Inspect what is about to happen
+praxis get Deployment/payments        # status, resources, inputs
+praxis observe Deployment/payments    # live event stream
+
+# 3. Decide
+praxis approve payments --comment "change CAB-1402"
+# or
+praxis reject payments --comment "outside the change window"
+```
+
+Approval resumes the workflow exactly where it suspended; the plan that was
+computed at submit time is what executes. Rejection finalizes the deployment
+as `Cancelled` without touching the cloud.
+
+While a deployment is `AwaitingApproval`:
+
+- Re-applying the same deployment key is rejected with a conflict (409) until
+  the gate is decided.
+- `praxis list deployments` and `praxis get` show the `AwaitingApproval`
+  status.
+- A Restate restart does not lose the gate — the suspended workflow resumes
+  waiting after recovery.
+
+### Audit Trail
+
+Every decision lands in the deployment event stream:
+
+| Event | When |
+|-------|------|
+| `dev.praxis.deployment.approval.requested` | The deployment suspended at the gate |
+| `dev.praxis.deployment.approval.approved`  | An operator approved; carries `decidedBy` and `comment` |
+| `dev.praxis.deployment.approval.rejected`  | An operator rejected; carries `decidedBy` and `comment` |
+
+`--decided-by` overrides the recorded identity (it defaults to the local OS
+username); `--comment` attaches the rationale. Route the events to a webhook
+or `restate_rpc` notification sink to feed change-management systems.
+
+## Point-in-Time Rollback
+
+Every apply records its full plan as a **generation** snapshot (the most
+recent 10 are retained per deployment). Rolling back replays a known-good
+generation's plan through the normal apply machinery:
+
+- specs that changed since are converged back,
+- resources **added** since are deleted,
+- resources **removed** since are re-provisioned.
+
+```bash
+# 1. See what you can roll back to
+praxis list generations payments
+# GENERATION  CREATED               STATUS    RESOURCES  TEMPLATE
+# 1           2026-06-12T09:14:02Z  Complete  4          inline://template.cue
+# 2           2026-06-12T11:30:45Z  Failed    5          inline://template.cue
+
+# 2. Roll back to the last known-good generation
+praxis rollback payments --to 1 --wait
+```
+
+Rules of the road:
+
+- Only generations that finished `Complete` are valid targets; anything else
+  is rejected with a conflict.
+- The rollback is itself a new generation (with `rollback://gen-<N>`
+  provenance in its template path), so it is snapshotted and roll-back-able.
+- Rollbacks pass the standard submit guard and — in protected workspaces —
+  the approval gate.
+- Generations older than the retention window lose their snapshots and can
+  no longer be targets.
+
+Not to be confused with `praxis delete Deployment/<key> --rollback`, which
+cleans up a **failed** deployment by deleting its confirmed-provisioned
+resources; point-in-time rollback *restores* a previous good state.
+
 ## Reconciliation
 
 Drivers reconcile automatically on a **5-minute interval** using Restate durable timers. During each cycle:

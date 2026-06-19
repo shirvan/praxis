@@ -122,6 +122,7 @@ func (WorkspaceService) Get(ctx restate.ObjectSharedContext, _ restate.Void) (Wo
 		Region:    cfg.Region,
 		Variables: cfg.Variables,
 		Events:    cfg.Events,
+		Protected: cfg.Protected,
 	}, nil
 }
 

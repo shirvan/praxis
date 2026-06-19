@@ -38,6 +38,11 @@ type WorkspaceConfig struct {
 
 	// Events stores workspace-scoped event configuration such as retention.
 	Events *EventSettings `json:"events,omitempty"`
+
+	// Protected requires every deployment into this workspace to pass an
+	// approval gate: the workflow suspends in AwaitingApproval until an
+	// operator runs praxis approve or praxis reject.
+	Protected bool `json:"protected,omitempty"`
 }
 
 // WorkspaceInfo is the read-only view returned by the Get handler.
@@ -47,6 +52,7 @@ type WorkspaceInfo struct {
 	Region    string            `json:"region"`
 	Variables map[string]string `json:"variables,omitempty"`
 	Events    *EventSettings    `json:"events,omitempty"`
+	Protected bool              `json:"protected,omitempty"`
 }
 
 // EventSettings groups workspace-scoped event-system configuration.

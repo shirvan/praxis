@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -45,6 +47,7 @@ Supported resource types:
     praxis list sinks                 List notification sinks
     praxis list schemas               List resource kinds and their CUE schemas (offline)
     praxis list events Deployment/x   Events for one deployment
+    praxis list generations <key>     Apply history (rollback targets) for one deployment
     praxis list <Kind>                List cloud resources by Kind (e.g. S3Bucket, EC2Instance)
 
 Use -o json for machine-readable output.`,
@@ -69,6 +72,12 @@ Use -o json for machine-readable output.`,
 					scope = args[1]
 				}
 				return listEvents(ctx, flags, scope, wsFilter, sinceRaw, typePrefix, severity, resource, limit)
+			case "generations", "generation":
+				var scope string
+				if len(args) > 1 {
+					scope = args[1]
+				}
+				return listGenerations(ctx, flags, scope)
 			default:
 				// Cloud resource Kind (e.g. S3Bucket, EC2Instance, VPC).
 				return listCloudResources(ctx, flags, resourceType, wsFilter)
@@ -264,5 +273,55 @@ func listCloudResources(ctx context.Context, flags *rootFlags, kind, workspace s
 		rows = append(rows, []string{r.Key, r.DeploymentKey, r.Workspace, r.Status})
 	}
 	printTable(renderer, headers, rows)
+	return nil
+}
+
+// listGenerations renders a deployment's bounded apply history — the
+// candidate targets for `praxis rollback --to <generation>`.
+func listGenerations(ctx context.Context, flags *rootFlags, scope string) error {
+	if scope == "" {
+		return fmt.Errorf("praxis list generations requires a deployment, e.g. praxis list generations my-app")
+	}
+	key := scope
+	if strings.Contains(scope, "/") {
+		kind, parsedKey, err := parseKindKey(scope)
+		if err != nil {
+			return err
+		}
+		if kind != "Deployment" {
+			return fmt.Errorf("generations are tracked per deployment; got kind %q", kind)
+		}
+		key = parsedKey
+	}
+
+	client := flags.newClient()
+	records, err := client.ListGenerations(ctx, key)
+	if err != nil {
+		return err
+	}
+	if flags.outputFormat() == OutputJSON {
+		return printJSON(records)
+	}
+
+	renderer := flags.renderer()
+	if len(records) == 0 {
+		_, _ = fmt.Fprintf(renderer.out, "No recorded generations for deployment %q.\n", key)
+		return nil
+	}
+	rows := make([][]string, 0, len(records))
+	for _, record := range records {
+		status := string(record.FinalStatus)
+		if status == "" {
+			status = "(in flight)"
+		}
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", record.Generation),
+			record.CreatedAt.Format(time.RFC3339),
+			status,
+			fmt.Sprintf("%d", record.Resources),
+			record.TemplatePath,
+		})
+	}
+	printTable(renderer, []string{"GENERATION", "CREATED", "STATUS", "RESOURCES", "TEMPLATE"}, rows)
 	return nil
 }

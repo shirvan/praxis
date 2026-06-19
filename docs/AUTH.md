@@ -433,8 +433,16 @@ type WorkspaceConfig struct {
     Account   string            `json:"account"`
     Region    string            `json:"region"`
     Variables map[string]string `json:"variables,omitempty"`
+    Protected bool              `json:"protected,omitempty"`
 }
 ```
+
+`Protected` turns the workspace into an approval-gated environment: every
+deployment submitted with this workspace suspends in `AwaitingApproval`
+before dispatching any resource, until an operator runs `praxis approve` or
+`praxis reject`. Protection is evaluated at submit time, so flipping the flag
+affects the next deployment, not ones already running. See the
+[Approval Gates section of the Operator Guide](OPERATORS.md#approval-gates).
 
 ### Configure
 
@@ -450,7 +458,7 @@ On success, stores the config in state and registers the workspace name in the g
 
 ### Get
 
-Returns `WorkspaceInfo` (name, account, region, variables). Returns `TerminalError(404)` if the workspace has not been configured. This is a shared handler — it runs concurrently and never blocks exclusive handlers.
+Returns `WorkspaceInfo` (name, account, region, variables, protected). Returns `TerminalError(404)` if the workspace has not been configured. This is a shared handler — it runs concurrently and never blocks exclusive handlers.
 
 ### Delete
 

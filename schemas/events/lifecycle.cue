@@ -1,6 +1,6 @@
 package events
 
-#DeploymentStatus: "Pending" | "Running" | "Complete" | "Failed" | "Deleting" | "Deleted" | "Cancelled"
+#DeploymentStatus: "Pending" | "Running" | "Complete" | "Failed" | "Deleting" | "Deleted" | "Cancelled" | "AwaitingApproval"
 
 #DeploymentEventData: {
 	message: string
@@ -27,6 +27,19 @@ package events
 #DeploymentDeleteStartedData: #DeploymentEventData & {status: "Deleting"}
 #DeploymentDeleteCompletedData: #DeploymentEventData & {status: "Deleted"}
 #DeploymentDeleteFailedData: #DeploymentEventData & {status: "Failed"}
+
+#ApprovalEventData: {
+	message:    string
+	status?:    #DeploymentStatus
+	decision?:  "approved" | "rejected"
+	decidedBy?: string
+	comment?:   string
+	...
+}
+
+#DeploymentApprovalRequestedData: #ApprovalEventData & {status: "AwaitingApproval"}
+#DeploymentApprovalApprovedData: #ApprovalEventData & {status: "Running", decision: "approved"}
+#DeploymentApprovalRejectedData: #ApprovalEventData & {status: "Cancelled", decision: "rejected"}
 
 #ResourceReplaceStartedData: #ResourceEventData & {status: "Running"}
 #ResourceAutoReplaceStartedData: #ResourceEventData & {status: "Running"}

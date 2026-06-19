@@ -12,6 +12,8 @@
 
 **Apply** — CLI command that evaluates a CUE template, builds a DAG, and submits a deployment workflow. Idempotent — re-applying the same template is safe. See [CLI.md](CLI.md).
 
+**Approval Gate** — A durable suspension point for deployments into a protected workspace: the workflow computes its plan, parks in `AwaitingApproval`, and resumes only when an operator runs `praxis approve` (or terminates on `praxis reject`). Decisions are recorded in the deployment event stream. See [OPERATORS.md](OPERATORS.md#approval-gates).
+
 ## C
 
 **CloudEvent** — CNCF CloudEvents v1.0 envelope used for all Praxis events. Contains `specversion`, `id`, `source`, `type`, `time`, plus Praxis extension attributes (`deployment`, `workspace`, `generation`). See [EVENTS.md](EVENTS.md).
@@ -22,7 +24,9 @@
 
 **DAG** — Directed Acyclic Graph of resource dependencies. Built from `${resources.X.outputs.Y}` expressions in templates. Determines execution order via topological sort. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
-**Deployment** — A named instance of a template execution. Has a lifecycle: Pending → Running → Complete/Failed/Cancelled. Tracked by `DeploymentStateObj` Virtual Object. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
+**Deployment** — A named instance of a template execution. Has a lifecycle: Pending → (AwaitingApproval →) Running → Complete/Failed/Cancelled. Tracked by `DeploymentStateObj` Virtual Object. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
+
+**Deployment Generation** — One apply run of a deployment key. Generation 1 is the first apply; every re-apply (including rollbacks) increments it. Each generation's full plan is snapshotted (last 10 retained) and is the unit point-in-time rollback targets. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
 **Drift** — Difference between desired state (spec) and observed state (what exists in AWS). Detected during reconciliation. Managed resources get drift corrected; observed resources only report. See [DRIVERS.md](DRIVERS.md).
 
@@ -77,6 +81,10 @@
 **Plan** — Dry-run showing what changes would be made. Computes field-level diffs for each resource (Create/Update/Delete/NoOp). See [CLI.md](CLI.md).
 
 **Policy** — CUE constraint applied during template evaluation. Scopes: `global` (all templates) or `template:<name>` (specific template). Violations detected via baseline-comparison. See [TEMPLATES.md](TEMPLATES.md).
+
+**Point-in-Time Rollback** — `praxis rollback <key> --to <generation>`: replaying a stored known-good generation's plan to revert a deployment — distinct from `praxis delete --rollback`, which cleans up a failed deployment by deleting its resources. See [OPERATORS.md](OPERATORS.md#point-in-time-rollback).
+
+**Protected Workspace** — A workspace configured with `Protected: true` (`praxis create workspace --protected`). Every deployment into it must pass an approval gate before any resource is dispatched. See [OPERATORS.md](OPERATORS.md#approval-gates).
 
 **Provider Schema** — CUE schema in `schemas/aws/` defining the shape of a resource type. Templates are unified against these for validation. See [TEMPLATES.md](TEMPLATES.md).
 
