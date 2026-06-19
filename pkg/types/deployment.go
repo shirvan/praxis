@@ -49,6 +49,11 @@ const (
 	// DeploymentCancelled means the deployment was intentionally stopped before
 	// reaching a terminal success state.
 	DeploymentCancelled DeploymentStatus = "Cancelled"
+
+	// DeploymentAwaitingApproval means the deployment targets a protected
+	// workspace and is durably suspended until an operator approves or
+	// rejects it (praxis approve / praxis reject).
+	DeploymentAwaitingApproval DeploymentStatus = "AwaitingApproval"
 )
 
 // DeploymentResourceStatus is the deployment-scoped status for a resource while

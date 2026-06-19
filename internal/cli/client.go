@@ -319,6 +319,51 @@ func (c *Client) ReconcileDeployment(ctx context.Context, deploymentKey string, 
 	return &resp, nil
 }
 
+// RollbackTo reverts a deployment to a previous known-good generation by
+// replaying that generation's stored plan.
+func (c *Client) RollbackTo(ctx context.Context, req types.RollbackToRequest) (*types.DeployResponse, error) {
+	resp, err := ingress.Service[types.RollbackToRequest, types.DeployResponse](
+		c.rc, commandServiceName, "RollbackTo",
+	).Request(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("rollback deployment %q to generation %d: %w", req.DeploymentKey, req.ToGeneration, err)
+	}
+	return &resp, nil
+}
+
+// ListGenerations returns a deployment's bounded apply history.
+func (c *Client) ListGenerations(ctx context.Context, deploymentKey string) ([]orchestrator.GenerationRecord, error) {
+	resp, err := ingress.Object[restate.Void, []orchestrator.GenerationRecord](
+		c.rc, stateServiceName, deploymentKey, "ListGenerations",
+	).Request(ctx, restate.Void{})
+	if err != nil {
+		return nil, fmt.Errorf("list generations for %q: %w", deploymentKey, err)
+	}
+	return resp, nil
+}
+
+// ApproveDeployment resumes a deployment suspended at its approval gate.
+func (c *Client) ApproveDeployment(ctx context.Context, req types.ApprovalRequest) (*types.ApprovalResponse, error) {
+	resp, err := ingress.Service[types.ApprovalRequest, types.ApprovalResponse](
+		c.rc, commandServiceName, "Approve",
+	).Request(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("approve deployment %q: %w", req.DeploymentKey, err)
+	}
+	return &resp, nil
+}
+
+// RejectDeployment terminates a deployment suspended at its approval gate.
+func (c *Client) RejectDeployment(ctx context.Context, req types.ApprovalRequest) (*types.ApprovalResponse, error) {
+	resp, err := ingress.Service[types.ApprovalRequest, types.ApprovalResponse](
+		c.rc, commandServiceName, "Reject",
+	).Request(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("reject deployment %q: %w", req.DeploymentKey, err)
+	}
+	return &resp, nil
+}
+
 // GetResourceOutputs reads a resource's outputs as raw JSON from its driver.
 // The outputs are returned as a generic map since different drivers return
 // different typed structs.

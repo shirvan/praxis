@@ -1,12 +1,21 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$defs": {
-        "#DeploymentEventData": {
+        "#ApprovalEventData": {
             "type": "object",
             "additionalProperties": true,
             "properties": {
-                "error": {
+                "comment": {
                     "type": "string"
+                },
+                "decidedBy": {
+                    "type": "string"
+                },
+                "decision": {
+                    "enum": [
+                        "approved",
+                        "rejected"
+                    ]
                 },
                 "message": {
                     "type": "string"
@@ -35,9 +44,12 @@
     "type": "object",
     "additionalProperties": true,
     "properties": {
+        "decision": {
+            "const": "rejected"
+        },
         "status": {
-            "const": "Pending"
+            "const": "Cancelled"
         }
     },
-    "$ref": "#/$defs/%23DeploymentEventData"
+    "$ref": "#/$defs/%23ApprovalEventData"
 }

@@ -150,6 +150,9 @@ These events track the deployment and resource state machines. Emitted by `Deplo
 | `dev.praxis.deployment.completed` | info | — | All resources reached terminal success state |
 | `dev.praxis.deployment.failed` | error | — | Deployment failed (at least one resource errored) |
 | `dev.praxis.deployment.cancelled` | warn | — | Deployment cancelled by user |
+| `dev.praxis.deployment.approval.requested` | info | — | Protected deployment suspended awaiting approval |
+| `dev.praxis.deployment.approval.approved` | info | — | Operator approved; payload carries `decidedBy` and `comment` |
+| `dev.praxis.deployment.approval.rejected` | warn | — | Operator rejected; deployment finalizes as Cancelled |
 | `dev.praxis.deployment.delete.started` | info | — | Delete workflow began |
 | `dev.praxis.deployment.delete.completed` | info | — | All resources deleted |
 | `dev.praxis.deployment.delete.failed` | error | — | Delete workflow failed |

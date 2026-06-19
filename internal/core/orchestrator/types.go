@@ -131,6 +131,11 @@ type DeploymentPlan struct {
 	// Resources with lifecycle.preventDestroy are still protected.
 	AllowReplace bool `json:"allowReplace,omitempty"`
 
+	// RequiresApproval suspends the workflow in AwaitingApproval before any
+	// resource is dispatched; an operator must approve or reject. Stamped at
+	// submit time from the target workspace's Protected flag.
+	RequiresApproval bool `json:"requiresApproval,omitempty"`
+
 	// MaxParallelism limits the number of concurrent resource operations.
 	// Zero means unlimited.
 	MaxParallelism int `json:"maxParallelism,omitempty"`
@@ -184,6 +189,26 @@ type PlanResource struct {
 // This type is intentionally workflow-agnostic. Apply and delete workflows both
 // read and write it, while the CLI and other clients can query it through
 // shared handlers without coupling to workflow internals.
+// GenerationRecord summarizes one apply generation for the deployment history
+// index. FinalStatus is empty while the generation is still in flight and is
+// stamped by Finalize; only generations that finished Complete are valid
+// point-in-time rollback targets.
+type GenerationRecord struct {
+	Generation   int64                  `json:"generation"`
+	CreatedAt    time.Time              `json:"createdAt"`
+	FinalStatus  types.DeploymentStatus `json:"finalStatus,omitempty"`
+	Resources    int                    `json:"resources"`
+	TemplatePath string                 `json:"templatePath,omitempty"`
+}
+
+// ApprovalGate records the durable awakeable an AwaitingApproval deployment
+// is suspended on. The command service's Approve/Reject handlers resolve the
+// awakeable by this ID; the gate is cleared on the next status transition.
+type ApprovalGate struct {
+	AwakeableID string    `json:"awakeableId"`
+	RequestedAt time.Time `json:"requestedAt"`
+}
+
 type DeploymentState struct {
 	Key          string                    `json:"key"`
 	Account      string                    `json:"account,omitempty"`
@@ -194,6 +219,7 @@ type DeploymentState struct {
 	Outputs      map[string]map[string]any `json:"outputs"`
 	Error        string                    `json:"error,omitempty"`
 	Cancelled    bool                      `json:"cancelled,omitempty"`
+	Approval     *ApprovalGate             `json:"approval,omitempty"`
 	Generation   int64                     `json:"generation"`
 	CreatedAt    time.Time                 `json:"createdAt"`
 	UpdatedAt    time.Time                 `json:"updatedAt"`

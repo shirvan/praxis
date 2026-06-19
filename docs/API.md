@@ -44,6 +44,9 @@ The front door for all write operations. `POST /PraxisCommandService/{Handler}`:
 | `DeleteDeployment` | `DeleteDeploymentRequest` → `DeleteDeploymentResponse` | Async teardown in reverse dependency order |
 | `RollbackDeployment` | `DeleteDeploymentRequest` → `DeleteDeploymentResponse` | Delete only resources proven ready by the event store |
 | `Import` | `ImportRequest` → `ImportResponse` | Adopt an existing cloud resource |
+| `Approve` | `ApprovalRequest` → `ApprovalResponse` | Resume a deployment suspended at an approval gate |
+| `RollbackTo` | `RollbackToRequest` → `DeployResponse` | Revert a deployment to a previous known-good generation |
+| `Reject` | `ApprovalRequest` → `ApprovalResponse` | Reject a suspended deployment (finalizes as Cancelled) |
 | `RegisterTemplate` | `RegisterTemplateRequest` → `RegisterTemplateResponse` | Register/update a template (previous version kept for rollback) |
 | `GetTemplate` | `string` → `TemplateRecord` | Fetch a registered template |
 | `ListTemplates` | — → `[]TemplateSummary` | List registered templates |
@@ -65,6 +68,41 @@ curl -s -X POST http://localhost:8080/PraxisCommandService/Deploy \
 # Poll until status is Complete / Failed
 curl -s -X POST http://localhost:8080/DeploymentStateObj/my-webapp/GetDetail \
   -H 'content-type: application/json' -d 'null'
+```
+
+### Example: drive an approval gate programmatically
+
+Deployments into a protected workspace stop in `AwaitingApproval`. CI systems
+or agents approve them with one call — this is the HTTP equivalent of
+`praxis approve`:
+
+```bash
+# Deployment is parked: GetDetail shows "status": "AwaitingApproval"
+curl -s -X POST http://localhost:8080/PraxisCommandService/Approve \
+  -H 'content-type: application/json' \
+  -d '{"deploymentKey": "my-webapp", "decidedBy": "release-bot", "comment": "CAB-1402"}'
+
+# Rejection terminates it as Cancelled without dispatching anything
+curl -s -X POST http://localhost:8080/PraxisCommandService/Reject \
+  -H 'content-type: application/json' \
+  -d '{"deploymentKey": "my-webapp", "decidedBy": "release-bot", "comment": "freeze window"}'
+```
+
+Both decisions are appended to the deployment's event stream
+(`dev.praxis.deployment.approval.approved` / `.rejected`) with the supplied
+identity and comment.
+
+### Example: point-in-time rollback
+
+```bash
+# List the deployment's generations (rollback targets)
+curl -s -X POST http://localhost:8080/DeploymentStateObj/my-webapp/ListGenerations \
+  -H 'content-type: application/json' -d 'null'
+
+# Roll back to generation 1 (must have finished Complete)
+curl -s -X POST http://localhost:8080/PraxisCommandService/RollbackTo \
+  -H 'content-type: application/json' \
+  -d '{"deploymentKey": "my-webapp", "toGeneration": 1}'
 ```
 
 ## Read Model (Virtual Objects)

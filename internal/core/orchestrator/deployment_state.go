@@ -45,6 +45,19 @@ func (DeploymentStateObj) ServiceName() string {
 //   - A later apply against the same deployment key increments the generation.
 //   - Resource statuses are reset to Pending, previous outputs are cleared, and
 //     the cancel flag is dropped.
+//
+// historyRetentionLimit bounds how many generation snapshots are kept per
+// deployment. Older snapshots are pruned on each new apply; pruned
+// generations can no longer be rollback targets.
+const historyRetentionLimit = 10
+
+// planSnapshotKey is the per-generation K/V key holding that generation's
+// full DeploymentPlan. Keeping snapshots out of the "state" key mirrors the
+// event store's keyed-chunk pattern and keeps state reads small.
+func planSnapshotKey(generation int64) string {
+	return fmt.Sprintf("plan-gen-%d", generation)
+}
+
 func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan DeploymentPlan) (int64, error) {
 	existing, err := restate.Get[*DeploymentState](ctx, "state")
 	if err != nil {
@@ -63,6 +76,9 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		case types.DeploymentRunning, types.DeploymentPending:
 			return 0, restate.TerminalError(
 				fmt.Errorf("deployment %q is currently %s; wait for completion, cancel, or delete before re-applying", restate.Key(ctx), existing.Status), 409)
+		case types.DeploymentAwaitingApproval:
+			return 0, restate.TerminalError(
+				fmt.Errorf("deployment %q is awaiting approval; approve or reject it before re-applying", restate.Key(ctx)), 409)
 		}
 	}
 
@@ -115,6 +131,26 @@ func (DeploymentStateObj) InitDeployment(ctx restate.ObjectContext, plan Deploym
 		UpdatedAt:    plan.CreatedAt,
 	}
 	restate.Set(ctx, "state", state)
+
+	// Record this generation in the deployment history: the full plan as a
+	// per-generation snapshot (the replay source for point-in-time rollback)
+	// plus a bounded index entry. FinalStatus is stamped later by Finalize.
+	restate.Set(ctx, planSnapshotKey(generation), plan)
+	history, err := restate.Get[[]GenerationRecord](ctx, "history")
+	if err != nil {
+		return 0, err
+	}
+	history = append(history, GenerationRecord{
+		Generation:   generation,
+		CreatedAt:    plan.CreatedAt,
+		Resources:    len(plan.Resources),
+		TemplatePath: plan.TemplatePath,
+	})
+	for len(history) > historyRetentionLimit {
+		restate.Clear(ctx, planSnapshotKey(history[0].Generation))
+		history = history[1:]
+	}
+	restate.Set(ctx, "history", history)
 
 	// Register resource-event-owner mappings so that drift events reported
 	// by drivers (keyed by resource key) can be routed back to the correct
@@ -169,6 +205,29 @@ func (DeploymentStateObj) SetStatus(ctx restate.ObjectContext, update StatusUpda
 	state.Status = update.Status
 	state.Error = update.Error
 	state.UpdatedAt = update.UpdatedAt
+	if update.Status != types.DeploymentAwaitingApproval {
+		// Any onward transition retires the approval gate.
+		state.Approval = nil
+	}
+	restate.Set(ctx, "state", state)
+	return nil
+}
+
+// AwaitApproval parks the deployment behind an approval gate: status moves to
+// AwaitingApproval and the workflow's awakeable ID is recorded so the
+// command service's Approve/Reject handlers can resolve it.
+func (DeploymentStateObj) AwaitApproval(ctx restate.ObjectContext, gate ApprovalGate) error {
+	state, err := restate.Get[*DeploymentState](ctx, "state")
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		return restate.TerminalError(fmt.Errorf("deployment %q not found", restate.Key(ctx)), 404)
+	}
+
+	state.Status = types.DeploymentAwaitingApproval
+	state.Approval = &gate
+	state.UpdatedAt = gate.RequestedAt
 	restate.Set(ctx, "state", state)
 	return nil
 }
@@ -221,6 +280,21 @@ func (DeploymentStateObj) Finalize(ctx restate.ObjectContext, final FinalizeRequ
 	state.Error = final.Error
 	state.UpdatedAt = final.UpdatedAt
 	restate.Set(ctx, "state", state)
+
+	// Stamp the terminal status onto this generation's history record so the
+	// rollback machinery can tell known-good generations from failed ones.
+	history, err := restate.Get[[]GenerationRecord](ctx, "history")
+	if err != nil {
+		return err
+	}
+	for i := range history {
+		if history[i].Generation == state.Generation {
+			history[i].FinalStatus = final.Status
+			restate.Set(ctx, "history", history)
+			break
+		}
+	}
+
 	if final.Status == types.DeploymentDeleted {
 		// Sorted order keeps the journaled delete calls deterministic on replay.
 		for _, name := range sortedResourceNames(state.Resources) {
@@ -234,6 +308,31 @@ func (DeploymentStateObj) Finalize(ctx restate.ObjectContext, final FinalizeRequ
 		}
 	}
 	return nil
+}
+
+// ListGenerations returns the bounded per-deployment apply history, newest
+// last. Shared handler: reads never block in-flight applies.
+func (DeploymentStateObj) ListGenerations(ctx restate.ObjectSharedContext) ([]GenerationRecord, error) {
+	history, err := restate.Get[[]GenerationRecord](ctx, "history")
+	if err != nil {
+		return nil, err
+	}
+	return history, nil
+}
+
+// GetPlanSnapshot returns the stored DeploymentPlan for one generation, or a
+// terminal 404 when the generation never existed or was pruned by retention.
+func (DeploymentStateObj) GetPlanSnapshot(ctx restate.ObjectSharedContext, generation int64) (*DeploymentPlan, error) {
+	plan, err := restate.Get[*DeploymentPlan](ctx, planSnapshotKey(generation))
+	if err != nil {
+		return nil, err
+	}
+	if plan == nil {
+		return nil, restate.TerminalError(fmt.Errorf(
+			"deployment %q has no stored plan for generation %d (only the most recent %d generations are retained)",
+			restate.Key(ctx), generation, historyRetentionLimit), 404)
+	}
+	return plan, nil
 }
 
 // RequestCancel sets the durable cancel flag. The apply workflow polls this

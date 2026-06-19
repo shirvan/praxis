@@ -34,6 +34,17 @@ type deploymentEventPayload struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// approvalEventPayload is the data payload for approval-gate audit events.
+// DecidedBy and Comment make the event stream answer "who approved what,
+// when, and why" without consulting any other system.
+type approvalEventPayload struct {
+	Message   string `json:"message"`
+	Status    string `json:"status,omitempty"`
+	Decision  string `json:"decision,omitempty"`
+	DecidedBy string `json:"decidedBy,omitempty"`
+	Comment   string `json:"comment,omitempty"`
+}
+
 // commandEventPayload is the data payload for CLI/API command events
 // (apply, delete, import, cancel).
 type commandEventPayload struct {
@@ -137,6 +148,56 @@ func NewDeploymentStartedEvent(deploymentKey, workspace string, generation int64
 		EventCategoryLifecycle,
 		EventSeverityInfo,
 		deploymentEventPayload{Message: "deployment workflow started", Status: string(types.DeploymentRunning)},
+	)
+}
+
+// NewDeploymentApprovalRequestedEvent creates the event emitted when a
+// protected deployment suspends awaiting an operator decision.
+func NewDeploymentApprovalRequestedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time) (cloudevents.Event, error) {
+	return newPraxisCloudEvent(
+		EventTypeDeploymentApprovalRequested,
+		deploymentKey,
+		workspace,
+		generation,
+		occurredAt,
+		"",
+		"",
+		EventCategoryLifecycle,
+		EventSeverityInfo,
+		approvalEventPayload{Message: "deployment awaiting approval", Status: string(types.DeploymentAwaitingApproval)},
+	)
+}
+
+// NewDeploymentApprovalDecidedEvent creates the approved or rejected audit
+// event carrying the operator's identity and rationale.
+func NewDeploymentApprovalDecidedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, decision types.ApprovalDecision) (cloudevents.Event, error) {
+	eventType := EventTypeDeploymentApprovalApproved
+	severity := EventSeverityInfo
+	verdict := "approved"
+	status := types.DeploymentRunning
+	if !decision.Approved {
+		eventType = EventTypeDeploymentApprovalRejected
+		severity = EventSeverityWarn
+		verdict = "rejected"
+		status = types.DeploymentCancelled
+	}
+	return newPraxisCloudEvent(
+		eventType,
+		deploymentKey,
+		workspace,
+		generation,
+		occurredAt,
+		"",
+		"",
+		EventCategoryLifecycle,
+		severity,
+		approvalEventPayload{
+			Message:   "deployment " + verdict,
+			Status:    string(status),
+			Decision:  verdict,
+			DecidedBy: decision.DecidedBy,
+			Comment:   decision.Comment,
+		},
 	)
 }
 

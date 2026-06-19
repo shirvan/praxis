@@ -535,6 +535,18 @@ func pollDeployment(ctx context.Context, client *Client, key string, interval ti
 			lastStatus = detail.Status
 		}
 
+		if detail.Status == types.DeploymentAwaitingApproval {
+			// The workflow is durably suspended; waiting longer changes
+			// nothing until an operator decides. Surface the gate and stop.
+			if format == OutputJSON {
+				return printJSON(detail)
+			}
+			_, _ = fmt.Fprintln(renderer.out)
+			_, _ = fmt.Fprintf(renderer.out, "Deployment %q is awaiting approval.\n", key)
+			_, _ = fmt.Fprintf(renderer.out, "Run 'praxis approve %s' to resume it or 'praxis reject %s' to cancel it.\n", key, key)
+			return nil
+		}
+
 		if isTerminalStatus(detail.Status) {
 			if format == OutputJSON {
 				if err := printJSON(detail); err != nil {

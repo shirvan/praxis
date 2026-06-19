@@ -45,12 +45,13 @@ func newCreateWorkspaceCmd(flags *rootFlags) *cobra.Command {
 		selectFlag bool
 	)
 
+	var protected bool
 	cmd := &cobra.Command{
 		Use:   "workspace <name>",
 		Short: "Create or update a workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return createWorkspace(flags, args[0], account, region, vars, selectFlag)
+			return createWorkspace(flags, args[0], account, region, vars, selectFlag, protected)
 		},
 	}
 
@@ -58,6 +59,7 @@ func newCreateWorkspaceCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().StringVar(&region, "region", "", "Default AWS region (required)")
 	cmd.Flags().StringArrayVar(&vars, "var", nil, "Default variable in key=value format (repeatable)")
 	cmd.Flags().BoolVar(&selectFlag, "select", false, "Set as the active workspace after creation")
+	cmd.Flags().BoolVar(&protected, "protected", false, "Require approval (praxis approve) for every deployment into this workspace")
 
 	return cmd
 }

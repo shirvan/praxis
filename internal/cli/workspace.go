@@ -36,7 +36,7 @@ func parseStringVariables(vars []string) (map[string]string, error) {
 
 // createWorkspace is the shared logic for workspace creation, used by both
 // the old `workspace create` and the new `create workspace` commands.
-func createWorkspace(flags *rootFlags, name, account, region string, vars []string, selectFlag bool) error {
+func createWorkspace(flags *rootFlags, name, account, region string, vars []string, selectFlag, protected bool) error {
 	renderer := flags.renderer()
 	cliCfg := LoadCLIConfig()
 
@@ -64,6 +64,7 @@ func createWorkspace(flags *rootFlags, name, account, region string, vars []stri
 		Region:    region,
 		Variables: variables,
 		Events:    nil,
+		Protected: protected,
 	}
 	if err := client.ConfigureWorkspace(ctx, cfg); err != nil {
 		return err

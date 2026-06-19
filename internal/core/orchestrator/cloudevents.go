@@ -54,11 +54,15 @@ const (
 
 	// --- Deployment lifecycle event types ---
 
-	EventTypeDeploymentSubmitted     = "dev.praxis.deployment.submitted"      // apply request accepted
-	EventTypeDeploymentStarted       = "dev.praxis.deployment.started"        // workflow execution began
-	EventTypeDeploymentCompleted     = "dev.praxis.deployment.completed"      // all resources ready
-	EventTypeDeploymentFailed        = "dev.praxis.deployment.failed"         // one or more resources failed
-	EventTypeDeploymentCancelled     = "dev.praxis.deployment.cancelled"      // operator cancelled the run
+	EventTypeDeploymentSubmitted         = "dev.praxis.deployment.submitted"          // apply request accepted
+	EventTypeDeploymentStarted           = "dev.praxis.deployment.started"            // workflow execution began
+	EventTypeDeploymentCompleted         = "dev.praxis.deployment.completed"          // all resources ready
+	EventTypeDeploymentFailed            = "dev.praxis.deployment.failed"             // one or more resources failed
+	EventTypeDeploymentCancelled         = "dev.praxis.deployment.cancelled"          // operator cancelled the run
+	EventTypeDeploymentApprovalRequested = "dev.praxis.deployment.approval.requested" // protected deployment suspended awaiting approval
+	EventTypeDeploymentApprovalApproved  = "dev.praxis.deployment.approval.approved"  // operator approved; workflow resumed
+	EventTypeDeploymentApprovalRejected  = "dev.praxis.deployment.approval.rejected"  // operator rejected; deployment cancelled
+
 	EventTypeDeploymentDeleteStarted = "dev.praxis.deployment.delete.started" // delete workflow began
 	EventTypeDeploymentDeleteDone    = "dev.praxis.deployment.delete.completed"
 	EventTypeDeploymentDeleteFailed  = "dev.praxis.deployment.delete.failed"
