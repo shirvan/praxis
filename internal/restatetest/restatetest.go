@@ -170,17 +170,32 @@ func Start(t *testing.T, services ...restate.ServiceDefinition) *TestEnvironment
 	mappedIngress, err := restateC.MappedPort(t.Context(), ingressPort)
 	require.NoError(t, err)
 
-	req, err := http.NewRequestWithContext(
-		t.Context(), http.MethodPost,
-		fmt.Sprintf("http://localhost:%d/deployments", mappedAdmin.Int()),
-		bytes.NewBufferString(fmt.Sprintf(`{"uri":"http://%s:%d"}`, testcontainers.HostInternal, sdkPort)),
-	)
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, res.Body.Close()) }()
-	require.Equal(t, http.StatusCreated, res.StatusCode)
+	// Register the SDK server with Restate's admin API. Right after the
+	// health checks pass the admin API can still return transient 500s under
+	// container churn, so registration gets a short bounded retry of its own.
+	registerURL := fmt.Sprintf("http://localhost:%d/deployments", mappedAdmin.Int())
+	registerBody := fmt.Sprintf(`{"uri":"http://%s:%d"}`, testcontainers.HostInternal, sdkPort)
+	registered := false
+	var lastStatus int
+	for attempt := 1; attempt <= 5 && !registered; attempt++ {
+		req, err := http.NewRequestWithContext(
+			t.Context(), http.MethodPost, registerURL, bytes.NewBufferString(registerBody),
+		)
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err == nil {
+			lastStatus = res.StatusCode
+			_ = res.Body.Close()
+			if res.StatusCode == http.StatusCreated || res.StatusCode == http.StatusOK {
+				registered = true
+				break
+			}
+		}
+		t.Logf("restatetest: deployment registration attempt %d failed (status %d, err %v)", attempt, lastStatus, err)
+		time.Sleep(500 * time.Millisecond)
+	}
+	require.True(t, registered, "deployment registration failed after retries (last status %d)", lastStatus)
 
 	return &TestEnvironment{
 		ingressClient: ingress.NewClient(fmt.Sprintf("http://localhost:%d", mappedIngress.Int())),
