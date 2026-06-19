@@ -2,9 +2,10 @@ package routetable
 
 import (
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field difference between desired and observed state.

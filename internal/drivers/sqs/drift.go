@@ -9,8 +9,9 @@ package sqs
 
 import (
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"maps"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired

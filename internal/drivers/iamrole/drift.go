@@ -1,8 +1,9 @@
 package iamrole
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift compares the desired IAM role spec against the observed AWS state and returns

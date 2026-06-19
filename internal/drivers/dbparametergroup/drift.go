@@ -1,8 +1,9 @@
 package dbparametergroup
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field difference between desired and observed state.

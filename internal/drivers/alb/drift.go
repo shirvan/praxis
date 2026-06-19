@@ -8,9 +8,10 @@
 package alb
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired
