@@ -2,9 +2,10 @@ package route53zone
 
 import (
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry describes a single field-level difference between desired and observed state.

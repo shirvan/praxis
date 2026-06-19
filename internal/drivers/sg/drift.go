@@ -2,9 +2,10 @@ package sg
 
 import (
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strconv"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // NormalizedRule is the canonical representation of a security group rule

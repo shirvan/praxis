@@ -3,10 +3,11 @@ package iamuser
 import (
 	"context"
 	"encoding/json"
-	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"sort"
 	"time"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"

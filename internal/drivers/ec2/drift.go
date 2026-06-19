@@ -8,8 +8,9 @@
 package ec2
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift returns true when any mutable EC2 instance field differs between desired and observed.

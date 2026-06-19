@@ -8,8 +8,9 @@
 package nlb
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // FieldDiffEntry represents a single field-level difference between the desired

@@ -1,8 +1,9 @@
 package natgw
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/stretchr/testify/assert"
 )

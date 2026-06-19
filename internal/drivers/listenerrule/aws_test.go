@@ -3,8 +3,9 @@ package listenerrule
 import (
 	"errors"
 	"fmt"
-	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
+
+	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"

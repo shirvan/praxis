@@ -9,10 +9,11 @@
 package ami
 
 import (
-	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
 // HasDrift returns true when any mutable AMI attribute differs between desired and observed.

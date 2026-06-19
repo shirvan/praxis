@@ -255,7 +255,7 @@ func TestGetCredentials_RoleSource_AssumesRoleThenServesFromCache(t *testing.T) 
 	mockCtx := mocks.NewMockContext(t)
 	mockCtx.EXPECT().Key().Return("prod")
 	expectNoState(mockCtx)
-	mockCtx.EXPECT().RunAndReturn(testNow, nil)            // journaledNow (typed *time.Time)
+	mockCtx.EXPECT().RunAndReturn(testNow, nil)             // journaledNow (typed *time.Time)
 	mockCtx.EXPECT().RunAndExpect(mockCtx, fake.creds, nil) // AssumeRole Run block
 	// Refresh is scheduled 10 minutes before the 1h expiry.
 	mockCtx.EXPECT().MockObjectClient(ServiceName, "prod", "RefreshCredentials").
@@ -410,7 +410,7 @@ func TestRefreshCredentials_IgnoresValidCache(t *testing.T) {
 	mockCtx := mocks.NewMockContext(t)
 	mockCtx.EXPECT().Key().Return("prod")
 	mockCtx.EXPECT().GetAndReturn("state", st)
-	mockCtx.EXPECT().RunAndReturn(testNow, nil)            // journaledNow
+	mockCtx.EXPECT().RunAndReturn(testNow, nil)             // journaledNow
 	mockCtx.EXPECT().RunAndExpect(mockCtx, fake.creds, nil) // AssumeRole Run block
 	// RefreshScheduled is cleared first, so a new timer is armed for the new expiry.
 	mockCtx.EXPECT().MockObjectClient(ServiceName, "prod", "RefreshCredentials").
