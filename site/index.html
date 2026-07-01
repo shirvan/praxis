@@ -213,9 +213,26 @@
   .c-add { color: #7ee787; }
   .c-chg { color: #d29922; }
   .c-del { color: #ff7b72; }
+  .alpha-banner {
+    background: var(--warn);
+    color: #0d1117;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1rem;
+    line-height: 1.45;
+    padding: 0.85rem 1.2rem;
+    position: relative;
+    z-index: 20;
+  }
+  .alpha-banner strong { font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+  @media (max-width: 560px) { .alpha-banner { font-size: 0.9rem; } }
 </style>
 </head>
 <body>
+
+<div class="alpha-banner">
+  <strong>Alpha:</strong> Praxis has limited real-world testing — APIs and schemas may change.
+</div>
 
 <nav>
   <div class="wrap">
