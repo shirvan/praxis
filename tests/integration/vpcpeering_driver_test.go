@@ -161,9 +161,7 @@ func TestVPCPeeringDelete_Deletes(t *testing.T) {
 	desc, err := ec2Client.DescribeVpcPeeringConnections(context.Background(), &ec2sdk.DescribeVpcPeeringConnectionsInput{
 		VpcPeeringConnectionIds: []string{out.VpcPeeringConnectionId},
 	})
-	if err != nil {
-		return
-	}
+	require.NoError(t, err)
 	require.Len(t, desc.VpcPeeringConnections, 1)
 	assert.Equal(t, ec2types.VpcPeeringConnectionStateReasonCodeDeleted, desc.VpcPeeringConnections[0].Status.Code)
 }

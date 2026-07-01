@@ -34,6 +34,15 @@ func TestIsVolumeInUse_True(t *testing.T) {
 }
 
 func TestIsModificationCooldown_True(t *testing.T) {
+	assert.True(t, IsModificationCooldown(errors.New("volume vol-123 is currently being modified")))
+	assert.True(t, IsModificationCooldown(errors.New("modification cooldown in effect")))
+	assert.True(t, IsModificationCooldown(errors.New("volume has been modified within the last 6 hours")))
+}
+
+func TestIsModificationCooldown_False(t *testing.T) {
+	assert.False(t, IsModificationCooldown(nil))
+	assert.False(t, IsModificationCooldown(errors.New("timeout")))
+	assert.False(t, IsModificationCooldown(&mockAPIError{code: "VolumeInUse"}))
 }
 
 func TestSingleManagedKeyMatch_Found(t *testing.T) {
