@@ -79,19 +79,6 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 	return append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 }
 
-// slicesEqual compares two string slices for equality.
-func slicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
 	desiredFiltered := drivers.FilterPraxisTags(desired)
 	observedFiltered := drivers.FilterPraxisTags(observed)

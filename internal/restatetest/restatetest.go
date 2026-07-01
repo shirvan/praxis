@@ -65,10 +65,10 @@ func (e *TestEnvironment) RestartRestate(t *testing.T) {
 	// container reach the SDK server on the host. A raw restart preserves the
 	// container's state, port bindings, and the forwarder session.
 	id := e.container.GetContainerID()
-	stop := exec.Command("docker", "stop", "-t", "10", id)
+	stop := exec.CommandContext(t.Context(), "docker", "stop", "-t", "10", id) //nolint:gosec // G204: id is a testcontainers-issued container ID, not user input
 	out, err := stop.CombinedOutput()
 	require.NoError(t, err, "docker stop: %s", out)
-	start := exec.Command("docker", "start", id)
+	start := exec.CommandContext(t.Context(), "docker", "start", id) //nolint:gosec // G204: id is a testcontainers-issued container ID, not user input
 	out, err = start.CombinedOutput()
 	require.NoError(t, err, "docker start: %s", out)
 
@@ -83,7 +83,7 @@ func (e *TestEnvironment) RestartRestate(t *testing.T) {
 		fmt.Sprintf("http://localhost:%d/restate/health", mappedIngress.Int()),
 	} {
 		for {
-			res, err := http.Get(probe) //nolint:noctx // bounded by the deadline loop
+			res, err := http.Get(probe) //nolint:noctx,gosec // G107: probe is a localhost health URL built from a mapped test port, bounded by the deadline loop
 			if err == nil {
 				_ = res.Body.Close()
 				if res.StatusCode == http.StatusOK {
