@@ -17,14 +17,19 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -52,6 +57,11 @@ func NewEC2Client(cfg aws.Config) *ec2.Client {
 // NewECRClient returns an ECR client from the given config.
 func NewECRClient(cfg aws.Config) *ecr.Client {
 	return ecr.NewFromConfig(cfg)
+}
+
+// NewEKSClient returns an EKS client from the given config.
+func NewEKSClient(cfg aws.Config) *eks.Client {
+	return eks.NewFromConfig(cfg)
 }
 
 // NewELBv2Client returns an ELBv2 client from the given config.
@@ -107,4 +117,24 @@ func NewSQSClient(cfg aws.Config) *sqs.Client {
 // NewSSMClient returns an SSM client from the given config.
 func NewSSMClient(cfg aws.Config) *ssm.Client {
 	return ssm.NewFromConfig(cfg)
+}
+
+// NewKMSClient returns a KMS client from the given config.
+func NewKMSClient(cfg aws.Config) *kms.Client {
+	return kms.NewFromConfig(cfg)
+}
+
+// NewSecretsManagerClient returns a Secrets Manager client from the given config.
+func NewSecretsManagerClient(cfg aws.Config) *secretsmanager.Client {
+	return secretsmanager.NewFromConfig(cfg)
+}
+
+// NewDynamoDBClient returns a DynamoDB client from the given config.
+func NewDynamoDBClient(cfg aws.Config) *dynamodb.Client {
+	return dynamodb.NewFromConfig(cfg)
+}
+
+// NewECSClient returns an ECS client from the given config.
+func NewECSClient(cfg aws.Config) *ecs.Client {
+	return ecs.NewFromConfig(cfg)
 }

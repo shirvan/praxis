@@ -15,6 +15,7 @@ import (
 	"github.com/shirvan/praxis/internal/drivers/auroracluster"
 	"github.com/shirvan/praxis/internal/drivers/dbparametergroup"
 	"github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
+	"github.com/shirvan/praxis/internal/drivers/dynamodbtable"
 	"github.com/shirvan/praxis/internal/drivers/ebs"
 	"github.com/shirvan/praxis/internal/drivers/rdsinstance"
 	"github.com/shirvan/praxis/internal/drivers/s3"
@@ -33,6 +34,7 @@ func main() {
 	srv := server.NewRestate().
 		Bind(restate.Reflect(s3.NewS3BucketDriver(auth), rp)).
 		Bind(restate.Reflect(ebs.NewEBSVolumeDriver(auth), rp)).
+		Bind(restate.Reflect(dynamodbtable.NewDynamoDBTableDriver(auth), rp)).
 		Bind(restate.Reflect(dbsubnetgroup.NewDBSubnetGroupDriver(auth), rp)).
 		Bind(restate.Reflect(dbparametergroup.NewDBParameterGroupDriver(auth), rp)).
 		Bind(restate.Reflect(rdsinstance.NewRDSInstanceDriver(auth), rp)).

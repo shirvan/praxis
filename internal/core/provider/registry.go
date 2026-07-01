@@ -210,6 +210,11 @@ func NewRegistry(auth authservice.AuthClient) *Registry {
 		NewSQSAdapterWithAuth(auth),
 		NewSQSQueuePolicyAdapterWithAuth(auth),
 		NewSSMParameterAdapterWithAuth(auth),
+		NewEKSClusterAdapterWithAuth(auth),
+		NewKMSKeyAdapterWithAuth(auth),
+		NewSecretsManagerSecretAdapterWithAuth(auth),
+		NewDynamoDBTableAdapterWithAuth(auth),
+		NewECSClusterAdapterWithAuth(auth),
 	)
 }
 

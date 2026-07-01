@@ -302,14 +302,14 @@ Symbols: `+` create, `~` update, `-` delete. Fields within an update that change
 
 ## AWS Coverage
 
-46 drivers across five domains:
+51 drivers across five domains:
 
 | Domain | Resources |
 |--------|-----------|
 | **Network** (18) | VPC, Security Group, Subnet, Route Table, Internet Gateway, NAT Gateway, Network ACL, Elastic IP, VPC Peering, Hosted Zone, DNS Record, Health Check, ALB, NLB, Target Group, Listener, Listener Rule, ACM Certificate |
-| **Compute** (9) | EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy |
-| **Storage** (11) | S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster, SNS Topic, SNS Subscription, SQS Queue, SQS Queue Policy, SSM Parameter |
-| **Identity** (5) | IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile |
+| **Compute** (11) | EC2 Instance, AMI, Key Pair, Lambda Function, Lambda Layer, Lambda Permission, Event Source Mapping, ECR Repository, ECR Lifecycle Policy, EKS Cluster, ECS Cluster |
+| **Storage** (12) | S3 Bucket, EBS Volume, RDS Instance, DB Subnet Group, DB Parameter Group, Aurora Cluster, DynamoDB Table, SNS Topic, SNS Subscription, SQS Queue, SQS Queue Policy, SSM Parameter |
+| **Identity** (7) | IAM Role, IAM Policy, IAM User, IAM Group, IAM Instance Profile, KMS Key, Secrets Manager Secret |
 | **Monitoring** (3) | Log Group, Metric Alarm, Dashboard |
 
 ### Limitations
