@@ -6,7 +6,7 @@ How to add custom resource types, integrations, and automation to Praxis from a 
 
 ## Why Extensibility Matters
 
-Praxis ships with 46 AWS drivers. Your team almost certainly manages things that aren't AWS resources: Datadog monitors, Cloudflare DNS records, PagerDuty services, GitHub repositories, Vault secrets, internal APIs. The traditional approach (fork the project, add your code, maintain a permanent divergence) is expensive and fragile.
+Praxis ships with 51 AWS drivers. Your team almost certainly manages things that aren't AWS resources: Datadog monitors, Cloudflare DNS records, PagerDuty services, GitHub repositories, Vault secrets, internal APIs. The traditional approach (fork the project, add your code, maintain a permanent divergence) is expensive and fragile.
 
 Praxis avoids this entirely because of a foundational architectural choice: **Restate is the runtime, not Praxis.** Every Praxis component (Core, drivers, the event bus) is just a set of Restate services registered with the same Restate instance. Your custom extensions register the same way. Restate doesn't distinguish between "built-in" and "external" services. They're all peers.
 

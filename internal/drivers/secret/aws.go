@@ -1,0 +1,257 @@
+// Package secret – aws.go
+//
+// This file contains the AWS API abstraction layer for Secrets Manager secrets.
+// It defines the SecretsManagerSecretAPI interface (used for testing with mocks)
+// and the real implementation that calls AWS Secrets Manager through the AWS SDK.
+// All AWS calls are rate-limited to prevent throttling.
+package secret
+
+import (
+	"context"
+	"maps"
+	"sort"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+
+	"github.com/shirvan/praxis/internal/drivers"
+	"github.com/shirvan/praxis/internal/drivers/awserr"
+	"github.com/shirvan/praxis/internal/infra/ratelimit"
+)
+
+// SecretsManagerSecretAPI abstracts all AWS Secrets Manager SDK operations
+// needed to manage a secret. The real implementation calls AWS; tests supply a
+// mock to verify driver logic without network calls.
+type SecretsManagerSecretAPI interface {
+	CreateSecret(ctx context.Context, spec SecretsManagerSecretSpec) (ObservedState, error)
+	DescribeSecret(ctx context.Context, name string) (ObservedState, bool, error)
+	UpdateSecret(ctx context.Context, name, description, kmsKeyID string) error
+	PutSecretValue(ctx context.Context, name, value string) error
+	DeleteSecret(ctx context.Context, name string) error
+	AddTags(ctx context.Context, name string, tags map[string]string) error
+	RemoveTags(ctx context.Context, name string, tagKeys []string) error
+}
+
+type realSecretsManagerSecretAPI struct {
+	client  *secretsmanager.Client
+	limiter *ratelimit.Limiter
+}
+
+// NewSecretsManagerSecretAPI constructs a production SecretsManagerSecretAPI
+// backed by the given AWS SDK client, with built-in rate limiting to avoid
+// throttling.
+func NewSecretsManagerSecretAPI(client *secretsmanager.Client) SecretsManagerSecretAPI {
+	return &realSecretsManagerSecretAPI{
+		client:  client,
+		limiter: ratelimit.Shared("secretsmanager", 10, 5),
+	}
+}
+
+// CreateSecret creates a new secret from the given spec, stamping the managed
+// tags on create. It returns the freshly observed state so callers avoid an
+// extra round trip.
+func (r *realSecretsManagerSecretAPI) CreateSecret(ctx context.Context, spec SecretsManagerSecretSpec) (ObservedState, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, err
+	}
+	input := &secretsmanager.CreateSecretInput{
+		Name:         aws.String(spec.Name),
+		SecretString: aws.String(spec.SecretString),
+		Tags:         tagList(managedTags(spec.Tags, spec.ManagedKey)),
+	}
+	if spec.Description != "" {
+		input.Description = aws.String(spec.Description)
+	}
+	if spec.KmsKeyID != "" {
+		input.KmsKeyId = aws.String(spec.KmsKeyID)
+	}
+	out, err := r.client.CreateSecret(ctx, input)
+	if err != nil {
+		return ObservedState{}, err
+	}
+	observed, _, err := r.DescribeSecret(ctx, spec.Name)
+	if err != nil {
+		return ObservedState{}, err
+	}
+	// Prefer the ARN/version from the create response when Describe lags.
+	if observed.ARN == "" {
+		observed.ARN = aws.ToString(out.ARN)
+	}
+	if observed.VersionID == "" {
+		observed.VersionID = aws.ToString(out.VersionId)
+	}
+	return observed, nil
+}
+
+// DescribeSecret reads the current state of the secret from AWS. DescribeSecret
+// supplies the ARN, description, KMS key, and tags; GetSecretValue supplies the
+// current secret value and version so value drift is detectable.
+func (r *realSecretsManagerSecretAPI) DescribeSecret(ctx context.Context, name string) (ObservedState, bool, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, false, err
+	}
+	desc, err := r.client.DescribeSecret(ctx, &secretsmanager.DescribeSecretInput{
+		SecretId: aws.String(name),
+	})
+	if err != nil {
+		if IsNotFound(err) {
+			return ObservedState{}, false, nil
+		}
+		return ObservedState{}, false, err
+	}
+	observed := ObservedState{
+		ARN:         aws.ToString(desc.ARN),
+		Name:        aws.ToString(desc.Name),
+		Description: aws.ToString(desc.Description),
+		KmsKeyID:    aws.ToString(desc.KmsKeyId),
+		Tags:        map[string]string{},
+	}
+	for _, tag := range desc.Tags {
+		observed.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+	}
+
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, false, err
+	}
+	val, err := r.client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(name),
+	})
+	if err != nil {
+		if IsNotFound(err) {
+			return ObservedState{}, false, nil
+		}
+		return ObservedState{}, false, err
+	}
+	observed.SecretString = aws.ToString(val.SecretString)
+	observed.VersionID = aws.ToString(val.VersionId)
+	return observed, true, nil
+}
+
+// UpdateSecret converges the description and KMS key on an existing secret.
+func (r *realSecretsManagerSecretAPI) UpdateSecret(ctx context.Context, name, description, kmsKeyID string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	input := &secretsmanager.UpdateSecretInput{SecretId: aws.String(name)}
+	if description != "" {
+		input.Description = aws.String(description)
+	}
+	if kmsKeyID != "" {
+		input.KmsKeyId = aws.String(kmsKeyID)
+	}
+	_, err := r.client.UpdateSecret(ctx, input)
+	return err
+}
+
+// PutSecretValue stores a new version of the secret value, becoming AWSCURRENT.
+func (r *realSecretsManagerSecretAPI) PutSecretValue(ctx context.Context, name, value string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.PutSecretValue(ctx, &secretsmanager.PutSecretValueInput{
+		SecretId:     aws.String(name),
+		SecretString: aws.String(value),
+	})
+	return err
+}
+
+// DeleteSecret removes the secret immediately, bypassing the recovery window so
+// the resource is gone as soon as the call returns.
+func (r *realSecretsManagerSecretAPI) DeleteSecret(ctx context.Context, name string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.DeleteSecret(ctx, &secretsmanager.DeleteSecretInput{
+		SecretId:                   aws.String(name),
+		ForceDeleteWithoutRecovery: aws.Bool(true),
+	})
+	return err
+}
+
+func (r *realSecretsManagerSecretAPI) AddTags(ctx context.Context, name string, tags map[string]string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.TagResource(ctx, &secretsmanager.TagResourceInput{
+		SecretId: aws.String(name),
+		Tags:     tagList(tags),
+	})
+	return err
+}
+
+func (r *realSecretsManagerSecretAPI) RemoveTags(ctx context.Context, name string, tagKeys []string) error {
+	if len(tagKeys) == 0 {
+		return nil
+	}
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.UntagResource(ctx, &secretsmanager.UntagResourceInput{
+		SecretId: aws.String(name),
+		TagKeys:  tagKeys,
+	})
+	return err
+}
+
+// IsNotFound returns true if the AWS error indicates the secret does not exist.
+func IsNotFound(err error) bool {
+	return awserr.HasCode(err, "ResourceNotFoundException")
+}
+
+func IsAlreadyExists(err error) bool {
+	return awserr.HasCode(err, "ResourceExistsException")
+}
+
+func IsInvalidParam(err error) bool {
+	return awserr.HasCode(err, "InvalidParameterException", "InvalidRequestException", "ValidationException")
+}
+
+func IsLimitExceeded(err error) bool {
+	return awserr.HasCode(err, "LimitExceededException")
+}
+
+func tagList(tags map[string]string) []smtypes.Tag {
+	keys := make([]string, 0, len(tags))
+	for key := range tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]smtypes.Tag, 0, len(tags))
+	for _, key := range keys {
+		out = append(out, smtypes.Tag{Key: aws.String(key), Value: aws.String(tags[key])})
+	}
+	return out
+}
+
+func managedTags(tags map[string]string, managedKey string) map[string]string {
+	out := make(map[string]string, len(tags)+1)
+	maps.Copy(out, tags)
+	if strings.TrimSpace(managedKey) != "" {
+		out["praxis:managed-key"] = managedKey
+	}
+	return out
+}
+
+func tagDiff(desired, observed map[string]string, managedKey string) (map[string]string, []string) {
+	want := managedTags(drivers.FilterPraxisTags(desired), managedKey)
+	have := managedTags(drivers.FilterPraxisTags(observed), managedKey)
+	toAdd := map[string]string{}
+	for key, value := range want {
+		if current, ok := have[key]; !ok || current != value {
+			toAdd[key] = value
+		}
+	}
+	var toRemove []string
+	for key := range have {
+		if _, ok := want[key]; !ok {
+			toRemove = append(toRemove, key)
+		}
+	}
+	sort.Strings(toRemove)
+	return toAdd, toRemove
+}

@@ -17,6 +17,8 @@ import (
 	"github.com/shirvan/praxis/internal/drivers/iampolicy"
 	"github.com/shirvan/praxis/internal/drivers/iamrole"
 	"github.com/shirvan/praxis/internal/drivers/iamuser"
+	"github.com/shirvan/praxis/internal/drivers/kmskey"
+	"github.com/shirvan/praxis/internal/drivers/secret"
 )
 
 func main() {
@@ -29,7 +31,9 @@ func main() {
 		Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth), rp)).
 		Bind(restate.Reflect(iamuser.NewIAMUserDriver(auth), rp)).
 		Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(auth), rp)).
-		Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(auth), rp))
+		Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(auth), rp)).
+		Bind(restate.Reflect(kmskey.NewKMSKeyDriver(auth), rp)).
+		Bind(restate.Reflect(secret.NewSecretsManagerSecretDriver(auth), rp))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 

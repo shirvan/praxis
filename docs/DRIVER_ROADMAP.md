@@ -6,7 +6,7 @@ This document tracks current and available AWS driver coverage. Driver priority 
 
 ## Currently Available
 
-46 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, load balancing, TLS certificates, observability, container registry management, messaging, and configuration management.
+51 drivers across 5 driver packs, covering core networking, compute, storage, database, DNS, identity management, key management, secrets management, load balancing, TLS certificates, observability, container registry management, container orchestration, NoSQL databases, messaging, and configuration management.
 
 | Pack | Driver | Resource Types | Key Scope |
 |---|---|---|---|
@@ -37,6 +37,8 @@ This document tracks current and available AWS driver coverage. Driver priority 
 | | Lambda Layer | Lambda layers | Region (`region~layerName`) |
 | | Lambda Permission | Lambda resource-based policy statements | Custom (`region~functionName~statementId`) |
 | | Event Source Mapping | Lambda event source mappings | Custom (`region~functionName~encodedArn`) |
+| | EKS Cluster | EKS control-plane clusters | Region (`region~clusterName`) |
+| | ECS Cluster | ECS clusters, settings, capacity providers | Region (`region~clusterName`) |
 | **Storage** | S3 Bucket | S3 buckets | Global (`bucketName`) |
 | | EBS Volume | EBS volumes | Region (`region~name`) |
 | | RDS Instance | RDS DB instances | Region (`region~dbIdentifier`) |
@@ -48,10 +50,13 @@ This document tracks current and available AWS driver coverage. Driver priority 
 | | SQS Queue | SQS queues | Region (`region~queueName`) |
 | | SQS Queue Policy | SQS queue resource policies | Region (`region~queueName`) |
 | | SSM Parameter | SSM Parameter Store parameters | Region (`region~paramName`) |
+| | DynamoDB Table | DynamoDB tables | Region (`region~tableName`) |
 | **Monitoring** | Log Group | CloudWatch log groups | Region (`region~logGroupName`) |
 | | Metric Alarm | CloudWatch metric alarms | Region (`region~alarmName`) |
 | | Dashboard | CloudWatch dashboards | Region (`region~dashboardName`) |
-| **Identity** | IAM Role | IAM roles | Global (`roleName`) |
+| **Identity** | KMS Key | KMS keys, aliases, rotation | Region (`region~keyAlias`) |
+| | Secrets Manager Secret | Secrets Manager secrets and versions | Region (`region~secretName`) |
+| | IAM Role | IAM roles | Global (`roleName`) |
 | | IAM Policy | IAM policies | Global (`policyName`) |
 | | IAM User | IAM users | Global (`userName`) |
 | | IAM Group | IAM groups | Global (`groupName`) |
@@ -70,15 +75,15 @@ Ranking is based on two independent signals, collected June 2026:
 
 ### Tier 1 — Core Platform Services
 
-Services present in most production AWS accounts. The EKS Terraform module is the third most-downloaded AWS module overall (157M); KMS (121M), DynamoDB (31M/32M npm), and Secrets Manager (34.5M npm — the highest runtime signal of any candidate) are similarly ubiquitous.
+Services present in most production AWS accounts. The core resource for each of EKS, KMS, Secrets Manager, DynamoDB, and ECS has now shipped (see [Currently Available](#currently-available)); the entries below track the remaining sub-resources for each.
 
 | # | Driver | Resource Types | Key Scope |
 |---|---|---|---|
-| 1 | **EKS** | Clusters, managed node groups, Fargate profiles, add-ons | Region (`region~clusterName`) |
-| 2 | **KMS** | Keys, aliases, grants, key policies | Region (`region~keyAlias`) |
-| 3 | **Secrets Manager** | Secrets, versions, rotation configuration | Region (`region~secretName`) |
-| 4 | **DynamoDB** | Tables, global tables, global secondary indexes | Region (`region~tableName`) |
-| 5 | **ECS** | Clusters, services, task definitions, capacity providers | Region (`region~clusterName`) |
+| 1 | **EKS** | Managed node groups, Fargate profiles, add-ons (control-plane cluster shipped) | Region (`region~clusterName`) |
+| 2 | **KMS** | Grants, key policies (keys, aliases, rotation shipped) | Region (`region~keyAlias`) |
+| 3 | **Secrets Manager** | Rotation configuration (secrets, versions shipped) | Region (`region~secretName`) |
+| 4 | **DynamoDB** | Global tables, global secondary indexes (base tables shipped) | Region (`region~tableName`) |
+| 5 | **ECS** | Services, task definitions, capacity provider associations (clusters shipped) | Region (`region~clusterName`) |
 | 6 | **CloudFront** | Distributions, OAC, cache policies, functions | Global (`distributionId`) |
 | 7 | **EventBridge** | Event buses, rules, targets, pipes, schedules | Region (`region~busName`) |
 | 8 | **Auto Scaling** | Groups, policies, scheduled actions, launch configurations | Region (`region~asgName`) |

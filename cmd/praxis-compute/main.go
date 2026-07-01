@@ -16,6 +16,8 @@ import (
 	"github.com/shirvan/praxis/internal/drivers/ec2"
 	"github.com/shirvan/praxis/internal/drivers/ecrpolicy"
 	"github.com/shirvan/praxis/internal/drivers/ecrrepo"
+	"github.com/shirvan/praxis/internal/drivers/ecscluster"
+	"github.com/shirvan/praxis/internal/drivers/ekscluster"
 	"github.com/shirvan/praxis/internal/drivers/esm"
 	"github.com/shirvan/praxis/internal/drivers/keypair"
 	"github.com/shirvan/praxis/internal/drivers/lambda"
@@ -34,6 +36,8 @@ func main() {
 		Bind(restate.Reflect(ec2.NewEC2InstanceDriver(auth), rp)).
 		Bind(restate.Reflect(ecrrepo.NewECRRepositoryDriver(auth), rp)).
 		Bind(restate.Reflect(ecrpolicy.NewECRLifecyclePolicyDriver(auth), rp)).
+		Bind(restate.Reflect(ecscluster.NewECSClusterDriver(auth), rp)).
+		Bind(restate.Reflect(ekscluster.NewEKSClusterDriver(auth), rp)).
 		Bind(restate.Reflect(esm.NewEventSourceMappingDriver(auth), rp)).
 		Bind(restate.Reflect(lambda.NewLambdaFunctionDriver(auth), rp)).
 		Bind(restate.Reflect(lambdalayer.NewLambdaLayerDriver(auth), rp)).

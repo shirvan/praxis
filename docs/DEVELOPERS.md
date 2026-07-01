@@ -17,10 +17,10 @@ Praxis development benefits from scoping the imagination sandbox of the LLM Agen
 cmd/
   praxis/                      # CLI binary
   praxis-core/                 # Core command/orchestration service (incl. event bus + notification sinks)
-  praxis-storage/              # Storage driver pack (S3, EBS, DBSubnetGroup, DBParameterGroup, RDSInstance, AuroraCluster)
+  praxis-storage/              # Storage driver pack (S3, EBS, DBSubnetGroup, DBParameterGroup, RDSInstance, AuroraCluster, DynamoDBTable, SNS, SQS, SSMParameter)
   praxis-network/              # Network driver pack (SG, VPC, EIP, IGW, NACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53Zone, Route53Record, Route53HealthCheck)
-  praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping)
-  praxis-identity/             # Identity driver pack (IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile)
+  praxis-compute/              # Compute driver pack (AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy, EKSCluster, ECSCluster)
+  praxis-identity/             # Identity driver pack (IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile, KMSKey, SecretsManagerSecret)
   praxis-monitoring/           # Monitoring driver pack (LogGroup, MetricAlarm, Dashboard)
 
 internal/
@@ -320,7 +320,7 @@ just test-integration
 # Core integration tests (Restate + Moto — deploys, plans, deletes, events)
 just test-core-integration
 
-# Full lifecycle tests (all 46 drivers, saas-platform.cue — requires Docker)
+# Full lifecycle tests (all 51 drivers, saas-platform.cue — requires Docker)
 just test-lifecycle
 
 # Full local CI (lint → unit → integration)
