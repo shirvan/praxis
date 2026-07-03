@@ -59,8 +59,8 @@ func getDefaultSubnetIds(t *testing.T, ec2Client *ec2sdk.Client) []string {
 	require.GreaterOrEqual(t, len(out.Subnets), 2, "Moto should have at least 2 default subnets")
 
 	ids := make([]string, 0, len(out.Subnets))
-	for _, s := range out.Subnets {
-		ids = append(ids, aws.ToString(s.SubnetId))
+	for i := range out.Subnets {
+		ids = append(ids, aws.ToString(out.Subnets[i].SubnetId))
 	}
 	return ids
 }

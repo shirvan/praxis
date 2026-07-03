@@ -420,7 +420,7 @@ func (d *KMSKeyDriver) scheduleReconcile(ctx restate.ObjectContext, state *KMSKe
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *KMSKeyDriver) apiForAccount(ctx restate.ObjectContext, account string) (KMSKeyAPI, string, error) {

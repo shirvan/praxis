@@ -206,9 +206,14 @@ func (d *SecretsManagerSecretDriver) Delete(ctx restate.ObjectContext) error {
 	state.Error = ""
 	restate.Set(ctx, drivers.StateKey, state)
 	_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-		runErr := api.DeleteSecret(rc, state.Outputs.Name)
+		runErr := api.DeleteSecret(rc, state.Outputs.Name, state.Desired.ForceDelete)
 		if runErr != nil {
 			if IsNotFound(runErr) {
+				return restate.Void{}, nil
+			}
+			// Already inside a recovery window from a prior delete — the
+			// desired outcome (deletion scheduled) already holds. Idempotent.
+			if IsScheduledForDeletion(runErr) {
 				return restate.Void{}, nil
 			}
 			if IsInvalidParam(runErr) {
@@ -328,10 +333,36 @@ func (d *SecretsManagerSecretDriver) GetInputs(ctx restate.ObjectSharedContext) 
 	if err != nil {
 		return SecretsManagerSecretSpec{}, err
 	}
+	// Returned unmasked: the orchestrator's observe-before-act fast path
+	// (provider.ObserveStoredState) compares this against the raw desired
+	// spec, so masking here would permanently disable the up-to-date
+	// short-circuit. Display masking happens at the CLI boundary
+	// (GetResourceInputs), driven by the adapter's SensitiveFields.
 	return state.Desired, nil
 }
 
 func (d *SecretsManagerSecretDriver) convergeMutableFields(ctx restate.ObjectContext, api SecretsManagerSecretAPI, spec SecretsManagerSecretSpec, observed ObservedState) error {
+	// A secret scheduled for deletion (recovery window) rejects value reads
+	// and writes until restored. The caller is declaring the secret should
+	// exist, so cancel the pending deletion first — this makes both
+	// delete-then-redeploy / force-replace (Provision) and external
+	// soft-delete correction (Reconcile) converge instead of failing with
+	// InvalidRequestException. The observed value is empty for a scheduled
+	// secret, so the value comparison below re-puts the desired value.
+	if observed.ScheduledForDeletion {
+		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+			if runErr := api.RestoreSecret(rc, spec.Name); runErr != nil {
+				if IsInvalidParam(runErr) && !IsScheduledForDeletion(runErr) {
+					return restate.Void{}, restate.TerminalError(runErr, 400)
+				}
+				return restate.Void{}, runErr
+			}
+			return restate.Void{}, nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 	if metadataDrift(spec, observed) {
 		_, err := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			runErr := api.UpdateSecret(rc, spec.Name, spec.Description, spec.KmsKeyID)
@@ -408,7 +439,7 @@ func (d *SecretsManagerSecretDriver) scheduleReconcile(ctx restate.ObjectContext
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *SecretsManagerSecretDriver) apiForAccount(ctx restate.ObjectContext, account string) (SecretsManagerSecretAPI, string, error) {

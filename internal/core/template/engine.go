@@ -179,7 +179,7 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 	// Load schemas for unification. Provider schemas define closed CUE
 	// definitions (#S3Bucket, #EC2Instance, etc.) that constrain valid field
 	// names and types for each resource kind.
-	schemaVal, schemaErr := e.loadSchemas()
+	schemaVal, schemaSkips, schemaErr := e.loadSchemas()
 	if schemaErr != nil {
 		return nil, schemaErr
 	}
@@ -206,7 +206,7 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 	}
 
 	baselineDataSources, baselineDataErrs := e.evaluateDataSources(val)
-	baselineResults, baselineErrs := e.evaluateResources(val, schemaVal)
+	baselineResults, baselineErrs := e.evaluateResources(val, schemaVal, schemaSkips)
 	if len(policies) == 0 {
 		combined := append(make(TemplateErrors, 0, len(baselineErrs)+len(baselineDataErrs)), baselineErrs...)
 		combined = append(combined, baselineDataErrs...)
@@ -241,7 +241,7 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 		}
 
 		compiledPolicies = append(compiledPolicies, compiledPolicy{name: policy.Name, value: policyVal})
-		_, perPolicyErrs := e.evaluateResources(val.Unify(policyVal), schemaVal)
+		_, perPolicyErrs := e.evaluateResources(val.Unify(policyVal), schemaVal, schemaSkips)
 		for _, item := range perPolicyErrs {
 			signature := templateErrorSignature(item)
 			if _, exists := baselineSet[signature]; exists {
@@ -267,7 +267,7 @@ func (e *Engine) evaluateWithLoadConfig(patterns []string, cfg *load.Config, tem
 	}
 
 	dataSources, finalDataErrs := e.evaluateDataSources(policyUnified)
-	results, finalErrs := e.evaluateResources(policyUnified, schemaVal)
+	results, finalErrs := e.evaluateResources(policyUnified, schemaVal, schemaSkips)
 	if len(finalErrs) == 0 && len(finalDataErrs) == 0 && len(policyErrs) == 0 {
 		return &EvaluationResult{Resources: results, DataSources: dataSources}, nil
 	}
@@ -369,7 +369,7 @@ func validateDataSourceSpec(spec DataSourceSpec) error {
 // resource with its provider schema, validates concreteness, and exports JSON.
 // Lifecycle blocks are stripped before schema validation (since they are Praxis-
 // level, not schema-level) and spliced back into the final JSON output.
-func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[string]json.RawMessage, TemplateErrors) {
+func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value, schemaSkips []string) (map[string]json.RawMessage, TemplateErrors) {
 	resourcesVal := val.LookupPath(cue.ParsePath("resources"))
 	if !resourcesVal.Exists() {
 		return nil, TemplateErrors{{
@@ -456,9 +456,30 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 
 		if schemaVal != nil {
 			schemaDef := schemaVal.LookupPath(cue.ParsePath("#" + kind))
-			if schemaDef.Exists() {
-				resVal = resVal.Unify(schemaDef)
+			if !schemaDef.Exists() {
+				// No schema for this kind — almost always a typo (e.g.
+				// "DNSRecord" for "Route53Record"). Previously this silently
+				// skipped validation and the resource failed only at deploy time
+				// with an opaque adapter-lookup error ("unsupported resource
+				// kind", pipeline.go). Fail fast at eval time instead. When
+				// schema packages failed to load, say so — a broken schema file
+				// must not be misdiagnosed as a typo'd kind.
+				detail := "Check the kind spelling against the supported resource kinds (see docs/DRIVER_ROADMAP.md)."
+				if len(schemaSkips) > 0 {
+					detail = fmt.Sprintf(
+						"Check the kind spelling against the supported resource kinds (see docs/DRIVER_ROADMAP.md). "+
+							"Note: %d schema package(s) failed to load and were skipped — this kind's schema may be among them: %s",
+						len(schemaSkips), strings.Join(schemaSkips, "; "))
+				}
+				errs = append(errs, TemplateError{
+					Kind:    ErrUnknownKind,
+					Path:    fmt.Sprintf("resources.%s.kind", name),
+					Message: fmt.Sprintf("unknown kind %q: no schema #%s is defined", kind, kind),
+					Detail:  detail,
+				})
+				continue
 			}
+			resVal = resVal.Unify(schemaDef)
 		}
 
 		if verr := resVal.Validate(cue.Concrete(true), cue.Final()); verr != nil {
@@ -526,23 +547,31 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value) (map[str
 // loadSchemas loads all CUE packages under schemaDir and unifies them into
 // a single CUE value. This combined value contains named definitions (e.g.
 // #S3Bucket) that evaluateResources looks up per resource kind.
-func (e *Engine) loadSchemas() (*cue.Value, error) {
+// loadSchemas loads all CUE packages under schemaDir and unifies them. Packages
+// that fail to load or build are skipped so one broken schema doesn't take down
+// evaluation of unrelated kinds — but each skip is reported back so the
+// unknown-kind check can say "a schema package failed to load" instead of
+// misdiagnosing a broken schema as a typo'd kind.
+func (e *Engine) loadSchemas() (*cue.Value, []string, error) {
 	cfg := &load.Config{
 		Dir: e.schemaDir,
 	}
 
 	instances := load.Instances([]string{"./..."}, cfg)
 	if len(instances) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	var combined *cue.Value
+	var skipped []string
 	for _, inst := range instances {
 		if inst.Err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", inst.DisplayPath, inst.Err))
 			continue
 		}
 		val := e.ctx.BuildInstance(inst)
 		if val.Err() != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", inst.DisplayPath, val.Err()))
 			continue
 		}
 		if combined == nil {
@@ -553,7 +582,7 @@ func (e *Engine) loadSchemas() (*cue.Value, error) {
 		}
 	}
 
-	return combined, nil
+	return combined, skipped, nil
 }
 
 // convertLoadErrors translates CUE loader errors into TemplateErrors with

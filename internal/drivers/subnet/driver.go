@@ -524,7 +524,7 @@ func (d *SubnetDriver) scheduleReconcile(ctx restate.ObjectContext, state *Subne
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *SubnetDriver) apiForAccount(ctx restate.ObjectContext, account string) (SubnetAPI, string, error) {

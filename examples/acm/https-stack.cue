@@ -54,7 +54,7 @@ resources: {
 
 	validationRecord: {
 		apiVersion: "praxis.io/v1"
-		kind:       "DNSRecord"
+		kind:       "Route53Record"
 		metadata: name: "\(variables.name)-\(variables.environment)-cert-validation"
 		spec: {
 			region:       "us-east-1"
@@ -62,14 +62,9 @@ resources: {
 			name:         "${resources.cert.outputs.dnsValidationRecords[0].resourceRecordName}"
 			type:         "CNAME"
 			ttl:          300
-			records: [
+			resourceRecords: [
 				"${resources.cert.outputs.dnsValidationRecords[0].resourceRecordValue}",
 			]
-			tags: {
-				app:     variables.name
-				env:     variables.environment
-				purpose: "acm-validation"
-			}
 		}
 	}
 

@@ -1,7 +1,11 @@
 version: "2"
 
 run:
-  timeout: 5m
+  timeout: 10m
+  # Lint the integration test tree too (files behind //go:build integration).
+  # Without this, ~15k LOC under tests/integration/ is invisible to every linter.
+  build-tags:
+    - integration
 
 linters:
   enable:

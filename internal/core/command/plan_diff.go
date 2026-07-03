@@ -171,17 +171,36 @@ func (s *PraxisCommandService) collectLiveOutputs(
 //
 // Returns the resolved key (empty on fallback) so the caller can use it for
 // display and for collecting this resource's own outputs.
+// sensitiveFieldsFor returns the spec paths a kind masks in plan output, or nil
+// if the kind declares none (or is unknown). Best-effort: masking failures must
+// never block a plan.
+func (s *PraxisCommandService) sensitiveFieldsFor(kind string) []string {
+	adapter, err := s.providers.Get(kind)
+	if err != nil {
+		return nil
+	}
+	if sp, ok := adapter.(interface{ SensitiveFields() []string }); ok {
+		return sp.SensitiveFields()
+	}
+	return nil
+}
+
 func (s *PraxisCommandService) planExpressionResource(
 	ctx restate.Context,
 	resource *orchestrator.PlanResource,
 	account string,
 	liveOutputs map[string]map[string]any,
 ) (types.DiffOperation, []types.FieldDiff, string, error) {
+	// sensitive lists the spec paths this kind masks in plan output. Used to
+	// mask the OpCreate fallbacks below, which build diffs from raw JSON and so
+	// bypass the adapter's Plan-path masking.
+	sensitive := s.sensitiveFieldsFor(resource.Kind)
+
 	// No outputs available — cannot resolve expressions.
 	if len(liveOutputs) == 0 {
 		ctx.Log().Info("plan: no outputs available for expression resource, showing as create",
 			"resource", resource.Name, "kind", resource.Kind)
-		fields := corediff.FieldDiffsFromJSON(resource.Spec)
+		fields := types.MaskSensitiveFieldDiffs(corediff.FieldDiffsFromJSON(resource.Spec), sensitive)
 		return types.OpCreate, fields, "", nil
 	}
 
@@ -190,7 +209,7 @@ func (s *PraxisCommandService) planExpressionResource(
 	if err != nil {
 		ctx.Log().Info("plan: expression hydration failed, showing as create",
 			"resource", resource.Name, "kind", resource.Kind, "error", err)
-		fields := corediff.FieldDiffsFromJSON(resource.Spec)
+		fields := types.MaskSensitiveFieldDiffs(corediff.FieldDiffsFromJSON(resource.Spec), sensitive)
 		return types.OpCreate, fields, "", nil
 	}
 
@@ -206,7 +225,7 @@ func (s *PraxisCommandService) planExpressionResource(
 	if err != nil {
 		ctx.Log().Info("plan: BuildKey failed on hydrated spec, showing as create",
 			"resource", resource.Name, "kind", resource.Kind, "error", err)
-		fields := corediff.FieldDiffsFromJSON(resource.Spec)
+		fields := types.MaskSensitiveFieldDiffs(corediff.FieldDiffsFromJSON(resource.Spec), sensitive)
 		return types.OpCreate, fields, "", nil
 	}
 
@@ -214,7 +233,7 @@ func (s *PraxisCommandService) planExpressionResource(
 	if err != nil {
 		ctx.Log().Info("plan: DecodeSpec failed on hydrated spec, showing as create",
 			"resource", resource.Name, "kind", resource.Kind, "error", err)
-		fields := corediff.FieldDiffsFromJSON(resource.Spec)
+		fields := types.MaskSensitiveFieldDiffs(corediff.FieldDiffsFromJSON(resource.Spec), sensitive)
 		return types.OpCreate, fields, "", nil
 	}
 

@@ -211,9 +211,10 @@ docker-build:
 
 # ─── Test ───────────────────────────────────────────────────
 
-# Run all unit tests (serialise packages to avoid Docker/port contention)
+# Run all unit tests (serialise packages to avoid Docker/port contention).
+# Writes a coverage profile to coverage.out (atomic mode, safe under -race).
 test:
-    go test ./internal/... ./pkg/... -v -count=1 -race -p 1
+    go test ./internal/... ./pkg/... -v -count=1 -race -p 1 -coverprofile=coverage.out -covermode=atomic
 
 # Run Core unit tests (command service + DAG + orchestrator)
 test-core:
@@ -792,8 +793,16 @@ fmt-check:
 
 # ─── CI ─────────────────────────────────────────────────────
 
-# Full local CI pipeline: lint → unit tests → integration tests
-ci: lint test test-integration
+# Regenerate event schemas and fail if they drift from the committed copies.
+# The single source of truth for the drift gate, called by both `just ci` and
+# the CI workflow so the two can never disagree.
+check-schema-drift: generate-event-schemas
+    @git diff --exit-code schemas/events/gen || (echo "event schemas are out of date — run 'just generate-event-schemas' and commit" && exit 1)
+
+# Full local CI pipeline — mirrors .github/workflows/ci.yml so a green `just ci`
+# means a green CI run: lint → fmt → unit tests → build → schema drift →
+# integration tests.
+ci: lint fmt-check test build check-schema-drift test-integration
     @echo "CI passed."
 
 # ─── Moto Helpers ───────────────────────────────────────────
@@ -1021,10 +1030,10 @@ release-service-preflight SERVICE VERSION: (_validate-service SERVICE) (_validat
     case "{{SERVICE}}" in
         praxis)            go test ./internal/cli/... -v -count=1 -race ;;
         praxis-core)       go test ./internal/core/... -v -count=1 -race ;;
-        praxis-storage)    go test ./internal/drivers/s3/... ./internal/drivers/ebs/... ./internal/drivers/dbsubnetgroup/... ./internal/drivers/dbparametergroup/... ./internal/drivers/rdsinstance/... ./internal/drivers/auroracluster/... ./internal/drivers/snstopic/... ./internal/drivers/snssub/... ./internal/drivers/sqs/... ./internal/drivers/sqspolicy/... ./internal/drivers/ssmparameter/... -v -count=1 -race ;;
+        praxis-storage)    go test ./internal/drivers/s3/... ./internal/drivers/ebs/... ./internal/drivers/dbsubnetgroup/... ./internal/drivers/dbparametergroup/... ./internal/drivers/rdsinstance/... ./internal/drivers/auroracluster/... ./internal/drivers/snstopic/... ./internal/drivers/snssub/... ./internal/drivers/sqs/... ./internal/drivers/sqspolicy/... ./internal/drivers/ssmparameter/... ./internal/drivers/dynamodbtable/... -v -count=1 -race ;;
         praxis-network)    go test ./internal/drivers/sg/... ./internal/drivers/vpc/... ./internal/drivers/eip/... ./internal/drivers/igw/... ./internal/drivers/nacl/... ./internal/drivers/natgw/... ./internal/drivers/routetable/... ./internal/drivers/subnet/... ./internal/drivers/vpcpeering/... ./internal/drivers/route53zone/... ./internal/drivers/route53record/... ./internal/drivers/route53healthcheck/... ./internal/drivers/alb/... ./internal/drivers/nlb/... ./internal/drivers/targetgroup/... ./internal/drivers/listener/... ./internal/drivers/listenerrule/... ./internal/drivers/acmcert/... -v -count=1 -race ;;
-        praxis-compute)    go test ./internal/drivers/ec2/... ./internal/drivers/ami/... ./internal/drivers/keypair/... ./internal/drivers/lambda/... ./internal/drivers/lambdalayer/... ./internal/drivers/lambdaperm/... ./internal/drivers/esm/... ./internal/drivers/ecrrepo/... ./internal/drivers/ecrpolicy/... -v -count=1 -race ;;
-        praxis-identity)   go test ./internal/drivers/iamrole/... ./internal/drivers/iampolicy/... ./internal/drivers/iamuser/... ./internal/drivers/iamgroup/... ./internal/drivers/iaminstanceprofile/... -v -count=1 -race ;;
+        praxis-compute)    go test ./internal/drivers/ec2/... ./internal/drivers/ami/... ./internal/drivers/keypair/... ./internal/drivers/lambda/... ./internal/drivers/lambdalayer/... ./internal/drivers/lambdaperm/... ./internal/drivers/esm/... ./internal/drivers/ecrrepo/... ./internal/drivers/ecrpolicy/... ./internal/drivers/ekscluster/... ./internal/drivers/ecscluster/... -v -count=1 -race ;;
+        praxis-identity)   go test ./internal/drivers/iamrole/... ./internal/drivers/iampolicy/... ./internal/drivers/iamuser/... ./internal/drivers/iamgroup/... ./internal/drivers/iaminstanceprofile/... ./internal/drivers/kmskey/... ./internal/drivers/secret/... -v -count=1 -race ;;
         praxis-monitoring) go test ./internal/drivers/loggroup/... ./internal/drivers/metricalarm/... ./internal/drivers/dashboard/... -v -count=1 -race ;;
         *) echo "ERROR: no test set defined for {{SERVICE}} — refusing to release untested" && exit 1 ;;
     esac

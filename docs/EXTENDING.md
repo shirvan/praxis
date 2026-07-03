@@ -47,7 +47,7 @@ To participate in the Praxis ecosystem, a custom driver must:
 | `GetOutputs` | Shared | `() → outputs` | Return resource outputs |
 
 3. **Register with the same Restate instance** that Praxis uses
-4. **Optionally: provide a CUE schema** for template-time validation
+4. **Provide a CUE schema** if the kind will be used in Praxis templates (required for template evaluation; see [Adapter Registration](#adapter-registration-advanced))
 
 That's it. No SDK to import from Praxis, no interface to implement, no plugin framework. The contract is the handler names and their input/output shapes.
 
@@ -571,11 +571,11 @@ resp = httpx.post(
 
 The examples above show drivers that the orchestrator dispatches to by service name. For full integration into the `praxis plan` workflow (pre-deployment diffs), your driver's `kind` needs to be known to Praxis Core's adapter registry. There are two approaches:
 
-### Without Core Changes (Works Today)
+### Without Core Changes (Direct Invocation Only)
 
-The orchestrator dispatches to any Restate Virtual Object by `kind` → service name mapping. If the resource's `kind` in the CUE template matches the Restate Virtual Object service name, the orchestrator can dispatch to it directly. The only limitation: `praxis plan` won't show diffs for your custom kind, and the CLI won't validate the spec at plan time.
+Your driver's Restate handlers (Provision, Delete, Reconcile, GetStatus, ...) are directly invocable through the Restate ingress the moment you register the service — Restate does not distinguish built-in from external services. You can drive the resource lifecycle yourself (curl, scripts, your own tooling) and your driver's self-scheduled reconciliation runs exactly like a built-in driver's.
 
-Deployments, lifecycle tracking, DAG resolution, and reconciliation all work without changes. This is the right starting point for most extensions.
+What does **not** work without core integration: Praxis templates and deployments. The template engine rejects kinds that have no CUE schema, and the deployment pipeline resolves every resource kind through the adapter registry (`unsupported resource kind` otherwise) — so template evaluation, `praxis plan`, `praxis deploy`, DAG ordering, and deployment lifecycle tracking all require the registry integration below.
 
 ### With Core Integration (Full Feature Parity)
 

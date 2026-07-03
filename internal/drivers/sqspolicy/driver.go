@@ -395,7 +395,7 @@ func (d *SQSQueuePolicyDriver) scheduleReconcile(ctx restate.ObjectContext, stat
 	state.ReconcileScheduled = true
 	restate.Set(ctx, shared.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(shared.ReconcileInterval))
+		Send(restate.Void{}, restate.WithDelay(shared.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *SQSQueuePolicyDriver) apiForAccount(ctx restate.ObjectContext, account string) (PolicyAPI, error) {

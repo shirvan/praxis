@@ -343,7 +343,7 @@ func (d *LambdaPermissionDriver) scheduleReconcile(ctx restate.ObjectContext, st
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 // apiForAccount resolves AWS credentials and creates a PermissionAPI for the given Praxis account.

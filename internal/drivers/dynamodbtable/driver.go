@@ -113,6 +113,19 @@ func (d *DynamoDBTableDriver) Provision(ctx restate.ObjectContext, spec DynamoDB
 		observed = created
 	}
 
+	// A newly created table is CREATING briefly; an existing one may be
+	// UPDATING. Wait durably for ACTIVE before converging and before reporting
+	// Ready so dependents (event source mappings on the table's stream) don't
+	// dispatch against a table that isn't queryable yet. An already-ACTIVE
+	// table skips the wait entirely, so the no-op re-provision fast path costs
+	// no extra describes.
+	if !strings.EqualFold(observed.Status, "ACTIVE") {
+		observed, err = d.waitForActive(ctx, api, spec.Name)
+		if err != nil {
+			return d.failProvision(ctx, state, err)
+		}
+	}
+
 	if err := d.convergeMutableFields(ctx, api, spec, observed); err != nil {
 		return d.failProvision(ctx, state, err)
 	}
@@ -277,6 +290,18 @@ func (d *DynamoDBTableDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	}
 	if drift && state.Mode == types.ModeManaged {
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
+		// UpdateTable on a non-ACTIVE table (CREATING, or UPDATING from a GSI
+		// backfill) throws ResourceInUseException, which the converge path
+		// classifies as terminal — correcting now would wedge the resource in
+		// Error. A transitioning table is not broken: defer correction to the
+		// next cycle, when it will usually be ACTIVE.
+		if !strings.EqualFold(observed.Status, "ACTIVE") {
+			ctx.Log().Info("deferring drift correction: table not ACTIVE",
+				"table", state.Outputs.Name, "status", observed.Status)
+			restate.Set(ctx, drivers.StateKey, state)
+			d.scheduleReconcile(ctx, &state)
+			return types.ReconcileResult{Drift: true}, nil
+		}
 		if correctionErr := d.convergeMutableFields(ctx, api, state.Desired, observed); correctionErr != nil {
 			state.Status = types.StatusError
 			state.Error = correctionErr.Error()
@@ -381,7 +406,7 @@ func (d *DynamoDBTableDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *DynamoDBTableDriver) apiForAccount(ctx restate.ObjectContext, account string) (DynamoDBTableAPI, string, error) {
@@ -422,6 +447,41 @@ func (d *DynamoDBTableDriver) observeTable(ctx restate.ObjectContext, api Dynamo
 		return ObservedState{}, false, err
 	}
 	return result.Observed, result.Found, nil
+}
+
+const (
+	// ddbReadyPollInterval is the delay between durable readiness checks.
+	ddbReadyPollInterval = 10 * time.Second
+	// ddbReadyMaxAttempts bounds the wait (~15 minutes). Table creation is
+	// usually seconds, but GSI creation/backfill holds the table UPDATING for
+	// minutes to tens of minutes on populated tables — a budget smaller than
+	// that turns a slow-but-healthy transition into a terminal failure.
+	ddbReadyMaxAttempts = 90
+)
+
+// waitForActive polls the table durably (one DescribeTable per restate.Run,
+// restate.Sleep between attempts) until TableStatus is ACTIVE, returning the
+// final observed state. Each poll is its own journaled step, so a crash
+// mid-wait resumes at the next attempt.
+func (d *DynamoDBTableDriver) waitForActive(ctx restate.ObjectContext, api DynamoDBTableAPI, name string) (ObservedState, error) {
+	for range ddbReadyMaxAttempts {
+		observed, found, err := d.observeTable(ctx, api, name)
+		if err != nil {
+			return ObservedState{}, err
+		}
+		if !found {
+			// 404 per docs/ERRORS.md: deleted outside Praxis, not a bug.
+			return ObservedState{}, restate.TerminalError(fmt.Errorf("table %s disappeared while waiting for ACTIVE", name), 404)
+		}
+		if strings.EqualFold(observed.Status, "ACTIVE") {
+			return observed, nil
+		}
+		if err := restate.Sleep(ctx, ddbReadyPollInterval); err != nil {
+			return ObservedState{}, err
+		}
+	}
+	return ObservedState{}, restate.TerminalError(
+		fmt.Errorf("table %s not ACTIVE after %s", name, time.Duration(ddbReadyMaxAttempts)*ddbReadyPollInterval), 500)
 }
 
 // tagDiff computes the tag additions and removals needed to converge the observed

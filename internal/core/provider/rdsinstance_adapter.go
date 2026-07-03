@@ -117,6 +117,7 @@ func rdsInstanceDescriptor() GenericDescriptor[rdsinstance.RDSInstanceSpec, rdsi
 			}
 			return fields
 		},
+		SensitiveFields: []string{"spec.masterUserPassword"},
 	}
 }
 

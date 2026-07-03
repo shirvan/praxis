@@ -108,6 +108,7 @@ func auroraClusterDescriptor() GenericDescriptor[auroracluster.AuroraClusterSpec
 			}
 			return fields
 		},
+		SensitiveFields: []string{"spec.masterUserPassword"},
 	}
 }
 

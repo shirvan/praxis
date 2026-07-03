@@ -95,9 +95,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := EmitDeploymentCloudEvent(ctx, startedEvent); err != nil {
-		return DeploymentResult{}, err
-	}
+	EmitDeploymentCloudEventBestEffort(ctx, startedEvent)
 
 	// Seed execution state with the current resource statuses and errors from
 	// the deployment state so that skip logic and failure summaries reflect
@@ -157,9 +155,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 				if eventErr != nil {
 					return DeploymentResult{}, eventErr
 				}
-				if err := EmitCloudEvent(ctx, policyEvent); err != nil {
-					return DeploymentResult{}, err
-				}
+				EmitCloudEventBestEffort(ctx, policyEvent)
 				if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind,
 					fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to rollback", item.Name)); err != nil {
 					return DeploymentResult{}, err
@@ -171,9 +167,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 			if eventErr != nil {
 				return DeploymentResult{}, eventErr
 			}
-			if err := EmitCloudEvent(ctx, overrideEvent); err != nil {
-				return DeploymentResult{}, err
-			}
+			EmitCloudEventBestEffort(ctx, overrideEvent)
 		}
 
 		adapter, err := w.providers.Get(resource.Kind)
@@ -195,9 +189,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		if eventErr != nil {
 			return DeploymentResult{}, eventErr
 		}
-		if err := EmitDeploymentCloudEvent(ctx, deleteEvent); err != nil {
-			return DeploymentResult{}, err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, deleteEvent)
 
 		invocation, err := adapter.Delete(ctx, resource.Key)
 		if err != nil {
@@ -242,9 +234,7 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 		if eventErr != nil {
 			return DeploymentResult{}, eventErr
 		}
-		if err := EmitDeploymentCloudEvent(ctx, deletedEvent); err != nil {
-			return DeploymentResult{}, err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, deletedEvent)
 		if err := removeResourceIndex(ctx, req.DeploymentKey, item.Name); err != nil {
 			return DeploymentResult{}, err
 		}
@@ -291,6 +281,8 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	// Terminal events are load-bearing: `praxis observe` exits only when it
+	// reads one from the event store. Must persist, not best-effort.
 	if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
 		return DeploymentResult{}, err
 	}
@@ -324,9 +316,7 @@ func (w *DeploymentRollbackWorkflow) recordRollbackFailure(
 	if eventErr != nil {
 		return eventErr
 	}
-	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
-		return err
-	}
+	EmitDeploymentCloudEventBestEffort(ctx, errorEvent)
 
 	skipped := exec.skipDependencies(resourceName, fmt.Sprintf("skipped because dependent %s failed to rollback-delete", resourceName))
 	for _, name := range skipped {
@@ -342,9 +332,7 @@ func (w *DeploymentRollbackWorkflow) recordRollbackFailure(
 		if eventErr != nil {
 			return eventErr
 		}
-		if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
-			return err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, skippedEvent)
 	}
 	return nil
 }

@@ -10,6 +10,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -104,10 +105,11 @@ func TestCrashResume_DeploymentCompletesAfterRestart(t *testing.T) {
 
 	prefix := uniqueName(t, "crash")
 	buckets := make([]string, 6)
-	template := "resources: {\n"
+	var tb strings.Builder
+	tb.WriteString("resources: {\n")
 	for i := range buckets {
 		buckets[i] = fmt.Sprintf("%s-%d", prefix, i)
-		template += fmt.Sprintf(`
+		fmt.Fprintf(&tb, `
 	bucket%d: {
 		apiVersion: "praxis.io/v1"
 		kind:       "S3Bucket"
@@ -116,7 +118,8 @@ func TestCrashResume_DeploymentCompletesAfterRestart(t *testing.T) {
 	}
 `, i, buckets[i])
 	}
-	template += "}\n"
+	tb.WriteString("}\n")
+	template := tb.String()
 	deployKey := "test-crash-resume-" + prefix
 
 	_, err := ingress.Service[command.ApplyRequest, command.ApplyResponse](

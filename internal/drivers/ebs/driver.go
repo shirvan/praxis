@@ -519,7 +519,7 @@ func (d *EBSVolumeDriver) scheduleReconcile(ctx restate.ObjectContext, state *EB
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 // apiForAccount resolves AWS credentials for the given account and returns

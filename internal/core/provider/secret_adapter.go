@@ -101,6 +101,7 @@ func secretsManagerSecretDescriptor() GenericDescriptor[secret.SecretsManagerSec
 			}
 			return fields
 		},
+		SensitiveFields: []string{"spec.secretString"},
 	}
 }
 

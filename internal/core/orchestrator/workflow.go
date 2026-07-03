@@ -126,9 +126,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		if err != nil {
 			return DeploymentResult{}, err
 		}
-		if err := EmitDeploymentCloudEvent(ctx, requestedEvent); err != nil {
-			return DeploymentResult{}, err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, requestedEvent)
 
 		decision, decisionErr := approval.Result()
 		if decisionErr != nil {
@@ -144,9 +142,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		if err != nil {
 			return DeploymentResult{}, err
 		}
-		if err := EmitDeploymentCloudEvent(ctx, decidedEvent); err != nil {
-			return DeploymentResult{}, err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, decidedEvent)
 		if !decision.Approved {
 			message := "deployment rejected"
 			if decision.DecidedBy != "" {
@@ -172,6 +168,8 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			if err != nil {
 				return DeploymentResult{}, err
 			}
+			// Terminal events are load-bearing: `praxis observe` exits only when
+			// it reads one from the event store. Must persist, not best-effort.
 			if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
 				return DeploymentResult{}, err
 			}
@@ -205,9 +203,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := EmitDeploymentCloudEvent(ctx, startedEvent); err != nil {
-		return DeploymentResult{}, err
-	}
+	EmitDeploymentCloudEventBestEffort(ctx, startedEvent)
 
 	// ---------------------------------------------------------------
 	// Phase 3: Prepare the DAG scheduler and execution state
@@ -266,9 +262,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				if eventErr != nil {
 					return DeploymentResult{}, eventErr
 				}
-				if err := EmitDeploymentCloudEvent(ctx, cancelEvent); err != nil {
-					return DeploymentResult{}, err
-				}
+				EmitDeploymentCloudEventBestEffort(ctx, cancelEvent)
 			}
 		}
 
@@ -349,6 +343,10 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						if eventErr != nil {
 							return DeploymentResult{}, eventErr
 						}
+						// resource.ready events are load-bearing: RollbackPlan is
+						// built exclusively from them (event_store.go), so a
+						// silently dropped ready event would orphan this resource
+						// in every future rollback. Must persist, not best-effort.
 						if err := EmitDeploymentCloudEvent(ctx, readyEvent); err != nil {
 							return DeploymentResult{}, err
 						}
@@ -374,9 +372,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 						if eventErr != nil {
 							return DeploymentResult{}, eventErr
 						}
-						if err := EmitCloudEvent(ctx, policyEvent); err != nil {
-							return DeploymentResult{}, err
-						}
+						EmitCloudEventBestEffort(ctx, policyEvent)
 						if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind,
 							fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to force-replace", name)); err != nil {
 							return DeploymentResult{}, err
@@ -388,9 +384,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					if eventErr != nil {
 						return DeploymentResult{}, eventErr
 					}
-					if err := EmitDeploymentCloudEvent(ctx, replaceEvent); err != nil {
-						return DeploymentResult{}, err
-					}
+					EmitDeploymentCloudEventBestEffort(ctx, replaceEvent)
 
 					replaceDeleteTimeout, timeoutErr := resolveDeleteTimeout(adapter, resource.Lifecycle)
 					if timeoutErr != nil {
@@ -477,9 +471,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				if eventErr != nil {
 					return DeploymentResult{}, eventErr
 				}
-				if err := EmitDeploymentCloudEvent(ctx, dispatchedEvent); err != nil {
-					return DeploymentResult{}, err
-				}
+				EmitDeploymentCloudEventBestEffort(ctx, dispatchedEvent)
 			}
 		}
 
@@ -596,9 +588,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 				if eventErr != nil {
 					return DeploymentResult{}, eventErr
 				}
-				if err := EmitDeploymentCloudEvent(ctx, autoReplaceEvent); err != nil {
-					return DeploymentResult{}, err
-				}
+				EmitDeploymentCloudEventBestEffort(ctx, autoReplaceEvent)
 				ctx.Log().Warn("auto-replacing resource due to immutable field conflict",
 					"resource", resourceName, "kind", resource.Kind, "error", err.Error())
 
@@ -750,6 +740,10 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 		if eventErr != nil {
 			return DeploymentResult{}, eventErr
 		}
+		// resource.ready events are load-bearing: RollbackPlan is built
+		// exclusively from them (event_store.go), so a silently dropped ready
+		// event would orphan this resource in every future rollback. Must
+		// persist, not best-effort.
 		if err := EmitDeploymentCloudEvent(ctx, readyEvent); err != nil {
 			return DeploymentResult{}, err
 		}
@@ -795,9 +789,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 			if eventErr != nil {
 				return DeploymentResult{}, eventErr
 			}
-			if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
-				return DeploymentResult{}, err
-			}
+			EmitDeploymentCloudEventBestEffort(ctx, skippedEvent)
 		}
 		finalStatus = types.DeploymentCancelled
 		finalError = exec.failureSummary()
@@ -853,6 +845,8 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	// Terminal events are load-bearing: `praxis observe` exits only when it
+	// reads one from the event store. Must persist, not best-effort.
 	if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
 		return DeploymentResult{}, err
 	}
@@ -895,9 +889,7 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 	if eventErr != nil {
 		return eventErr
 	}
-	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
-		return err
-	}
+	EmitDeploymentCloudEventBestEffort(ctx, errorEvent)
 
 	skipped := exec.skipAffectedDependents(schedule, resourceName, fmt.Sprintf("skipped because dependency %s failed", resourceName))
 	for _, name := range skipped {
@@ -916,9 +908,7 @@ func (w *DeploymentWorkflow) recordApplyFailure(
 		if eventErr != nil {
 			return eventErr
 		}
-		if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
-			return err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, skippedEvent)
 	}
 	return nil
 }

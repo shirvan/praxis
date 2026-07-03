@@ -1,6 +1,79 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// SensitiveFieldPlaceholder is the value substituted for masked field diffs so
+// secret material never reaches plan output, saved plans, or CI logs. It matches
+// the literal drivers use on their own update-path diffs.
+const SensitiveFieldPlaceholder = "(sensitive)"
+
+// MaskSensitiveFieldDiffs replaces the values of any field diff whose path
+// matches one of the sensitive paths (exact match or dotted prefix) with a
+// placeholder. It mutates and returns the input slice.
+func MaskSensitiveFieldDiffs(diffs []FieldDiff, sensitive []string) []FieldDiff {
+	if len(sensitive) == 0 || len(diffs) == 0 {
+		return diffs
+	}
+	for i := range diffs {
+		if !PathIsSensitive(diffs[i].Path, sensitive) {
+			continue
+		}
+		if diffs[i].OldValue != nil {
+			diffs[i].OldValue = SensitiveFieldPlaceholder
+		}
+		if diffs[i].NewValue != nil {
+			diffs[i].NewValue = SensitiveFieldPlaceholder
+		}
+	}
+	return diffs
+}
+
+// PathIsSensitive reports whether a field path exactly matches or is nested
+// under any of the sensitive paths.
+func PathIsSensitive(path string, sensitive []string) bool {
+	for _, s := range sensitive {
+		if path == s || strings.HasPrefix(path, s+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// MaskJSONPaths replaces the values at the given dot-separated paths in a
+// generic JSON map with the sensitive placeholder, mutating m in place.
+// Missing segments and empty-string leaves are left untouched. Used to mask
+// secret material at display boundaries (e.g. CLI rendering of driver
+// GetInputs responses) without altering what the server stores or compares.
+func MaskJSONPaths(m map[string]any, paths []string) {
+	for _, path := range paths {
+		segments := strings.Split(path, ".")
+		maskJSONPath(m, segments)
+	}
+}
+
+func maskJSONPath(m map[string]any, segments []string) {
+	if len(segments) == 0 || m == nil {
+		return
+	}
+	key := segments[0]
+	value, ok := m[key]
+	if !ok {
+		return
+	}
+	if len(segments) == 1 {
+		if s, isString := value.(string); isString && s == "" {
+			return
+		}
+		m[key] = SensitiveFieldPlaceholder
+		return
+	}
+	if nested, isMap := value.(map[string]any); isMap {
+		maskJSONPath(nested, segments[1:])
+	}
+}
 
 // DiffOperation represents the type of change detected between desired and current state.
 type DiffOperation string

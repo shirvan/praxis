@@ -259,7 +259,8 @@ func route53RecordTTL(t *testing.T, r53Client *route53sdk.Client, zoneID, record
 		HostedZoneId: aws.String(zoneID),
 	})
 	require.NoError(t, err)
-	for _, rr := range listOut.ResourceRecordSets {
+	for i := range listOut.ResourceRecordSets {
+		rr := &listOut.ResourceRecordSets[i]
 		if strings.TrimSuffix(aws.ToString(rr.Name), ".") == recordName && rr.Type == route53types.RRTypeA {
 			return aws.ToInt64(rr.TTL)
 		}
@@ -276,10 +277,7 @@ func TestRoute53RecordImport_FindsRecordBeyondFirstPage(t *testing.T) {
 	const fillerCount = 120
 	const batchSize = 50
 	for start := 0; start < fillerCount; start += batchSize {
-		end := start + batchSize
-		if end > fillerCount {
-			end = fillerCount
-		}
+		end := min(start+batchSize, fillerCount)
 		changes := make([]route53types.Change, 0, end-start)
 		for i := start; i < end; i++ {
 			changes = append(changes, route53types.Change{

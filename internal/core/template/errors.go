@@ -30,6 +30,11 @@ const (
 	// satisfied. The PolicyName field on the TemplateError identifies which
 	// policy introduced the violation.
 	ErrPolicyViolation
+	// ErrUnknownKind indicates a resource declared a kind with no corresponding
+	// schema definition (e.g. a typo like "DNSRecord" instead of
+	// "Route53Record"). Without this check such resources would skip schema
+	// validation entirely and fail only at deploy time.
+	ErrUnknownKind
 )
 
 var kindNames = [...]string{
@@ -38,6 +43,7 @@ var kindNames = [...]string{
 	"ExprUnresolved",
 	"Resolve",
 	"PolicyViolation",
+	"UnknownKind",
 }
 
 // String returns the human-readable name of the error kind.

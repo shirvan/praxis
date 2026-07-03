@@ -119,6 +119,37 @@ resources: {
 	assert.Contains(t, tErrs[0].Message, "kind")
 }
 
+func TestEngine_Evaluate_UnknownKind(t *testing.T) {
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas", "aws"))
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	// "DNSRecord" is not a real kind (the real one is "Route53Record"). With
+	// schemas loaded, this must fail at eval time rather than silently skipping
+	// validation and failing only at deploy.
+	tmpl := `
+resources: {
+	rec: {
+		apiVersion: "praxis.io/v1"
+		kind:       "DNSRecord"
+		metadata: name: "typo"
+		spec: { hostedZoneId: "Z1", name: "x.example.com", type: "CNAME" }
+	}
+}
+`
+	tmplPath := filepath.Join(dir, "unknown-kind.cue")
+	require.NoError(t, os.WriteFile(tmplPath, []byte(tmpl), 0644))
+
+	eng := NewEngine(absSchemaDir)
+	_, err = eng.Evaluate(tmplPath, nil)
+	require.Error(t, err)
+
+	var tErrs TemplateErrors
+	require.ErrorAs(t, err, &tErrs)
+	assert.Equal(t, ErrUnknownKind, tErrs[0].Kind)
+	assert.Contains(t, tErrs[0].Message, "DNSRecord")
+}
+
 func TestEngine_Evaluate_MultipleResources(t *testing.T) {
 	dir := t.TempDir()
 

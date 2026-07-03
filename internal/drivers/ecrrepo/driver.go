@@ -420,7 +420,7 @@ func (d *ECRRepositoryDriver) scheduleReconcile(ctx restate.ObjectContext, state
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *ECRRepositoryDriver) apiForAccount(ctx restate.ObjectContext, account string) (RepositoryAPI, string, error) {

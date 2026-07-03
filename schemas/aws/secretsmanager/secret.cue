@@ -20,6 +20,10 @@ package secretsmanager
 		// output; reference it with a sensitivity-aware resolver instead.
 		secretString: string
 		tags: [string]: string
+		// forceDelete deletes the secret immediately with no recovery window.
+		// Defaults to false, which uses a 7-day recovery window so an accidental
+		// delete can be undone. Set true only for throwaway/test secrets.
+		forceDelete: bool | *false
 	}
 
 	// Outputs intentionally exclude secretString so the secret value never flows

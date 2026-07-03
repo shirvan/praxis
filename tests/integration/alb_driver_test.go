@@ -47,8 +47,8 @@ func albSubnets(t *testing.T, ec2Client *ec2sdk.Client) []string {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(out.Subnets), 2, "need at least 2 subnets for ALB")
 	var ids []string
-	for _, s := range out.Subnets[:2] {
-		ids = append(ids, aws.ToString(s.SubnetId))
+	for i := range out.Subnets[:2] {
+		ids = append(ids, aws.ToString(out.Subnets[i].SubnetId))
 	}
 	return ids
 }

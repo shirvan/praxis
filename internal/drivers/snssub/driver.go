@@ -528,7 +528,7 @@ func (d *SNSSubscriptionDriver) scheduleReconcile(ctx restate.ObjectContext, sta
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *SNSSubscriptionDriver) apiForAccount(ctx restate.Context, account string) (SubscriptionAPI, error) {

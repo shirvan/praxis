@@ -548,7 +548,7 @@ func (d *S3BucketDriver) scheduleReconcile(ctx restate.ObjectContext, state *S3B
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 // specFromObserved creates an S3BucketSpec from observed AWS state.

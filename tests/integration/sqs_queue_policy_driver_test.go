@@ -21,7 +21,7 @@ import (
 )
 
 func testQueuePolicy(queueArn string) string {
-	return fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Sid":"AllowAccount","Effect":"Allow","Principal":{"AWS":"*"},"Action":"sqs:SendMessage","Resource":"%s"}]}`,
+	return fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Sid":"AllowAccount","Effect":"Allow","Principal":{"AWS":"*"},"Action":"sqs:SendMessage","Resource":%q}]}`,
 		queueArn,
 	)
 }

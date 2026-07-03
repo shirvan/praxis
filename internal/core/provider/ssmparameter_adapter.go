@@ -104,6 +104,12 @@ func ssmParameterDescriptor() GenericDescriptor[ssmparameter.SSMParameterSpec, s
 			}
 			return fields
 		},
+		// SSM parameter values are masked unconditionally in plan output. The
+		// driver's own drift diff masks only SecureString on the update path;
+		// the create path has no type context, so we mask defensively — plain
+		// String params show "(sensitive)" in plans rather than risk leaking a
+		// SecureString value.
+		SensitiveFields: []string{"spec.value"},
 	}
 }
 
