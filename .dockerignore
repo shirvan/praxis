@@ -6,3 +6,6 @@
 .env
 bin/
 dist/
+# Coverage profiles (written by `just test`) change on every run; if included
+# they invalidate the COPY layer and force a full rebuild of all binaries.
+*.out

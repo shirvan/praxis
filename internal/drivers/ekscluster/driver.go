@@ -113,6 +113,20 @@ func (d *EKSClusterDriver) Provision(ctx restate.ObjectContext, spec EKSClusterS
 		observed = created
 	}
 
+	// A freshly created cluster is CREATING for 10–15 minutes; an existing one
+	// may be UPDATING. Wait durably for ACTIVE before converging mutable fields
+	// (EKS rejects UpdateClusterConfig on a non-ACTIVE cluster with
+	// ResourceInUseException) and before reporting the resource Ready, so that
+	// dependents (node groups, add-ons) don't dispatch against a cluster that
+	// doesn't exist yet. An already-ACTIVE cluster skips the wait entirely, so
+	// the no-op re-provision fast path costs no extra describes.
+	if !strings.EqualFold(observed.Status, "ACTIVE") {
+		observed, err = d.waitForActive(ctx, api, spec.Name)
+		if err != nil {
+			return d.failProvision(ctx, state, err)
+		}
+	}
+
 	if err := d.convergeMutableFields(ctx, api, spec, observed); err != nil {
 		return d.failProvision(ctx, state, err)
 	}
@@ -277,6 +291,19 @@ func (d *EKSClusterDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 	}
 	if drift && state.Mode == types.ModeManaged {
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
+		// EKS allows only one in-flight update and rejects UpdateClusterConfig/
+		// Version on a non-ACTIVE cluster with ResourceInUseException, which the
+		// converge path classifies as terminal — correcting now would wedge the
+		// resource in Error (and the Error branch above never self-heals).
+		// A CREATING/UPDATING cluster is transitioning, not broken: defer
+		// correction to the next cycle, when it will usually be ACTIVE.
+		if !strings.EqualFold(observed.Status, "ACTIVE") {
+			ctx.Log().Info("deferring drift correction: cluster not ACTIVE",
+				"cluster", state.Outputs.Name, "status", observed.Status)
+			restate.Set(ctx, drivers.StateKey, state)
+			d.scheduleReconcile(ctx, &state)
+			return types.ReconcileResult{Drift: true}, nil
+		}
 		if correctionErr := d.convergeMutableFields(ctx, api, state.Desired, observed); correctionErr != nil {
 			state.Status = types.StatusError
 			state.Error = correctionErr.Error()
@@ -415,7 +442,7 @@ func (d *EKSClusterDriver) scheduleReconcile(ctx restate.ObjectContext, state *E
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *EKSClusterDriver) apiForAccount(ctx restate.ObjectContext, account string) (EKSClusterAPI, string, error) {
@@ -456,6 +483,47 @@ func (d *EKSClusterDriver) observeCluster(ctx restate.ObjectContext, api EKSClus
 		return ObservedState{}, false, err
 	}
 	return result.Observed, result.Found, nil
+}
+
+const (
+	// eksReadyPollInterval is the delay between durable readiness checks.
+	eksReadyPollInterval = 15 * time.Second
+	// eksReadyMaxAttempts bounds the wait (~25 minutes) so a cluster wedged in
+	// CREATING can't loop forever growing the journal. Control-plane creation
+	// typically takes 10–15 minutes; the budget needs real headroom above the
+	// typical worst case, or a slightly slow create terminally fails the whole
+	// deployment while AWS finishes the cluster anyway.
+	eksReadyMaxAttempts = 100
+)
+
+// waitForActive polls the cluster durably (one DescribeCluster per restate.Run,
+// restate.Sleep between attempts) until it reports ACTIVE, returning the final
+// observed state. A FAILED status or exhausting the attempt budget yields a
+// terminal error. Because each poll is its own journaled step, a crash mid-wait
+// resumes at the next attempt rather than re-running the whole wait, and the
+// object's lock is released between polls.
+func (d *EKSClusterDriver) waitForActive(ctx restate.ObjectContext, api EKSClusterAPI, name string) (ObservedState, error) {
+	for range eksReadyMaxAttempts {
+		observed, found, err := d.observeCluster(ctx, api, name)
+		if err != nil {
+			return ObservedState{}, err
+		}
+		if !found {
+			// 404 per docs/ERRORS.md: deleted outside Praxis, not a bug.
+			return ObservedState{}, restate.TerminalError(fmt.Errorf("cluster %s disappeared while waiting for ACTIVE", name), 404)
+		}
+		switch strings.ToUpper(observed.Status) {
+		case "ACTIVE":
+			return observed, nil
+		case "FAILED":
+			return ObservedState{}, restate.TerminalError(fmt.Errorf("cluster %s entered FAILED state", name), 500)
+		}
+		if err := restate.Sleep(ctx, eksReadyPollInterval); err != nil {
+			return ObservedState{}, err
+		}
+	}
+	return ObservedState{}, restate.TerminalError(
+		fmt.Errorf("cluster %s not ACTIVE after %s", name, time.Duration(eksReadyMaxAttempts)*eksReadyPollInterval), 500)
 }
 
 // tagDiff computes the tag additions and removals needed to converge the

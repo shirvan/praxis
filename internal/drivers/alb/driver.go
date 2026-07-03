@@ -453,8 +453,16 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
+const (
+	// albReadyPollInterval is the delay between durable readiness checks.
+	albReadyPollInterval = 10 * time.Second
+	// albReadyMaxAttempts bounds the wait (~10 minutes) so an ALB stuck in
+	// provisioning can't loop forever growing the journal.
+	albReadyMaxAttempts = 60
+)
+
 func (d *ALBDriver) waitForActive(ctx restate.ObjectContext, api ALBAPI, arn string) (ObservedState, error) {
-	for {
+	for range albReadyMaxAttempts {
 		observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 			return api.DescribeALB(rc, arn)
 		})
@@ -467,10 +475,12 @@ func (d *ALBDriver) waitForActive(ctx restate.ObjectContext, api ALBAPI, arn str
 		if observed.State == "failed" {
 			return ObservedState{}, restate.TerminalError(fmt.Errorf("ALB entered failed state"), 500)
 		}
-		if err := restate.Sleep(ctx, 10*time.Second); err != nil {
+		if err := restate.Sleep(ctx, albReadyPollInterval); err != nil {
 			return ObservedState{}, err
 		}
 	}
+	return ObservedState{}, restate.TerminalError(
+		fmt.Errorf("ALB %s not active after %s", arn, time.Duration(albReadyMaxAttempts)*albReadyPollInterval), 500)
 }
 
 func (d *ALBDriver) scheduleReconcile(ctx restate.ObjectContext, state *ALBState) {
@@ -479,7 +489,7 @@ func (d *ALBDriver) scheduleReconcile(ctx restate.ObjectContext, state *ALBState
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *ALBDriver) apiForAccount(ctx restate.ObjectContext, account string) (ALBAPI, string, error) {

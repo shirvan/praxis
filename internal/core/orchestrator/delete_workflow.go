@@ -167,9 +167,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := EmitDeploymentCloudEvent(ctx, startedEvent); err != nil {
-		return DeploymentResult{}, err
-	}
+	EmitDeploymentCloudEventBestEffort(ctx, startedEvent)
 
 	exec := newExecutionState(resources)
 	exec.loadOutputs(state.Outputs)
@@ -249,9 +247,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 						if eventErr != nil {
 							return DeploymentResult{}, eventErr
 						}
-						if err := EmitCloudEvent(ctx, policyEvent); err != nil {
-							return DeploymentResult{}, err
-						}
+						EmitCloudEventBestEffort(ctx, policyEvent)
 						if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind,
 							fmt.Sprintf("resource %s has lifecycle.preventDestroy enabled; refusing to delete", name), false); err != nil {
 							return DeploymentResult{}, err
@@ -262,9 +258,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 					if eventErr != nil {
 						return DeploymentResult{}, eventErr
 					}
-					if err := EmitCloudEvent(ctx, overrideEvent); err != nil {
-						return DeploymentResult{}, err
-					}
+					EmitCloudEventBestEffort(ctx, overrideEvent)
 				}
 
 				adapter, err := w.providers.Get(resource.Kind)
@@ -306,9 +300,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 				if eventErr != nil {
 					return DeploymentResult{}, eventErr
 				}
-				if err := EmitDeploymentCloudEvent(ctx, deleteEvent); err != nil {
-					return DeploymentResult{}, err
-				}
+				EmitDeploymentCloudEventBestEffort(ctx, deleteEvent)
 
 				invocation, err := adapter.Delete(ctx, resource.Key)
 				if err != nil {
@@ -392,9 +384,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 		if eventErr != nil {
 			return DeploymentResult{}, eventErr
 		}
-		if err := EmitDeploymentCloudEvent(ctx, deletedEvent); err != nil {
-			return DeploymentResult{}, err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, deletedEvent)
 		if err := removeResourceIndex(ctx, req.DeploymentKey, resourceName); err != nil {
 			return DeploymentResult{}, err
 		}
@@ -463,6 +453,8 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 	if err != nil {
 		return DeploymentResult{}, err
 	}
+	// Terminal events are load-bearing: `praxis observe` exits only when it
+	// reads one from the event store. Must persist, not best-effort.
 	if err := EmitDeploymentCloudEvent(ctx, terminalEvent); err != nil {
 		return DeploymentResult{}, err
 	}
@@ -501,9 +493,7 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 	if eventErr != nil {
 		return eventErr
 	}
-	if err := EmitDeploymentCloudEvent(ctx, errorEvent); err != nil {
-		return err
-	}
+	EmitDeploymentCloudEventBestEffort(ctx, errorEvent)
 
 	// When force is set, do not skip dependencies — attempt to delete every
 	// resource regardless of upstream failures.
@@ -532,9 +522,7 @@ func (w *DeploymentDeleteWorkflow) recordDeleteFailure(
 		if eventErr != nil {
 			return eventErr
 		}
-		if err := EmitDeploymentCloudEvent(ctx, skippedEvent); err != nil {
-			return err
-		}
+		EmitDeploymentCloudEventBestEffort(ctx, skippedEvent)
 	}
 	return nil
 }

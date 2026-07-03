@@ -445,7 +445,7 @@ func (d *HostedZoneDriver) scheduleReconcile(ctx restate.ObjectContext, state *H
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *HostedZoneDriver) apiForAccount(ctx restate.ObjectContext, account string) (HostedZoneAPI, error) {

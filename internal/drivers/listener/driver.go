@@ -415,7 +415,7 @@ func (d *ListenerDriver) scheduleReconcile(ctx restate.ObjectContext, state *Lis
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *ListenerDriver) apiForAccount(ctx restate.ObjectContext, account string) (ListenerAPI, string, error) {

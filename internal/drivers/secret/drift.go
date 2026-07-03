@@ -20,6 +20,11 @@ const sensitivePlaceholder = "(sensitive)"
 // and returns true if any mutable field has diverged. It is called during
 // Reconcile to decide whether drift correction is needed.
 func HasDrift(desired SecretsManagerSecretSpec, observed ObservedState) bool {
+	// A secret scheduled for deletion is drifted by definition: the desired
+	// state is "exists", and correction (convergeMutableFields) restores it.
+	if observed.ScheduledForDeletion {
+		return true
+	}
 	if secretFieldsDrift(desired, observed) {
 		return true
 	}

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -118,9 +119,10 @@ func setupFaultStack(t *testing.T) (*ingress.Client, *fakeS3Driver) {
 }
 
 func nBucketTemplate(prefix string, n int) string {
-	tmpl := "resources: {\n"
-	for i := 0; i < n; i++ {
-		tmpl += fmt.Sprintf(`
+	var b strings.Builder
+	b.WriteString("resources: {\n")
+	for i := range n {
+		fmt.Fprintf(&b, `
 	bucket%d: {
 		apiVersion: "praxis.io/v1"
 		kind:       "S3Bucket"
@@ -129,7 +131,8 @@ func nBucketTemplate(prefix string, n int) string {
 	}
 `, i, prefix, i)
 	}
-	return tmpl + "}\n"
+	b.WriteString("}\n")
+	return b.String()
 }
 
 func applyViaIngress(t *testing.T, client *ingress.Client, deployKey, template string, maxParallelism int, maxRetries *int) {

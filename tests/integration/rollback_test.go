@@ -264,7 +264,7 @@ func TestRollbackTo_HistoryRetentionBound(t *testing.T) {
 	env := setupCoreStack(t)
 	deployKey := "test-rollback-retention-" + uniqueName(t, "dep")
 
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		now := time.Now().UTC()
 		_, err := ingress.Object[orchestrator.DeploymentPlan, int64](
 			env.ingress, "DeploymentStateObj", deployKey, "InitDeployment",

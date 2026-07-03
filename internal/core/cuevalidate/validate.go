@@ -24,11 +24,59 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	cueerrors "cuelang.org/go/cue/errors"
 )
+
+// compiledSchema holds a schema definition compiled once and reused across
+// validations. The definition value is bound to ctx, and CUE contexts are not
+// safe for concurrent use, so callers must hold mu while compiling the input in
+// ctx and unifying. Different schema files use different contexts, so unrelated
+// resource kinds still validate concurrently.
+type compiledSchema struct {
+	mu  sync.Mutex
+	ctx *cue.Context
+	def cue.Value
+}
+
+// schemaCache memoizes compiled schema definitions by "fullPath|definition".
+// Schema files are immutable at runtime (mounted read-only), so entries never
+// need invalidation. This replaces a per-call cuecontext.New() + CompileBytes of
+// the whole schema file, which dominated event-validation cost on the hot path.
+var schemaCache sync.Map // string -> *compiledSchema
+
+// loadSchema returns the cached compiled definition for a schema file, compiling
+// and caching it on first use.
+func loadSchema(schemaDir, relativePath, definition string) (*compiledSchema, error) {
+	fullPath := filepath.Join(schemaDir, relativePath)
+	cacheKey := fullPath + "|" + definition
+	if cached, ok := schemaCache.Load(cacheKey); ok {
+		return cached.(*compiledSchema), nil
+	}
+
+	content, err := os.ReadFile(fullPath) //nolint:gosec // fullPath is built from trusted schemaDir + relativePath
+	if err != nil {
+		return nil, fmt.Errorf("read schema %q: %w", relativePath, err)
+	}
+
+	ctx := cuecontext.New()
+	schema := ctx.CompileBytes(content, cue.Filename(fullPath))
+	if schema.Err() != nil {
+		return nil, fmt.Errorf("compile schema %q: %s", relativePath, strings.TrimSpace(cueerrors.Details(schema.Err(), nil)))
+	}
+
+	definitionValue := schema.LookupPath(cue.ParsePath(definition))
+	if !definitionValue.Exists() {
+		return nil, fmt.Errorf("schema %q does not define %s", relativePath, definition)
+	}
+
+	entry := &compiledSchema{ctx: ctx, def: definitionValue}
+	actual, _ := schemaCache.LoadOrStore(cacheKey, entry)
+	return actual.(*compiledSchema), nil
+}
 
 // DecodeFile validates input against a named definition in a CUE file and
 // decodes the resulting value, including CUE-applied defaults, into out when
@@ -58,50 +106,40 @@ func DecodeFile(schemaDir, relativePath, definition string, input any, out any) 
 		return fmt.Errorf("schema directory is required")
 	}
 
-	// Step 1: Read the CUE schema file.
-	fullPath := filepath.Join(schemaDir, relativePath)
-	content, err := os.ReadFile(fullPath) //nolint:gosec // fullPath is built from trusted schemaDir + relativePath
+	// Steps 1–3: Read + compile the schema and look up the definition — cached
+	// after the first call for this (file, definition) pair.
+	schema, err := loadSchema(schemaDir, relativePath, definition)
 	if err != nil {
-		return fmt.Errorf("read schema %q: %w", relativePath, err)
+		return err
 	}
 
-	// Step 2: Compile the raw CUE source into a CUE value.
-	ctx := cuecontext.New()
-	schema := ctx.CompileBytes(content, cue.Filename(fullPath))
-	if schema.Err() != nil {
-		return fmt.Errorf("compile schema %q: %s", relativePath, strings.TrimSpace(cueerrors.Details(schema.Err(), nil)))
-	}
-
-	// Step 3: Look up the specific definition (e.g. #Spec, #Input) in the schema.
-	definitionValue := schema.LookupPath(cue.ParsePath(definition))
-	if !definitionValue.Exists() {
-		return fmt.Errorf("schema %q does not define %s", relativePath, definition)
-	}
-
-	// Step 4: Marshal the Go input to JSON, then compile as CUE.
-	// This round-trip ensures the input is represented in CUE's type system.
+	// Step 4: Marshal the Go input to JSON. Done outside the lock since it
+	// doesn't touch the CUE context.
 	encoded, err := json.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("marshal validation input: %w", err)
 	}
-	inputValue := ctx.CompileBytes(encoded)
+
+	// Steps 5–7 touch the schema's CUE context (compile input, unify, validate,
+	// decode). CUE contexts are not concurrency-safe, so serialize per schema.
+	schema.mu.Lock()
+	defer schema.mu.Unlock()
+
+	inputValue := schema.ctx.CompileBytes(encoded)
 	if inputValue.Err() != nil {
 		return fmt.Errorf("compile validation input: %s", strings.TrimSpace(cueerrors.Details(inputValue.Err(), nil)))
 	}
 
-	// Step 5: Unify the schema definition with the input value.
-	// Unification in CUE is the core operation: it merges constraints from the
-	// schema with the actual values from the input, applying defaults and
+	// Unification merges schema constraints with the input, applying defaults and
 	// detecting type/constraint violations.
-	unified := definitionValue.Unify(inputValue)
+	unified := schema.def.Unify(inputValue)
 
-	// Step 6: Validate the result is fully concrete (no open constraints remaining)
-	// and final (no further unification needed).
+	// Validate the result is fully concrete (no open constraints) and final.
 	if err := unified.Validate(cue.Final(), cue.Concrete(true)); err != nil {
 		return fmt.Errorf("validate against %s in %q: %s", definition, relativePath, strings.TrimSpace(cueerrors.Details(err, nil)))
 	}
 
-	// Step 7: Decode the validated + defaulted CUE value back into Go.
+	// Decode the validated + defaulted CUE value back into Go.
 	if out != nil {
 		if err := unified.Decode(out); err != nil {
 			return fmt.Errorf("decode validated value from %q: %w", relativePath, err)

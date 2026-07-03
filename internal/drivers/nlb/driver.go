@@ -437,8 +437,16 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
+const (
+	// nlbReadyPollInterval is the delay between durable readiness checks.
+	nlbReadyPollInterval = 10 * time.Second
+	// nlbReadyMaxAttempts bounds the wait (~10 minutes) so an NLB stuck in
+	// provisioning can't loop forever growing the journal.
+	nlbReadyMaxAttempts = 60
+)
+
 func (d *NLBDriver) waitForActive(ctx restate.ObjectContext, api NLBAPI, arn string) (ObservedState, error) {
-	for {
+	for range nlbReadyMaxAttempts {
 		observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 			return api.DescribeNLB(rc, arn)
 		})
@@ -451,10 +459,12 @@ func (d *NLBDriver) waitForActive(ctx restate.ObjectContext, api NLBAPI, arn str
 		if observed.State == "failed" {
 			return ObservedState{}, restate.TerminalError(fmt.Errorf("NLB entered failed state"), 500)
 		}
-		if err := restate.Sleep(ctx, 10*time.Second); err != nil {
+		if err := restate.Sleep(ctx, nlbReadyPollInterval); err != nil {
 			return ObservedState{}, err
 		}
 	}
+	return ObservedState{}, restate.TerminalError(
+		fmt.Errorf("NLB %s not active after %s", arn, time.Duration(nlbReadyMaxAttempts)*nlbReadyPollInterval), 500)
 }
 
 func (d *NLBDriver) scheduleReconcile(ctx restate.ObjectContext, state *NLBState) {
@@ -463,7 +473,7 @@ func (d *NLBDriver) scheduleReconcile(ctx restate.ObjectContext, state *NLBState
 	}
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
-	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *NLBDriver) apiForAccount(ctx restate.ObjectContext, account string) (NLBAPI, string, error) {

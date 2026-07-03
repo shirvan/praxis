@@ -1752,11 +1752,11 @@ func TestCore_RetentionSweep_Prunes(t *testing.T) {
 		).Request(t.Context(), event)
 		require.NoError(t, err)
 	}
-	for index := 0; index < 100; index++ {
+	for index := range 100 {
 		seedEvent(oldTime.Add(time.Duration(index)*time.Second), fmt.Sprintf("old event %d", index+1))
 	}
 	recentTime := time.Now().UTC()
-	for index := 0; index < 2; index++ {
+	for index := range 2 {
 		seedEvent(recentTime.Add(time.Duration(index)*time.Minute), fmt.Sprintf("recent event %d", index+1))
 	}
 

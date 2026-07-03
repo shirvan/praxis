@@ -460,7 +460,7 @@ func (d *IAMInstanceProfileDriver) scheduleReconcile(ctx restate.ObjectContext, 
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 func (d *IAMInstanceProfileDriver) apiForAccount(ctx restate.ObjectContext, account string) (IAMInstanceProfileAPI, error) {

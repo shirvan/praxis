@@ -153,8 +153,64 @@ func TestSecretDelete_RemovesSecret(t *testing.T) {
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 
+	// Default delete schedules deletion with a recovery window rather than
+	// destroying immediately: the secret still describes, with DeletedDate
+	// set, and the value is no longer readable.
+	desc, err := smClient.DescribeSecret(context.Background(), &smsdk.DescribeSecretInput{SecretId: aws.String(name)})
+	require.NoError(t, err, "soft-deleted secret should still describe during the recovery window")
+	assert.NotNil(t, desc.DeletedDate, "delete should schedule deletion (recovery window), not leave the secret active")
+
+	_, err = smClient.GetSecretValue(context.Background(), &smsdk.GetSecretValueInput{SecretId: aws.String(name)})
+	require.Error(t, err, "value reads must be rejected while deletion is scheduled")
+}
+
+func TestSecretDelete_ForceDeletesImmediately(t *testing.T) {
+	client, smClient := setupSecretDriver(t)
+	name := uniqueSecretName(t)
+	key := secretKey(name)
+
+	spec := baseSecretSpec(name)
+	spec.ForceDelete = true
+	provisionSecret(t, client, key, spec)
+
+	_, err := ingress.Object[restate.Void, restate.Void](
+		client, secret.ServiceName, key, "Delete",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+
 	_, err = smClient.DescribeSecret(context.Background(), &smsdk.DescribeSecretInput{SecretId: aws.String(name)})
-	require.Error(t, err, "secret should be force-deleted immediately")
+	require.Error(t, err, "forceDelete: true should remove the secret immediately with no recovery window")
+}
+
+func TestSecretProvision_RestoresScheduledForDeletion(t *testing.T) {
+	client, smClient := setupSecretDriver(t)
+	name := uniqueSecretName(t)
+	key := secretKey(name)
+	spec := baseSecretSpec(name)
+
+	provisionSecret(t, client, key, spec)
+
+	// Soft-delete out-of-band (same as `praxis delete` with the default
+	// recovery window), then re-provision the same name: the driver must
+	// restore the scheduled-for-deletion secret and converge it rather than
+	// failing with InvalidRequestException.
+	_, err := smClient.DeleteSecret(context.Background(), &smsdk.DeleteSecretInput{
+		SecretId:             aws.String(name),
+		RecoveryWindowInDays: aws.Int64(7),
+	})
+	require.NoError(t, err)
+
+	spec.SecretString = "s3cr3t-after-restore"
+	outputs := provisionSecret(t, client, key, spec)
+	assert.Equal(t, name, outputs.Name)
+
+	desc, err := smClient.DescribeSecret(context.Background(), &smsdk.DescribeSecretInput{SecretId: aws.String(name)})
+	require.NoError(t, err)
+	assert.Nil(t, desc.DeletedDate, "re-provision should have restored the secret (no pending deletion)")
+
+	got, err := smClient.GetSecretValue(context.Background(), &smsdk.GetSecretValueInput{SecretId: aws.String(name)})
+	require.NoError(t, err)
+	assert.Equal(t, "s3cr3t-after-restore", aws.ToString(got.SecretString))
 }
 
 func TestSecretReconcile_DetectsValueDrift(t *testing.T) {

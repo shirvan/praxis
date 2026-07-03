@@ -630,7 +630,7 @@ func (d *AMIDriver) scheduleReconcile(ctx restate.ObjectContext, state *AMIState
 	state.ReconcileScheduled = true
 	restate.Set(ctx, drivers.StateKey, *state)
 	restate.ObjectSend(ctx, ServiceName, restate.Key(ctx), "Reconcile").
-		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileIntervalForKind(ServiceName)))
+		Send(restate.Void{}, restate.WithDelay(drivers.ReconcileDelayFor(ServiceName, restate.Key(ctx))))
 }
 
 // apiForAccount resolves AWS credentials and creates an AMIAPI for the given Praxis account.

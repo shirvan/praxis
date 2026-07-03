@@ -143,6 +143,7 @@ The fastest way to try Praxis. Docker Compose brings up Moto (mock AWS), Restate
 
 - [Docker](https://www.docker.com/) + Docker Compose
 - [just](https://github.com/casey/just) (task runner)
+- [jq](https://jqlang.github.io/jq/) (used by `just up` to register services)
 - [Go](https://go.dev/) >= 1.25 (for building from source)
 
 #### Start the Stack
@@ -160,34 +161,35 @@ just up
 
 #### Use the CLI
 
+The CLI is built to `bin/praxis`. The snippets below call it as `./bin/praxis`;
+add `bin/` to your `PATH` (`export PATH="$PWD/bin:$PATH"`) to drop the prefix.
+These commands use the shipped [`examples/ec2/dev-instance.cue`](examples/ec2/dev-instance.cue)
+template and its `dev-instance.vars.json` variables file.
+
 ```bash
 # Build the CLI
 just build-cli
 
 # --- Operator: register a template ---
-praxis template register webapp.cue --description "Web application stack"
-praxis template list
-praxis template describe webapp
+./bin/praxis template register examples/ec2/dev-instance.cue --description "Dev EC2 instance"
+./bin/praxis template list
+./bin/praxis template describe dev-instance
 
 # --- User: deploy from a registered template ---
 # Preview changes (dry-run)
-praxis deploy webapp --account local --var env=dev --dry-run
-
-# Deploy with variables
-praxis deploy webapp --account local --var env=dev --key my-webapp --wait
+./bin/praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.json --dry-run
 
 # Deploy with a variables file
-praxis deploy webapp --account local -f vars.json --key my-webapp --wait
+./bin/praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.json --key myapp-dev --wait
 
 # --- Common operations ---
-praxis get Deployment/my-webapp          # Check deployment status
-praxis list deployments                  # List all deployments
-praxis observe Deployment/my-webapp      # Follow deployment events
-praxis delete Deployment/my-webapp --yes --wait
+./bin/praxis get Deployment/myapp-dev          # Check deployment status
+./bin/praxis list deployments                  # List all deployments
+./bin/praxis observe Deployment/myapp-dev      # Follow deployment events
+./bin/praxis delete Deployment/myapp-dev --yes --wait
 
 # --- Operator: inline CUE (development/testing) ---
-praxis plan webapp.cue --account local --var env=dev
-praxis deploy webapp.cue --account local --var env=dev --key my-webapp --wait
+./bin/praxis plan examples/ec2/dev-instance.cue --account local -f examples/ec2/dev-instance.vars.json
 ```
 
 ### Centralized Deployment (Kubernetes)
@@ -238,9 +240,9 @@ Praxis offers three ways to interact — pick what fits your workflow.
 The `praxis` binary is the primary interface. Every command goes through the Restate ingress endpoint.
 
 ```bash
-praxis deploy webapp --account prod --var env=staging --key my-webapp --wait
-praxis get Deployment/my-webapp
-praxis plan webapp.cue --account prod --var env=prod
+./bin/praxis deploy dev-instance --account prod -f examples/ec2/dev-instance.vars.json --key myapp --wait
+./bin/praxis get Deployment/myapp
+./bin/praxis plan examples/ec2/dev-instance.cue --account prod -f examples/ec2/dev-instance.vars.json
 ```
 
 See the [CLI Reference](docs/CLI.md) for the full command set.
@@ -252,7 +254,7 @@ Everything the CLI does is an HTTP call to the Restate ingress. Integrate Praxis
 ```bash
 curl -X POST http://localhost:8080/PraxisCommandService/Apply \
   -H 'content-type: application/json' \
-  -d '{"template": "webapp", "account": "prod", "variables": {"env": "staging"}}'
+  -d '{"template": "dev-instance", "account": "prod", "variables": {"env": "staging"}}'
 ```
 
 See the [API Reference](docs/API.md) and the [OpenAPI spec](api/openapi.yaml).

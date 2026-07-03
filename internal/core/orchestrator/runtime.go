@@ -596,3 +596,27 @@ func EmitCloudEvent(ctx restate.Context, event cloudevents.Event) error {
 	).Request(event)
 	return err
 }
+
+// EmitDeploymentCloudEventBestEffort emits a lifecycle event, logging and
+// swallowing any failure. Progress/informational event emission must never
+// abort a deployment, delete, or rollback workflow.
+//
+// Do NOT use this for load-bearing events — those must use the error-returning
+// EmitDeploymentCloudEvent so a persistence failure surfaces instead of
+// silently corrupting downstream consumers:
+//   - resource.ready events: RollbackPlan (event_store.go) is built exclusively
+//     from them; a dropped one orphans the resource in every future rollback.
+//   - deployment terminal events (completed/failed/cancelled/delete-done/
+//     delete-failed): `praxis observe` exits only when it reads one.
+func EmitDeploymentCloudEventBestEffort(ctx restate.Context, event cloudevents.Event) {
+	if err := EmitDeploymentCloudEvent(ctx, event); err != nil {
+		ctx.Log().Warn("event emission failed; continuing", "type", event.Type(), "error", err)
+	}
+}
+
+// EmitCloudEventBestEffort is the fire-and-forget counterpart to EmitCloudEvent.
+func EmitCloudEventBestEffort(ctx restate.Context, event cloudevents.Event) {
+	if err := EmitCloudEvent(ctx, event); err != nil {
+		ctx.Log().Warn("event emission failed; continuing", "type", event.Type(), "error", err)
+	}
+}

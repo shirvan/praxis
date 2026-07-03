@@ -24,6 +24,13 @@ type SecretsManagerSecretSpec struct {
 	SecretString string            `json:"secretString"`
 	Tags         map[string]string `json:"tags,omitempty"`
 	ManagedKey   string            `json:"managedKey,omitempty"`
+
+	// ForceDelete, when true, deletes the secret immediately with no recovery
+	// window (ForceDeleteWithoutRecovery). The default (false) uses a 7-day
+	// recovery window so an accidental delete — e.g. removing the resource from
+	// a template by mistake — can be undone via RestoreSecret. Set true for
+	// throwaway/test secrets that will be recreated under the same name.
+	ForceDelete bool `json:"forceDelete,omitempty"`
 }
 
 // SecretsManagerSecretOutputs holds the values produced after provisioning a
@@ -49,6 +56,11 @@ type ObservedState struct {
 	SecretString string            `json:"secretString"`
 	VersionID    string            `json:"versionId"`
 	Tags         map[string]string `json:"tags,omitempty"`
+
+	// ScheduledForDeletion is true when the secret exists but is inside its
+	// deletion recovery window (DeletedDate set). Such a secret rejects value
+	// reads and writes until restored; Provision restores it before converging.
+	ScheduledForDeletion bool `json:"scheduledForDeletion,omitempty"`
 }
 
 // SecretsManagerSecretState is the single atomic state object persisted under

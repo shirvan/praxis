@@ -63,6 +63,15 @@ func (h *deleteHandle) Done() error {
 	return err
 }
 
+// decodeRetryableInvocationError reconstitutes a retryable error after a driver
+// invocation crosses a Restate RPC boundary. types.RetryableError does not
+// survive the boundary, so the fallback keys off the terminal error's status
+// code: throttling, limit, and unavailable responses (425 TooEarly, 429
+// throttled/limit, 503 unavailable) are retryable at the orchestrator level even
+// though the driver invocation itself is done. Drivers signal these as
+// restate.TerminalError(rawAWSErr, 429) with raw AWS messages that do NOT contain
+// the word "retryable", so matching on the message would (and did) miss every
+// real case — the code alone is authoritative.
 func decodeRetryableInvocationError(err error) error {
 	if err == nil {
 		return nil
@@ -70,19 +79,16 @@ func decodeRetryableInvocationError(err error) error {
 	if retryable, ok := types.IsRetryable(err); ok {
 		return retryable
 	}
-	if code := restate.ErrorCode(err); code != 425 && code != 429 {
+	switch restate.ErrorCode(err) {
+	case 425, 429, 503:
+		message := strings.TrimSpace(err.Error())
+		if message == "" {
+			message = "retryable resource operation failed"
+		}
+		return types.NewRetryableError(errors.New(message))
+	default:
 		return nil
 	}
-
-	message := strings.TrimSpace(err.Error())
-	if message == "" {
-		message = "retryable resource operation failed"
-	}
-	if !strings.Contains(strings.ToLower(message), "retryable") {
-		return nil
-	}
-
-	return types.NewRetryableError(errors.New(message))
 }
 
 // castSpec safely casts a generic spec (any) to the concrete driver input type T.

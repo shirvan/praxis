@@ -29,7 +29,8 @@ type SecretsManagerSecretAPI interface {
 	DescribeSecret(ctx context.Context, name string) (ObservedState, bool, error)
 	UpdateSecret(ctx context.Context, name, description, kmsKeyID string) error
 	PutSecretValue(ctx context.Context, name, value string) error
-	DeleteSecret(ctx context.Context, name string) error
+	DeleteSecret(ctx context.Context, name string, force bool) error
+	RestoreSecret(ctx context.Context, name string) error
 	AddTags(ctx context.Context, name string, tags map[string]string) error
 	RemoveTags(ctx context.Context, name string, tagKeys []string) error
 }
@@ -112,6 +113,15 @@ func (r *realSecretsManagerSecretAPI) DescribeSecret(ctx context.Context, name s
 		observed.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
 
+	// A secret scheduled for deletion (recovery window) still describes
+	// successfully but rejects GetSecretValue with InvalidRequestException.
+	// Surface the condition structurally so the driver can restore it instead
+	// of failing on the value read.
+	if desc.DeletedDate != nil {
+		observed.ScheduledForDeletion = true
+		return observed, true, nil
+	}
+
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, false, err
 	}
@@ -157,15 +167,33 @@ func (r *realSecretsManagerSecretAPI) PutSecretValue(ctx context.Context, name, 
 	return err
 }
 
-// DeleteSecret removes the secret immediately, bypassing the recovery window so
-// the resource is gone as soon as the call returns.
-func (r *realSecretsManagerSecretAPI) DeleteSecret(ctx context.Context, name string) error {
+// DeleteSecret removes the secret. By default it schedules deletion with a
+// 7-day recovery window so an accidental delete can be undone via RestoreSecret;
+// when force is true it deletes immediately with no recovery window. The two
+// options are mutually exclusive in the AWS API.
+func (r *realSecretsManagerSecretAPI) DeleteSecret(ctx context.Context, name string, force bool) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
 	}
-	_, err := r.client.DeleteSecret(ctx, &secretsmanager.DeleteSecretInput{
-		SecretId:                   aws.String(name),
-		ForceDeleteWithoutRecovery: aws.Bool(true),
+	input := &secretsmanager.DeleteSecretInput{SecretId: aws.String(name)}
+	if force {
+		input.ForceDeleteWithoutRecovery = aws.Bool(true)
+	} else {
+		input.RecoveryWindowInDays = aws.Int64(7)
+	}
+	_, err := r.client.DeleteSecret(ctx, input)
+	return err
+}
+
+// RestoreSecret cancels a scheduled deletion, bringing a recovery-window
+// secret back to active so a re-provision under the same name can converge it
+// instead of failing on "scheduled for deletion".
+func (r *realSecretsManagerSecretAPI) RestoreSecret(ctx context.Context, name string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.RestoreSecret(ctx, &secretsmanager.RestoreSecretInput{
+		SecretId: aws.String(name),
 	})
 	return err
 }
@@ -209,6 +237,21 @@ func IsAlreadyExists(err error) bool {
 
 func IsInvalidParam(err error) bool {
 	return awserr.HasCode(err, "InvalidParameterException", "InvalidRequestException", "ValidationException")
+}
+
+// IsScheduledForDeletion matches the InvalidRequestException returned when
+// operating on a secret inside its recovery window. Wording varies by
+// operation and implementation: AWS uses "scheduled for deletion" /
+// "marked for deletion", Moto uses "currently marked deleted". Used to make
+// Delete idempotent when the secret is already scheduled.
+func IsScheduledForDeletion(err error) bool {
+	if err == nil || !awserr.HasCode(err, "InvalidRequestException") {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "scheduled for deletion") ||
+		strings.Contains(msg, "marked for deletion") ||
+		strings.Contains(msg, "marked deleted")
 }
 
 func IsLimitExceeded(err error) bool {

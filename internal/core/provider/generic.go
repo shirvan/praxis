@@ -74,6 +74,13 @@ type GenericDescriptor[S any, O any, Obs any] struct {
 	// DiffFields compares the desired spec against observed provider state
 	// and returns field-level diffs (typically the driver's ComputeFieldDiffs).
 	DiffFields func(desired S, observed Obs) []types.FieldDiff
+
+	// SensitiveFields lists spec paths (dot notation, e.g. "spec.secretString")
+	// whose values must never appear in plan output. Matching field diffs — on
+	// both the create and update paths — have their values replaced with
+	// "(sensitive)". Matching is by exact path or dotted prefix, so
+	// "spec.value" also masks "spec.value.nested".
+	SensitiveFields []string
 }
 
 // GenericAdapter implements Adapter for any resource kind described by a
@@ -100,6 +107,12 @@ func NewGenericAdapterWithProbe[S any, O any, Obs any](desc GenericDescriptor[S,
 func (a *GenericAdapter[S, O, Obs]) Kind() string        { return a.desc.Kind }
 func (a *GenericAdapter[S, O, Obs]) ServiceName() string { return a.desc.Kind }
 func (a *GenericAdapter[S, O, Obs]) Scope() KeyScope     { return a.desc.Scope }
+
+// SensitiveFields exposes the descriptor's sensitive spec paths so callers
+// outside the adapter (e.g. the command-layer expression-resource fallback,
+// which builds diffs from raw JSON rather than through Plan) can mask the same
+// paths. Returns nil for kinds with no sensitive fields.
+func (a *GenericAdapter[S, O, Obs]) SensitiveFields() []string { return a.desc.SensitiveFields }
 
 func (a *GenericAdapter[S, O, Obs]) BuildKey(resourceDoc json.RawMessage) (string, error) {
 	doc, err := decodeResourceDocument(resourceDoc)
@@ -171,7 +184,7 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 	}
 	planID := a.desc.PlanID(outputs)
 	if planID == "" {
-		return planCreate(desired)
+		return planCreate(desired, a.desc.SensitiveFields)
 	}
 
 	probe, err := a.planProbe(ctx, account)
@@ -199,14 +212,14 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 		return "", nil, err
 	}
 	if !result.Found {
-		return planCreate(desired)
+		return planCreate(desired, a.desc.SensitiveFields)
 	}
 
 	fields := a.desc.DiffFields(desired, result.State)
 	if len(fields) == 0 {
 		return types.OpNoOp, nil, nil
 	}
-	return types.OpUpdate, fields, nil
+	return types.OpUpdate, types.MaskSensitiveFieldDiffs(fields, a.desc.SensitiveFields), nil
 }
 
 func (a *GenericAdapter[S, O, Obs]) BuildImportKey(region, resourceID string) (string, error) {
@@ -242,10 +255,10 @@ func (a *GenericAdapter[S, O, Obs]) planProbe(ctx restate.Context, account strin
 }
 
 // planCreate renders the OpCreate result for a resource with no prior state.
-func planCreate(desired any) (types.DiffOperation, []types.FieldDiff, error) {
+func planCreate(desired any, sensitive []string) (types.DiffOperation, []types.FieldDiff, error) {
 	fields, err := createFieldDiffsFromSpec(desired)
 	if err != nil {
 		return "", nil, err
 	}
-	return types.OpCreate, fields, nil
+	return types.OpCreate, types.MaskSensitiveFieldDiffs(fields, sensitive), nil
 }

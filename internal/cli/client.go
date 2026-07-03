@@ -384,9 +384,24 @@ func (c *Client) GetResourceOutputs(ctx context.Context, kind, key string) (map[
 	return outputs, nil
 }
 
+// sensitiveInputPaths lists, per resource kind, the paths (relative to the
+// GetInputs response, which is the bare spec object) whose values must be
+// masked before display so secret material never reaches terminals or CI logs.
+// The drivers return GetInputs unmasked on purpose — the orchestrator's
+// observe-before-act comparison needs the real values — so the CLI is the
+// masking boundary. Kept in sync with the adapters' declared SensitiveFields
+// by TestSensitiveInputPaths_MatchesProviderRegistry.
+var sensitiveInputPaths = map[string][]string{
+	"SecretsManagerSecret": {"secretString"},
+	"SSMParameter":         {"value"},
+	"RDSInstance":          {"masterUserPassword"},
+	"AuroraCluster":        {"masterUserPassword"},
+}
+
 // GetResourceInputs reads a resource's desired input spec as raw JSON from its
 // driver. The inputs are returned as a generic map since different drivers
-// define different typed spec structs.
+// define different typed spec structs. Sensitive fields are masked before the
+// map leaves this method, so every rendering path (--inputs, -o json) is safe.
 func (c *Client) GetResourceInputs(ctx context.Context, kind, key string) (map[string]any, error) {
 	resp, err := ingress.Object[restate.Void, json.RawMessage](
 		c.rc, kind, escapeKey(key), "GetInputs",
@@ -401,6 +416,7 @@ func (c *Client) GetResourceInputs(ctx context.Context, kind, key string) (map[s
 	if err := json.Unmarshal(resp, &inputs); err != nil {
 		return nil, fmt.Errorf("decode resource inputs: %w", err)
 	}
+	types.MaskJSONPaths(inputs, sensitiveInputPaths[kind])
 	return inputs, nil
 }
 
