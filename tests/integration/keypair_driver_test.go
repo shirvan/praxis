@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -95,6 +96,11 @@ func TestKeyPairProvision_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, stored.PrivateKeyMaterial)
 	assert.Equal(t, out1.KeyPairId, stored.KeyPairId)
+
+	encoded, err := json.Marshal(stored)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), out1.PrivateKeyMaterial)
+	assert.NotContains(t, strings.ToLower(string(encoded)), "privatekeymaterial")
 }
 
 func TestKeyPairProvision_ImportPublicKey(t *testing.T) {

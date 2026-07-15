@@ -31,6 +31,22 @@ type KeyPairOutputs struct {
 	PrivateKeyMaterial string `json:"privateKeyMaterial,omitempty"` // Only present on first creation.
 }
 
+// KeyPairDurableOutputs is the only output shape permitted in Restate K/V
+// state. It intentionally has no private-key field: this type-level boundary
+// prevents a later refactor from accidentally assigning one-time key material
+// to durable driver state.
+//
+// The initial Provision response still uses KeyPairOutputs because AWS returns
+// generated private key material exactly once. Restate journals that response;
+// callers that require no durable secret exposure must import a public key
+// instead of asking AWS to generate the pair.
+type KeyPairDurableOutputs struct {
+	KeyName        string `json:"keyName"`
+	KeyPairId      string `json:"keyPairId"`
+	KeyFingerprint string `json:"keyFingerprint"`
+	KeyType        string `json:"keyType"`
+}
+
 // ObservedState captures the last-observed AWS state of the key pair.
 type ObservedState struct {
 	KeyName        string            `json:"keyName"`
@@ -43,13 +59,13 @@ type ObservedState struct {
 // KeyPairState is the full durable state stored in the Restate Virtual Object.
 // A single drivers.StateKey maps to this struct for each key pair instance.
 type KeyPairState struct {
-	Desired            KeyPairSpec          `json:"desired"`                 // Last-accepted spec from Provision or Import.
-	Observed           ObservedState        `json:"observed"`                // Last-observed AWS state.
-	Outputs            KeyPairOutputs       `json:"outputs"`                 // User-facing outputs.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status (Provisioning, Ready, Error, Deleted).
-	Mode               types.Mode           `json:"mode"`                    // Managed (full control) or Observed (read-only).
-	Error              string               `json:"error,omitempty"`         // Last error message, if any.
-	Generation         int64                `json:"generation"`              // Monotonically increasing version counter.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC3339 timestamp of last reconcile.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Dedup guard for delayed Reconcile messages.
+	Desired            KeyPairSpec           `json:"desired"`                 // Last-accepted spec from Provision or Import.
+	Observed           ObservedState         `json:"observed"`                // Last-observed AWS state.
+	Outputs            KeyPairDurableOutputs `json:"outputs"`                 // Non-secret outputs; the type cannot hold private key material.
+	Status             types.ResourceStatus  `json:"status"`                  // Lifecycle status (Provisioning, Ready, Error, Deleted).
+	Mode               types.Mode            `json:"mode"`                    // Managed (full control) or Observed (read-only).
+	Error              string                `json:"error,omitempty"`         // Last error message, if any.
+	Generation         int64                 `json:"generation"`              // Monotonically increasing version counter.
+	LastReconcile      string                `json:"lastReconcile,omitempty"` // RFC3339 timestamp of last reconcile.
+	ReconcileScheduled bool                  `json:"reconcileScheduled"`      // Dedup guard for delayed Reconcile messages.
 }

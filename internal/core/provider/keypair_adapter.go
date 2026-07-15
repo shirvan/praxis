@@ -79,16 +79,15 @@ func keyPairDescriptor() GenericDescriptor[keypair.KeyPairSpec, keypair.KeyPairO
 		},
 
 		NormalizeOutputs: func(out keypair.KeyPairOutputs) map[string]any {
-			result := map[string]any{
+			// PrivateKeyMaterial is deliberately excluded. Normalized outputs flow
+			// into deployment state, resource-ready events, notification payloads,
+			// and expression hydration, none of which are secret stores.
+			return map[string]any{
 				"keyName":        out.KeyName,
 				"keyPairId":      out.KeyPairId,
 				"keyFingerprint": out.KeyFingerprint,
 				"keyType":        out.KeyType,
 			}
-			if out.PrivateKeyMaterial != "" {
-				result["privateKeyMaterial"] = out.PrivateKeyMaterial
-			}
-			return result
 		},
 
 		PlanID: func(out keypair.KeyPairOutputs) string { return out.KeyName },

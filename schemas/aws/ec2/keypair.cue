@@ -17,10 +17,9 @@ package ec2
 	}
 
 	outputs?: {
-		keyName:             string
-		keyPairId:           string
-		keyFingerprint:      string
-		keyType:             string
-		privateKeyMaterial?: string
+		keyName:        string
+		keyPairId:      string
+		keyFingerprint: string
+		keyType:        string
 	}
 }
