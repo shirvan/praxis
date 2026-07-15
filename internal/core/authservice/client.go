@@ -78,8 +78,7 @@ func buildAWSConfig(creds CredentialResponse) (aws.Config, error) {
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(creds.Region),
 	}
-	// The AccessKeyID check covers state cached before the Source field existed.
-	if creds.Source != SourceDefaultChain && creds.AccessKeyID != SourceDefaultChain {
+	if creds.Source != SourceDefaultChain {
 		opts = append(opts, awsconfig.WithCredentialsProvider(
 			credentials.NewStaticCredentialsProvider(
 				creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken,

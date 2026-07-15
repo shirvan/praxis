@@ -1,6 +1,6 @@
 //go:build integration
 
-// Integration tests for the Templates V2 Deploy flow:
+// Integration tests for the template deploy flow:
 //
 //	Register template -> Deploy with variables -> Verify provisioning
 //
