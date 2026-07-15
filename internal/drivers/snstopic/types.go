@@ -11,7 +11,9 @@ import "github.com/shirvan/praxis/pkg/types"
 // ServiceName is the Restate Virtual Object name for SNS topics.
 const ServiceName = "SNSTopic"
 
-// SNSTopicSpec is the desired state for an SNS topic.
+// SNSTopicSpec is the desired state for an SNS topic. Optional provider
+// attributes are declarative: omission requests the SNS default or absence; it
+// never means "leave an existing value unmanaged".
 type SNSTopicSpec struct {
 	Account                   string            `json:"account,omitempty"`
 	Region                    string            `json:"region"`

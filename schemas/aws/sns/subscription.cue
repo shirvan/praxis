@@ -18,6 +18,8 @@ package sns
 
 		endpoint: string
 
+		// Omitted optional attributes are declarative defaults/absence. Re-applying
+		// a spec without a previously configured value removes that provider value.
 		filterPolicy?: string
 
 		filterPolicyScope?: "MessageAttributes" | "MessageBody"

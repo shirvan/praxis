@@ -100,7 +100,7 @@ func (d *SNSSubscriptionDriver) Provision(ctx restate.ObjectContext, spec SNSSub
 			existingArn = "" // subscription gone; resubscribe
 		} else {
 			// Converge mutable attributes.
-			if err := d.convergeAttributes(ctx, api, existingArn, spec, state.Desired); err != nil {
+			if err := d.convergeAttributes(ctx, api, existingArn, spec, specFromObserved(obs, types.ImportRef{})); err != nil {
 				state.Status = types.StatusError
 				state.Error = err.Error()
 				restate.Set(ctx, drivers.StateKey, state)
@@ -180,6 +180,23 @@ func (d *SNSSubscriptionDriver) Provision(ctx restate.ObjectContext, spec SNSSub
 			}
 		} else {
 			observed = obs
+			// Subscribe is idempotent for a topic/protocol/endpoint tuple and may
+			// return a subscription that existed before this Virtual Object. Treat
+			// its attributes as provider state and converge them explicitly.
+			if HasDrift(spec, observed) {
+				if err := d.convergeAttributes(ctx, api, subscriptionArn, spec, specFromObserved(observed, types.ImportRef{})); err != nil {
+					state.Status = types.StatusError
+					state.Error = err.Error()
+					restate.Set(ctx, drivers.StateKey, state)
+					return SNSSubscriptionOutputs{}, err
+				}
+				refreshed, refreshErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+					return api.GetSubscriptionAttributes(rc, subscriptionArn)
+				})
+				if refreshErr == nil {
+					observed = refreshed
+				}
+			}
 		}
 	} else {
 		observed = ObservedState{
@@ -223,15 +240,19 @@ func (d *SNSSubscriptionDriver) convergeAttributes(ctx restate.ObjectContext, ap
 	}
 
 	var updates []attrUpdate
-	if desired.FilterPolicy != previous.FilterPolicy {
+	if !filterPoliciesEqual(desired.FilterPolicy, previous.FilterPolicy) {
 		val := desired.FilterPolicy
 		if val == "" {
 			val = "{}"
 		}
 		updates = append(updates, attrUpdate{"FilterPolicy", val})
 	}
-	if desired.FilterPolicyScope != previous.FilterPolicyScope {
-		updates = append(updates, attrUpdate{"FilterPolicyScope", desired.FilterPolicyScope})
+	if !filterPolicyScopesEqual(desired.FilterPolicyScope, previous.FilterPolicyScope) {
+		scope := desired.FilterPolicyScope
+		if scope == "" {
+			scope = "MessageAttributes"
+		}
+		updates = append(updates, attrUpdate{"FilterPolicyScope", scope})
 	}
 	if desired.RawMessageDelivery != previous.RawMessageDelivery {
 		val := "false"
@@ -240,19 +261,19 @@ func (d *SNSSubscriptionDriver) convergeAttributes(ctx restate.ObjectContext, ap
 		}
 		updates = append(updates, attrUpdate{"RawMessageDelivery", val})
 	}
-	if desired.DeliveryPolicy != previous.DeliveryPolicy {
-		val := desired.DeliveryPolicy
-		if val == "" {
-			val = "{}"
+	if !optionalPoliciesEqual(desired.DeliveryPolicy, previous.DeliveryPolicy) {
+		policy := desired.DeliveryPolicy
+		if policy == "" {
+			policy = "{}"
 		}
-		updates = append(updates, attrUpdate{"DeliveryPolicy", val})
+		updates = append(updates, attrUpdate{"DeliveryPolicy", policy})
 	}
-	if desired.RedrivePolicy != previous.RedrivePolicy {
-		val := desired.RedrivePolicy
-		if val == "" {
-			val = "{}"
+	if !optionalPoliciesEqual(desired.RedrivePolicy, previous.RedrivePolicy) {
+		policy := desired.RedrivePolicy
+		if policy == "" {
+			policy = "{}"
 		}
-		updates = append(updates, attrUpdate{"RedrivePolicy", val})
+		updates = append(updates, attrUpdate{"RedrivePolicy", policy})
 	}
 	if desired.SubscriptionRoleArn != previous.SubscriptionRoleArn {
 		updates = append(updates, attrUpdate{"SubscriptionRoleArn", desired.SubscriptionRoleArn})
@@ -369,9 +390,7 @@ func (d *SNSSubscriptionDriver) Delete(ctx restate.ObjectContext) error {
 		return err
 	}
 
-	state.Status = types.StatusDeleted
-	restate.Set(ctx, drivers.StateKey, state)
-	restate.Clear(ctx, drivers.StateKey)
+	restate.Set(ctx, drivers.StateKey, SNSSubscriptionState{Status: types.StatusDeleted})
 	return nil
 }
 
@@ -386,7 +405,11 @@ func (d *SNSSubscriptionDriver) Reconcile(ctx restate.ObjectContext) (types.Reco
 	}
 
 	state.ReconcileScheduled = false
-	now := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := drivers.CurrentTime(ctx)
+	if err != nil {
+		return types.ReconcileResult{}, err
+	}
+	now := currentTime.Format(time.RFC3339)
 
 	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {

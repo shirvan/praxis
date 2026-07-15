@@ -20,6 +20,8 @@ package sns
 
 		contentBasedDeduplication: bool | *false
 
+		// Omitted optional attributes are declarative defaults/absence. Re-applying
+		// a spec without a previously configured value removes that provider value.
 		policy?: string
 
 		deliveryPolicy?: string

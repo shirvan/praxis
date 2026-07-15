@@ -21,19 +21,19 @@ type FieldDiffEntry struct {
 
 // HasDrift returns true if the desired spec and observed state differ on mutable fields.
 func HasDrift(desired SNSSubscriptionSpec, observed ObservedState) bool {
-	if !policiesEqual(desired.FilterPolicy, observed.FilterPolicy) {
+	if !filterPoliciesEqual(desired.FilterPolicy, observed.FilterPolicy) {
 		return true
 	}
-	if desired.FilterPolicyScope != "" && desired.FilterPolicyScope != observed.FilterPolicyScope {
+	if !filterPolicyScopesEqual(desired.FilterPolicyScope, observed.FilterPolicyScope) {
 		return true
 	}
 	if desired.RawMessageDelivery != observed.RawMessageDelivery {
 		return true
 	}
-	if !policiesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
+	if !optionalPoliciesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
 		return true
 	}
-	if !policiesEqual(desired.RedrivePolicy, observed.RedrivePolicy) {
+	if !optionalPoliciesEqual(desired.RedrivePolicy, observed.RedrivePolicy) {
 		return true
 	}
 	if desired.SubscriptionRoleArn != observed.SubscriptionRoleArn {
@@ -46,14 +46,14 @@ func HasDrift(desired SNSSubscriptionSpec, observed ObservedState) bool {
 func ComputeFieldDiffs(desired SNSSubscriptionSpec, observed ObservedState) []FieldDiffEntry {
 	var diffs []FieldDiffEntry
 
-	if !policiesEqual(desired.FilterPolicy, observed.FilterPolicy) {
+	if !filterPoliciesEqual(desired.FilterPolicy, observed.FilterPolicy) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.filterPolicy",
 			OldValue: observed.FilterPolicy,
 			NewValue: desired.FilterPolicy,
 		})
 	}
-	if desired.FilterPolicyScope != "" && desired.FilterPolicyScope != observed.FilterPolicyScope {
+	if !filterPolicyScopesEqual(desired.FilterPolicyScope, observed.FilterPolicyScope) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.filterPolicyScope",
 			OldValue: observed.FilterPolicyScope,
@@ -67,14 +67,14 @@ func ComputeFieldDiffs(desired SNSSubscriptionSpec, observed ObservedState) []Fi
 			NewValue: desired.RawMessageDelivery,
 		})
 	}
-	if !policiesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
+	if !optionalPoliciesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.deliveryPolicy",
 			OldValue: observed.DeliveryPolicy,
 			NewValue: desired.DeliveryPolicy,
 		})
 	}
-	if !policiesEqual(desired.RedrivePolicy, observed.RedrivePolicy) {
+	if !optionalPoliciesEqual(desired.RedrivePolicy, observed.RedrivePolicy) {
 		diffs = append(diffs, FieldDiffEntry{
 			Path:     "spec.redrivePolicy",
 			OldValue: observed.RedrivePolicy,
@@ -110,4 +110,46 @@ func policiesEqual(a, b string) bool {
 	aNorm, _ := json.Marshal(aObj)
 	bNorm, _ := json.Marshal(bObj)
 	return bytes.Equal(aNorm, bNorm)
+}
+
+// filterPoliciesEqual treats both the empty string and an empty JSON object as
+// the absence of a filter policy. AWS documents SetSubscriptionAttributes with
+// "{}" as the removal operation and may subsequently report that representation.
+func filterPoliciesEqual(a, b string) bool {
+	if isEmptyJSONObject(a) && isEmptyJSONObject(b) {
+		return true
+	}
+	return policiesEqual(a, b)
+}
+
+// optionalPoliciesEqual applies the greenfield desired-state contract for
+// optional JSON policies: omission means the policy must be absent. SNS may
+// report a removed policy either as a missing/empty value or as an empty JSON
+// object, so both provider representations are equivalent to desired absence.
+func optionalPoliciesEqual(a, b string) bool {
+	if isEmptyJSONObject(a) && isEmptyJSONObject(b) {
+		return true
+	}
+	return policiesEqual(a, b)
+}
+
+func isEmptyJSONObject(policy string) bool {
+	if policy == "" {
+		return true
+	}
+	var decoded map[string]any
+	return json.Unmarshal([]byte(policy), &decoded) == nil && len(decoded) == 0
+}
+
+// filterPolicyScopesEqual treats an omitted scope as the documented SNS
+// default, MessageAttributes. MessageBody is therefore drift when the desired
+// field is omitted, rather than an unmanaged provider value.
+func filterPolicyScopesEqual(a, b string) bool {
+	normalize := func(scope string) string {
+		if scope == "" {
+			return "MessageAttributes"
+		}
+		return scope
+	}
+	return normalize(a) == normalize(b)
 }
