@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
+	"strings"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -163,7 +165,7 @@ type Registry struct {
 // per-account AWS credentials when making durable Restate service-to-service
 // calls to the underlying driver Virtual Object.
 func NewRegistry(auth authservice.AuthClient) *Registry {
-	return NewRegistryWithAdapters(
+	registry, err := NewRegistryWithAdapters(
 		NewS3AdapterWithAuth(auth),
 		NewEBSAdapterWithAuth(auth),
 		NewAMIAdapterWithAuth(auth),
@@ -216,21 +218,52 @@ func NewRegistry(auth authservice.AuthClient) *Registry {
 		NewDynamoDBTableAdapterWithAuth(auth),
 		NewECSClusterAdapterWithAuth(auth),
 	)
+	if err != nil {
+		// The production adapter list is compiled into the binary. Any invalid
+		// entry is a programming/configuration invariant and must fail startup
+		// rather than leave Core running with incomplete or ambiguous dispatch.
+		panic(fmt.Sprintf("construct provider registry: %v", err))
+	}
+	return registry
 }
 
 // NewRegistryWithAdapters lets higher layers provide adapters that already
 // carry any extra dependencies they need, such as live AWS describe clients for
-// plan operations.
-func NewRegistryWithAdapters(adapters ...Adapter) *Registry {
+// plan operations. It rejects nil adapters, empty/whitespace kinds, and
+// duplicate kinds so dispatch can never be silently incomplete or overwritten.
+func NewRegistryWithAdapters(adapters ...Adapter) (*Registry, error) {
 	byKind := make(map[string]Adapter, len(adapters))
-	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
+	for i, adapter := range adapters {
+		if isNilAdapter(adapter) {
+			return nil, fmt.Errorf("adapter at index %d is nil", i)
 		}
-		byKind[adapter.Kind()] = adapter
+		kind := adapter.Kind()
+		if strings.TrimSpace(kind) == "" {
+			return nil, fmt.Errorf("adapter at index %d has an empty kind", i)
+		}
+		if kind != strings.TrimSpace(kind) {
+			return nil, fmt.Errorf("adapter at index %d has kind %q with surrounding whitespace", i, kind)
+		}
+		if _, exists := byKind[kind]; exists {
+			return nil, fmt.Errorf("duplicate provider adapter kind %q", kind)
+		}
+		byKind[kind] = adapter
 	}
 	return &Registry{
 		byKind: byKind,
+	}, nil
+}
+
+func isNilAdapter(adapter Adapter) bool {
+	if adapter == nil {
+		return true
+	}
+	value := reflect.ValueOf(adapter)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
 	}
 }
 

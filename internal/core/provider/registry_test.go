@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/shirvan/praxis/internal/drivers/ami"
@@ -223,21 +224,24 @@ func TestRegistry_Get_UnsupportedKind(t *testing.T) {
 }
 
 func TestRegistry_Get_LambdaLayer(t *testing.T) {
-	registry := NewRegistryWithAdapters(NewLambdaLayerAdapterWithAuth(nil))
+	registry, err := NewRegistryWithAdapters(NewLambdaLayerAdapterWithAuth(nil))
+	require.NoError(t, err)
 	adapter, err := registry.Get(lambdalayer.ServiceName)
 	require.NoError(t, err)
 	assert.Equal(t, lambdalayer.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_LambdaPermission(t *testing.T) {
-	registry := NewRegistryWithAdapters(NewLambdaPermissionAdapterWithAuth(nil))
+	registry, err := NewRegistryWithAdapters(NewLambdaPermissionAdapterWithAuth(nil))
+	require.NoError(t, err)
 	adapter, err := registry.Get(lambdaperm.ServiceName)
 	require.NoError(t, err)
 	assert.Equal(t, lambdaperm.ServiceName, adapter.Kind())
 }
 
 func TestRegistry_Get_ESM(t *testing.T) {
-	registry := NewRegistryWithAdapters(NewESMAdapterWithAuth(nil))
+	registry, err := NewRegistryWithAdapters(NewESMAdapterWithAuth(nil))
+	require.NoError(t, err)
 	adapter, err := registry.Get(esm.ServiceName)
 	require.NoError(t, err)
 	assert.Equal(t, esm.ServiceName, adapter.Kind())
@@ -369,10 +373,40 @@ func TestRegistry_All_ReturnsDefensiveCopy(t *testing.T) {
 	require.NoError(t, err, "original registry must be unaffected")
 }
 
-func TestNewRegistryWithAdapters_SkipsNil(t *testing.T) {
-	registry := NewRegistryWithAdapters(nil, NewS3AdapterWithAuth(nil), nil)
-	all := registry.All()
-	assert.Len(t, all, 1)
+func TestNewRegistryWithAdapters_RejectsNil(t *testing.T) {
+	_, err := NewRegistryWithAdapters(nil, NewS3AdapterWithAuth(nil))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
+type kindOverrideAdapter struct {
+	Adapter
+	kind string
+}
+
+func (a kindOverrideAdapter) Kind() string { return a.kind }
+
+func TestNewRegistryWithAdapters_RejectsTypedNil(t *testing.T) {
+	var adapter *S3Adapter
+	_, err := NewRegistryWithAdapters(adapter)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
+func TestNewRegistryWithAdapters_RejectsInvalidKinds(t *testing.T) {
+	base := NewS3AdapterWithAuth(nil)
+	for _, kind := range []string{"", "   ", " S3Bucket", "S3Bucket "} {
+		t.Run(fmt.Sprintf("kind_%q", kind), func(t *testing.T) {
+			_, err := NewRegistryWithAdapters(kindOverrideAdapter{Adapter: base, kind: kind})
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestNewRegistryWithAdapters_RejectsDuplicateKinds(t *testing.T) {
+	_, err := NewRegistryWithAdapters(NewS3AdapterWithAuth(nil), NewS3AdapterWithAuth(nil))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate")
 }
 
 // ---------------------------------------------------------------------------

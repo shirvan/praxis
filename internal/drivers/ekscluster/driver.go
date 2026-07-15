@@ -292,11 +292,9 @@ func (d *EKSClusterDriver) Reconcile(ctx restate.ObjectContext) (types.Reconcile
 	if drift && state.Mode == types.ModeManaged {
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 		// EKS allows only one in-flight update and rejects UpdateClusterConfig/
-		// Version on a non-ACTIVE cluster with ResourceInUseException, which the
-		// converge path classifies as terminal — correcting now would wedge the
-		// resource in Error (and the Error branch above never self-heals).
-		// A CREATING/UPDATING cluster is transitioning, not broken: defer
-		// correction to the next cycle, when it will usually be ACTIVE.
+		// Version on a non-ACTIVE cluster with ResourceInUseException. Although
+		// the update path now treats that response as retryable, avoiding the call
+		// while status is already known to be transitional saves needless retries.
 		if !strings.EqualFold(observed.Status, "ACTIVE") {
 			ctx.Log().Info("deferring drift correction: cluster not ACTIVE",
 				"cluster", state.Outputs.Name, "status", observed.Status)
@@ -362,9 +360,9 @@ func (d *EKSClusterDriver) convergeMutableFields(ctx restate.ObjectContext, api 
 				if IsInvalidParam(runErr) {
 					return restate.Void{}, restate.TerminalError(runErr, 400)
 				}
-				if IsConflict(runErr) {
-					return restate.Void{}, restate.TerminalError(runErr, 409)
-				}
+				// ResourceInUse during update means another EKS operation is
+				// still active. Retrying is safe; only create treats it as a
+				// terminal conflict with an already-existing resource.
 				return restate.Void{}, runErr
 			}
 			return restate.Void{}, nil
@@ -380,9 +378,6 @@ func (d *EKSClusterDriver) convergeMutableFields(ctx restate.ObjectContext, api 
 			if runErr != nil {
 				if IsInvalidParam(runErr) {
 					return restate.Void{}, restate.TerminalError(runErr, 400)
-				}
-				if IsConflict(runErr) {
-					return restate.Void{}, restate.TerminalError(runErr, 409)
 				}
 				return restate.Void{}, runErr
 			}

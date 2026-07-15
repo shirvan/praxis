@@ -243,23 +243,20 @@ func (d *SecurityGroupDriver) Delete(ctx restate.ObjectContext) error {
 
 	_, err = restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		if err := api.DeleteSecurityGroup(rc, state.Outputs.GroupId); err != nil {
-			// Classify terminal errors inside the callback: restate.Run panics
-			// on non-terminal errors, so post-callback classification never runs.
-			if IsDependencyViolation(err) {
-				return restate.Void{}, restate.TerminalError(err, 409)
-			}
 			if IsNotFound(err) {
 				return restate.Void{}, nil // already gone
 			}
-			return restate.Void{}, err // transient — Restate retries
+			// DependencyViolation is a transient EC2 consistency/dependency
+			// condition during ordered teardown, so it remains retryable.
+			return restate.Void{}, err
 		}
 		return restate.Void{}, nil
 	})
 	if err != nil {
 		state.Status = types.StatusError
-		state.Error = fmt.Sprintf("security group %s is still referenced by other resources", state.Outputs.GroupId)
+		state.Error = err.Error()
 		restate.Set(ctx, drivers.StateKey, state)
-		return restate.TerminalError(fmt.Errorf("%s", state.Error), 409)
+		return err
 	}
 
 	restate.Set(ctx, drivers.StateKey, SecurityGroupState{
@@ -287,6 +284,12 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 		return types.ReconcileResult{}, nil
 	}
 
+	now, err := drivers.CurrentTime(ctx)
+	if err != nil {
+		return types.ReconcileResult{}, err
+	}
+	lastReconcile := now.Format(time.RFC3339)
+
 	// --- Describe current AWS state ---
 	type describeResult struct {
 		Observed ObservedState `json:"observed"`
@@ -304,7 +307,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 		return describeResult{Observed: obs}, nil
 	})
 	if err != nil {
-		state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+		state.LastReconcile = lastReconcile
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
@@ -312,7 +315,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	if describe.Deleted {
 		state.Status = types.StatusError
 		state.Error = fmt.Sprintf("security group %s was deleted externally", state.Outputs.GroupId)
-		state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+		state.LastReconcile = lastReconcile
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
@@ -321,7 +324,7 @@ func (d *SecurityGroupDriver) Reconcile(ctx restate.ObjectContext) (types.Reconc
 	observed := describe.Observed
 
 	state.Observed = observed
-	state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+	state.LastReconcile = lastReconcile
 
 	drift := HasDrift(state.Desired, observed)
 

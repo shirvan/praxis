@@ -406,12 +406,7 @@ func (d *VPCDriver) Delete(ctx restate.ObjectContext) error {
 				return restate.Void{}, nil
 			}
 			if IsDependencyViolation(err) {
-				return restate.Void{}, restate.TerminalError(
-					fmt.Errorf("cannot delete VPC %s: dependent resources exist (subnets, "+
-						"internet gateways, NAT gateways, security groups, etc.); "+
-						"remove all dependent resources first", vpcId),
-					409,
-				)
+				return restate.Void{}, err
 			}
 			if IsInvalidParam(err) {
 				return restate.Void{}, restate.TerminalError(err, 400)

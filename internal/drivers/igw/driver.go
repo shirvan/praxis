@@ -359,10 +359,7 @@ func (d *IGWDriver) Delete(ctx restate.ObjectContext) error {
 				return restate.Void{}, nil
 			}
 			if IsDependencyViolation(runErr) {
-				return restate.Void{}, restate.TerminalError(
-					fmt.Errorf("cannot delete internet gateway %s: it is still attached or referenced by dependent resources", internetGatewayID),
-					409,
-				)
+				return restate.Void{}, runErr
 			}
 			return restate.Void{}, runErr
 		}

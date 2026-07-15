@@ -136,6 +136,16 @@ func IsAccessDenied(err error) bool {
 		"InvalidClientTokenId", "SignatureDoesNotMatch")
 }
 
+// IsValidation reports provider request-shape errors that retries cannot fix.
+// It is intentionally narrower than all 4xx AWS errors; callers must classify
+// not-found and conflicts using resource-specific semantics.
+func IsValidation(err error) bool {
+	return HasCode(err,
+		"ValidationException", "ValidationError",
+		"InvalidRequestException", "SerializationException", "MalformedQueryString") ||
+		HasCodePrefix(err, "InvalidParameter")
+}
+
 // IsExpiredToken returns true for AWS token/session expiry codes.
 func IsExpiredToken(err error) bool {
 	return HasCode(err, "ExpiredToken", "ExpiredTokenException", "RequestExpired", "TokenRefreshRequired")

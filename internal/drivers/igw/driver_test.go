@@ -437,6 +437,27 @@ func TestDelete_DetachesAndDeletes(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestDelete_RetriesDependencyViolationInsideDurableCallback(t *testing.T) {
+	api := newFakeIGWAPI()
+	client := setupIGWDriver(t, api)
+	key := "us-east-1~web-igw"
+
+	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	require.NoError(t, err)
+
+	var attempts int
+	api.deleteFunc = func(context.Context, string) error {
+		attempts++
+		if attempts == 1 {
+			return &mockAPIError{code: "DependencyViolation", message: "dependency is still converging"}
+		}
+		return nil
+	}
+	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts, "DependencyViolation must be retried by Restate instead of becoming terminal")
+}
+
 func TestDelete_ObservedModeBlocked(t *testing.T) {
 	api := newFakeIGWAPI()
 	api.observed["igw-123"] = ObservedState{InternetGatewayId: "igw-123", AttachedVpcId: "vpc-123"}
