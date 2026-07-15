@@ -1,6 +1,8 @@
 package keypair
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,17 +46,25 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, "rsa", outputs.KeyType)
 }
 
-func TestPrivateKeyNotStoredInState(t *testing.T) {
-	persisted := outputsFromObserved(ObservedState{
-		KeyName:        "web-key",
-		KeyPairId:      "key-123",
-		KeyFingerprint: "aa:bb:cc",
-		KeyType:        "ed25519",
+func TestPrivateKeyCannotBeRepresentedInDurableState(t *testing.T) {
+	const privateKey = "-----BEGIN PRIVATE KEY-----secret-----END PRIVATE KEY-----"
+
+	persisted := durableOutputs(KeyPairOutputs{
+		KeyName:            "web-key",
+		KeyPairId:          "key-123",
+		KeyFingerprint:     "aa:bb:cc",
+		KeyType:            "ed25519",
+		PrivateKeyMaterial: privateKey,
 	})
 
-	require.Empty(t, persisted.PrivateKeyMaterial)
-
 	state := KeyPairState{Outputs: persisted, Status: types.StatusReady}
-	assert.Empty(t, state.Outputs.PrivateKeyMaterial)
 	assert.Equal(t, types.StatusReady, state.Status)
+
+	encoded, err := json.Marshal(state)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), privateKey)
+	assert.NotContains(t, strings.ToLower(string(encoded)), "privatekeymaterial")
+
+	returned := outputsFromDurable(state.Outputs)
+	assert.Empty(t, returned.PrivateKeyMaterial)
 }

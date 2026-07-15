@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,18 +57,24 @@ func TestKeyPairAdapter_Scope(t *testing.T) {
 }
 
 func TestKeyPairAdapter_NormalizeOutputs(t *testing.T) {
+	const privateKey = "-----BEGIN PRIVATE KEY-----secret-----END PRIVATE KEY-----"
 	adapter := NewKeyPairAdapterWithAuth(nil)
 	out, err := adapter.NormalizeOutputs(keypair.KeyPairOutputs{
 		KeyName:            "web-key",
 		KeyPairId:          "key-123",
 		KeyFingerprint:     "aa:bb:cc",
 		KeyType:            "ed25519",
-		PrivateKeyMaterial: "pem-data",
+		PrivateKeyMaterial: privateKey,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "web-key", out["keyName"])
 	assert.Equal(t, "key-123", out["keyPairId"])
 	assert.Equal(t, "aa:bb:cc", out["keyFingerprint"])
 	assert.Equal(t, "ed25519", out["keyType"])
-	assert.Equal(t, "pem-data", out["privateKeyMaterial"])
+	assert.NotContains(t, out, "privateKeyMaterial")
+
+	encoded, err := json.Marshal(out)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), privateKey)
+	assert.NotContains(t, strings.ToLower(string(encoded)), "privatekeymaterial")
 }

@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/shirvan/praxis/internal/core/provider"
 	"github.com/shirvan/praxis/internal/core/template"
+	"github.com/shirvan/praxis/internal/drivers/keypair"
 )
 
 func TestHydrateExprs_StringOutput(t *testing.T) {
@@ -23,6 +25,34 @@ func TestHydrateExprs_StringOutput(t *testing.T) {
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal(resolved, &parsed))
 	assert.Equal(t, "sg-0abc123", parsed["spec"].(map[string]any)["sourceGroup"])
+}
+
+func TestHydrateExprs_KeyPairPrivateKeyIsNotAnAvailableCoreOutput(t *testing.T) {
+	const privateKey = "-----BEGIN PRIVATE KEY-----secret-----END PRIVATE KEY-----"
+
+	adapter := provider.NewKeyPairAdapterWithAuth(nil)
+	outputs, err := adapter.NormalizeOutputs(keypair.KeyPairOutputs{
+		KeyName:            "web-key",
+		KeyPairId:          "key-123",
+		KeyFingerprint:     "aa:bb:cc",
+		KeyType:            "ed25519",
+		PrivateKeyMaterial: privateKey,
+	})
+	require.NoError(t, err)
+
+	spec := json.RawMessage(`{"spec":{"keyPairId":"${resources.key.outputs.keyPairId}","privateKey":"${resources.key.outputs.privateKeyMaterial}"}}`)
+	resolved, err := HydrateExprs(spec, map[string]string{
+		"spec.keyPairId":  "resources.key.outputs.keyPairId",
+		"spec.privateKey": "resources.key.outputs.privateKeyMaterial",
+	}, map[string]map[string]any{"key": outputs})
+	require.Error(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(resolved, &parsed))
+	resolvedSpec := parsed["spec"].(map[string]any)
+	assert.Equal(t, "key-123", resolvedSpec["keyPairId"])
+	assert.Equal(t, "${resources.key.outputs.privateKeyMaterial}", resolvedSpec["privateKey"])
+	assert.NotContains(t, string(resolved), privateKey)
 }
 
 func TestHydrateExprs_IntegerOutput(t *testing.T) {

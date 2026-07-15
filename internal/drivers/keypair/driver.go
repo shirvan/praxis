@@ -53,7 +53,9 @@ func (d *KeyPairDriver) ServiceName() string {
 //  5. If key pair already exists: converge tags only.
 //  6. Final DescribeKeyPair to capture outputs. Set status=Ready, schedule reconcile.
 //
-// Private key material is returned to the caller but NOT persisted in state.
+// Private key material is returned by this direct handler but cannot be
+// represented in KeyPairState. Restate still journals the one-time handler
+// response; Core strips the field from every normalized public output.
 func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (KeyPairOutputs, error) {
 	ctx.Log().Info("provisioning key pair", "key", restate.Key(ctx), "keyName", spec.KeyName)
 	api, _, err := d.apiForAccount(ctx, spec.Account)
@@ -100,7 +102,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
 		}
 	}
 
-	outputs := state.Outputs
+	outputs := outputsFromDurable(state.Outputs)
 	if keyPairID == "" {
 		if spec.PublicKeyMaterial != "" {
 			result, runErr := restate.Run(ctx, func(rc restate.RunContext) (KeyPairOutputs, error) {
@@ -180,7 +182,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
 	if err != nil {
 		state.Status = types.StatusError
 		state.Error = err.Error()
-		state.Outputs = KeyPairOutputs{KeyName: spec.KeyName, KeyPairId: keyPairID, KeyType: spec.KeyType}
+		state.Outputs = durableOutputs(KeyPairOutputs{KeyName: spec.KeyName, KeyPairId: keyPairID, KeyType: spec.KeyType})
 		restate.Set(ctx, drivers.StateKey, state)
 		return KeyPairOutputs{}, err
 	}
@@ -189,7 +191,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
 	outputs = outputsFromObserved(observed)
 
 	state.Observed = observed
-	state.Outputs = outputs
+	state.Outputs = durableOutputs(outputs)
 	state.Status = types.StatusReady
 	state.Error = ""
 	restate.Set(ctx, drivers.StateKey, state)
@@ -236,7 +238,7 @@ func (d *KeyPairDriver) Import(ctx restate.ObjectContext, ref types.ImportRef) (
 	outputs := outputsFromObserved(observed)
 	state.Desired = spec
 	state.Observed = observed
-	state.Outputs = outputs
+	state.Outputs = durableOutputs(outputs)
 	state.Status = types.StatusReady
 	state.Mode = mode
 	state.Error = ""
@@ -384,7 +386,7 @@ func (d *KeyPairDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 		})
 		if refreshErr == nil {
 			state.Observed = refreshed
-			state.Outputs = outputsFromObserved(refreshed)
+			state.Outputs = durableOutputs(outputsFromObserved(refreshed))
 		}
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
@@ -400,7 +402,7 @@ func (d *KeyPairDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRes
 		return types.ReconcileResult{Drift: true, Correcting: false}, nil
 	}
 
-	state.Outputs = outputsFromObserved(observed)
+	state.Outputs = durableOutputs(outputsFromObserved(observed))
 	restate.Set(ctx, drivers.StateKey, state)
 	d.scheduleReconcile(ctx, &state)
 	return types.ReconcileResult{}, nil
@@ -426,7 +428,7 @@ func (d *KeyPairDriver) GetOutputs(ctx restate.ObjectSharedContext) (KeyPairOutp
 	if err != nil {
 		return KeyPairOutputs{}, err
 	}
-	return state.Outputs, nil
+	return outputsFromDurable(state.Outputs), nil
 }
 
 // GetInputs is a shared (read-only) handler that returns the desired input spec.
@@ -501,6 +503,30 @@ func outputsFromObserved(obs ObservedState) KeyPairOutputs {
 		KeyPairId:      obs.KeyPairId,
 		KeyFingerprint: obs.KeyFingerprint,
 		KeyType:        obs.KeyType,
+	}
+}
+
+// durableOutputs crosses the explicit one-time-response -> durable-state
+// boundary. Copying only the public metadata makes private key persistence
+// impossible even when the source KeyPairOutputs contains it.
+func durableOutputs(outputs KeyPairOutputs) KeyPairDurableOutputs {
+	return KeyPairDurableOutputs{
+		KeyName:        outputs.KeyName,
+		KeyPairId:      outputs.KeyPairId,
+		KeyFingerprint: outputs.KeyFingerprint,
+		KeyType:        outputs.KeyType,
+	}
+}
+
+// outputsFromDurable reconstructs the public handler shape from state. The
+// private-key field necessarily remains empty because durable state has no
+// field from which it could be populated.
+func outputsFromDurable(outputs KeyPairDurableOutputs) KeyPairOutputs {
+	return KeyPairOutputs{
+		KeyName:        outputs.KeyName,
+		KeyPairId:      outputs.KeyPairId,
+		KeyFingerprint: outputs.KeyFingerprint,
+		KeyType:        outputs.KeyType,
 	}
 }
 

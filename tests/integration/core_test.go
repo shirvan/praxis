@@ -395,6 +395,30 @@ resources: {
 `, bucketName)
 }
 
+// simpleKeyPairTemplate asks EC2 to generate a key pair. Moto therefore returns
+// private key material to the driver once, exercising the sensitive path that
+// Core must remove from every normalized output it owns.
+func simpleKeyPairTemplate(keyPairName string) string {
+	return fmt.Sprintf(`
+resources: {
+	key: {
+		apiVersion: "praxis.io/v1"
+		kind:       "KeyPair"
+		metadata: {
+			name: %q
+		}
+		spec: {
+			region:  "us-east-1"
+			keyType: "rsa"
+			tags: {
+				env: "integration-test"
+			}
+		}
+	}
+}
+`, keyPairName)
+}
+
 func simpleS3TemplateWithPreventDestroy(bucketName string) string {
 	return fmt.Sprintf(`
 resources: {
@@ -984,6 +1008,85 @@ func TestCore_Apply_SingleS3(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "deployment should appear in listing index")
+}
+
+// TestCore_Apply_KeyPairPrivateMaterialIsNotPublicOutput proves the complete
+// secret-handling boundary around the generated-key path:
+//
+//   - the KeyPair driver persists only non-secret output metadata;
+//   - Core deployment state contains only normalized non-secret outputs;
+//   - resource.ready evidence (and therefore notification payloads derived
+//     from it) contains only the same normalized non-secret outputs.
+//
+// Restate still journals the generated key in the driver invocation and the
+// durable service-call response before Core normalizes it. See the KeyPair
+// driver documentation; importing an existing public key is the no-secret path.
+func TestCore_Apply_KeyPairPrivateMaterialIsNotPublicOutput(t *testing.T) {
+	env := setupCoreStack(t)
+	keyPairName := uniqueName(t, "keye2e")
+	deployKey := "test-keypair-output-" + keyPairName
+
+	_, err := ingress.Service[command.ApplyRequest, command.ApplyResponse](
+		env.ingress, "PraxisCommandService", "Apply",
+	).Request(t.Context(), command.ApplyRequest{
+		Template:      simpleKeyPairTemplate(keyPairName),
+		DeploymentKey: deployKey,
+		Variables:     accountVariables(),
+	})
+	require.NoError(t, err)
+
+	state := pollDeploymentState(t, env.ingress, deployKey,
+		[]types.DeploymentStatus{types.DeploymentComplete, types.DeploymentFailed},
+		60*time.Second,
+	)
+	require.Equal(t, types.DeploymentComplete, state.Status, "generated KeyPair apply should complete")
+	require.Contains(t, state.Outputs, "key")
+	assert.NotContains(t, state.Outputs["key"], "privateKeyMaterial")
+
+	stateJSON, err := json.Marshal(state)
+	require.NoError(t, err)
+	assert.NotContains(t, strings.ToLower(string(stateJSON)), "privatekeymaterial")
+	assert.NotContains(t, string(stateJSON), "BEGIN PRIVATE KEY")
+	assert.NotContains(t, string(stateJSON), "BEGIN RSA PRIVATE KEY")
+
+	driverKey := "us-east-1~" + keyPairName
+	stored, err := ingress.Object[restate.Void, driverkeypair.KeyPairOutputs](
+		env.ingress, driverkeypair.ServiceName, driverKey, "GetOutputs",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Empty(t, stored.PrivateKeyMaterial)
+	assert.Equal(t, keyPairName, stored.KeyName)
+
+	events, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
+		env.ingress,
+		orchestrator.DeploymentEventStoreServiceName,
+		deployKey,
+		"ListSince",
+	).Request(t.Context(), int64(0))
+	require.NoError(t, err)
+
+	foundReady := false
+	for _, record := range events {
+		if record.Event.Type() != orchestrator.EventTypeResourceReady {
+			continue
+		}
+		var payload map[string]any
+		require.NoError(t, record.Event.DataAs(&payload))
+		if payload["resourceName"] != "key" {
+			continue
+		}
+		foundReady = true
+		outputs, ok := payload["outputs"].(map[string]any)
+		require.True(t, ok, "resource.ready outputs should decode as an object: %#v", payload["outputs"])
+		assert.NotContains(t, outputs, "privateKeyMaterial")
+	}
+	require.True(t, foundReady, "KeyPair resource.ready evidence should be present")
+
+	eventJSON, err := json.Marshal(events)
+	require.NoError(t, err)
+	assert.NotContains(t, strings.ToLower(string(eventJSON)), "privatekeymaterial")
+	assert.NotContains(t, string(eventJSON), "BEGIN PRIVATE KEY")
+	assert.NotContains(t, string(eventJSON), "BEGIN RSA PRIVATE KEY")
 }
 
 // TestCore_Plan_ShowsDiff exercises the plan (dry-run) path:

@@ -40,9 +40,18 @@ instance resource, and the DAG ensures creation ordering.
 
 When AWS generates a key pair (`CreateKeyPair`), the private key material is returned
 **exactly once** in the API response. There is no way to retrieve it again. The
-driver stores the private key fingerprint in outputs but does **NOT** store the
-private key material in Restate state. The private key is returned to the caller
-from the Provision handler response and must be captured at that moment.
+driver returns it from its direct `Provision` handler, but its durable K/V state
+uses a separate output type that cannot represent private key material. Praxis
+Core removes the field during normalization, so deployment state, events,
+notifications, and expression hydration never expose it.
+
+This does **not** make generated keys absent from Restate storage. Restate must
+journal the AWS callback result and durable service-call response to replay them
+deterministically; those journal entries can contain the one-time private key.
+Treat the generated-key path as sensitive and protect Restate's data store and
+administrative APIs accordingly. Importing a user-generated public key avoids
+putting private key material through Praxis or Restate at all and is the
+recommended path for security-sensitive deployments.
 
 For the "import public key" flow (`ImportKeyPair`), no private key is involved —
 the user already has their key and provides only the public half.
@@ -189,10 +198,6 @@ package ec2
         keyPairId:      string
         keyFingerprint: string
         keyType:        string
-        // privateKeyMaterial is ONLY populated on first Provision when AWS
-        // generates the key pair. It is NOT stored in Restate state.
-        // The caller must capture it from the Provision response.
-        privateKeyMaterial?: string
     }
 }
 ```
@@ -203,8 +208,11 @@ package ec2
   over RSA for SSH.
 - `publicKeyMaterial` is optional — omit for AWS-generated keys, provide for
   user-imported keys.
-- `privateKeyMaterial` in outputs is populated only once, on the initial Provision
-  response. It is never stored in Virtual Object state.
+- A direct call to the KeyPair driver's `Provision` handler receives
+  `privateKeyMaterial` once when AWS generates the key. Praxis Core deliberately
+  removes it during output normalization, so Apply/Deploy state, events,
+  notifications, and expression hydration never expose it. The provider call
+  itself remains in Restate's durable invocation journal.
 
 ---
 
@@ -243,8 +251,16 @@ type KeyPairOutputs struct {
     KeyFingerprint     string `json:"keyFingerprint"`
     KeyType            string `json:"keyType"`
     // PrivateKeyMaterial is populated ONLY on first Provision (AWS-generated keys).
-    // NOT stored in state — returned to the caller once, then zeroed.
+    // Not stored in K/V state; present only in the initial direct handler response.
     PrivateKeyMaterial string `json:"privateKeyMaterial,omitempty"`
+}
+
+// Durable state uses a different type that cannot hold private key material.
+type KeyPairDurableOutputs struct {
+    KeyName        string `json:"keyName"`
+    KeyPairId      string `json:"keyPairId"`
+    KeyFingerprint string `json:"keyFingerprint"`
+    KeyType        string `json:"keyType"`
 }
 
 type ObservedState struct {
@@ -258,7 +274,7 @@ type ObservedState struct {
 type KeyPairState struct {
     Desired            KeyPairSpec          `json:"desired"`
     Observed           ObservedState        `json:"observed"`
-    Outputs            KeyPairOutputs       `json:"outputs"`
+    Outputs            KeyPairDurableOutputs `json:"outputs"`
     Status             types.ResourceStatus `json:"status"`
     Mode               types.Mode           `json:"mode"`
     Error              string               `json:"error,omitempty"`
@@ -268,12 +284,13 @@ type KeyPairState struct {
 }
 ```
 
-**Note**: `KeyPairOutputs.PrivateKeyMaterial` is populated only in the return value
-from the Provision handler. When saving state, the driver zeroes this field:
+**Note**: `KeyPairOutputs.PrivateKeyMaterial` is populated only in the direct
+return value from the Provision handler. The conversion to durable outputs copies
+only public metadata; the Core adapter independently drops the field before
+generic output handling:
 
 ```go
-outputs.PrivateKeyMaterial = "" // never persist private key material
-state.Outputs = outputs
+state.Outputs = durableOutputs(outputs) // target type has no private-key field
 restate.Set(ctx, drivers.StateKey, state)
 return outputsWithPrivateKey, nil // return WITH the private key
 ```
@@ -587,7 +604,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
         }
     }
 
-    var outputs KeyPairOutputs
+    outputs := outputsFromDurable(state.Outputs)
 
     if existingKeyPairId == "" {
         // Create or import key pair
@@ -641,7 +658,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
                 KeyPairId:          result.keyPairId,
                 KeyFingerprint:     result.fingerprint,
                 KeyType:            spec.KeyType,
-                PrivateKeyMaterial: result.privateKey, // returned to caller ONCE
+                PrivateKeyMaterial: result.privateKey, // direct handler response only
             }
         }
     } else {
@@ -657,7 +674,7 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
                 return KeyPairOutputs{}, err
             }
         }
-        outputs = state.Outputs // retain existing outputs (no private key on re-provision)
+        outputs = outputsFromDurable(state.Outputs) // cannot reconstruct a private key
     }
 
     // Describe to update observed state
@@ -675,9 +692,9 @@ func (d *KeyPairDriver) Provision(ctx restate.ObjectContext, spec KeyPairSpec) (
     privateKeyForReturn := outputs.PrivateKeyMaterial
     outputs = outputsFromObserved(observed)
 
-    // Store state WITHOUT private key material
+    // Cross into a durable type that has no private-key field.
     state.Observed = observed
-    state.Outputs = outputs // no private key in stored state
+    state.Outputs = durableOutputs(outputs)
     state.Status = types.StatusReady
     restate.Set(ctx, drivers.StateKey, state)
     d.scheduleReconcile(ctx, &state)
@@ -822,7 +839,8 @@ service. Add `test-keypair` and `ls-keypair` targets to the justfile.
 1. `TestSpecFromObserved_RoundTrip` — import creates matching spec.
 2. `TestServiceName` — returns "KeyPair".
 3. `TestOutputsFromObserved` — correct output mapping.
-4. `TestPrivateKeyNotStoredInState` — verify private key is zeroed in state.
+4. `TestPrivateKeyCannotBeRepresentedInDurableState` — serialize durable state
+   and verify its type cannot carry the private-key field or value.
 
 ### `internal/core/provider/keypair_adapter_test.go`
 
@@ -830,7 +848,17 @@ service. Add `test-keypair` and `ls-keypair` targets to the justfile.
 2. `TestKeyPairAdapter_BuildImportKey` — returns `region~keyName` (same pattern).
 3. `TestKeyPairAdapter_Kind` — returns "KeyPair".
 4. `TestKeyPairAdapter_Scope` — returns `KeyScopeRegion`.
-5. `TestKeyPairAdapter_NormalizeOutputs` — converts struct to map.
+5. `TestKeyPairAdapter_NormalizeOutputs` — converts to the public map and proves
+   serialized normalized output omits private key material.
+
+### Core boundary tests
+
+1. `TestHydrateExprs_KeyPairPrivateKeyIsNotAnAvailableCoreOutput` — public key
+   metadata can hydrate a dependent spec, while `privateKeyMaterial` remains
+   unresolved because it is not a Core output.
+2. `TestCore_Apply_KeyPairPrivateMaterialIsNotPublicOutput` — generated-key apply
+   proves driver state, Core deployment state, and `resource.ready` evidence all
+   omit private key material after serialization.
 
 ---
 
@@ -850,22 +878,29 @@ service. Add `test-keypair` and `ls-keypair` targets to the justfile.
 
 ## KeyPair-Specific Design Decisions
 
-### 1. Private Key Handling: Return Once, Never Store
+### 1. Private Key Handling: Non-Secret State, Sensitive Journal
 
 The private key material from AWS-generated key pairs is:
 
-- Returned in the Provision handler response (so the caller can capture it).
-- NOT stored in Restate Virtual Object state.
-- NOT returned on subsequent Provision calls (re-provision returns empty private key).
+- Returned in the direct driver `Provision` handler response.
+- Not representable in Restate Virtual Object K/V state.
+- Removed from every Core-normalized output before deployment state, events,
+  notifications, or hydration can consume it.
+- Not returned on subsequent Provision calls (re-provision returns an empty
+  private-key field).
+- Present in Restate's journal for the initial AWS callback and durable handler
+  response; journal encryption, access control, backup handling, and retention
+  are therefore part of the generated-key threat model.
 
-This is a deliberate security choice. Storing the private key in Restate state would
-mean it persists in the Restate journal and any state snapshots indefinitely. The
-one-time return pattern matches AWS's own behaviour (the Console shows the private
-key once and never again).
+Separating durable and one-time output types prevents accidental exposure through
+Praxis's public data paths, but it cannot defeat Restate's deterministic journaling.
+The one-time AWS behaviour and durable workflow behaviour are different concerns.
 
-**Consequence**: if the caller fails to capture the private key from the first
-Provision response, the key is lost. The only recovery is to delete the key pair and
-create a new one. This is the same user experience as the AWS Console.
+**Consequence**: normal Praxis Apply/Deploy consumers do not receive generated
+private keys. Use the import-public-key flow for ordinary templates. A caller that
+invokes the internal driver directly can receive the initial key, but must both
+capture it immediately and accept that Restate journals it. If that response is
+lost, the only recovery is to delete the key pair and create a new one.
 
 ### 2. No Ownership Tags
 
