@@ -210,8 +210,11 @@ func (w *DeploymentRollbackWorkflow) Run(ctx restate.WorkflowContext, req Delete
 			continue
 		}
 		if first == timeout {
-			restate.CancelInvocation(ctx, invocation.ID())
-			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, fmt.Sprintf("rollback delete timed out after %s", rollbackResourceTimeout)); err != nil {
+			errMsg := timeoutOutcomeMessage("rollback delete", rollbackResourceTimeout)
+			if err := w.recordRollbackFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, errMsg); err != nil {
+				return DeploymentResult{}, err
+			}
+			if err := recordTimeoutEvidence(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, item.Name, resource.Kind, "rollback delete", rollbackResourceTimeout, errMsg); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue

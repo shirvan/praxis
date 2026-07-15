@@ -90,12 +90,16 @@ type driftEventPayload struct {
 // resourceEventPayload is the data payload for resource lifecycle events
 // (dispatched, ready, error, skipped, delete variants, replace).
 type resourceEventPayload struct {
-	Message      string         `json:"message"`
-	Status       string         `json:"status,omitempty"`
-	ResourceName string         `json:"resourceName,omitempty"`
-	ResourceKind string         `json:"resourceKind,omitempty"`
-	Error        string         `json:"error,omitempty"`
-	Outputs      map[string]any `json:"outputs,omitempty"`
+	Message             string         `json:"message"`
+	Status              string         `json:"status,omitempty"`
+	ResourceName        string         `json:"resourceName,omitempty"`
+	ResourceKind        string         `json:"resourceKind,omitempty"`
+	Operation           string         `json:"operation,omitempty"`
+	ProviderOutcome     string         `json:"providerOutcome,omitempty"`
+	InvocationContinues bool           `json:"invocationContinues,omitempty"`
+	Timeout             string         `json:"timeout,omitempty"`
+	Error               string         `json:"error,omitempty"`
+	Outputs             map[string]any `json:"outputs,omitempty"`
 }
 
 // --- Deployment lifecycle event builders ---
@@ -685,16 +689,22 @@ func NewResourceObserveSkippedEvent(deploymentKey, workspace string, generation 
 
 // --- Resource timeout event builders ---
 
-// NewResourceTimeoutEvent creates the event emitted when a resource operation
-// exceeds its configured timeout.
-func NewResourceTimeoutEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, timeout time.Duration) (cloudevents.Event, error) {
+// NewResourceTimeoutEvent records an observation deadline, not a cancellation.
+// Its explicit outcome metadata prevents consumers from interpreting a timeout
+// as proof that the provider operation failed or stopped.
+func NewResourceTimeoutEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind, operation string, timeout time.Duration) (cloudevents.Event, error) {
+	errMsg := timeoutOutcomeMessage(operation, timeout)
 	return newResourceLifecycleEvent(
 		EventTypeResourceTimeout, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityError,
 		resourceEventPayload{
-			Message:      fmt.Sprintf("resource %s timed out after %s", resourceName, timeout),
-			ResourceName: resourceName,
-			ResourceKind: resourceKind,
-			Error:        fmt.Sprintf("operation timed out after %s", timeout),
+			Message:             fmt.Sprintf("stopped waiting for %s on resource %s after %s; provider outcome is unknown and the durable driver invocation continues", operation, resourceName, timeout),
+			ResourceName:        resourceName,
+			ResourceKind:        resourceKind,
+			Operation:           operation,
+			ProviderOutcome:     types.ConditionUnknown,
+			InvocationContinues: true,
+			Timeout:             timeout.String(),
+			Error:               errMsg,
 		},
 	)
 }
