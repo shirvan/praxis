@@ -6,6 +6,10 @@
 .env
 bin/
 dist/
+# Judy is an independent Rust project and is never part of Praxis's Go image.
+judy/
+.DS_Store
+**/.DS_Store
 # Coverage profiles (written by `just test`) change on every run; if included
 # they invalidate the COPY layer and force a full rebuild of all binaries.
 *.out

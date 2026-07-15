@@ -8,9 +8,25 @@ set dotenv-load := true
 default:
     @just --list
 
+# Judy is a standalone Rust/Janet verification engine. These recipes are only
+# a bridge into Judy's own toolchain; Judy remains independently buildable.
+judy-check:
+    @test -f judy/Cargo.toml || (echo "Judy is not initialized. Initialize the judy submodule first." && exit 1)
+    just --justfile judy/justfile check
+
+judy-test:
+    @test -f judy/Cargo.toml || (echo "Judy is not initialized. Initialize the judy submodule first." && exit 1)
+    just --justfile judy/justfile test
+
+judy-ci:
+    @test -f judy/Cargo.toml || (echo "Judy is not initialized. Initialize the judy submodule first." && exit 1)
+    just --justfile judy/justfile ci
+
 wait_timeout_seconds := "120"
 test_heartbeat_seconds := "30"
-integration_timeout := env_var_or_default("PRAXIS_INTEGRATION_TIMEOUT", "10m")
+# The serial integration suite starts isolated Restate testcontainers. Ten
+# minutes is too narrow on Docker Desktop even when every assertion is healthy.
+integration_timeout := env_var_or_default("PRAXIS_INTEGRATION_TIMEOUT", "20m")
 
 # ─── Development ────────────────────────────────────────────
 

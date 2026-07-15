@@ -1,0 +1,3 @@
+[submodule "judy"]
+	path = judy
+	url = https://github.com/shirvan/judy.git
