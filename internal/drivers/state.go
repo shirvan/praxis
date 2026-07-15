@@ -74,6 +74,16 @@ func DefaultMode(m types.Mode) types.Mode {
 	return m
 }
 
+// CurrentTime returns a UTC wall-clock timestamp through Restate's journal.
+// Driver handlers must use this instead of time.Now whenever the timestamp is
+// persisted or returned, otherwise replay can observe a different value and
+// diverge from the original execution.
+func CurrentTime(ctx restate.Context) (time.Time, error) {
+	return restate.Run(ctx, func(restate.RunContext) (time.Time, error) {
+		return time.Now().UTC(), nil
+	})
+}
+
 // IsAccessDenied returns true for AWS authorization failure codes.
 // Exported at the drivers package level so individual driver packages can use
 // it without importing awserr directly.

@@ -68,6 +68,32 @@ func TestIsAccessDenied(t *testing.T) {
 	assert.False(t, IsAccessDenied(&mockAPIError{code: "NotFound"}))
 }
 
+func TestIsValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "validation exception", err: &mockAPIError{code: "ValidationException"}, want: true},
+		{name: "validation error", err: &mockAPIError{code: "ValidationError"}, want: true},
+		{name: "invalid request", err: &mockAPIError{code: "InvalidRequestException"}, want: true},
+		{name: "serialization", err: &mockAPIError{code: "SerializationException"}, want: true},
+		{name: "malformed query", err: &mockAPIError{code: "MalformedQueryString"}, want: true},
+		{name: "invalid parameter prefix", err: &mockAPIError{code: "InvalidParameterValue"}, want: true},
+		{name: "wrapped typed error", err: fmt.Errorf("describe failed: %w", &mockAPIError{code: "InvalidParameterException"}), want: true},
+		{name: "flattened journal error", err: fmt.Errorf("operation error EC2: api error InvalidParameterValue: bad value"), want: true},
+		{name: "not found remains resource-specific", err: &mockAPIError{code: "InvalidVpcID.NotFound"}, want: false},
+		{name: "conflict remains resource-specific", err: &mockAPIError{code: "ResourceInUseException"}, want: false},
+		{name: "throttle remains retryable", err: &mockAPIError{code: "ThrottlingException"}, want: false},
+		{name: "nil", err: nil, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsValidation(tt.err))
+		})
+	}
+}
+
 func TestIsExpiredToken(t *testing.T) {
 	for _, code := range []string{"ExpiredToken", "ExpiredTokenException", "RequestExpired", "TokenRefreshRequired"} {
 		assert.True(t, IsExpiredToken(&mockAPIError{code: code}), "expected expired for ", code)

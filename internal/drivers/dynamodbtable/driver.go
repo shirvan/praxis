@@ -100,9 +100,6 @@ func (d *DynamoDBTableDriver) Provision(ctx restate.ObjectContext, spec DynamoDB
 				if IsInvalidParam(runErr) {
 					return ObservedState{}, restate.TerminalError(runErr, 400)
 				}
-				if IsLimitExceeded(runErr) {
-					return ObservedState{}, restate.TerminalError(runErr, 409)
-				}
 				return ObservedState{}, runErr
 			}
 			return obs, nil

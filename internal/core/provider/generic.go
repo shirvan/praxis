@@ -199,12 +199,7 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
 		state, found, describeErr := probe(runCtx, planID)
 		if describeErr != nil {
-			// Throttled describes during a wide plan must retry, not fail
-			// the whole plan permanently.
-			if awserr.IsThrottled(describeErr) {
-				return describePlanResult{}, describeErr
-			}
-			return describePlanResult{}, restate.TerminalError(describeErr, 500)
+			return describePlanResult{}, classifyPlanProbeError(describeErr)
 		}
 		return describePlanResult{State: state, Found: found}, nil
 	})
@@ -220,6 +215,23 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 		return types.OpNoOp, nil, nil
 	}
 	return types.OpUpdate, types.MaskSensitiveFieldDiffs(fields, a.desc.SensitiveFields), nil
+}
+
+func classifyPlanProbeError(err error) error {
+	if awserr.IsExpiredToken(err) {
+		// The probe's credentials were resolved before entering restate.Run;
+		// retrying this same durable call cannot refresh them.
+		return restate.TerminalError(err, 401)
+	}
+	if awserr.IsAccessDenied(err) {
+		return restate.TerminalError(err, 403)
+	}
+	if awserr.IsValidation(err) {
+		return restate.TerminalError(err, 400)
+	}
+	// Throttling, transport failures, and unknown provider errors are
+	// retryable. Not-found/conflict semantics stay in the typed probe.
+	return err
 }
 
 func (a *GenericAdapter[S, O, Obs]) BuildImportKey(region, resourceID string) (string, error) {

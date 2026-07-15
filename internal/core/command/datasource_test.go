@@ -13,7 +13,9 @@ import (
 )
 
 func TestValidateDataSources_NameCollision(t *testing.T) {
-	service := &PraxisCommandService{providers: provider.NewRegistryWithAdapters(provider.NewVPCAdapterWithAuth(nil))}
+	registry, registryErr := provider.NewRegistryWithAdapters(provider.NewVPCAdapterWithAuth(nil))
+	require.NoError(t, registryErr)
+	service := &PraxisCommandService{providers: registry}
 	err := service.validateDataSources(map[string]template.DataSourceSpec{
 		"vpc": {Kind: "VPC", Filter: template.DataSourceFilter{Name: "prod"}},
 	}, map[string]bool{"vpc": true})
@@ -22,7 +24,9 @@ func TestValidateDataSources_NameCollision(t *testing.T) {
 }
 
 func TestValidateDataSources_EmptyFilter(t *testing.T) {
-	service := &PraxisCommandService{providers: provider.NewRegistryWithAdapters(provider.NewVPCAdapterWithAuth(nil))}
+	registry, registryErr := provider.NewRegistryWithAdapters(provider.NewVPCAdapterWithAuth(nil))
+	require.NoError(t, registryErr)
+	service := &PraxisCommandService{providers: registry}
 	err := service.validateDataSources(map[string]template.DataSourceSpec{
 		"vpc": {Kind: "VPC"},
 	}, nil)

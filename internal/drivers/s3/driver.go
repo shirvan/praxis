@@ -379,6 +379,12 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		return types.ReconcileResult{}, nil
 	}
 
+	now, err := drivers.CurrentTime(ctx)
+	if err != nil {
+		return types.ReconcileResult{}, err
+	}
+	lastReconcile := now.Format(time.RFC3339)
+
 	// --- Describe current AWS state ---
 	observed, err := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
 		obs, err := api.DescribeBucket(rc, state.Desired.BucketName)
@@ -395,11 +401,10 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 			// Resource was deleted externally — transition to Error, do NOT re-provision.
 			state.Status = types.StatusError
 			state.Error = fmt.Sprintf("bucket %s was deleted externally", state.Desired.BucketName)
-			state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+			state.LastReconcile = lastReconcile
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)
 			drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventExternalDelete, state.Error)
-			now := time.Now()
 			return types.ReconcileResult{
 				Drift: true,
 				Error: state.Error,
@@ -410,7 +415,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 			}, nil
 		}
 		// Transient AWS error — schedule retry, report error.
-		state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+		state.LastReconcile = lastReconcile
 		restate.Set(ctx, drivers.StateKey, state)
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Error: err.Error()}, nil
@@ -418,7 +423,7 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 
 	// --- Update observed state ---
 	state.Observed = observed
-	state.LastReconcile = time.Now().UTC().Format(time.RFC3339)
+	state.LastReconcile = lastReconcile
 
 	drift := HasDrift(state.Desired, observed)
 
@@ -428,8 +433,6 @@ func (d *S3BucketDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Drift: drift, Correcting: false}, nil
 	}
-
-	now := time.Now()
 
 	// --- Ready + Managed + drift: correct ---
 	if drift && state.Mode == types.ModeManaged {
