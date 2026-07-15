@@ -2,9 +2,6 @@
 
 > Convert existing IaC (Terraform HCL, CloudFormation YAML/JSON, Crossplane manifests)
 > into a Praxis CUE template, then verify it with a dry-run plan.
->
-> This procedure was previously implemented by the (removed) Concierge migration
-> pipeline. Any agent harness can follow it directly.
 
 ## When to Use
 

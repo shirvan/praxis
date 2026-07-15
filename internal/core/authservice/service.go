@@ -441,13 +441,6 @@ func buildResponse(cached *CachedCredential, cfg AccountConfig) CredentialRespon
 		resp.SessionToken = cached.SessionToken
 		resp.ExpiresAt = cached.ExpiresAt
 		resp.Source = cached.Source
-		// Legacy state written before the Source field existed used the
-		// sentinel string in the key fields.
-		if cached.AccessKeyID == SourceDefaultChain {
-			resp.Source = SourceDefaultChain
-			resp.AccessKeyID = ""
-			resp.SecretAccessKey = ""
-		}
 	}
 	return resp
 }

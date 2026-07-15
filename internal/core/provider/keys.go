@@ -10,10 +10,6 @@ const (
 	// '~' is chosen because it is URL-safe and does not collide with characters
 	// valid in AWS resource names.
 	KeySeparator = "~"
-
-	// DefaultAWSRegion is a compatibility fallback for resource kinds whose schema
-	// does not yet carry region explicitly.
-	DefaultAWSRegion = "us-east-1"
 )
 
 // KeyScope describes the uniqueness scope of a resource kind's key.
