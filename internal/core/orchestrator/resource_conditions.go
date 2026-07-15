@@ -66,6 +66,21 @@ func failedConditions(existing []types.Condition, now time.Time, reason, message
 	}, now)
 }
 
+func timeoutConditions(existing []types.Condition, now time.Time, message string) []types.Condition {
+	conditions := types.SetCondition(existing, types.Condition{
+		Type:    types.ConditionProvisioned,
+		Status:  types.ConditionUnknown,
+		Reason:  types.ReasonTimedOut,
+		Message: message,
+	}, now)
+	return types.SetCondition(conditions, types.Condition{
+		Type:    types.ConditionReady,
+		Status:  types.ConditionUnknown,
+		Reason:  types.ReasonTimedOut,
+		Message: message,
+	}, now)
+}
+
 func skippedConditions(existing []types.Condition, now time.Time, message string) []types.Condition {
 	conditions := types.SetCondition(existing, types.Condition{
 		Type:    types.ConditionProvisioned,

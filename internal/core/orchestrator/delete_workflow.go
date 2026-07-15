@@ -340,11 +340,12 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			continue
 		}
 		if first == timeout {
-			// Cancel the abandoned driver call so it cannot complete the
-			// delete long after the workflow has recorded the failure.
-			restate.CancelInvocation(ctx, pending.invocation.ID())
 			resource := exec.plan[resourceName]
-			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, fmt.Sprintf("delete timed out after %s", pending.timeout), req.Force); err != nil {
+			errMsg := timeoutOutcomeMessage("resource delete", pending.timeout)
+			if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, errMsg, req.Force); err != nil {
+				return DeploymentResult{}, err
+			}
+			if err := recordTimeoutEvidence(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, resourceName, resource.Kind, "resource delete", pending.timeout, errMsg); err != nil {
 				return DeploymentResult{}, err
 			}
 			continue

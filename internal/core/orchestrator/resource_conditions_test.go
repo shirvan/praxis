@@ -61,6 +61,22 @@ func TestFailedConditions(t *testing.T) {
 	assert.Equal(t, "access denied", ready.Message)
 }
 
+func TestTimeoutConditionsMarkOutcomeUnknown(t *testing.T) {
+	now := time.Now()
+	conditions := timeoutConditions(nil, now, "provider outcome is unknown and the durable driver invocation continues")
+
+	provisioned, ok := types.GetCondition(conditions, types.ConditionProvisioned)
+	assert.True(t, ok)
+	assert.Equal(t, types.ConditionUnknown, provisioned.Status)
+	assert.Equal(t, types.ReasonTimedOut, provisioned.Reason)
+
+	ready, ok := types.GetCondition(conditions, types.ConditionReady)
+	assert.True(t, ok)
+	assert.Equal(t, types.ConditionUnknown, ready.Status)
+	assert.Equal(t, types.ReasonTimedOut, ready.Reason)
+	assert.Contains(t, ready.Message, "invocation continues")
+}
+
 func TestSkippedConditions(t *testing.T) {
 	now := time.Now()
 	conditions := skippedConditions(nil, now, "skipped due to upstream failure")

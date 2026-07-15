@@ -558,6 +558,7 @@ Each condition has `Type`, `Status` (True/False/Unknown), `Reason` (CamelCase on
 | Dispatched | Unknown | True (Dispatched) |
 | Ready | True (Succeeded) | True (Succeeded) |
 | Error | False (ProvisionFailed) | True (ProvisionFailed) |
+| Operation timeout | Unknown (TimedOut) | Unknown (TimedOut) |
 | Skipped | False (Skipped) | False (Skipped) |
 | Retrying | False (Retrying) | True (Retrying) |
 
@@ -573,7 +574,40 @@ Each resource operation (create, update, delete) has a timeout resolved in prior
 2. **Adapter default** — adapters that implement `TimeoutDefaultsProvider` return per-kind defaults (e.g., RDS=30m, EC2=10m)
 3. **System default** — 5 minutes for all operations
 
-When a resource operation exceeds its resolved timeout, the orchestrator marks it as an error and fires a `resource.timeout` event.
+### A Timeout Is an Observation Deadline
+
+The timeout limits how long the orchestrator waits; it does **not** cancel the durable driver invocation. Restate has already accepted that invocation, and cancelling it at the caller's deadline would not prove that provider-side work stopped. The driver might already have sent an AWS request, AWS might complete it after the deadline, or the driver might finish successfully later.
+
+Praxis therefore records the only sound conclusion: the outcome is unknown.
+
+- The resource status becomes `Error`, so the generation cannot be reported as green.
+- Both `Provisioned` and `Ready` become `Unknown` with reason `TimedOut`.
+- Apply skips affected dependents; delete follows its normal dependency-failure rules.
+- A `dev.praxis.resource.timeout` event records the operation, configured timeout, `providerOutcome: "Unknown"`, and `invocationContinues: true`.
+- The timed-out future is removed from the workflow's in-flight set. If it later succeeds, that late result is not consumed and cannot silently change the failed generation to `Ready` or `Complete`.
+
+```mermaid
+flowchart LR
+    A["Dispatch durable<br/>driver invocation"] --> B["Wait for result<br/>or deadline"]
+    B -->|"result first"| C["Record success<br/>or driver error"]
+    B -->|"deadline first"| D["Resource: Error<br/>conditions: Unknown"]
+    D --> E["Emit timeout evidence<br/>finalize generation Failed"]
+    B -. "invocation is not cancelled" .-> F["Driver may finish later"]
+    F --> G["AWS may have changed"]
+    G -. "late result is not accepted<br/>by failed generation" .-> E
+```
+
+This deliberately separates two facts that are easy to conflate:
+
+| Question | What Praxis can conclude at the deadline |
+|----------|-------------------------------------------|
+| Did the caller receive a result in time? | No |
+| Did the operation fail in AWS? | Unknown |
+| Did the durable driver invocation stop? | No; it continues |
+| Can a late success make this generation green? | No |
+| How is the real provider state established afterward? | A fresh observe/reconcile or a new apply/delete generation |
+
+Operators should treat a timeout as requiring observation before another destructive action. In particular, a provision may have created a resource after Praxis finalized the generation, and a delete or replace-delete may have removed one after Praxis reported the unknown outcome.
 
 ---
 

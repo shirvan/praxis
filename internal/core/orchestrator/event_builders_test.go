@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestEventBuilders_ValidateCommandPolicyAndSystemEvents(t *testing.T) {
@@ -75,4 +77,24 @@ func TestEventBuilders_PolicyPreventedDestroyCarriesExpectedFields(t *testing.T)
 	assert.Equal(t, "S3Bucket", payload["resourceKind"])
 	assert.Equal(t, EventCategoryPolicy, event.Extensions()[EventExtensionCategory])
 	assert.Equal(t, EventSeverityWarn, event.Extensions()[EventExtensionSeverity])
+}
+
+func TestResourceTimeoutEventCarriesUnknownOutcomeEvidence(t *testing.T) {
+	event, err := NewResourceTimeoutEvent(
+		"dep-timeout", "default", 3, time.Now().UTC(),
+		"bucket", "S3Bucket", "resource provision", 30*time.Second,
+	)
+	require.NoError(t, err)
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas"))
+	require.NoError(t, err)
+	require.NoError(t, NewEventBus(absSchemaDir).validateEventData(event))
+
+	var payload map[string]any
+	require.NoError(t, event.DataAs(&payload))
+	assert.Equal(t, "resource provision", payload["operation"])
+	assert.Equal(t, types.ConditionUnknown, payload["providerOutcome"])
+	assert.Equal(t, true, payload["invocationContinues"])
+	assert.Equal(t, "30s", payload["timeout"])
+	assert.Contains(t, payload["message"], "stopped waiting")
+	assert.Contains(t, payload["error"], "invocation continues")
 }
