@@ -188,11 +188,13 @@ package sns
 
         // policy is the JSON access policy for the topic.
         // Defines who can publish to or subscribe to the topic.
-        // If omitted, SNS creates a default policy allowing the topic owner full access.
+        // If omitted, Praxis converges the topic to SNS's documented owner default.
+        // Omitting a previously configured custom policy removes that policy.
         policy?: string
 
         // deliveryPolicy is the JSON delivery policy for HTTP/S subscriptions.
         // Controls retry behavior (backoff, max retries, throttle) for HTTP endpoints.
+        // Omitting it removes a previously configured custom delivery policy.
         deliveryPolicy?: string
 
         // kmsMasterKeyId is the ID of an AWS KMS key for server-side encryption.
@@ -223,6 +225,12 @@ package sns
 
 - **`deliveryPolicy` as JSON string**: Delivery policies have a complex nested
   structure. JSON string is the simplest representation and matches the AWS API.
+
+- **Omission is declarative**: Optional mutable attributes are not implicitly
+  unmanaged. Omitting `policy` restores SNS's documented owner default; omitting
+  `deliveryPolicy` clears the custom policy; omitting `kmsMasterKeyId` disables
+  topic encryption. This makes a complete desired spec converge independently of
+  values left by an earlier Praxis run or another tool.
 
 - **FIFO constraint**: When `fifoTopic` is true, `topicName` must end with `.fifo`.
   The schema regex allows the `.fifo` suffix but does not enforce the coupling —

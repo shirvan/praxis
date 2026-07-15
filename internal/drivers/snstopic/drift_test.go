@@ -36,6 +36,10 @@ func TestHasDrift_KmsKeyChanged(t *testing.T) {
 	assert.True(t, HasDrift(desired, observed))
 }
 
+func TestHasDrift_OmittedKmsKeyDisablesStaleEncryption(t *testing.T) {
+	assert.True(t, HasDrift(SNSTopicSpec{}, ObservedState{KmsMasterKeyId: "alias/old-key"}))
+}
+
 func TestHasDrift_ContentBasedDeduplicationChanged(t *testing.T) {
 	desired := SNSTopicSpec{ContentBasedDeduplication: true}
 	observed := ObservedState{ContentBasedDeduplication: false}
@@ -88,6 +92,37 @@ func TestHasDrift_DeliveryPolicyChanged(t *testing.T) {
 	desired := SNSTopicSpec{DeliveryPolicy: `{"http":{"defaultHealthyRetryPolicy":{"numRetries":3}}}`}
 	observed := ObservedState{DeliveryPolicy: ""}
 	assert.True(t, HasDrift(desired, observed))
+}
+
+func TestHasDrift_OmittedDeliveryPolicyRemovesProviderConfiguration(t *testing.T) {
+	assert.True(t, HasDrift(SNSTopicSpec{}, ObservedState{DeliveryPolicy: `{"http":{"defaultHealthyRetryPolicy":{"numRetries":3}}}`}))
+	assert.False(t, HasDrift(SNSTopicSpec{}, ObservedState{DeliveryPolicy: `{}`}))
+}
+
+func TestHasDrift_OmittedPolicyAcceptsOnlyDocumentedDefault(t *testing.T) {
+	observed := ObservedState{
+		TopicArn: "arn:aws:sns:us-east-1:123456789012:alerts",
+		Owner:    "123456789012",
+	}
+	policy, err := defaultTopicPolicy(observed)
+	assert.NoError(t, err)
+	observed.Policy = policy
+	assert.False(t, HasDrift(SNSTopicSpec{}, observed))
+
+	observed.Policy = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"sns:Publish","Resource":"*"}]}`
+	assert.True(t, HasDrift(SNSTopicSpec{}, observed))
+}
+
+func TestHasDrift_TopicPoliciesUseSemanticJSONEquality(t *testing.T) {
+	desired := SNSTopicSpec{
+		Policy:         `{"Version":"2012-10-17","Statement":[]}`,
+		DeliveryPolicy: `{"http":{"defaultHealthyRetryPolicy":{"numRetries":3}}}`,
+	}
+	observed := ObservedState{
+		Policy:         `{ "Statement": [], "Version": "2012-10-17" }`,
+		DeliveryPolicy: `{"http": {"defaultHealthyRetryPolicy": {"numRetries": 3}}}`,
+	}
+	assert.False(t, HasDrift(desired, observed))
 }
 
 func TestComputeFieldDiffs_NoDiffs(t *testing.T) {

@@ -11,7 +11,9 @@ import "github.com/shirvan/praxis/pkg/types"
 // ServiceName is the Restate Virtual Object name for SNS subscriptions.
 const ServiceName = "SNSSubscription"
 
-// SNSSubscriptionSpec is the desired state for an SNS subscription.
+// SNSSubscriptionSpec is the desired state for an SNS subscription. Optional
+// provider attributes are declarative: omission requests the SNS default or
+// absence; it never means "leave an existing value unmanaged".
 type SNSSubscriptionSpec struct {
 	Account             string `json:"account,omitempty"`
 	Region              string `json:"region"`

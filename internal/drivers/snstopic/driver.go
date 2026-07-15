@@ -99,6 +99,29 @@ func (d *SNSTopicDriver) Provision(ctx restate.ObjectContext, spec SNSTopicSpec)
 		}
 		if obs.TopicArn == "" {
 			topicArn = "" // topic was deleted externally; recreate
+		} else {
+			// Compare desired state with the provider state we just read. Using
+			// state.Desired here is incorrect because it was replaced with spec
+			// above, which makes every desired/previous comparison a no-op.
+			if err := d.convergeAttributes(ctx, api, topicArn, spec, obs); err != nil {
+				state.Status = types.StatusError
+				state.Error = err.Error()
+				restate.Set(ctx, drivers.StateKey, state)
+				return SNSTopicOutputs{}, err
+			}
+
+			if !drivers.TagsMatch(spec.Tags, obs.Tags) {
+				if _, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
+					return restate.Void{}, api.UpdateTags(rc, topicArn, mergeTags(
+						spec.Tags, map[string]string{"praxis:managed-key": restate.Key(ctx)},
+					))
+				}); tagErr != nil {
+					state.Status = types.StatusError
+					state.Error = tagErr.Error()
+					restate.Set(ctx, drivers.StateKey, state)
+					return SNSTopicOutputs{}, tagErr
+				}
+			}
 		}
 	}
 
@@ -134,28 +157,6 @@ func (d *SNSTopicDriver) Provision(ctx restate.ObjectContext, spec SNSTopicSpec)
 		}); tagErr != nil {
 			ctx.Log().Warn("failed to set managed-key tag", "topic", topicArn, "err", tagErr)
 		}
-	} else {
-		// Topic exists — converge mutable attributes.
-		if err := d.convergeAttributes(ctx, api, topicArn, spec, state.Desired); err != nil {
-			state.Status = types.StatusError
-			state.Error = err.Error()
-			restate.Set(ctx, drivers.StateKey, state)
-			return SNSTopicOutputs{}, err
-		}
-
-		// Converge tags.
-		if !drivers.TagsMatch(spec.Tags, state.Observed.Tags) {
-			if _, tagErr := restate.Run(ctx, func(rc restate.RunContext) (restate.Void, error) {
-				return restate.Void{}, api.UpdateTags(rc, topicArn, mergeTags(
-					spec.Tags, map[string]string{"praxis:managed-key": restate.Key(ctx)},
-				))
-			}); tagErr != nil {
-				state.Status = types.StatusError
-				state.Error = tagErr.Error()
-				restate.Set(ctx, drivers.StateKey, state)
-				return SNSTopicOutputs{}, tagErr
-			}
-		}
 	}
 
 	// Refresh observed state.
@@ -169,6 +170,23 @@ func (d *SNSTopicDriver) Provision(ctx restate.ObjectContext, spec SNSTopicSpec)
 	if obsErr != nil {
 		// Non-fatal — use minimal observed state from what we know.
 		observed = ObservedState{TopicArn: topicArn, TopicName: spec.TopicName}
+	} else if HasDrift(spec, observed) {
+		// CreateTopic is idempotent by name and may therefore have returned a
+		// topic that pre-dates this Virtual Object. Converge the fresh provider
+		// state even on the create path; the input attributes are not evidence
+		// that an already-existing topic was updated.
+		if err := d.convergeAttributes(ctx, api, topicArn, spec, observed); err != nil {
+			state.Status = types.StatusError
+			state.Error = err.Error()
+			restate.Set(ctx, drivers.StateKey, state)
+			return SNSTopicOutputs{}, err
+		}
+		refreshed, refreshErr := restate.Run(ctx, func(rc restate.RunContext) (ObservedState, error) {
+			return api.GetTopicAttributes(rc, topicArn)
+		})
+		if refreshErr == nil {
+			observed = refreshed
+		}
 	}
 
 	outputs := SNSTopicOutputs{
@@ -188,26 +206,38 @@ func (d *SNSTopicDriver) Provision(ctx restate.ObjectContext, spec SNSTopicSpec)
 }
 
 // convergeAttributes calls SetTopicAttribute for each mutable attribute that changed.
-func (d *SNSTopicDriver) convergeAttributes(ctx restate.ObjectContext, api TopicAPI, topicArn string, desired, previous SNSTopicSpec) error {
+func (d *SNSTopicDriver) convergeAttributes(ctx restate.ObjectContext, api TopicAPI, topicArn string, desired SNSTopicSpec, observed ObservedState) error {
 	type attrUpdate struct {
 		name string
 		val  string
 	}
 
 	var updates []attrUpdate
-	if desired.DisplayName != previous.DisplayName {
+	if desired.DisplayName != observed.DisplayName {
 		updates = append(updates, attrUpdate{"DisplayName", desired.DisplayName})
 	}
-	if desired.Policy != "" && desired.Policy != previous.Policy {
-		updates = append(updates, attrUpdate{"Policy", desired.Policy})
+	if !topicPoliciesEqual(desired.Policy, observed) {
+		policy := desired.Policy
+		if policy == "" {
+			var err error
+			policy, err = defaultTopicPolicy(observed)
+			if err != nil {
+				return err
+			}
+		}
+		updates = append(updates, attrUpdate{"Policy", policy})
 	}
-	if desired.DeliveryPolicy != "" && desired.DeliveryPolicy != previous.DeliveryPolicy {
-		updates = append(updates, attrUpdate{"DeliveryPolicy", desired.DeliveryPolicy})
+	if !optionalTopicPoliciesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
+		policy := desired.DeliveryPolicy
+		if policy == "" {
+			policy = "{}"
+		}
+		updates = append(updates, attrUpdate{"DeliveryPolicy", policy})
 	}
-	if desired.KmsMasterKeyId != "" && desired.KmsMasterKeyId != previous.KmsMasterKeyId {
+	if desired.KmsMasterKeyId != observed.KmsMasterKeyId {
 		updates = append(updates, attrUpdate{"KmsMasterKeyId", desired.KmsMasterKeyId})
 	}
-	if desired.ContentBasedDeduplication != previous.ContentBasedDeduplication {
+	if desired.ContentBasedDeduplication != observed.ContentBasedDeduplication {
 		val := "false"
 		if desired.ContentBasedDeduplication {
 			val = "true"
@@ -341,9 +371,7 @@ func (d *SNSTopicDriver) Delete(ctx restate.ObjectContext) error {
 		return err
 	}
 
-	state.Status = types.StatusDeleted
-	restate.Set(ctx, drivers.StateKey, state)
-	restate.Clear(ctx, drivers.StateKey)
+	restate.Set(ctx, drivers.StateKey, SNSTopicState{Status: types.StatusDeleted})
 	return nil
 }
 
@@ -358,7 +386,11 @@ func (d *SNSTopicDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 	}
 
 	state.ReconcileScheduled = false
-	now := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := drivers.CurrentTime(ctx)
+	if err != nil {
+		return types.ReconcileResult{}, err
+	}
+	now := currentTime.Format(time.RFC3339)
 
 	api, err := d.apiForAccount(ctx, state.Desired.Account)
 	if err != nil {
@@ -408,7 +440,7 @@ func (d *SNSTopicDriver) Reconcile(ctx restate.ObjectContext) (types.ReconcileRe
 		ctx.Log().Info("drift detected, correcting", "topic", state.Outputs.TopicArn)
 		drivers.ReportDriftEvent(ctx, ServiceName, eventing.DriftEventDetected, "")
 
-		corrErr := d.convergeAttributes(ctx, api, state.Outputs.TopicArn, state.Desired, specFromObserved(observed, types.ImportRef{}))
+		corrErr := d.convergeAttributes(ctx, api, state.Outputs.TopicArn, state.Desired, observed)
 		if corrErr != nil {
 			restate.Set(ctx, drivers.StateKey, state)
 			d.scheduleReconcile(ctx, &state)

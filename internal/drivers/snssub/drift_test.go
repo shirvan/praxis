@@ -38,11 +38,11 @@ func TestHasDrift_FilterPolicyScopeChanged(t *testing.T) {
 	assert.True(t, HasDrift(desired, observed))
 }
 
-func TestHasDrift_FilterPolicyScopeEmpty_NoChange(t *testing.T) {
-	// When desired scope is empty, don't flag as drift
-	desired := SNSSubscriptionSpec{FilterPolicyScope: ""}
-	observed := ObservedState{FilterPolicyScope: "MessageAttributes"}
-	assert.False(t, HasDrift(desired, observed))
+func TestHasDrift_FilterPolicyScopeOmittedMeansAWSDefault(t *testing.T) {
+	desired := SNSSubscriptionSpec{}
+	assert.False(t, HasDrift(desired, ObservedState{FilterPolicyScope: "MessageAttributes"}))
+	assert.False(t, HasDrift(desired, ObservedState{}))
+	assert.True(t, HasDrift(desired, ObservedState{FilterPolicyScope: "MessageBody"}))
 }
 
 func TestHasDrift_RawMessageDeliveryChanged(t *testing.T) {
@@ -55,6 +55,16 @@ func TestHasDrift_DeliveryPolicyChanged(t *testing.T) {
 	desired := SNSSubscriptionSpec{DeliveryPolicy: `{"healthyRetryPolicy":{"numRetries":5}}`}
 	observed := ObservedState{DeliveryPolicy: `{"healthyRetryPolicy":{"numRetries":3}}`}
 	assert.True(t, HasDrift(desired, observed))
+}
+
+func TestHasDrift_EmptyFilterPolicyMatchesAWSRemovalRepresentation(t *testing.T) {
+	assert.False(t, HasDrift(SNSSubscriptionSpec{}, ObservedState{FilterPolicy: `{}`}))
+}
+
+func TestHasDrift_OmittedOptionalPoliciesRemoveProviderConfiguration(t *testing.T) {
+	assert.True(t, HasDrift(SNSSubscriptionSpec{}, ObservedState{DeliveryPolicy: `{"healthyRetryPolicy":{"numRetries":3}}`}))
+	assert.True(t, HasDrift(SNSSubscriptionSpec{}, ObservedState{RedrivePolicy: `{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:123:dlq"}`}))
+	assert.False(t, HasDrift(SNSSubscriptionSpec{}, ObservedState{DeliveryPolicy: `{}`, RedrivePolicy: `{}`}))
 }
 
 func TestHasDrift_RedrivePolicyChanged(t *testing.T) {
@@ -70,8 +80,16 @@ func TestHasDrift_SubscriptionRoleArnChanged(t *testing.T) {
 }
 
 func TestHasDrift_PolicySemanticEquality(t *testing.T) {
-	desired := SNSSubscriptionSpec{FilterPolicy: `{"event": ["order"]}`}
-	observed := ObservedState{FilterPolicy: `{"event":["order"]}`}
+	desired := SNSSubscriptionSpec{
+		FilterPolicy:   `{"event": ["order"]}`,
+		DeliveryPolicy: `{"healthyRetryPolicy": {"numRetries": 3}}`,
+		RedrivePolicy:  `{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:123:dlq"}`,
+	}
+	observed := ObservedState{
+		FilterPolicy:   `{"event":["order"]}`,
+		DeliveryPolicy: `{"healthyRetryPolicy":{"numRetries":3}}`,
+		RedrivePolicy:  `{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:123:dlq"}`,
+	}
 	assert.False(t, HasDrift(desired, observed))
 }
 

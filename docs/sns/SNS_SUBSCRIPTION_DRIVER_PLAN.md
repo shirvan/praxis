@@ -196,11 +196,13 @@ package sns
         // Messages that do not match the filter policy are not delivered.
         // Supports exact value matching, prefix matching, numeric matching,
         // exists/not-exists, and IP address matching.
+        // Omitting it removes a previously configured filter policy.
         filterPolicy?: string
 
         // filterPolicyScope determines where the filter policy is applied.
         // "MessageAttributes" (default) — filter on message attributes
         // "MessageBody" — filter on the message body (payload-based filtering)
+        // Omitting it restores MessageAttributes.
         filterPolicyScope?: "MessageAttributes" | "MessageBody"
 
         // rawMessageDelivery enables raw message delivery.
@@ -211,12 +213,14 @@ package sns
         // deliveryPolicy is a JSON delivery policy for HTTP/S subscriptions.
         // Controls retry behavior (backoff function, max retries, throttle) for
         // HTTP/S endpoints. Only relevant for http and https protocols.
+        // Omitting it removes a previously configured custom delivery policy.
         deliveryPolicy?: string
 
         // redrivePolicy is a JSON redrive policy for dead-letter queue configuration.
         // Specifies the ARN of the SQS queue to use as a dead-letter queue when
         // message delivery fails after all retries are exhausted.
         // Format: {"deadLetterTargetArn": "arn:aws:sqs:..."}
+        // Omitting it removes a previously configured dead-letter queue.
         redrivePolicy?: string
 
         // subscriptionRoleArn is the IAM role ARN for Firehose delivery.
@@ -255,6 +259,11 @@ package sns
 - **`subscriptionRoleArn` only for Firehose**: Only the Firehose protocol requires
   an IAM role for delivery. The schema documents this restriction; the driver
   validates it at provision time.
+
+- **Omission is declarative**: Optional mutable attributes are not implicitly
+  unmanaged. An omitted policy/role means absence, an omitted filter policy scope
+  means `MessageAttributes`, and an omitted boolean means `false`. Re-applying a
+  smaller desired spec therefore removes stale subscription configuration.
 
 ---
 
