@@ -62,7 +62,9 @@ jobs:
       # same just recipe as `just ci` so local and CI can't disagree.
       - name: Event schema generation drift
         run: |
-          go install cuelang.org/go/cmd/cue
+          # Keep the generator aligned with go.mod. CUE's JSON Schema output can
+          # change between releases even when the source schema does not.
+          go install cuelang.org/go/cmd/cue@v0.16.0
           just check-schema-drift
 
       - name: Helm chart lint
