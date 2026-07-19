@@ -150,3 +150,21 @@ func IsValidation(err error) bool {
 func IsExpiredToken(err error) bool {
 	return HasCode(err, "ExpiredToken", "ExpiredTokenException", "RequestExpired", "TokenRefreshRequired")
 }
+
+// IsQuotaExceeded reports unambiguous hard service/account limits. Generic
+// codes such as LimitExceededException are intentionally excluded because
+// some AWS services use them for retryable control-plane concurrency limits;
+// those remain the responsibility of the service-specific classifier.
+func IsQuotaExceeded(err error) bool {
+	return HasCode(err,
+		"AddressLimitExceeded", "AMIQuotaExceeded", "TooManyBuckets",
+		"VpcLimitExceeded", "SubnetLimitExceeded", "RouteTableLimitExceeded",
+		"VpcPeeringConnectionLimitExceeded", "NetworkAclLimitExceeded", "RulesPerAclLimitExceeded",
+		"TooManyLoadBalancers", "TooManyTargetGroups", "TooManyListeners", "TooManyRules", "TooManyConditionValues",
+		"ResourceLimitExceededException",
+		"DBSubnetGroupQuotaExceededFault", "DBSubnetGroupQuotaExceeded",
+		"DBParameterGroupQuotaExceededFault", "DBParameterGroupQuotaExceeded",
+		"ParameterLimitExceeded", "ParameterMaxVersionLimitExceeded",
+		"SubscriptionLimitExceeded", "SubscriptionLimitExceededException",
+	)
+}

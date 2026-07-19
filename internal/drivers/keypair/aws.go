@@ -187,7 +187,7 @@ func toEC2Tags(tags map[string]string) []ec2types.Tag {
 	}
 	ec2Tags := make([]ec2types.Tag, 0, len(tags))
 	for key, value := range tags {
-		if strings.HasPrefix(key, "praxis:") {
+		if strings.HasPrefix(key, "praxis:") && key != managedKeyTag {
 			continue
 		}
 		ec2Tags = append(ec2Tags, ec2types.Tag{Key: aws.String(key), Value: aws.String(value)})

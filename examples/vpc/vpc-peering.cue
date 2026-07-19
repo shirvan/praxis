@@ -16,7 +16,7 @@ variables: {
 resources: {
 	// ── App VPC ─────────────────────────────────────────
 	appVpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(variables.name)-app-\(variables.environment)"
 		spec: {
@@ -34,7 +34,7 @@ resources: {
 
 	// ── Data VPC ────────────────────────────────────────
 	dataVpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(variables.name)-data-\(variables.environment)"
 		spec: {
@@ -52,7 +52,7 @@ resources: {
 
 	// ── VPC Peering ─────────────────────────────────────
 	peering: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPCPeeringConnection"
 		metadata: name: "\(variables.name)-app-data-\(variables.environment)"
 		spec: {
@@ -69,7 +69,7 @@ resources: {
 
 	// ── App Subnet ──────────────────────────────────────
 	appSubnet: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-app-\(variables.environment)-subnet"
 		spec: {
@@ -87,7 +87,7 @@ resources: {
 
 	// ── Data Subnet ─────────────────────────────────────
 	dataSubnet: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-data-\(variables.environment)-subnet"
 		spec: {
@@ -105,7 +105,7 @@ resources: {
 
 	// ── App Route Table (cross-VPC route to data) ───────
 	appRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(variables.name)-app-\(variables.environment)-rt"
 		spec: {
@@ -128,7 +128,7 @@ resources: {
 
 	// ── Data Route Table (cross-VPC route to app) ───────
 	dataRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(variables.name)-data-\(variables.environment)-rt"
 		spec: {

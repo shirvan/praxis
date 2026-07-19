@@ -4,10 +4,11 @@ package integration
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"
@@ -27,12 +28,18 @@ const assumeRolePolicyDoc = `{"Version":"2012-10-17","Statement":[{"Effect":"All
 
 func uniqueIAMName(t *testing.T, prefix string) string {
 	t.Helper()
+	random := make([]byte, 6)
+	_, err := rand.Read(random)
+	require.NoError(t, err)
+	suffix := hex.EncodeToString(random)
+
 	name := strings.ReplaceAll(t.Name(), "/", "-")
 	name = strings.ReplaceAll(name, "_", "-")
-	if len(name) > 60 {
-		name = name[:60]
+	maxNameLength := 64 - len(prefix) - len(suffix) - 2
+	if len(name) > maxNameLength {
+		name = name[:maxNameLength]
 	}
-	return fmt.Sprintf("%s-%s-%d", prefix, name, time.Now().UnixNano()%100000)
+	return fmt.Sprintf("%s-%s-%s", prefix, strings.Trim(name, "-"), suffix)
 }
 
 func setupIAMInstanceProfileIntegration(t *testing.T) (*ingress.Client, *iamsdk.Client) {
@@ -41,7 +48,7 @@ func setupIAMInstanceProfileIntegration(t *testing.T) (*ingress.Client, *iamsdk.
 
 	awsCfg := motoAWSConfig(t)
 	iamClient := awsclient.NewIAMClient(awsCfg)
-	driver := iaminstanceprofile.NewIAMInstanceProfileDriver(authservice.NewAuthClient())
+	driver := iaminstanceprofile.NewGenericIAMInstanceProfileDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, iamClient
@@ -57,6 +64,48 @@ func createIAMRole(t *testing.T, iamClient *iamsdk.Client, roleName string) {
 		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, cleanupErr := iamClient.DeleteRole(context.Background(), &iamsdk.DeleteRoleInput{RoleName: aws.String(roleName)})
+		if cleanupErr != nil && !isIAMNoSuchEntity(cleanupErr) {
+			t.Errorf("clean up IAM role %s: %v", roleName, cleanupErr)
+		}
+	})
+}
+
+func registerIAMInstanceProfileCleanup(t *testing.T, iamClient *iamsdk.Client, profileName string) {
+	t.Helper()
+	t.Cleanup(func() {
+		described, err := iamClient.GetInstanceProfile(context.Background(), &iamsdk.GetInstanceProfileInput{
+			InstanceProfileName: aws.String(profileName),
+		})
+		if isIAMNoSuchEntity(err) {
+			return
+		}
+		if err != nil {
+			t.Errorf("describe IAM instance profile %s for cleanup: %v", profileName, err)
+			return
+		}
+		for _, role := range described.InstanceProfile.Roles {
+			_, err = iamClient.RemoveRoleFromInstanceProfile(context.Background(), &iamsdk.RemoveRoleFromInstanceProfileInput{
+				InstanceProfileName: aws.String(profileName),
+				RoleName:            role.RoleName,
+			})
+			if err != nil && !isIAMNoSuchEntity(err) {
+				t.Errorf("remove role %s from IAM instance profile %s during cleanup: %v", aws.ToString(role.RoleName), profileName, err)
+				return
+			}
+		}
+		_, err = iamClient.DeleteInstanceProfile(context.Background(), &iamsdk.DeleteInstanceProfileInput{
+			InstanceProfileName: aws.String(profileName),
+		})
+		if err != nil && !isIAMNoSuchEntity(err) {
+			t.Errorf("clean up IAM instance profile %s: %v", profileName, err)
+		}
+	})
+}
+
+func isIAMNoSuchEntity(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "NoSuchEntity")
 }
 
 func TestIAMInstanceProfileProvision_Creates(t *testing.T) {
@@ -64,6 +113,7 @@ func TestIAMInstanceProfileProvision_Creates(t *testing.T) {
 	profileName := uniqueIAMName(t, "profile")
 	roleName := uniqueIAMName(t, "role")
 	createIAMRole(t, iamClient, roleName)
+	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
 	outputs, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,
@@ -90,6 +140,7 @@ func TestIAMInstanceProfileProvision_ChangeRole(t *testing.T) {
 	roleB := uniqueIAMName(t, "role-b")
 	createIAMRole(t, iamClient, roleA)
 	createIAMRole(t, iamClient, roleB)
+	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
 	spec := iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,
@@ -116,6 +167,7 @@ func TestIAMInstanceProfileImport_DefaultsToObserved(t *testing.T) {
 	profileName := uniqueIAMName(t, "profile")
 	roleName := uniqueIAMName(t, "role")
 	createIAMRole(t, iamClient, roleName)
+	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
 	_, err := iamClient.CreateInstanceProfile(context.Background(), &iamsdk.CreateInstanceProfileInput{InstanceProfileName: aws.String(profileName)})
 	require.NoError(t, err)
@@ -136,6 +188,7 @@ func TestIAMInstanceProfileDelete_RemovesProfile(t *testing.T) {
 	profileName := uniqueIAMName(t, "profile")
 	roleName := uniqueIAMName(t, "role")
 	createIAMRole(t, iamClient, roleName)
+	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
 	_, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,
@@ -159,6 +212,7 @@ func TestIAMInstanceProfileReconcile_DetectsRoleDrift(t *testing.T) {
 	profileName := uniqueIAMName(t, "profile")
 	roleName := uniqueIAMName(t, "role")
 	createIAMRole(t, iamClient, roleName)
+	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
 	_, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,

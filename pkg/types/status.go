@@ -28,8 +28,9 @@ const (
 	// The resource is being created or updated in the cloud provider.
 	StatusProvisioning ResourceStatus = "Provisioning"
 
-	// StatusReady indicates the resource exists and matches the desired state.
-	// Reconciliation is active and drift will be detected.
+	// StatusReady indicates the resource exists and its lifecycle is healthy.
+	// ConditionDriftFree reports whether provider state currently matches the
+	// declared settings; drift can coexist with Ready when correction is disabled.
 	StatusReady ResourceStatus = "Ready"
 
 	// StatusError indicates a permanent failure. The resource may or may not
@@ -47,7 +48,8 @@ const (
 
 // Mode determines how a resource is managed during reconciliation.
 //
-//   - Managed: Praxis owns the lifecycle. Drift is detected and auto-corrected.
+//   - Managed: Praxis owns provisioning and deletion. Periodic writes follow
+//     the resource's lifecycle.reconcile policy.
 //   - Observed: Praxis tracks the resource but never modifies it. Drift is
 //     reported but not corrected. Useful for monitoring resources managed by
 //     another system while gradually migrating to Praxis.
@@ -64,8 +66,9 @@ type ReconcileResult struct {
 	// Drift is true when observed state differs from desired state.
 	Drift bool `json:"drift"`
 
-	// Correcting is true only when Drift is true AND the resource is in
-	// Managed mode. In Observed mode, drift is reported but Correcting is false.
+	// Correcting is true only when Drift is true and Praxis is actively writing
+	// a correction. Observed resources and resources with correction disabled
+	// report drift with Correcting false.
 	Correcting bool `json:"correcting"`
 
 	// Error is set when the reconciliation check itself failed
@@ -76,14 +79,21 @@ type ReconcileResult struct {
 	// Conditions carries structured status conditions from the driver back to
 	// the orchestrator. Standard condition types are Healthy and DriftFree.
 	Conditions []Condition `json:"conditions,omitempty"`
+
+	// ReplacementRequired tells Core that recovery must replay the deployment
+	// DAG instead of recreating the resource inside an isolated driver.
+	ReplacementRequired bool `json:"replacementRequired,omitempty"`
 }
 
 // StatusResponse is returned by the GetStatus shared handler.
 // Shared handlers use ObjectSharedContext, allowing concurrent reads
 // without blocking exclusive handlers.
 type StatusResponse struct {
-	Status     ResourceStatus `json:"status"`
-	Mode       Mode           `json:"mode"`
-	Generation int64          `json:"generation"`
-	Error      string         `json:"error,omitempty"`
+	Status        ResourceStatus `json:"status"`
+	Mode          Mode           `json:"mode"`
+	Reconcile     ReconcileMode  `json:"reconcile"`
+	IgnoreChanges []string       `json:"ignoreChanges,omitempty"`
+	Generation    int64          `json:"generation"`
+	Error         string         `json:"error,omitempty"`
+	Conditions    []Condition    `json:"conditions,omitempty"`
 }

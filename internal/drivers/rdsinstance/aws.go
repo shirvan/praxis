@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/shirvan/praxis/internal/drivers"
@@ -79,7 +78,7 @@ func (r *realRDSInstanceAPI) CreateDBInstance(ctx context.Context, spec RDSInsta
 		DeletionProtection:        aws.Bool(spec.DeletionProtection),
 		AutoMinorVersionUpgrade:   aws.Bool(spec.AutoMinorVersionUpgrade),
 		EnablePerformanceInsights: aws.Bool(spec.PerformanceInsightsEnabled),
-		Tags:                      toRDSTags(spec.Tags),
+		Tags:                      toRDSManagedTags(spec.Tags, spec.ManagedKey),
 	}
 	if spec.DBClusterIdentifier == "" {
 		input.AllocatedStorage = aws.Int32(spec.AllocatedStorage)
@@ -279,7 +278,7 @@ func (r *realRDSInstanceAPI) UpdateTags(ctx context.Context, arn string, tags ma
 	}
 	desired := drivers.FilterPraxisTags(tags)
 	var remove []string
-	for key := range current {
+	for key := range drivers.FilterPraxisTags(current) {
 		if _, ok := desired[key]; !ok {
 			remove = append(remove, key)
 		}
@@ -314,7 +313,7 @@ func (r *realRDSInstanceAPI) UpdateTags(ctx context.Context, arn string, tags ma
 	return err
 }
 
-// ListTags calls rds:ListTagsForResource and returns non-praxis tags.
+// ListTags calls rds:ListTagsForResource and returns all tags.
 func (r *realRDSInstanceAPI) ListTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -326,12 +325,22 @@ func (r *realRDSInstanceAPI) ListTags(ctx context.Context, arn string) (map[stri
 	tags := map[string]string{}
 	for _, tag := range out.TagList {
 		key := aws.ToString(tag.Key)
-		if strings.HasPrefix(key, "praxis:") {
-			continue
-		}
 		tags[key] = aws.ToString(tag.Value)
 	}
 	return tags, nil
+}
+
+func toRDSManagedTags(tags map[string]string, managedKey string) []rdstypes.Tag {
+	all := drivers.FilterPraxisTags(tags)
+	if managedKey != "" {
+		all["praxis:managed-key"] = managedKey
+	}
+	out := make([]rdstypes.Tag, 0, len(all))
+	for key, value := range all {
+		out = append(out, rdstypes.Tag{Key: aws.String(key), Value: aws.String(value)})
+	}
+	sort.Slice(out, func(i, j int) bool { return aws.ToString(out[i].Key) < aws.ToString(out[j].Key) })
+	return out
 }
 
 // toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.

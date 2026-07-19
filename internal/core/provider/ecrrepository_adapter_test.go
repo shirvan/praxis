@@ -13,7 +13,7 @@ import (
 func TestECRRepositoryAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewECRRepositoryAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECRRepository",
 		"metadata":{"name":"my-app"},
 		"spec":{
@@ -73,7 +73,7 @@ func TestECRRepositoryAdapter_NormalizeOutputs(t *testing.T) {
 func TestECRRepositoryAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewECRRepositoryAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECRRepository",
 		"metadata":{"name":"my-app"},
 		"spec":{"tags":{}}
@@ -85,7 +85,7 @@ func TestECRRepositoryAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestECRRepositoryAdapter_DecodeSpec_MissingName(t *testing.T) {
 	adapter := NewECRRepositoryAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECRRepository",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1"}

@@ -25,6 +25,7 @@ import (
 type SGAPI interface {
 	DescribeSecurityGroup(ctx context.Context, groupId string) (ObservedState, error)
 	FindSecurityGroup(ctx context.Context, groupName, vpcId string) (ObservedState, error)
+	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
 	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 	CreateSecurityGroup(ctx context.Context, spec SecurityGroupSpec) (string, error) // returns groupId
 	DeleteSecurityGroup(ctx context.Context, groupId string) error
@@ -160,16 +161,66 @@ func (r *realSGAPI) FindByTags(ctx context.Context, tags map[string]string) (str
 	}
 }
 
+func (r *realSGAPI) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+	out, err := r.client.DescribeSecurityGroups(ctx, &ec2sdk.DescribeSecurityGroupsInput{
+		Filters: []ec2types.Filter{{
+			Name: aws.String("tag:" + managedKeyTag), Values: []string{managedKey},
+		}},
+	})
+	if err != nil {
+		return "", err
+	}
+	matches := make([]string, 0, len(out.SecurityGroups))
+	for i := range out.SecurityGroups {
+		if id := aws.ToString(out.SecurityGroups[i].GroupId); id != "" {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", &ownershipConflictError{message: fmt.Sprintf(
+			"ownership corruption: %d security groups claim managed-key %q: %v; manual intervention required",
+			len(matches), managedKey, matches,
+		)}
+	}
+}
+
 // CreateSecurityGroup creates a new EC2 security group and returns its group ID.
 func (r *realSGAPI) CreateSecurityGroup(ctx context.Context, spec SecurityGroupSpec) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
 	}
-	out, err := r.client.CreateSecurityGroup(ctx, &ec2sdk.CreateSecurityGroupInput{
+	tags := make([]ec2types.Tag, 0, len(spec.Tags)+1)
+	if spec.ManagedKey != "" {
+		tags = append(tags, ec2types.Tag{
+			Key: aws.String(managedKeyTag), Value: aws.String(spec.ManagedKey),
+		})
+	}
+	for key, value := range spec.Tags {
+		if strings.HasPrefix(key, "praxis:") {
+			continue
+		}
+		tags = append(tags, ec2types.Tag{Key: aws.String(key), Value: aws.String(value)})
+	}
+	input := &ec2sdk.CreateSecurityGroupInput{
 		GroupName:   aws.String(spec.GroupName),
 		Description: aws.String(spec.Description),
 		VpcId:       aws.String(spec.VpcId),
-	})
+	}
+	if len(tags) > 0 {
+		input.TagSpecifications = []ec2types.TagSpecification{{
+			ResourceType: ec2types.ResourceTypeSecurityGroup,
+			Tags:         tags,
+		}}
+	}
+	out, err := r.client.CreateSecurityGroup(ctx, input)
 	if err != nil {
 		return "", err
 	}

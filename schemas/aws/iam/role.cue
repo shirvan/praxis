@@ -1,7 +1,7 @@
 package iam
 
 #IAMRole: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "IAMRole"
 
 	metadata: {

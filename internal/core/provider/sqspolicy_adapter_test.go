@@ -13,7 +13,7 @@ import (
 func TestSQSQueuePolicyAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewSQSQueuePolicyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SQSQueuePolicy",
 		"metadata":{"name":"orders"},
 		"spec":{"region":"us-east-1","policy":{"Version":"2012-10-17","Statement":[]}}

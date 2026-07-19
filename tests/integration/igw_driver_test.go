@@ -40,7 +40,7 @@ func setupIGWIntegrationDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := igw.NewIGWDriver(authservice.NewAuthClient())
+	driver := igw.NewGenericIGWDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client
@@ -130,6 +130,27 @@ func TestIGWImport_ExistingIGW(t *testing.T) {
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, igw.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
+	assert.Equal(t, types.ModeObserved, status.Mode)
+}
+
+func TestIGWImport_DetachedIGW(t *testing.T) {
+	client, ec2Client := setupIGWIntegrationDriver(t)
+	createOut, err := ec2Client.CreateInternetGateway(context.Background(), &ec2sdk.CreateInternetGatewayInput{})
+	require.NoError(t, err)
+	igwID := aws.ToString(createOut.InternetGateway.InternetGatewayId)
+
+	key := fmt.Sprintf("us-east-1~%s", igwID)
+	outputs, err := ingress.Object[types.ImportRef, igw.IGWOutputs](client, igw.ServiceName, key, "Import").Request(
+		t.Context(), types.ImportRef{ResourceID: igwID, Account: integrationAccountName},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, igwID, outputs.InternetGatewayId)
+	assert.Empty(t, outputs.VpcId)
+	assert.Equal(t, "detached", outputs.State)
+
+	status, err := ingress.Object[restate.Void, types.StatusResponse](client, igw.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusReady, status.Status)
 	assert.Equal(t, types.ModeObserved, status.Mode)
 }
 

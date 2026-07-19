@@ -5,11 +5,9 @@
 // and correction during reconciliation, import of existing instances, and termination.
 //
 // The driver is registered as a Restate Virtual Object named "EC2Instance". Each object
-// key corresponds to one managed EC2 instance. State is persisted in Restate's durable
-// key-value store under a single "state" key containing the full EC2InstanceState struct.
+// key corresponds to one managed EC2 instance. Lifecycle state is persisted in the
+// generic kernel's versioned atomic state envelope.
 package ec2
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name used to register this driver.
 // All handler invocations (Provision, Import, Delete, Reconcile, GetStatus, GetOutputs)
@@ -19,7 +17,7 @@ const ServiceName = "EC2Instance"
 // EC2InstanceSpec is the user-declared desired state for an EC2 instance.
 // It maps directly to the "spec" section of a Praxis resource manifest.
 //
-// Immutable fields (cannot be changed after creation — changes are noted as informational diffs):
+// Immutable fields (cannot be changed after creation — changes require replacement):
 //   - ImageId:  the AMI to launch from (maps to RunInstances ImageId)
 //   - SubnetId: the VPC subnet placement (maps to RunInstances SubnetId)
 //   - KeyName:  the SSH key pair name (maps to RunInstances KeyName)
@@ -27,6 +25,7 @@ const ServiceName = "EC2Instance"
 // Mutable fields (can be updated in-place on an existing instance):
 //   - InstanceType:       EC2 instance type (e.g. "t3.micro"); requires stop/modify/start cycle
 //   - SecurityGroupIds:   VPC security groups attached to the instance's primary ENI
+//   - IamInstanceProfile: IAM instance profile name or ARN; can be attached, replaced, or removed
 //   - Monitoring:         detailed CloudWatch monitoring (true=enabled, false=basic)
 //   - Tags:               user-defined key-value tags (praxis:-prefixed tags are reserved)
 //
@@ -34,7 +33,6 @@ const ServiceName = "EC2Instance"
 //   - Account:            Praxis account alias used to resolve AWS credentials
 //   - Region:             AWS region for the instance (required)
 //   - UserData:           base64-encoded user data script passed at launch
-//   - IamInstanceProfile: IAM instance profile name or ARN attached at launch
 //   - RootVolume:         root EBS volume configuration (size, type, encryption) — set at launch only
 //   - ManagedKey:         unique idempotency key (typically metadata.name) used to prevent duplicate instances
 type EC2InstanceSpec struct {
@@ -79,7 +77,7 @@ type EC2InstanceOutputs struct {
 
 // ObservedState captures the live AWS-side configuration of an EC2 instance.
 // Populated by DescribeInstance and used for drift detection by comparing against EC2InstanceSpec.
-// Includes both mutable fields (used for drift) and immutable fields (informational only).
+// Includes both mutable fields (used for drift) and immutable fields (replacement-visible only).
 type ObservedState struct {
 	InstanceId          string            `json:"instanceId"`
 	ImageId             string            `json:"imageId"`
@@ -98,30 +96,4 @@ type ObservedState struct {
 	RootVolumeSizeGiB   int32             `json:"rootVolumeSizeGiB"`   // Root volume size from DescribeVolumes
 	RootVolumeEncrypted bool              `json:"rootVolumeEncrypted"` // Encryption status from DescribeVolumes
 	Tags                map[string]string `json:"tags"`                // All tags including praxis:-prefixed ones
-}
-
-// EC2InstanceState is the single atomic state object persisted in Restate's K/V store
-// under the drivers.StateKey ("state") for each Virtual Object key.
-//
-// This struct is the source of truth for the driver's view of the resource. It includes:
-//   - Desired:            the last spec submitted by the user via Provision
-//   - Observed:           the last AWS-side snapshot from DescribeInstance
-//   - Outputs:            the user-facing outputs derived from Observed
-//   - Status:             lifecycle status (Provisioning, Ready, Error, Deleting, Deleted)
-//   - Mode:               managed (full control) or observed (read-only drift reporting)
-//   - Error:              human-readable error message (set when Status=Error)
-//   - Generation:         monotonically increasing counter incremented on each Provision/Import
-//   - LastReconcile:      RFC3339 timestamp of the last completed reconcile loop
-//   - ReconcileScheduled: guard preventing duplicate reconcile timers from being enqueued
-type EC2InstanceState struct {
-	Desired            EC2InstanceSpec      `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            EC2InstanceOutputs   `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
-	LateInitDone       bool                 `json:"lateInitDone,omitempty"`
 }

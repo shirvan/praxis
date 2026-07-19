@@ -77,13 +77,13 @@ func dashboardDescriptor() GenericDescriptor[dashboard.DashboardSpec, dashboard.
 			}
 		},
 
-		PlanID: func(out dashboard.DashboardOutputs) string { return out.DashboardName },
+		PlanIdentity: storedPlanIdentity[dashboard.DashboardSpec](func(out dashboard.DashboardOutputs) string { return out.DashboardName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dashboard.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dashboard.DashboardSpec, dashboard.DashboardOutputs, dashboard.ObservedState] {
 			return dashboardProbe(dashboard.NewDashboardAPI(awsclient.NewCloudWatchClient(cfg)))
 		},
 
-		DiffFields: func(desired dashboard.DashboardSpec, observed dashboard.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired dashboard.DashboardSpec, observed dashboard.ObservedState, _ dashboard.DashboardOutputs) []types.FieldDiff {
 			rawDiffs := dashboard.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -96,8 +96,9 @@ func dashboardDescriptor() GenericDescriptor[dashboard.DashboardSpec, dashboard.
 
 // dashboardProbe adapts the driver API to the generic plan probe shape. The
 // driver's describe reports existence directly alongside the observed state.
-func dashboardProbe(api dashboard.DashboardAPI) PlanProbeFunc[dashboard.ObservedState] {
-	return func(runCtx restate.RunContext, dashboardName string) (dashboard.ObservedState, bool, error) {
+func dashboardProbe(api dashboard.DashboardAPI) PlanProbeFunc[dashboard.DashboardSpec, dashboard.DashboardOutputs, dashboard.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[dashboard.DashboardSpec, dashboard.DashboardOutputs]) (dashboard.ObservedState, bool, error) {
+		dashboardName := input.Identity
 		obs, found, err := api.GetDashboard(runCtx, dashboardName)
 		if err != nil {
 			if dashboard.IsNotFound(err) {

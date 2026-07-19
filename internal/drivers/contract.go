@@ -19,11 +19,15 @@
 //	GetOutputs(ctx restate.ObjectSharedContext) (OutputsT, error)
 //	GetInputs(ctx restate.ObjectSharedContext) (SpecT, error)
 //
+// MAINTENANCE HANDLER (ObjectContext — explicit state reset):
+//
+//	ClearState(ctx restate.ObjectContext) error
+//
 // The distinction between exclusive and shared handlers is critical:
 //   - Exclusive handlers (ObjectContext) run one-at-a-time per object key,
 //     which prevents racing two updates to the same resource.
 //   - Shared handlers (ObjectSharedContext) can run concurrently and only
-//     read state, so GetStatus/GetOutputs never block Provision or Reconcile.
+//     read state, so GetStatus/GetOutputs/GetInputs never block Provision or Reconcile.
 //
 // Spec type T and Outputs type OutputsT are driver-specific (e.g., S3BucketSpec
 // and S3BucketOutputs). They must be JSON-serializable since Restate uses

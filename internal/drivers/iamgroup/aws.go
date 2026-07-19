@@ -14,7 +14,8 @@ import (
 )
 
 // IAMGroupAPI defines the interface for all AWS IAM group operations used by the driver.
-// Includes group CRUD, inline/managed policy management, and member removal.
+// Includes group CRUD and inline/managed policy management. Group memberships
+// are external relationships and deliberately remain outside this interface.
 type IAMGroupAPI interface {
 	CreateGroup(ctx context.Context, spec IAMGroupSpec) (arn, groupID string, err error)
 	DescribeGroup(ctx context.Context, groupName string) (ObservedState, error)
@@ -24,7 +25,6 @@ type IAMGroupAPI interface {
 	DeleteInlinePolicy(ctx context.Context, groupName, policyName string) error
 	AttachManagedPolicy(ctx context.Context, groupName, policyArn string) error
 	DetachManagedPolicy(ctx context.Context, groupName, policyArn string) error
-	RemoveAllMembers(ctx context.Context, groupName string) error
 }
 
 type realIAMGroupAPI struct {
@@ -139,34 +139,6 @@ func (r *realIAMGroupAPI) DetachManagedPolicy(ctx context.Context, groupName, po
 	return err
 }
 
-// RemoveAllMembers paginates through all group members and removes each one.
-// Required before DeleteGroup, which fails if the group has members.
-func (r *realIAMGroupAPI) RemoveAllMembers(ctx context.Context, groupName string) error {
-	paginator := iamsdk.NewGetGroupPaginator(r.client, &iamsdk.GetGroupInput{GroupName: aws.String(groupName)})
-	for paginator.HasMorePages() {
-		if err := r.limiter.Wait(ctx); err != nil {
-			return err
-		}
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return err
-		}
-		for _, user := range page.Users {
-			if err := r.limiter.Wait(ctx); err != nil {
-				return err
-			}
-			_, err := r.client.RemoveUserFromGroup(ctx, &iamsdk.RemoveUserFromGroupInput{
-				GroupName: aws.String(groupName),
-				UserName:  user.UserName,
-			})
-			if err != nil && !IsNotFound(err) {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (r *realIAMGroupAPI) listInlinePolicies(ctx context.Context, groupName string) (map[string]string, error) {
 	paginator := iamsdk.NewListGroupPoliciesPaginator(r.client, &iamsdk.ListGroupPoliciesInput{GroupName: aws.String(groupName)})
 	policies := map[string]string{}
@@ -226,4 +198,8 @@ func IsDeleteConflict(err error) bool {
 
 func IsMalformedPolicy(err error) bool {
 	return awserr.HasCode(err, "MalformedPolicyDocument")
+}
+
+func IsLimitExceeded(err error) bool {
+	return awserr.HasCode(err, "LimitExceeded")
 }

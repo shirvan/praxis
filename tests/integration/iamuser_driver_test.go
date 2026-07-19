@@ -28,7 +28,7 @@ func setupIAMUserDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	iamClient := awsclient.NewIAMClient(awsCfg)
-	driver := iamuser.NewIAMUserDriver(authservice.NewAuthClient())
+	driver := iamuser.NewGenericIAMUserDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, iamClient

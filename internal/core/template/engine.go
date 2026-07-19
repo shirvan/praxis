@@ -62,6 +62,7 @@ type Engine struct {
 // ignoreChanges) are always permitted regardless of the provider schema.
 const lifecycleCUE = `{
 	lifecycle?: {
+		reconcile?: *"auto" | "observe"
 		preventDestroy?: bool
 		ignoreChanges?: [...string]
 		retry?: {
@@ -74,12 +75,15 @@ const lifecycleCUE = `{
 			update?: string
 			delete?: string
 		}
-		finalizers?: [...string]
 		deletionPolicy?: *"Delete" | "Orphan"
 		wait?: {
 			enabled?: bool
 			pollInterval?: string
 			maxWait?: string
+		}
+		recovery?: {
+			mode?: *"Automatic" | "Manual"
+			timeout?: string
 		}
 	}
 }`

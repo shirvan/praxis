@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewAMIDriver(nil)
+	drv := NewGenericAMIDriver(nil)
 	assert.Equal(t, "AMI", drv.ServiceName())
 }
 
@@ -60,11 +58,6 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, []string{"111"}, spec.LaunchPermissions.AccountIds)
 	assert.True(t, spec.LaunchPermissions.Public)
 	assert.Equal(t, "2026-12-31T00:00:00Z", spec.Deprecation.DeprecateAt)
-}
-
-func TestDefaultAMIImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultAMIImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultAMIImportMode(types.ModeManaged))
 }
 
 func TestLooksLikeAMIID(t *testing.T) {

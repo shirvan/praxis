@@ -170,7 +170,7 @@ data: {
 
 resources: {
     webSG: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "SecurityGroup"
         metadata: name: "web-sg"
         spec: {
@@ -380,7 +380,7 @@ variables: {
 resources: {
     for _, name in variables.buckets {
         "bucket-\(name)": {
-            apiVersion: "praxis.io/v1"
+            apiVersion: "praxis.io/alpha"
             kind:       "S3Bucket"
             metadata: name: "myapp-\(name)"
             spec: {
@@ -405,7 +405,7 @@ variables: {
 resources: {
     for _, sub in variables.subnets {
         "subnet-\(sub.suffix)": {
-            apiVersion: "praxis.io/v1"
+            apiVersion: "praxis.io/alpha"
             kind:       "Subnet"
             metadata: name: "myapp-\(sub.suffix)"
             spec: {
@@ -500,7 +500,7 @@ Declare protective rules on individual resources via an optional `lifecycle` blo
 ```cue
 resources: {
     database: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "RDSInstance"
         metadata: name: "prod-db"
         spec: { ... }
@@ -521,6 +521,7 @@ resources: {
 | `maxRetries` | `int` | (deployment default) | Maximum number of retry attempts for this resource before marking it as failed. Set to `0` to disable retries. |
 | `timeouts` | `object` | (adapter defaults) | Per-operation timeout overrides. See Timeouts below. |
 | `wait` | `object` | `{enabled: true}` | Post-provision readiness polling configuration. See Wait below. |
+| `recovery` | `object` | `{mode: "Automatic"}` | Reconciliation recovery policy. Automatic replays the deployment DAG; Manual waits for an explicit apply. |
 
 #### Timeouts
 
@@ -551,6 +552,23 @@ lifecycle: {
     }
 }
 ```
+
+#### Recovery
+
+Choose whether Core automatically replays the deployment DAG when a managed
+resource was deleted externally or waits for an explicit apply:
+
+```cue
+lifecycle: {
+    recovery: {
+        mode: "Automatic" // or "Manual"
+        timeout: "30m"    // optional; omit to keep retrying without a deadline
+    }
+}
+```
+
+Observed resources always use manual recovery. Automatic recovery uses the
+same Restate-backed handler retries and operation timeouts as a normal apply.
 
 Lifecycle rules are validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state. The orchestrator and plan diff engine enforce them.
 
@@ -758,7 +776,7 @@ Each driver ships a CUE schema that defines the valid shape of that resource typ
 
 ```cue
 #S3Bucket: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "S3Bucket"
     metadata: {
         name: string & =~"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
@@ -780,7 +798,7 @@ Each driver ships a CUE schema that defines the valid shape of that resource typ
 
 ```cue
 #SecurityGroup: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "SecurityGroup"
     metadata: {
         name: string
@@ -810,7 +828,7 @@ Each driver ships a CUE schema that defines the valid shape of that resource typ
 
 ```cue
 #EC2Instance: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "EC2Instance"
     metadata: {
         name: string & =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
@@ -851,7 +869,7 @@ Templates unify against these schemas via CUE's `&` operator. Invalid specs fail
 
 ```cue
 #EBSVolume: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "EBSVolume"
     metadata: {
         name: string & =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
@@ -885,7 +903,7 @@ Templates unify against these schemas via CUE's `&` operator. Invalid specs fail
 
 ```cue
 #ElasticIP: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "ElasticIP"
     metadata: {
         name: string & =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
@@ -1386,7 +1404,7 @@ _naming: {
 resources: {
     for _, suffix in variables.buckets {
         "bucket-\(suffix)": {
-            apiVersion: "praxis.io/v1"
+            apiVersion: "praxis.io/alpha"
             kind:       "S3Bucket"
             metadata: name: "\(_naming.prefix)-\(suffix)"
             spec: {
@@ -1400,7 +1418,7 @@ resources: {
 
     if variables.enableLogging {
         "log-aggregator": {
-            apiVersion: "praxis.io/v1"
+            apiVersion: "praxis.io/alpha"
             kind:       "S3Bucket"
             metadata: name: "\(_naming.prefix)-logs"
             spec: {

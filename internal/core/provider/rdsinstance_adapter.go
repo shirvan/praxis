@@ -103,13 +103,13 @@ func rdsInstanceDescriptor() GenericDescriptor[rdsinstance.RDSInstanceSpec, rdsi
 			return map[string]any{"dbIdentifier": out.DBIdentifier, "dbiResourceId": out.DbiResourceId, "arn": out.ARN, "endpoint": out.Endpoint, "port": out.Port, "engine": out.Engine, "engineVersion": out.EngineVersion, "status": out.Status}
 		},
 
-		PlanID: func(out rdsinstance.RDSInstanceOutputs) string { return out.DBIdentifier },
+		PlanIdentity: storedPlanIdentity[rdsinstance.RDSInstanceSpec](func(out rdsinstance.RDSInstanceOutputs) string { return out.DBIdentifier }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[rdsinstance.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs, rdsinstance.ObservedState] {
 			return rdsInstanceProbe(rdsinstance.NewRDSInstanceAPI(awsclient.NewRDSClient(cfg)))
 		},
 
-		DiffFields: func(desired rdsinstance.RDSInstanceSpec, observed rdsinstance.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired rdsinstance.RDSInstanceSpec, observed rdsinstance.ObservedState, _ rdsinstance.RDSInstanceOutputs) []types.FieldDiff {
 			rawDiffs := rdsinstance.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -122,8 +122,9 @@ func rdsInstanceDescriptor() GenericDescriptor[rdsinstance.RDSInstanceSpec, rdsi
 }
 
 // rdsInstanceProbe adapts the driver API to the generic plan probe shape.
-func rdsInstanceProbe(api rdsinstance.RDSInstanceAPI) PlanProbeFunc[rdsinstance.ObservedState] {
-	return func(runCtx restate.RunContext, identifier string) (rdsinstance.ObservedState, bool, error) {
+func rdsInstanceProbe(api rdsinstance.RDSInstanceAPI) PlanProbeFunc[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs, rdsinstance.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs]) (rdsinstance.ObservedState, bool, error) {
+		identifier := input.Identity
 		obs, err := api.DescribeDBInstance(runCtx, identifier)
 		if err != nil {
 			if rdsinstance.IsNotFound(err) {

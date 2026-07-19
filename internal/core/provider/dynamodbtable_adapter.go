@@ -88,13 +88,13 @@ func dynamoDBTableDescriptor() GenericDescriptor[dynamodbtable.DynamoDBTableSpec
 			return result
 		},
 
-		PlanID: func(out dynamodbtable.DynamoDBTableOutputs) string { return out.Name },
+		PlanIdentity: storedPlanIdentity[dynamodbtable.DynamoDBTableSpec](func(out dynamodbtable.DynamoDBTableOutputs) string { return out.Name }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dynamodbtable.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dynamodbtable.DynamoDBTableSpec, dynamodbtable.DynamoDBTableOutputs, dynamodbtable.ObservedState] {
 			return dynamoDBTableProbe(dynamodbtable.NewDynamoDBTableAPI(awsclient.NewDynamoDBClient(cfg)))
 		},
 
-		DiffFields: func(desired dynamodbtable.DynamoDBTableSpec, observed dynamodbtable.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired dynamodbtable.DynamoDBTableSpec, observed dynamodbtable.ObservedState, _ dynamodbtable.DynamoDBTableOutputs) []types.FieldDiff {
 			rawDiffs := dynamodbtable.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -106,8 +106,9 @@ func dynamoDBTableDescriptor() GenericDescriptor[dynamodbtable.DynamoDBTableSpec
 }
 
 // dynamoDBTableProbe adapts the driver API to the generic plan probe shape.
-func dynamoDBTableProbe(api dynamodbtable.DynamoDBTableAPI) PlanProbeFunc[dynamodbtable.ObservedState] {
-	return func(runCtx restate.RunContext, tableName string) (dynamodbtable.ObservedState, bool, error) {
+func dynamoDBTableProbe(api dynamodbtable.DynamoDBTableAPI) PlanProbeFunc[dynamodbtable.DynamoDBTableSpec, dynamodbtable.DynamoDBTableOutputs, dynamodbtable.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[dynamodbtable.DynamoDBTableSpec, dynamodbtable.DynamoDBTableOutputs]) (dynamodbtable.ObservedState, bool, error) {
+		tableName := input.Identity
 		obs, found, err := api.DescribeTable(runCtx, tableName)
 		if err != nil {
 			if dynamodbtable.IsNotFound(err) {

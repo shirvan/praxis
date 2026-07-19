@@ -87,18 +87,18 @@ func lambdaPermissionDescriptor() GenericDescriptor[lambdaperm.LambdaPermissionS
 		// The plan-time describe needs both the function name and statement ID;
 		// they are packed into a single functionName~statementId identifier
 		// (the same composite form used for imports) and split in the probe.
-		PlanID: func(out lambdaperm.LambdaPermissionOutputs) string {
+		PlanIdentity: storedPlanIdentity[lambdaperm.LambdaPermissionSpec](func(out lambdaperm.LambdaPermissionOutputs) string {
 			if out.StatementId == "" {
 				return ""
 			}
 			return out.FunctionName + "~" + out.StatementId
-		},
+		}),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambdaperm.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs, lambdaperm.ObservedState] {
 			return lambdaPermissionProbe(lambdaperm.NewPermissionAPI(awsclient.NewLambdaClient(cfg)))
 		},
 
-		DiffFields: func(desired lambdaperm.LambdaPermissionSpec, observed lambdaperm.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired lambdaperm.LambdaPermissionSpec, observed lambdaperm.ObservedState, _ lambdaperm.LambdaPermissionOutputs) []types.FieldDiff {
 			rawDiffs := lambdaperm.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -111,8 +111,9 @@ func lambdaPermissionDescriptor() GenericDescriptor[lambdaperm.LambdaPermissionS
 
 // lambdaPermissionProbe adapts the driver API to the generic plan probe shape.
 // The planID is the composite functionName~statementId produced by PlanID.
-func lambdaPermissionProbe(api lambdaperm.PermissionAPI) PlanProbeFunc[lambdaperm.ObservedState] {
-	return func(runCtx restate.RunContext, planID string) (lambdaperm.ObservedState, bool, error) {
+func lambdaPermissionProbe(api lambdaperm.PermissionAPI) PlanProbeFunc[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs, lambdaperm.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs]) (lambdaperm.ObservedState, bool, error) {
+		planID := input.Identity
 		functionName, statementID, err := lambdapermSplitResourceID(planID)
 		if err != nil {
 			return lambdaperm.ObservedState{}, false, err

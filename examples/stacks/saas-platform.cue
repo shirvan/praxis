@@ -91,7 +91,7 @@ resources: {
 	// ─── Networking ─────────────────────────────────────
 
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(_naming.prefix)-vpc"
 		spec: {
@@ -104,7 +104,7 @@ resources: {
 	}
 
 	igw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "InternetGateway"
 		metadata: name: "\(_naming.prefix)-igw"
 		spec: {
@@ -117,7 +117,7 @@ resources: {
 	// ── Public Subnets ──────────────────────────────────
 
 	publicSubnetA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-public-a"
 		spec: {
@@ -131,7 +131,7 @@ resources: {
 	}
 
 	publicSubnetB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-public-b"
 		spec: {
@@ -147,7 +147,7 @@ resources: {
 	// ── App Subnets ─────────────────────────────────────
 
 	appSubnetA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-app-a"
 		spec: {
@@ -160,7 +160,7 @@ resources: {
 	}
 
 	appSubnetB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-app-b"
 		spec: {
@@ -175,7 +175,7 @@ resources: {
 	// ── Data Subnets ────────────────────────────────────
 
 	dataSubnetA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-data-a"
 		spec: {
@@ -188,7 +188,7 @@ resources: {
 	}
 
 	dataSubnetB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-data-b"
 		spec: {
@@ -203,7 +203,7 @@ resources: {
 	// ─── Gateways & Routing ─────────────────────────────
 
 	natEip: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ElasticIP"
 		metadata: name: "\(_naming.prefix)-nat-eip"
 		spec: {
@@ -214,7 +214,7 @@ resources: {
 	}
 
 	natgw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NATGateway"
 		metadata: name: "\(_naming.prefix)-natgw"
 		spec: {
@@ -227,7 +227,7 @@ resources: {
 	}
 
 	publicRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(_naming.prefix)-public-rt"
 		spec: {
@@ -246,7 +246,7 @@ resources: {
 	}
 
 	appRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(_naming.prefix)-app-rt"
 		spec: {
@@ -265,7 +265,7 @@ resources: {
 	}
 
 	dataRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(_naming.prefix)-data-rt"
 		spec: {
@@ -286,7 +286,7 @@ resources: {
 	// ─── Security Groups ────────────────────────────────
 
 	albSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(_naming.prefix)-alb-sg"
 		spec: {
@@ -303,7 +303,7 @@ resources: {
 	}
 
 	appSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(_naming.prefix)-app-sg"
 		spec: {
@@ -322,7 +322,7 @@ resources: {
 	}
 
 	dataSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(_naming.prefix)-data-sg"
 		spec: {
@@ -341,7 +341,7 @@ resources: {
 	// ─── TLS Certificate + DNS ──────────────────────────
 
 	hostedZone: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53HostedZone"
 		metadata: name: variables.domainName
 		spec: {
@@ -351,7 +351,7 @@ resources: {
 	}
 
 	cert: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ACMCertificate"
 		metadata: name: "\(_naming.prefix)-cert"
 		spec: {
@@ -366,7 +366,7 @@ resources: {
 	}
 
 	validationRecord: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53Record"
 		metadata: name: "\(_naming.prefix)-cert-validation"
 		spec: {
@@ -381,7 +381,7 @@ resources: {
 	}
 
 	appDnsRecord: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53Record"
 		metadata: name: "\(_naming.prefix)-app-dns"
 		spec: {
@@ -399,7 +399,7 @@ resources: {
 	// ─── Load Balancer ──────────────────────────────────
 
 	alb: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ALB"
 		metadata: name: "\(_naming.prefix)-alb"
 		spec: {
@@ -416,7 +416,7 @@ resources: {
 	}
 
 	targetGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "TargetGroup"
 		metadata: name: "\(_naming.prefix)-app-tg"
 		spec: {
@@ -439,7 +439,7 @@ resources: {
 	}
 
 	httpsListener: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Listener"
 		metadata: name: "\(_naming.prefix)-https"
 		spec: {
@@ -457,7 +457,7 @@ resources: {
 	}
 
 	httpRedirectListener: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Listener"
 		metadata: name: "\(_naming.prefix)-http-redirect"
 		spec: {
@@ -483,7 +483,7 @@ resources: {
 	// ─── Compute ────────────────────────────────────────
 
 	sshKeyPair: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "KeyPair"
 		metadata: name: "\(_naming.prefix)-ssh"
 		spec: {
@@ -496,7 +496,7 @@ resources: {
 	for idx, az in variables.availabilityZones {
 		let _az = az
 		"appServer-\(idx)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "EC2Instance"
 			metadata: name: "\(_naming.prefix)-app-\(idx)"
 			spec: {
@@ -524,7 +524,7 @@ resources: {
 	// ─── IAM ────────────────────────────────────────────
 
 	appRole: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMRole"
 		metadata: name: "\(_naming.prefix)-app-role"
 		spec: {
@@ -542,7 +542,7 @@ resources: {
 	}
 
 	appPolicy: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMPolicy"
 		metadata: name: "\(_naming.prefix)-app-policy"
 		spec: {
@@ -569,7 +569,7 @@ resources: {
 	}
 
 	appInstanceProfile: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMInstanceProfile"
 		metadata: name: "\(_naming.prefix)-app-profile"
 		spec: {
@@ -582,7 +582,7 @@ resources: {
 	// ─── Database ───────────────────────────────────────
 
 	dbSubnetGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "DBSubnetGroup"
 		metadata: name: "\(_naming.prefix)-db-subnets"
 		spec: {
@@ -597,7 +597,7 @@ resources: {
 	}
 
 	dbParamGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "DBParameterGroup"
 		metadata: name: "\(_naming.prefix)-db-params"
 		spec: {
@@ -615,7 +615,7 @@ resources: {
 	}
 
 	database: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RDSInstance"
 		metadata: name: "\(_naming.prefix)-db"
 		spec: {
@@ -642,7 +642,7 @@ resources: {
 	// ─── Observability ──────────────────────────────────
 
 	appLogGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "LogGroup"
 		metadata: name: "/praxis/\(_naming.prefix)/app"
 		spec: {
@@ -656,7 +656,7 @@ resources: {
 
 	for _, suffix in variables.storageBuckets {
 		"bucket-\(suffix)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "S3Bucket"
 			metadata: name: "\(_naming.prefix)-\(suffix)"
 			spec: {

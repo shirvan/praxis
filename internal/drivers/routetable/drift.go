@@ -8,13 +8,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift returns true if the desired spec and observed state differ.
 //
 // Route table drift rules:
@@ -25,6 +18,9 @@ type FieldDiffEntry struct {
 //   - Subnet associations are compared as sets (excluding main associations).
 //   - Tags are compared (excluding praxis:-prefixed tags).
 func HasDrift(desired RouteTableSpec, observed ObservedState) bool {
+	if desired.VpcId != observed.VpcId {
+		return true
+	}
 	if !routesMatch(desired.Routes, observed.Routes) {
 		return true
 	}
@@ -39,12 +35,12 @@ func HasDrift(desired RouteTableSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a human-readable list of differences for drift
 // event reporting, including route target changes and association differences.
-func ComputeFieldDiffs(desired RouteTableSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired RouteTableSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.VpcId != observed.VpcId && observed.VpcId != "" {
-		diffs = append(diffs, FieldDiffEntry{
-			Path:     "spec.vpcId (immutable, ignored)",
+		diffs = append(diffs, drivers.FieldDiff{
+			Path:     "spec.vpcId (immutable, requires replacement)",
 			OldValue: observed.VpcId,
 			NewValue: desired.VpcId,
 		})
@@ -159,8 +155,8 @@ func countRouteTargets(route Route) int {
 	return count
 }
 
-func computeRouteDiffs(desired []Route, observed []ObservedRoute) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeRouteDiffs(desired []Route, observed []ObservedRoute) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredMap := desiredRouteMap(desired)
 	observedMap := observedRouteMap(filterManagedRoutes(observed))
 	keys := make([]string, 0, len(desiredMap)+len(observedMap))
@@ -181,18 +177,18 @@ func computeRouteDiffs(desired []Route, observed []ObservedRoute) []FieldDiffEnt
 		path := fmt.Sprintf("spec.routes[%s]", destination)
 		switch {
 		case desiredOK && !observedOK:
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: nil, NewValue: desiredRoute})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: nil, NewValue: desiredRoute})
 		case !desiredOK && observedOK:
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: observedRouteToRoute(observedRoute), NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: observedRouteToRoute(observedRoute), NewValue: nil})
 		case desiredOK && observedOK && !routeTargetsEqual(desiredRoute, observedRoute):
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: observedRouteToRoute(observedRoute), NewValue: desiredRoute})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: observedRouteToRoute(observedRoute), NewValue: desiredRoute})
 		}
 	}
 	return diffs
 }
 
-func computeAssociationDiffs(desired []Association, observed []ObservedAssociation) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeAssociationDiffs(desired []Association, observed []ObservedAssociation) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredSet := make(map[string]struct{}, len(desired))
 	for _, association := range desired {
 		desiredSet[association.SubnetId] = struct{}{}
@@ -206,7 +202,7 @@ func computeAssociationDiffs(desired []Association, observed []ObservedAssociati
 	}
 	for _, association := range desired {
 		if _, ok := observedSet[association.SubnetId]; !ok {
-			diffs = append(diffs, FieldDiffEntry{
+			diffs = append(diffs, drivers.FieldDiff{
 				Path:     fmt.Sprintf("spec.associations[%s]", association.SubnetId),
 				OldValue: nil,
 				NewValue: association,
@@ -218,7 +214,7 @@ func computeAssociationDiffs(desired []Association, observed []ObservedAssociati
 			continue
 		}
 		if _, ok := desiredSet[association.SubnetId]; !ok {
-			diffs = append(diffs, FieldDiffEntry{
+			diffs = append(diffs, drivers.FieldDiff{
 				Path:     fmt.Sprintf("spec.associations[%s]", association.SubnetId),
 				OldValue: association,
 				NewValue: nil,
@@ -228,20 +224,20 @@ func computeAssociationDiffs(desired []Association, observed []ObservedAssociati
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredFiltered := drivers.FilterPraxisTags(desired)
 	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

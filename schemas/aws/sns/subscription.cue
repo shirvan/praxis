@@ -1,7 +1,7 @@
 package sns
 
 #SNSSubscription: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "SNSSubscription"
 
 	metadata: {

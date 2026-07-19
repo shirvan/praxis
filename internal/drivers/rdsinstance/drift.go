@@ -7,20 +7,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level change between desired and observed.
-// Used by the diff/plan engine to produce human-readable plan output.
-type FieldDiffEntry struct {
-	// Path is the dot-separated path to the field.
-	// Immutable fields are annotated (e.g., "spec.engine (immutable, ignored)").
-	Path string
-
-	// OldValue is the current value in AWS.
-	OldValue any
-
-	// NewValue is the desired value.
-	NewValue any
-}
-
 // HasDrift compares desired spec against observed AWS state and returns true if
 // they differ on any mutable field. Applies defaults before comparison to handle
 // zero-value vs. AWS-default mismatches.
@@ -36,6 +22,15 @@ type FieldDiffEntry struct {
 // it cannot correct them.
 func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
+	if desired.DBIdentifier != observed.DBIdentifier || desired.Engine != observed.Engine || desired.StorageEncrypted != observed.StorageEncrypted || desired.DBClusterIdentifier != observed.DBClusterIdentifier {
+		return true
+	}
+	if desired.DBClusterIdentifier == "" && desired.MasterUsername != observed.MasterUsername {
+		return true
+	}
+	if desired.KMSKeyId != "" && desired.KMSKeyId != observed.KMSKeyId {
+		return true
+	}
 	if desired.InstanceClass != observed.InstanceClass || desired.EngineVersion != observed.EngineVersion {
 		return true
 	}
@@ -75,25 +70,25 @@ func HasDrift(desired RDSInstanceSpec, observed ObservedState) bool {
 // ComputeFieldDiffs returns field-level differences for plan output.
 // Immutable fields are annotated with "(immutable, ignored)" in the path.
 // Storage shrink is annotated with "(shrink unsupported)".
-func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []drivers.FieldDiff {
 	desired = applyDefaults(desired)
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
 	if desired.InstanceClass != observed.InstanceClass {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.instanceClass", OldValue: observed.InstanceClass, NewValue: desired.InstanceClass})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.instanceClass", OldValue: observed.InstanceClass, NewValue: desired.InstanceClass})
 	}
 	if desired.EngineVersion != observed.EngineVersion {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.engineVersion", OldValue: observed.EngineVersion, NewValue: desired.EngineVersion})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.engineVersion", OldValue: observed.EngineVersion, NewValue: desired.EngineVersion})
 	}
 	if desired.AllocatedStorage > 0 && desired.AllocatedStorage != observed.AllocatedStorage {
 		path := "spec.allocatedStorage"
 		if desired.AllocatedStorage < observed.AllocatedStorage {
 			path = "spec.allocatedStorage (shrink unsupported)"
 		}
-		diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: observed.AllocatedStorage, NewValue: desired.AllocatedStorage})
+		diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: observed.AllocatedStorage, NewValue: desired.AllocatedStorage})
 	}
 	appendIfDifferent := func(path string, oldValue any, newValue any) {
 		if oldValue != newValue {
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: oldValue, NewValue: newValue})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: oldValue, NewValue: newValue})
 		}
 	}
 	appendIfDifferent("spec.storageType", observed.StorageType, desired.StorageType)
@@ -106,7 +101,7 @@ func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldD
 	appendIfDifferent("spec.dbSubnetGroupName", observed.DBSubnetGroupName, desired.DBSubnetGroupName)
 	appendIfDifferent("spec.parameterGroupName", observed.ParameterGroupName, desired.ParameterGroupName)
 	if !stringSliceEqual(desired.VpcSecurityGroupIds, observed.VpcSecurityGroupIds) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcSecurityGroupIds", OldValue: observed.VpcSecurityGroupIds, NewValue: desired.VpcSecurityGroupIds})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.vpcSecurityGroupIds", OldValue: observed.VpcSecurityGroupIds, NewValue: desired.VpcSecurityGroupIds})
 	}
 	appendIfDifferent("spec.multiAZ", observed.MultiAZ, desired.MultiAZ)
 	appendIfDifferent("spec.publiclyAccessible", observed.PubliclyAccessible, desired.PubliclyAccessible)
@@ -131,14 +126,14 @@ func ComputeFieldDiffs(desired RDSInstanceSpec, observed ObservedState) []FieldD
 	appendIfDifferent("spec.dbClusterIdentifier (immutable, ignored)", observed.DBClusterIdentifier, desired.DBClusterIdentifier)
 	for key, value := range drivers.FilterPraxisTags(desired.Tags) {
 		if current, ok := drivers.FilterPraxisTags(observed.Tags)[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range drivers.FilterPraxisTags(observed.Tags) {
 		if _, ok := drivers.FilterPraxisTags(desired.Tags)[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

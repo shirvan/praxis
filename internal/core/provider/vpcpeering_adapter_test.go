@@ -13,7 +13,7 @@ import (
 func TestVPCPeeringAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewVPCPeeringAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"VPCPeeringConnection",
 		"metadata":{"name":"app-to-shared"},
 		"spec":{
@@ -70,7 +70,7 @@ func TestVPCPeeringAdapter_NormalizeOutputs(t *testing.T) {
 func TestVPCPeeringAdapter_DecodeSpec_MissingFields(t *testing.T) {
 	adapter := NewVPCPeeringAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"VPCPeeringConnection",
 		"metadata":{"name":"peer"},
 		"spec":{"region":"us-east-1","requesterVpcId":"vpc-a"}

@@ -13,15 +13,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired ECRRepository spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
@@ -32,26 +23,26 @@ func HasDrift(desired ECRRepositorySpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired ECRRepositorySpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired ECRRepositorySpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.RepositoryName != "" && desired.RepositoryName != observed.RepositoryName {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.repositoryName (immutable, ignored)", OldValue: observed.RepositoryName, NewValue: desired.RepositoryName})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.repositoryName (immutable, ignored)", OldValue: observed.RepositoryName, NewValue: desired.RepositoryName})
 	}
 	if desired.ImageTagMutability != "" && desired.ImageTagMutability != observed.ImageTagMutability {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.imageTagMutability", OldValue: observed.ImageTagMutability, NewValue: desired.ImageTagMutability})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.imageTagMutability", OldValue: observed.ImageTagMutability, NewValue: desired.ImageTagMutability})
 	}
 	if !scanningEqual(desired.ImageScanningConfiguration, observed.ImageScanningConfiguration) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.imageScanningConfiguration", OldValue: observed.ImageScanningConfiguration, NewValue: desired.ImageScanningConfiguration})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.imageScanningConfiguration", OldValue: observed.ImageScanningConfiguration, NewValue: desired.ImageScanningConfiguration})
 	}
 	if !encryptionEqual(desired.EncryptionConfiguration, observed.EncryptionConfiguration) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.encryptionConfiguration (immutable, ignored)", OldValue: observed.EncryptionConfiguration, NewValue: desired.EncryptionConfiguration})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.encryptionConfiguration (immutable, ignored)", OldValue: observed.EncryptionConfiguration, NewValue: desired.EncryptionConfiguration})
 	}
 	if normalizeJSON(desired.RepositoryPolicy) != normalizeJSON(observed.RepositoryPolicy) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.repositoryPolicy", OldValue: observed.RepositoryPolicy, NewValue: desired.RepositoryPolicy})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.repositoryPolicy", OldValue: observed.RepositoryPolicy, NewValue: desired.RepositoryPolicy})
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
 	}
 
 	return diffs

@@ -39,11 +39,11 @@ func HasDrift(desired AMISpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns field-level differences for plan output and observability.
 // Includes both actionable mutable diffs and informational immutable diffs.
-func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.Description != observed.Description {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.description",
 			OldValue: observed.Description,
 			NewValue: desired.Description,
@@ -51,7 +51,7 @@ func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry
 	}
 
 	if !launchPermsMatch(desired.LaunchPermissions, observed) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.launchPermissions",
 			OldValue: launchPermsFromObserved(observed),
 			NewValue: normalizeLaunchPermSpec(desired.LaunchPermissions),
@@ -59,7 +59,7 @@ func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry
 	}
 
 	if hasDeprecationDrift(desired.Deprecation, observed.DeprecationTime) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.deprecation.deprecateAt",
 			OldValue: observed.DeprecationTime,
 			NewValue: deprecationValue(desired.Deprecation),
@@ -70,40 +70,40 @@ func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry
 	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 
 	if desired.Name != observed.Name && observed.Name != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.name (immutable, ignored)",
 			OldValue: observed.Name,
 			NewValue: desired.Name,
 		})
 	}
 	if desired.Source.FromSnapshot != nil && desired.Source.FromSnapshot.Architecture != observed.Architecture && observed.Architecture != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.source.architecture (immutable, ignored)",
 			OldValue: observed.Architecture,
 			NewValue: desired.Source.FromSnapshot.Architecture,
 		})
 	}
 	if desired.Source.FromSnapshot != nil && desired.Source.FromSnapshot.VirtualizationType != observed.VirtualizationType && observed.VirtualizationType != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.source.virtualizationType (immutable, ignored)",
 			OldValue: observed.VirtualizationType,
 			NewValue: desired.Source.FromSnapshot.VirtualizationType,
 		})
 	}
 	if desired.Source.FromSnapshot != nil && desired.Source.FromSnapshot.RootDeviceName != observed.RootDeviceName && observed.RootDeviceName != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.source.rootDeviceName (immutable, ignored)",
 			OldValue: observed.RootDeviceName,
 			NewValue: desired.Source.FromSnapshot.RootDeviceName,
@@ -111,13 +111,6 @@ func ComputeFieldDiffs(desired AMISpec, observed ObservedState) []FieldDiffEntry
 	}
 
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level difference between desired and observed.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 // hasLaunchPermDrift returns true if launch permissions differ between desired and observed.

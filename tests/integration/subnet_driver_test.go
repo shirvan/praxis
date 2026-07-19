@@ -48,7 +48,7 @@ func setupSubnetIntegrationDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := subnet.NewSubnetDriver(authservice.NewAuthClient())
+	driver := subnet.NewGenericSubnetDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client

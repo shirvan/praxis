@@ -20,8 +20,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// ECRRepositoryAdapter is the descriptor-driven adapter for ECRRepository,
-// extended with a PreDelete hook that force-empties the repository.
+// ECRRepositoryAdapter is the descriptor-driven adapter for ECRRepository.
 type ECRRepositoryAdapter struct {
 	*GenericAdapter[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs, ecrrepo.ObservedState]
 }
@@ -85,13 +84,13 @@ func ecrRepositoryDescriptor() GenericDescriptor[ecrrepo.ECRRepositorySpec, ecrr
 			}
 		},
 
-		PlanID: func(out ecrrepo.ECRRepositoryOutputs) string { return out.RepositoryName },
+		PlanIdentity: storedPlanIdentity[ecrrepo.ECRRepositorySpec](func(out ecrrepo.ECRRepositoryOutputs) string { return out.RepositoryName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecrrepo.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs, ecrrepo.ObservedState] {
 			return ecrRepositoryProbe(ecrrepo.NewRepositoryAPI(awsclient.NewECRClient(cfg)))
 		},
 
-		DiffFields: func(desired ecrrepo.ECRRepositorySpec, observed ecrrepo.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ecrrepo.ECRRepositorySpec, observed ecrrepo.ObservedState, _ ecrrepo.ECRRepositoryOutputs) []types.FieldDiff {
 			rawDiffs := ecrrepo.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -103,8 +102,9 @@ func ecrRepositoryDescriptor() GenericDescriptor[ecrrepo.ECRRepositorySpec, ecrr
 }
 
 // ecrRepositoryProbe adapts the driver API to the generic plan probe shape.
-func ecrRepositoryProbe(api ecrrepo.RepositoryAPI) PlanProbeFunc[ecrrepo.ObservedState] {
-	return func(runCtx restate.RunContext, repositoryName string) (ecrrepo.ObservedState, bool, error) {
+func ecrRepositoryProbe(api ecrrepo.RepositoryAPI) PlanProbeFunc[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs, ecrrepo.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs]) (ecrrepo.ObservedState, bool, error) {
+		repositoryName := input.Identity
 		obs, err := api.DescribeRepository(runCtx, repositoryName)
 		if err != nil {
 			if ecrrepo.IsNotFound(err) {
@@ -126,12 +126,4 @@ func NewECRRepositoryAdapterWithAuth(auth authservice.AuthClient) *ECRRepository
 // Used by tests.
 func NewECRRepositoryAdapterWithAPI(api ecrrepo.RepositoryAPI) *ECRRepositoryAdapter {
 	return &ECRRepositoryAdapter{GenericAdapter: NewGenericAdapterWithProbe(ecrRepositoryDescriptor(), ecrRepositoryProbe(api))}
-}
-
-// PreDelete enables force-delete on the repo so images are removed with the repository.
-func (a *ECRRepositoryAdapter) PreDelete(ctx restate.Context, key string) error {
-	_, err := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "PreDelete"),
-	).Request(restate.Void{})
-	return err
 }

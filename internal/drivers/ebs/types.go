@@ -7,8 +7,6 @@
 // in-place modification of type, size, IOPS, and throughput (subject to cooldown).
 package ebs
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for EBS volumes.
 // This is the user-facing API surface (e.g., curl .../EBSVolume/key/Provision).
 const ServiceName = "EBSVolume"
@@ -89,6 +87,8 @@ type EBSVolumeOutputs struct {
 // ObservedState captures the actual AWS-side configuration of a volume
 // as returned by ec2:DescribeVolumes. Used for drift comparison.
 type ObservedState struct {
+	Region           string            `json:"region,omitempty"`
+	AccountId        string            `json:"accountId,omitempty"`
 	VolumeId         string            `json:"volumeId"`
 	AvailabilityZone string            `json:"availabilityZone"`
 	VolumeType       string            `json:"volumeType"`
@@ -100,38 +100,4 @@ type ObservedState struct {
 	State            string            `json:"state"`
 	SnapshotId       string            `json:"snapshotId"`
 	Tags             map[string]string `json:"tags"`
-}
-
-// EBSVolumeState is the single atomic state object stored under drivers.StateKey.
-// All fields are written together in one restate.Set() call, ensuring no
-// torn state after crash-during-replay.
-type EBSVolumeState struct {
-	// Desired is the user's declared configuration.
-	Desired EBSVolumeSpec `json:"desired"`
-
-	// Observed is the actual configuration in AWS, populated during reconcile.
-	Observed ObservedState `json:"observed"`
-
-	// Outputs are the values produced after provisioning (volume ID, ARN, etc.).
-	Outputs EBSVolumeOutputs `json:"outputs"`
-
-	// Status is the current lifecycle status of this resource.
-	Status types.ResourceStatus `json:"status"`
-
-	// Mode is Managed (drift corrected) or Observed (drift reported only).
-	Mode types.Mode `json:"mode"`
-
-	// Error holds the error message when Status is Error.
-	Error string `json:"error,omitempty"`
-
-	// Generation is a monotonically increasing counter incremented on every
-	// Provision and Import call. Enables conflict detection and spec tracking.
-	Generation int64 `json:"generation"`
-
-	// LastReconcile is the RFC3339 timestamp of the last completed reconciliation.
-	LastReconcile string `json:"lastReconcile,omitempty"`
-
-	// ReconcileScheduled prevents timer fan-out. At most one pending
-	// reconcile exists per object at any time.
-	ReconcileScheduled bool `json:"reconcileScheduled"`
 }

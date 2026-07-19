@@ -35,6 +35,13 @@ func TestHasDrift_NoDrift(t *testing.T) {
 	assert.False(t, HasDrift(desired, observed))
 }
 
+func TestHasDrift_ImmutableAlarmNameChanged(t *testing.T) {
+	assert.True(t, HasDrift(
+		MetricAlarmSpec{AlarmName: "desired"},
+		ObservedState{AlarmName: "current"},
+	))
+}
+
 func TestHasDrift_ThresholdChanged(t *testing.T) {
 	assert.True(t, HasDrift(MetricAlarmSpec{Threshold: 80, EvaluationPeriods: 1}, ObservedState{Threshold: 70}))
 }

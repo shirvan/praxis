@@ -90,13 +90,13 @@ func ssmParameterDescriptor() GenericDescriptor[ssmparameter.SSMParameterSpec, s
 			return result
 		},
 
-		PlanID: func(out ssmparameter.SSMParameterOutputs) string { return out.ParameterName },
+		PlanIdentity: storedPlanIdentity[ssmparameter.SSMParameterSpec](func(out ssmparameter.SSMParameterOutputs) string { return out.ParameterName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ssmparameter.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs, ssmparameter.ObservedState] {
 			return ssmParameterProbe(ssmparameter.NewSSMParameterAPI(awsclient.NewSSMClient(cfg)))
 		},
 
-		DiffFields: func(desired ssmparameter.SSMParameterSpec, observed ssmparameter.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ssmparameter.SSMParameterSpec, observed ssmparameter.ObservedState, _ ssmparameter.SSMParameterOutputs) []types.FieldDiff {
 			rawDiffs := ssmparameter.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -115,8 +115,9 @@ func ssmParameterDescriptor() GenericDescriptor[ssmparameter.SSMParameterSpec, s
 
 // ssmParameterProbe adapts the driver API to the generic plan probe shape. The
 // driver's describe reports existence directly alongside the observed state.
-func ssmParameterProbe(api ssmparameter.SSMParameterAPI) PlanProbeFunc[ssmparameter.ObservedState] {
-	return func(runCtx restate.RunContext, parameterName string) (ssmparameter.ObservedState, bool, error) {
+func ssmParameterProbe(api ssmparameter.SSMParameterAPI) PlanProbeFunc[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs, ssmparameter.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs]) (ssmparameter.ObservedState, bool, error) {
+		parameterName := input.Identity
 		obs, found, err := api.DescribeParameter(runCtx, parameterName)
 		if err != nil {
 			if ssmparameter.IsNotFound(err) {

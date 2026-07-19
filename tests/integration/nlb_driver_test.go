@@ -31,10 +31,10 @@ func uniqueNLBName(t *testing.T) string {
 	name := strings.ReplaceAll(t.Name(), "/", "-")
 	name = strings.ReplaceAll(name, "_", "-")
 	name = strings.ToLower(name)
-	if len(name) > 24 {
-		name = name[:24]
+	if len(name) > 15 {
+		name = name[:15]
 	}
-	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%100000)
+	return fmt.Sprintf("%s-%x", name, uint64(time.Now().UnixNano()))
 }
 
 func nlbSubnets(t *testing.T, ec2Client *ec2sdk.Client) []string {
@@ -61,7 +61,7 @@ func setupNLBDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *ec2sdk.Cl
 	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := nlb.NewNLBDriver(authservice.NewAuthClient())
+	driver := nlb.NewGenericNLBDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, elbClient, ec2Client

@@ -5,12 +5,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewIAMPolicyDriver(nil)
+	drv := NewGenericIAMPolicyDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
 }
 
@@ -54,9 +52,4 @@ func TestFindOldestNonDefault(t *testing.T) {
 	}
 
 	assert.Equal(t, "v1", findOldestNonDefault(versions))
-}
-
-func TestStateShape(t *testing.T) {
-	state := IAMPolicyState{Status: types.StatusReady}
-	assert.Equal(t, types.StatusReady, state.Status)
 }

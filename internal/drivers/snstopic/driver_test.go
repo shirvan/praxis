@@ -8,7 +8,7 @@ import (
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewSNSTopicDriver(nil)
+	drv := NewGenericSNSTopicDriver(nil)
 	assert.Equal(t, "SNSTopic", drv.ServiceName())
 }
 

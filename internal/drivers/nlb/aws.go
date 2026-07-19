@@ -56,7 +56,7 @@ func (r *realNLBAPI) CreateNLB(ctx context.Context, spec NLBSpec) (string, strin
 		Type:          elbv2types.LoadBalancerTypeEnumNetwork,
 		Scheme:        elbv2types.LoadBalancerSchemeEnum(spec.Scheme),
 		IpAddressType: elbv2types.IpAddressType(spec.IpAddressType),
-		Tags:          toELBTags(spec.Tags),
+		Tags:          toELBTags(nlbManagedTags(spec.Tags, spec.ManagedKey)),
 	}
 	if len(spec.SubnetMappings) > 0 {
 		for _, sm := range spec.SubnetMappings {

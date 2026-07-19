@@ -90,13 +90,13 @@ func logGroupDescriptor() GenericDescriptor[loggroup.LogGroupSpec, loggroup.LogG
 			return result
 		},
 
-		PlanID: func(out loggroup.LogGroupOutputs) string { return out.LogGroupName },
+		PlanIdentity: storedPlanIdentity[loggroup.LogGroupSpec](func(out loggroup.LogGroupOutputs) string { return out.LogGroupName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[loggroup.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[loggroup.LogGroupSpec, loggroup.LogGroupOutputs, loggroup.ObservedState] {
 			return logGroupProbe(loggroup.NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg)))
 		},
 
-		DiffFields: func(desired loggroup.LogGroupSpec, observed loggroup.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired loggroup.LogGroupSpec, observed loggroup.ObservedState, _ loggroup.LogGroupOutputs) []types.FieldDiff {
 			rawDiffs := loggroup.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -109,8 +109,9 @@ func logGroupDescriptor() GenericDescriptor[loggroup.LogGroupSpec, loggroup.LogG
 
 // logGroupProbe adapts the driver API to the generic plan probe shape. The
 // driver's describe reports existence directly alongside the observed state.
-func logGroupProbe(api loggroup.LogGroupAPI) PlanProbeFunc[loggroup.ObservedState] {
-	return func(runCtx restate.RunContext, logGroupName string) (loggroup.ObservedState, bool, error) {
+func logGroupProbe(api loggroup.LogGroupAPI) PlanProbeFunc[loggroup.LogGroupSpec, loggroup.LogGroupOutputs, loggroup.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[loggroup.LogGroupSpec, loggroup.LogGroupOutputs]) (loggroup.ObservedState, bool, error) {
+		logGroupName := input.Identity
 		obs, found, err := api.DescribeLogGroup(runCtx, logGroupName)
 		if err != nil {
 			if loggroup.IsNotFound(err) {

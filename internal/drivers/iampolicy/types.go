@@ -4,8 +4,6 @@
 // that can be attached to roles, users, and groups.
 package iampolicy
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate virtual object name for IAM policy driver instances.
 const ServiceName = "IAMPolicy"
 
@@ -46,18 +44,4 @@ type ObservedState struct {
 	Tags             map[string]string `json:"tags"`
 	CreateDate       string            `json:"createDate"`
 	UpdateDate       string            `json:"updateDate"`
-}
-
-// IAMPolicyState is the durable state persisted in Restate's virtual object storage.
-// Tracks desired spec, observed AWS state, outputs, status, mode, error, and reconcile scheduling.
-type IAMPolicyState struct {
-	Desired            IAMPolicySpec        `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            IAMPolicyOutputs     `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

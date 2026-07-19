@@ -3,8 +3,6 @@
 // via the create-or-converge pattern with drift detection.
 package route53zone
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate virtual object service name used to register and address this driver.
 const ServiceName = "Route53HostedZone"
 
@@ -45,17 +43,4 @@ type ObservedState struct {
 	Tags            map[string]string `json:"tags,omitempty"`
 	NameServers     []string          `json:"nameServers,omitempty"`
 	RecordCount     int64             `json:"recordCount"`
-}
-
-// HostedZoneState is the full persisted state of this virtual-object, stored via restate.Set.
-type HostedZoneState struct {
-	Desired            HostedZoneSpec       `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            HostedZoneOutputs    `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

@@ -92,13 +92,13 @@ func eksClusterDescriptor() GenericDescriptor[ekscluster.EKSClusterSpec, eksclus
 			return result
 		},
 
-		PlanID: func(out ekscluster.EKSClusterOutputs) string { return out.Name },
+		PlanIdentity: storedPlanIdentity[ekscluster.EKSClusterSpec](func(out ekscluster.EKSClusterOutputs) string { return out.Name }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ekscluster.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ekscluster.EKSClusterSpec, ekscluster.EKSClusterOutputs, ekscluster.ObservedState] {
 			return eksClusterProbe(ekscluster.NewEKSClusterAPI(awsclient.NewEKSClient(cfg)))
 		},
 
-		DiffFields: func(desired ekscluster.EKSClusterSpec, observed ekscluster.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ekscluster.EKSClusterSpec, observed ekscluster.ObservedState, _ ekscluster.EKSClusterOutputs) []types.FieldDiff {
 			rawDiffs := ekscluster.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -110,8 +110,9 @@ func eksClusterDescriptor() GenericDescriptor[ekscluster.EKSClusterSpec, eksclus
 }
 
 // eksClusterProbe adapts the driver API to the generic plan probe shape.
-func eksClusterProbe(api ekscluster.EKSClusterAPI) PlanProbeFunc[ekscluster.ObservedState] {
-	return func(runCtx restate.RunContext, clusterName string) (ekscluster.ObservedState, bool, error) {
+func eksClusterProbe(api ekscluster.EKSClusterAPI) PlanProbeFunc[ekscluster.EKSClusterSpec, ekscluster.EKSClusterOutputs, ekscluster.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ekscluster.EKSClusterSpec, ekscluster.EKSClusterOutputs]) (ekscluster.ObservedState, bool, error) {
+		clusterName := input.Identity
 		obs, found, err := api.DescribeCluster(runCtx, clusterName)
 		if err != nil {
 			if ekscluster.IsNotFound(err) {

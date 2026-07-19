@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +29,7 @@ func setupIAMPolicyDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	iamClient := awsclient.NewIAMClient(awsCfg)
-	driver := iampolicy.NewIAMPolicyDriver(authservice.NewAuthClient())
+	driver := iampolicy.NewGenericIAMPolicyDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, iamClient
@@ -129,6 +130,42 @@ func TestIAMPolicyDelete_RemovesPolicy(t *testing.T) {
 
 	_, err = iamClient.GetPolicy(context.Background(), &iamsdk.GetPolicyInput{PolicyArn: &outputs.Arn})
 	require.Error(t, err)
+}
+
+func TestIAMPolicyDelete_LeavesExternalRoleAttachmentUntouched(t *testing.T) {
+	client, iamClient := setupIAMPolicyDriver(t)
+	name := uniquePolicyName(t)
+	roleName := name + "-role"
+
+	outputs, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), iampolicy.IAMPolicySpec{
+		Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc(),
+	})
+	require.NoError(t, err)
+	assumeRoleDocument := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}`
+	_, err = iamClient.CreateRole(context.Background(), &iamsdk.CreateRoleInput{
+		RoleName: aws.String(roleName), AssumeRolePolicyDocument: aws.String(assumeRoleDocument),
+	})
+	require.NoError(t, err)
+	_, err = iamClient.AttachRolePolicy(context.Background(), &iamsdk.AttachRolePolicyInput{
+		RoleName: aws.String(roleName), PolicyArn: aws.String(outputs.Arn),
+	})
+	require.NoError(t, err)
+
+	_, err = ingress.Object[restate.Void, restate.Void](client, iampolicy.ServiceName, name, "Delete").Request(t.Context(), restate.Void{})
+	require.Error(t, err)
+	attached, err := iamClient.ListAttachedRolePolicies(context.Background(), &iamsdk.ListAttachedRolePoliciesInput{RoleName: aws.String(roleName)})
+	require.NoError(t, err)
+	require.Len(t, attached.AttachedPolicies, 1)
+	assert.Equal(t, outputs.Arn, aws.ToString(attached.AttachedPolicies[0].PolicyArn))
+
+	_, err = iamClient.DetachRolePolicy(context.Background(), &iamsdk.DetachRolePolicyInput{
+		RoleName: aws.String(roleName), PolicyArn: aws.String(outputs.Arn),
+	})
+	require.NoError(t, err)
+	_, err = ingress.Object[restate.Void, restate.Void](client, iampolicy.ServiceName, name, "Delete").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	_, err = iamClient.DeleteRole(context.Background(), &iamsdk.DeleteRoleInput{RoleName: aws.String(roleName)})
+	require.NoError(t, err)
 }
 
 func TestIAMPolicyReconcile_DetectsAndFixesDrift(t *testing.T) {

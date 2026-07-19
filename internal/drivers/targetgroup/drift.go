@@ -14,21 +14,12 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired TargetGroup spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired TargetGroupSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
-	if desired.Protocol != observed.Protocol || desired.Port != observed.Port || desired.VpcId != observed.VpcId || desired.TargetType != observed.TargetType || desired.ProtocolVersion != observed.ProtocolVersion {
+	if desired.Name != observed.Name || desired.Protocol != observed.Protocol || desired.Port != observed.Port || desired.VpcId != observed.VpcId || desired.TargetType != observed.TargetType || desired.ProtocolVersion != observed.ProtocolVersion {
 		return true
 	}
 	if desired.HealthCheck != observed.HealthCheck {
@@ -49,9 +40,12 @@ func HasDrift(desired TargetGroupSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired TargetGroupSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired TargetGroupSpec, observed ObservedState) []drivers.FieldDiff {
 	desired = applyDefaults(desired)
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
+	if desired.Name != observed.Name {
+		diffs = append(diffs, immutableDiff("spec.name", observed.Name, desired.Name))
+	}
 
 	if desired.Protocol != observed.Protocol {
 		diffs = append(diffs, immutableDiff("spec.protocol", observed.Protocol, desired.Protocol))
@@ -69,55 +63,55 @@ func ComputeFieldDiffs(desired TargetGroupSpec, observed ObservedState) []FieldD
 		diffs = append(diffs, immutableDiff("spec.protocolVersion", observed.ProtocolVersion, desired.ProtocolVersion))
 	}
 	if desired.HealthCheck != observed.HealthCheck {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.healthCheck", OldValue: observed.HealthCheck, NewValue: desired.HealthCheck})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.healthCheck", OldValue: observed.HealthCheck, NewValue: desired.HealthCheck})
 	}
 	if desired.DeregistrationDelay != observed.DeregistrationDelay {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.deregistrationDelay", OldValue: observed.DeregistrationDelay, NewValue: desired.DeregistrationDelay})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.deregistrationDelay", OldValue: observed.DeregistrationDelay, NewValue: desired.DeregistrationDelay})
 	}
 	if !stickinessEqual(desired.Stickiness, observed.Stickiness) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.stickiness", OldValue: observed.Stickiness, NewValue: desired.Stickiness})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.stickiness", OldValue: observed.Stickiness, NewValue: desired.Stickiness})
 	}
 	diffs = append(diffs, computeTargetDiffs(desired.Targets, observed.Targets)...)
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 
-func immutableDiff(path string, oldValue, newValue any) FieldDiffEntry {
-	return FieldDiffEntry{Path: path + " (immutable, requires replacement)", OldValue: oldValue, NewValue: newValue}
+func immutableDiff(path string, oldValue, newValue any) drivers.FieldDiff {
+	return drivers.FieldDiff{Path: path + " (immutable, requires replacement)", OldValue: oldValue, NewValue: newValue}
 }
 
-func computeTargetDiffs(desired, observed []Target) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTargetDiffs(desired, observed []Target) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredSet := targetSet(desired)
 	observedSet := targetSet(observed)
 	for key, value := range desiredSet {
 		if _, ok := observedSet[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: fmt.Sprintf("spec.targets[%s]", key), OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: fmt.Sprintf("spec.targets[%s]", key), OldValue: nil, NewValue: value})
 		}
 	}
 	for key, value := range observedSet {
 		if _, ok := desiredSet[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: fmt.Sprintf("spec.targets[%s]", key), OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: fmt.Sprintf("spec.targets[%s]", key), OldValue: value, NewValue: nil})
 		}
 	}
 	sort.Slice(diffs, func(i, j int) bool { return diffs[i].Path < diffs[j].Path })
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	fd := drivers.FilterPraxisTags(desired)
 	fo := drivers.FilterPraxisTags(observed)
 	for key, value := range fd {
 		if oldValue, ok := fo[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if oldValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: oldValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: oldValue, NewValue: value})
 		}
 	}
 	for key, value := range fo {
 		if _, ok := fd[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	sort.Slice(diffs, func(i, j int) bool { return diffs[i].Path < diffs[j].Path })

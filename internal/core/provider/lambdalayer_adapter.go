@@ -1,19 +1,4 @@
-// LambdaLayer provider adapter.
-//
-// This file implements the provider.Adapter interface for AWS Lambda (Layer)
-// resources. It translates between the generic JSON resource documents used by
-// the orchestrator / command service and the strongly typed Go structs expected
-// by the LambdaLayer Restate Virtual Object driver.
-//
-// NOT ported to GenericAdapter: Plan gates on outputs.LayerVersionArn but
-// describes by outputs.LayerName, and the field diff takes the stored outputs
-// as a third argument — neither fits the generic planID-only probe and
-// (desired, observed) diff. Kept hand-rolled, with the throttle-retry fix
-// applied to Plan.
-//
-// Key scope: region-scoped.
-// Key parts: region + layer name.
-// Lambda layers are region-scoped; the key combines the AWS region and layer name.
+// LambdaLayer provider adapter — descriptor for the GenericAdapter.
 package provider
 
 import (
@@ -31,246 +16,103 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// LambdaLayerAdapter implements provider.Adapter for LambdaLayer (AWS Lambda (Layer)) resources.
-// It holds an auth client for credential resolution and a factory for creating
-// AWS API clients scoped to the target account. A staticPlanningAPI field allows
-// tests to inject a mock API without requiring real AWS credentials.
-type LambdaLayerAdapter struct {
-	auth              authservice.AuthClient
-	staticPlanningAPI lambdalayer.LayerAPI
-	apiFactory        func(aws.Config) lambdalayer.LayerAPI
+type LambdaLayerAdapter = GenericAdapter[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState]
+
+func lambdaLayerDescriptor() GenericDescriptor[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState] {
+	return GenericDescriptor[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState]{
+		Kind:  lambdalayer.ServiceName,
+		Scope: KeyScopeRegion,
+		DecodeSpec: func(raw json.RawMessage, metadataName string) (lambdalayer.LambdaLayerSpec, error) {
+			var spec lambdalayer.LambdaLayerSpec
+			if err := json.Unmarshal(raw, &spec); err != nil {
+				return lambdalayer.LambdaLayerSpec{}, fmt.Errorf("decode LambdaLayer spec: %w", err)
+			}
+			name := strings.TrimSpace(metadataName)
+			if name == "" {
+				return lambdalayer.LambdaLayerSpec{}, fmt.Errorf("LambdaLayer metadata.name is required")
+			}
+			if strings.TrimSpace(spec.Region) == "" {
+				return lambdalayer.LambdaLayerSpec{}, fmt.Errorf("LambdaLayer spec.region is required")
+			}
+			spec.LayerName = name
+			return spec, nil
+		},
+		KeyFromSpec: func(spec lambdalayer.LambdaLayerSpec, _ string) (string, error) {
+			if err := ValidateKeyPart("region", spec.Region); err != nil {
+				return "", err
+			}
+			if err := ValidateKeyPart("Lambda layer name", spec.LayerName); err != nil {
+				return "", err
+			}
+			return JoinKey(spec.Region, spec.LayerName), nil
+		},
+		ImportKey: func(region, resourceID string) (string, error) {
+			if err := ValidateKeyPart("region", region); err != nil {
+				return "", err
+			}
+			if err := ValidateKeyPart("resource ID", resourceID); err != nil {
+				return "", err
+			}
+			return JoinKey(region, resourceID), nil
+		},
+		PrepareSpec: func(spec lambdalayer.LambdaLayerSpec, key, account string) lambdalayer.LambdaLayerSpec {
+			spec.Account = account
+			spec.ManagedKey = key
+			return spec
+		},
+		NormalizeOutputs: func(out lambdalayer.LambdaLayerOutputs) map[string]any {
+			result := map[string]any{
+				"layerArn": out.LayerArn, "layerVersionArn": out.LayerVersionArn,
+				"layerName": out.LayerName, "version": out.Version,
+			}
+			if out.CodeSize > 0 {
+				result["codeSize"] = out.CodeSize
+			}
+			if out.CodeSha256 != "" {
+				result["codeSha256"] = out.CodeSha256
+			}
+			if out.CreatedDate != "" {
+				result["createdDate"] = out.CreatedDate
+			}
+			return result
+		},
+		PlanIdentity: func(_ lambdalayer.LambdaLayerSpec, outputs lambdalayer.LambdaLayerOutputs) (string, bool) {
+			return outputs.LayerName, outputs.LayerVersionArn != ""
+		},
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState] {
+			return lambdaLayerProbe(lambdalayer.NewLayerAPI(awsclient.NewLambdaClient(cfg)))
+		},
+		DiffFields: func(desired lambdalayer.LambdaLayerSpec, observed lambdalayer.ObservedState, outputs lambdalayer.LambdaLayerOutputs) []types.FieldDiff {
+			raw := lambdalayer.ComputeFieldDiffs(desired, observed, outputs)
+			fields := make([]types.FieldDiff, 0, len(raw))
+			for _, diff := range raw {
+				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
+			}
+			return fields
+		},
+	}
 }
 
-// NewLambdaLayerAdapterWithAuth creates a production LambdaLayer adapter using
-// the given auth client for per-account credential resolution.
-// The apiFactory closure creates a real AWS API client from the resolved
-// aws.Config, ensuring each Plan/Provision call targets the correct account.
+func lambdaLayerProbe(api lambdalayer.LayerAPI) PlanProbeFunc[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState] {
+	return func(ctx restate.RunContext, input PlanProbeInput[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs]) (lambdalayer.ObservedState, bool, error) {
+		observed, err := api.GetLatestLayerVersion(ctx, input.Identity)
+		if err != nil {
+			if lambdalayer.IsNotFound(err) {
+				return lambdalayer.ObservedState{}, false, nil
+			}
+			if awserr.IsThrottled(err) {
+				return lambdalayer.ObservedState{}, false, err
+			}
+			return lambdalayer.ObservedState{}, false, restate.TerminalError(err, 500)
+		}
+		return observed, true, nil
+	}
+}
+
 func NewLambdaLayerAdapterWithAuth(auth authservice.AuthClient) *LambdaLayerAdapter {
-	return &LambdaLayerAdapter{auth: auth, apiFactory: func(cfg aws.Config) lambdalayer.LayerAPI {
-		return lambdalayer.NewLayerAPI(awsclient.NewLambdaClient(cfg))
-	}}
+	return NewGenericAdapter(lambdaLayerDescriptor(), auth)
 }
 
-// NewLambdaLayerAdapterWithAPI creates a LambdaLayer adapter with a pre-built API
-// client. This is primarily useful in tests that supply a mock implementation
-// and do not need per-account credential resolution.
 func NewLambdaLayerAdapterWithAPI(api lambdalayer.LayerAPI) *LambdaLayerAdapter {
-	return &LambdaLayerAdapter{staticPlanningAPI: api}
-}
-
-// Kind returns the resource kind string "LambdaLayer" that maps template
-// resource documents to this adapter in the provider registry.
-func (a *LambdaLayerAdapter) Kind() string { return lambdalayer.ServiceName }
-
-// ServiceName returns the Restate Virtual Object service name for the
-// LambdaLayer driver. The orchestrator uses this to dispatch durable RPCs.
-func (a *LambdaLayerAdapter) ServiceName() string { return lambdalayer.ServiceName }
-
-// Scope returns the key-scope strategy for LambdaLayer resources,
-// which controls how BuildKey assembles the canonical object key.
-func (a *LambdaLayerAdapter) Scope() KeyScope { return KeyScopeRegion }
-
-// BuildKey derives the canonical Restate object key for a LambdaLayer resource
-// from the raw JSON resource document. The key is composed of region + layer name,
-// ensuring uniqueness within the Restate Virtual Object namespace.
-func (a *LambdaLayerAdapter) BuildKey(resourceDoc json.RawMessage) (string, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return "", err
-	}
-	spec, err := a.decodeSpec(doc)
-	if err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("region", spec.Region); err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("Lambda layer name", spec.LayerName); err != nil {
-		return "", err
-	}
-	return JoinKey(spec.Region, spec.LayerName), nil
-}
-
-// DecodeSpec extracts the spec section from a raw JSON resource document and
-// returns it as the concrete LambdaLayer spec struct expected by the driver.
-func (a *LambdaLayerAdapter) DecodeSpec(resourceDoc json.RawMessage) (any, error) {
-	doc, err := decodeResourceDocument(resourceDoc)
-	if err != nil {
-		return nil, err
-	}
-	return a.decodeSpec(doc)
-}
-
-// Provision sends a durable Provision request to the LambdaLayer Restate
-// Virtual Object keyed by the given key. It returns a ProvisionInvocation
-// handle that the orchestrator can await via restate.Wait/WaitFirst.
-// The account string is injected into the spec so the driver knows which
-// AWS account to target.
-func (a *LambdaLayerAdapter) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
-	typedSpec, err := castSpec[lambdalayer.LambdaLayerSpec](spec)
-	if err != nil {
-		return nil, err
-	}
-	typedSpec.Account = account
-	typedSpec.ManagedKey = key
-	fut := restate.WithRequestType[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](restate.Object[lambdalayer.LambdaLayerOutputs](ctx, a.ServiceName(), key, "Provision")).RequestFuture(typedSpec)
-	return &provisionHandle[lambdalayer.LambdaLayerOutputs]{id: fut.GetInvocationId(), raw: fut, normalize: a.NormalizeOutputs}, nil
-}
-
-// Delete sends a durable Delete request to the LambdaLayer Restate Virtual
-// Object keyed by the given key. It returns a DeleteInvocation handle
-// that the orchestrator can await alongside other parallel futures.
-func (a *LambdaLayerAdapter) Delete(ctx restate.Context, key string) (DeleteInvocation, error) {
-	fut := restate.WithRequestType[restate.Void, restate.Void](restate.Object[restate.Void](ctx, a.ServiceName(), key, "Delete")).RequestFuture(restate.Void{})
-	return &deleteHandle{id: fut.GetInvocationId(), raw: fut}, nil
-}
-
-// NormalizeOutputs converts the typed LambdaLayer driver output struct into
-// the generic map[string]any used by deployment state, CLI display,
-// and cross-resource expression interpolation.
-func (a *LambdaLayerAdapter) NormalizeOutputs(raw any) (map[string]any, error) {
-	out, err := castOutput[lambdalayer.LambdaLayerOutputs](raw)
-	if err != nil {
-		return nil, err
-	}
-	result := map[string]any{"layerArn": out.LayerArn, "layerVersionArn": out.LayerVersionArn, "layerName": out.LayerName, "version": out.Version}
-	if out.CodeSize > 0 {
-		result["codeSize"] = out.CodeSize
-	}
-	if out.CodeSha256 != "" {
-		result["codeSha256"] = out.CodeSha256
-	}
-	if out.CreatedDate != "" {
-		result["createdDate"] = out.CreatedDate
-	}
-	return result, nil
-}
-
-// Plan compares the desired LambdaLayer spec against the current provider
-// state. It first checks whether the resource already exists (via cached
-// outputs or a Describe API call), then computes field-level diffs.
-// Returns OpCreate if the resource is absent, OpUpdate if fields differ,
-// or OpNoOp if the resource matches the desired state.
-func (a *LambdaLayerAdapter) Plan(ctx restate.Context, key string, account string, desiredSpec any) (types.DiffOperation, []types.FieldDiff, error) {
-	desired, err := castSpec[lambdalayer.LambdaLayerSpec](desiredSpec)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, getErr := restate.Object[lambdalayer.LambdaLayerOutputs](ctx, a.ServiceName(), key, "GetOutputs").Request(restate.Void{})
-	if getErr != nil {
-		return "", nil, fmt.Errorf("LambdaLayer Plan: failed to read outputs for key %q: %w", key, getErr)
-	}
-	if outputs.LayerVersionArn == "" {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-	planningAPI, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return "", nil, err
-	}
-	type describePlanResult struct {
-		State lambdalayer.ObservedState
-		Found bool
-	}
-	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		obs, descErr := planningAPI.GetLatestLayerVersion(runCtx, outputs.LayerName)
-		if descErr != nil {
-			if lambdalayer.IsNotFound(descErr) {
-				return describePlanResult{Found: false}, nil
-			}
-			// Throttled describes during a wide plan must retry, not fail
-			// the whole plan permanently.
-			if awserr.IsThrottled(descErr) {
-				return describePlanResult{}, descErr
-			}
-			return describePlanResult{}, restate.TerminalError(descErr, 500)
-		}
-		return describePlanResult{State: obs, Found: true}, nil
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	if !result.Found {
-		fields, fieldErr := createFieldDiffsFromSpec(desired)
-		if fieldErr != nil {
-			return "", nil, fieldErr
-		}
-		return types.OpCreate, fields, nil
-	}
-	rawDiffs := lambdalayer.ComputeFieldDiffs(desired, result.State, outputs)
-	if len(rawDiffs) == 0 {
-		return types.OpNoOp, nil, nil
-	}
-	fields := make([]types.FieldDiff, 0, len(rawDiffs))
-	for _, diff := range rawDiffs {
-		fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-	}
-	return types.OpUpdate, fields, nil
-}
-
-// BuildImportKey derives the canonical Restate object key for importing
-// an existing LambdaLayer resource by its region and provider-native ID.
-func (a *LambdaLayerAdapter) BuildImportKey(region, resourceID string) (string, error) {
-	if err := ValidateKeyPart("region", region); err != nil {
-		return "", err
-	}
-	if err := ValidateKeyPart("resource ID", resourceID); err != nil {
-		return "", err
-	}
-	return JoinKey(region, resourceID), nil
-}
-
-// Import adopts an existing LambdaLayer resource into Praxis management.
-// It delegates to the driver's Import handler and normalizes the outputs.
-func (a *LambdaLayerAdapter) Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error) {
-	ref.Account = account
-	output, err := restate.WithRequestType[types.ImportRef, lambdalayer.LambdaLayerOutputs](restate.Object[lambdalayer.LambdaLayerOutputs](ctx, a.ServiceName(), key, "Import")).Request(ref)
-	if err != nil {
-		return "", nil, err
-	}
-	outputs, err := a.NormalizeOutputs(output)
-	if err != nil {
-		return "", nil, err
-	}
-	return types.StatusReady, outputs, nil
-}
-
-// decodeSpec unmarshals the raw JSON spec from a resource document into
-// the typed LambdaLayer spec struct, validates required fields, and applies
-// sensible defaults. The Account field is deliberately zeroed so that only
-// the orchestrator (not the template author) can set the target account.
-func (a *LambdaLayerAdapter) decodeSpec(doc resourceDocument) (lambdalayer.LambdaLayerSpec, error) {
-	var spec lambdalayer.LambdaLayerSpec
-	if err := json.Unmarshal(doc.Spec, &spec); err != nil {
-		return lambdalayer.LambdaLayerSpec{}, fmt.Errorf("decode LambdaLayer spec: %w", err)
-	}
-	name := strings.TrimSpace(doc.Metadata.Name)
-	if name == "" {
-		return lambdalayer.LambdaLayerSpec{}, fmt.Errorf("LambdaLayer metadata.name is required")
-	}
-	if strings.TrimSpace(spec.Region) == "" {
-		return lambdalayer.LambdaLayerSpec{}, fmt.Errorf("LambdaLayer spec.region is required")
-	}
-	spec.LayerName = name
-	return spec, nil
-}
-
-// planningAPI returns the AWS API client used for Plan (read-only) operations.
-// In production it resolves credentials for the given account via the auth
-// client and creates a fresh API. In tests it returns the staticPlanningAPI.
-func (a *LambdaLayerAdapter) planningAPI(ctx restate.Context, account string) (lambdalayer.LayerAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("lambda layer adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve Lambda layer planning account %q: %w", account, err)
-	}
-	return a.apiFactory(awsCfg), nil
+	return NewGenericAdapterWithProbe(lambdaLayerDescriptor(), lambdaLayerProbe(api))
 }

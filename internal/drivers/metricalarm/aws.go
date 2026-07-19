@@ -137,12 +137,6 @@ func (r *realMetricAlarmAPI) DescribeAlarm(ctx context.Context, alarmName string
 		StateReason:             aws.ToString(alarm.StateReason),
 		Tags:                    map[string]string{},
 	}
-	// AWS DescribeAlarms does not return tags; fetch them separately.
-	if observed.AlarmArn != "" {
-		if tags, tagErr := r.ListTagsForResource(ctx, observed.AlarmArn); tagErr == nil {
-			observed.Tags = tags
-		}
-	}
 	return normalizeObserved(observed), true, nil
 }
 
@@ -251,7 +245,10 @@ func toTagList(tags map[string]string) []cwtypes.Tag {
 
 func syncTagDiff(desired, observed map[string]string, managedKey string) (map[string]string, []string) {
 	want := managedTags(desired, managedKey)
-	have := managedTags(observed, managedKey)
+	have := drivers.FilterPraxisTags(observed)
+	if current, ok := observed["praxis:managed-key"]; ok {
+		have["praxis:managed-key"] = current
+	}
 	toAdd := map[string]string{}
 	for key, value := range want {
 		if current, ok := have[key]; !ok || current != value {

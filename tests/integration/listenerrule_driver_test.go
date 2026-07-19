@@ -129,7 +129,7 @@ func setupListenerRuleDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *
 	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := listenerrule.NewListenerRuleDriver(authservice.NewAuthClient())
+	driver := listenerrule.NewGenericListenerRuleDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, elbClient, ec2Client

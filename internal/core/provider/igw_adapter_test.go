@@ -13,7 +13,7 @@ import (
 func TestIGWAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewIGWAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"InternetGateway",
 		"metadata":{"name":"web-igw"},
 		"spec":{"region":"us-east-1","vpcId":"vpc-123","tags":{"env":"dev"}}

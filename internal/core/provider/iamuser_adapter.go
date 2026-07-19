@@ -92,13 +92,13 @@ func iamUserDescriptor() GenericDescriptor[iamuser.IAMUserSpec, iamuser.IAMUserO
 			return map[string]any{"arn": out.Arn, "userId": out.UserId, "userName": out.UserName}
 		},
 
-		PlanID: func(out iamuser.IAMUserOutputs) string { return out.UserName },
+		PlanIdentity: storedPlanIdentity[iamuser.IAMUserSpec](func(out iamuser.IAMUserOutputs) string { return out.UserName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamuser.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamuser.IAMUserSpec, iamuser.IAMUserOutputs, iamuser.ObservedState] {
 			return iamUserProbe(iamuser.NewIAMUserAPI(awsclient.NewIAMClient(cfg)))
 		},
 
-		DiffFields: func(desired iamuser.IAMUserSpec, observed iamuser.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired iamuser.IAMUserSpec, observed iamuser.ObservedState, _ iamuser.IAMUserOutputs) []types.FieldDiff {
 			rawDiffs := iamuser.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -110,8 +110,9 @@ func iamUserDescriptor() GenericDescriptor[iamuser.IAMUserSpec, iamuser.IAMUserO
 }
 
 // iamUserProbe adapts the driver API to the generic plan probe shape.
-func iamUserProbe(api iamuser.IAMUserAPI) PlanProbeFunc[iamuser.ObservedState] {
-	return func(runCtx restate.RunContext, userName string) (iamuser.ObservedState, bool, error) {
+func iamUserProbe(api iamuser.IAMUserAPI) PlanProbeFunc[iamuser.IAMUserSpec, iamuser.IAMUserOutputs, iamuser.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[iamuser.IAMUserSpec, iamuser.IAMUserOutputs]) (iamuser.ObservedState, bool, error) {
+		userName := input.Identity
 		obs, err := api.DescribeUser(runCtx, userName)
 		if err != nil {
 			if iamuser.IsNotFound(err) {

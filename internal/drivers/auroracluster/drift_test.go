@@ -100,6 +100,43 @@ func TestHasDrift_PraxisTagsIgnored(t *testing.T) {
 	assert.False(t, HasDrift(spec, obs))
 }
 
+func TestHasDrift_ImmutableIdentityChanged(t *testing.T) {
+	base := AuroraClusterSpec{
+		ClusterIdentifier: "orders", Engine: "aurora-mysql", MasterUsername: "admin",
+		DatabaseName: "orders", StorageEncrypted: true, KMSKeyId: "kms-old",
+		BackupRetentionPeriod: 7, VpcSecurityGroupIds: []string{},
+		EnabledCloudwatchLogsExports: []string{}, Tags: map[string]string{},
+	}
+	observed := ObservedState{
+		ClusterIdentifier: "orders", Engine: "aurora-mysql", MasterUsername: "admin",
+		DatabaseName: "orders", StorageEncrypted: true, KMSKeyId: "kms-old",
+		BackupRetentionPeriod: 7, VpcSecurityGroupIds: []string{},
+		EnabledCloudwatchLogsExports: []string{}, Tags: map[string]string{},
+	}
+
+	tests := map[string]func(*AuroraClusterSpec){
+		"identifier":         func(spec *AuroraClusterSpec) { spec.ClusterIdentifier = "orders-next" },
+		"engine":             func(spec *AuroraClusterSpec) { spec.Engine = "aurora-postgresql" },
+		"master username":    func(spec *AuroraClusterSpec) { spec.MasterUsername = "root" },
+		"database name":      func(spec *AuroraClusterSpec) { spec.DatabaseName = "orders_next" },
+		"storage encryption": func(spec *AuroraClusterSpec) { spec.StorageEncrypted = false },
+		"kms key":            func(spec *AuroraClusterSpec) { spec.KMSKeyId = "kms-next" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			desired := base
+			mutate(&desired)
+			assert.True(t, HasDrift(desired, observed))
+		})
+	}
+}
+
+func TestHasDrift_ProviderDefaultKMSKeyIgnoredWhenUnset(t *testing.T) {
+	spec := AuroraClusterSpec{Engine: "aurora-mysql", StorageEncrypted: true, BackupRetentionPeriod: 7}
+	observed := ObservedState{Engine: "aurora-mysql", StorageEncrypted: true, KMSKeyId: "provider-default", BackupRetentionPeriod: 7}
+	assert.False(t, HasDrift(spec, observed))
+}
+
 func TestComputeFieldDiffs_NoDiff(t *testing.T) {
 	spec := AuroraClusterSpec{
 		EngineVersion: "8.0", BackupRetentionPeriod: 7,

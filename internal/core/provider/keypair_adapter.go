@@ -90,13 +90,13 @@ func keyPairDescriptor() GenericDescriptor[keypair.KeyPairSpec, keypair.KeyPairO
 			}
 		},
 
-		PlanID: func(out keypair.KeyPairOutputs) string { return out.KeyName },
+		PlanIdentity: storedPlanIdentity[keypair.KeyPairSpec](func(out keypair.KeyPairOutputs) string { return out.KeyName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[keypair.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[keypair.KeyPairSpec, keypair.KeyPairOutputs, keypair.ObservedState] {
 			return keyPairProbe(keypair.NewKeyPairAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired keypair.KeyPairSpec, observed keypair.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired keypair.KeyPairSpec, observed keypair.ObservedState, _ keypair.KeyPairOutputs) []types.FieldDiff {
 			rawDiffs := keypair.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -108,8 +108,9 @@ func keyPairDescriptor() GenericDescriptor[keypair.KeyPairSpec, keypair.KeyPairO
 }
 
 // keyPairProbe adapts the driver API to the generic plan probe shape.
-func keyPairProbe(api keypair.KeyPairAPI) PlanProbeFunc[keypair.ObservedState] {
-	return func(runCtx restate.RunContext, keyName string) (keypair.ObservedState, bool, error) {
+func keyPairProbe(api keypair.KeyPairAPI) PlanProbeFunc[keypair.KeyPairSpec, keypair.KeyPairOutputs, keypair.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[keypair.KeyPairSpec, keypair.KeyPairOutputs]) (keypair.ObservedState, bool, error) {
+		keyName := input.Identity
 		obs, err := api.DescribeKeyPair(runCtx, keyName)
 		if err != nil {
 			if keypair.IsNotFound(err) {

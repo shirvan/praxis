@@ -112,13 +112,6 @@ func (f *fakeS3Driver) Delete(ctx restate.ObjectContext) error {
 	return err
 }
 
-// PreDelete satisfies the S3 adapter's finalizer hook. The timeout scenarios
-// intentionally isolate the durable Delete invocation, so cleanup itself is a
-// no-op in this fake service.
-func (f *fakeS3Driver) PreDelete(ctx restate.ObjectContext) error {
-	return nil
-}
-
 func (f *fakeS3Driver) resetObservations() {
 	f.inFlight.Store(0)
 	f.maxInFlight.Store(0)
@@ -167,7 +160,7 @@ func setupFaultStack(t *testing.T) (*ingress.Client, *fakeS3Driver) {
 func bucketTemplateWithTimeouts(bucketName, createTimeout, deleteTimeout string) string {
 	return fmt.Sprintf(`
 resources: bucket: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "S3Bucket"
 	metadata: name: %q
 	spec: region: "us-east-1"
@@ -203,7 +196,7 @@ func nBucketTemplate(prefix string, n int) string {
 	for i := range n {
 		fmt.Fprintf(&b, `
 	bucket%d: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: "%s-%d" }
 		spec: { region: "us-east-1" }

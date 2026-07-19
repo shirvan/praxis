@@ -6,8 +6,6 @@
 // relationship. Drift detection checks the VPC attachment and tags.
 package igw
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name used to register this driver.
 const ServiceName = "InternetGateway"
 
@@ -32,21 +30,9 @@ type IGWOutputs struct {
 // AttachedVpcId may differ from the spec VpcId when the IGW has been detached
 // or re-attached outside of Praxis.
 type ObservedState struct {
+	Region            string            `json:"region,omitempty"`
 	InternetGatewayId string            `json:"internetGatewayId"`
 	AttachedVpcId     string            `json:"attachedVpcId"` // VPC currently attached, empty if detached.
 	OwnerId           string            `json:"ownerId"`
 	Tags              map[string]string `json:"tags"`
-}
-
-// IGWState is the single atomic state object stored under drivers.StateKey.
-type IGWState struct {
-	Desired            IGWSpec              `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state.
-	Outputs            IGWOutputs           `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status.
-	Mode               types.Mode           `json:"mode"`                    // Managed or Observed.
-	Error              string               `json:"error,omitempty"`         // Error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of last reconcile.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Deduplication flag for reconcile scheduling.
 }

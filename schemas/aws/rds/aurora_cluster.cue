@@ -1,7 +1,7 @@
 package rds
 
 #AuroraCluster: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "AuroraCluster"
 
 	metadata: {

@@ -1,7 +1,7 @@
 package route53
 
 #Route53HealthCheck: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "Route53HealthCheck"
 
 	metadata: {
@@ -30,5 +30,7 @@ package route53
 		tags?: [string]: string
 	}
 
-	outputs?: healthCheckId: string
+	outputs?: {
+		healthCheckId: string
+	}
 }

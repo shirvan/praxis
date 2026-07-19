@@ -91,13 +91,13 @@ func sqsQueuePolicyDescriptor() GenericDescriptor[sqspolicy.SQSQueuePolicySpec, 
 			}
 		},
 
-		PlanID: func(out sqspolicy.SQSQueuePolicyOutputs) string { return out.QueueUrl },
+		PlanIdentity: storedPlanIdentity[sqspolicy.SQSQueuePolicySpec](func(out sqspolicy.SQSQueuePolicyOutputs) string { return out.QueueUrl }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[sqspolicy.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[sqspolicy.SQSQueuePolicySpec, sqspolicy.SQSQueuePolicyOutputs, sqspolicy.ObservedState] {
 			return sqsQueuePolicyProbe(sqspolicy.NewPolicyAPI(awsclient.NewSQSClient(cfg)))
 		},
 
-		DiffFields: func(desired sqspolicy.SQSQueuePolicySpec, observed sqspolicy.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired sqspolicy.SQSQueuePolicySpec, observed sqspolicy.ObservedState, _ sqspolicy.SQSQueuePolicyOutputs) []types.FieldDiff {
 			rawDiffs := sqspolicy.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -109,8 +109,9 @@ func sqsQueuePolicyDescriptor() GenericDescriptor[sqspolicy.SQSQueuePolicySpec, 
 }
 
 // sqsQueuePolicyProbe adapts the driver API to the generic plan probe shape.
-func sqsQueuePolicyProbe(api sqspolicy.PolicyAPI) PlanProbeFunc[sqspolicy.ObservedState] {
-	return func(runCtx restate.RunContext, queueURL string) (sqspolicy.ObservedState, bool, error) {
+func sqsQueuePolicyProbe(api sqspolicy.PolicyAPI) PlanProbeFunc[sqspolicy.SQSQueuePolicySpec, sqspolicy.SQSQueuePolicyOutputs, sqspolicy.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[sqspolicy.SQSQueuePolicySpec, sqspolicy.SQSQueuePolicyOutputs]) (sqspolicy.ObservedState, bool, error) {
+		queueURL := input.Identity
 		obs, err := api.GetQueuePolicy(runCtx, queueURL)
 		if err != nil {
 			if sqspolicy.IsNotFound(err) {

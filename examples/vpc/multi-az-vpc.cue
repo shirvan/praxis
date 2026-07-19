@@ -20,7 +20,7 @@ variables: {
 resources: {
 	// ── VPC ─────────────────────────────────────────────
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(variables.name)-\(variables.environment)-vpc"
 		spec: {
@@ -37,7 +37,7 @@ resources: {
 
 	// ── Internet Gateway ────────────────────────────────
 	igw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "InternetGateway"
 		metadata: name: "\(variables.name)-\(variables.environment)-igw"
 		spec: {
@@ -52,7 +52,7 @@ resources: {
 
 	// ── Public Subnets ──────────────────────────────────
 	publicA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-public-a"
 		spec: {
@@ -70,7 +70,7 @@ resources: {
 	}
 
 	publicB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-public-b"
 		spec: {
@@ -89,7 +89,7 @@ resources: {
 
 	// ── Private Subnets ─────────────────────────────────
 	privateA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-private-a"
 		spec: {
@@ -106,7 +106,7 @@ resources: {
 	}
 
 	privateB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-private-b"
 		spec: {
@@ -124,7 +124,7 @@ resources: {
 
 	// ── Elastic IP for NAT Gateway ──────────────────────
 	natEip: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ElasticIP"
 		metadata: name: "\(variables.name)-\(variables.environment)-nat-eip"
 		spec: {
@@ -139,7 +139,7 @@ resources: {
 
 	// ── NAT Gateway (in public-a) ───────────────────────
 	natgw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NATGateway"
 		metadata: name: "\(variables.name)-\(variables.environment)-natgw"
 		spec: {
@@ -156,7 +156,7 @@ resources: {
 
 	// ── Public Route Table (→ IGW) ──────────────────────
 	publicRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(variables.name)-\(variables.environment)-public-rt"
 		spec: {
@@ -180,7 +180,7 @@ resources: {
 
 	// ── Private Route Table (→ NAT) ─────────────────────
 	privateRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(variables.name)-\(variables.environment)-private-rt"
 		spec: {

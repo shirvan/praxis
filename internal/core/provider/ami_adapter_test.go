@@ -38,7 +38,7 @@ func (m *mockAMIAPI) FindByManagedKey(context.Context, string) (string, error)  
 func TestAMIAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewAMIAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"AMI",
 		"metadata":{"name":"web-ami"},
 		"spec":{

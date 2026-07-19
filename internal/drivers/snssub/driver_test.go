@@ -8,7 +8,7 @@ import (
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewSNSSubscriptionDriver(nil)
+	drv := NewGenericSNSSubscriptionDriver(nil)
 	assert.Equal(t, "SNSSubscription", drv.ServiceName())
 }
 

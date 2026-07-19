@@ -13,8 +13,6 @@
 // before the custom NACL is removed.
 package nacl
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name used to register this driver.
 const ServiceName = "NetworkACL"
 
@@ -70,17 +68,4 @@ type ObservedState struct {
 	EgressRules  []NetworkACLRule        `json:"egressRules"`
 	Associations []NetworkACLAssociation `json:"associations"`
 	Tags         map[string]string       `json:"tags"`
-}
-
-// NetworkACLState is the single atomic state object stored under drivers.StateKey.
-type NetworkACLState struct {
-	Desired            NetworkACLSpec       `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state.
-	Outputs            NetworkACLOutputs    `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status.
-	Mode               types.Mode           `json:"mode"`                    // Managed (drift corrected) or Observed (drift reported only).
-	Error              string               `json:"error,omitempty"`         // Error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of last reconcile.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Deduplication flag for reconcile scheduling.
 }

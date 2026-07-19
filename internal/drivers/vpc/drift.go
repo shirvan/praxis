@@ -35,13 +35,13 @@ func HasDrift(desired VPCSpec, observed ObservedState) bool {
 }
 
 // ComputeFieldDiffs returns field-level differences for plan output.
-func ComputeFieldDiffs(desired VPCSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired VPCSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	// --- Mutable fields ---
 
 	if desired.EnableDnsHostnames != observed.EnableDnsHostnames {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.enableDnsHostnames",
 			OldValue: observed.EnableDnsHostnames,
 			NewValue: desired.EnableDnsHostnames,
@@ -49,7 +49,7 @@ func ComputeFieldDiffs(desired VPCSpec, observed ObservedState) []FieldDiffEntry
 	}
 
 	if desired.EnableDnsSupport != observed.EnableDnsSupport {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.enableDnsSupport",
 			OldValue: observed.EnableDnsSupport,
 			NewValue: desired.EnableDnsSupport,
@@ -60,21 +60,21 @@ func ComputeFieldDiffs(desired VPCSpec, observed ObservedState) []FieldDiffEntry
 	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for k, v := range desiredFiltered {
 		if ov, ok := observedFiltered[k]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + k, OldValue: nil, NewValue: v})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + k, OldValue: nil, NewValue: v})
 		} else if ov != v {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + k, OldValue: ov, NewValue: v})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + k, OldValue: ov, NewValue: v})
 		}
 	}
 	for k, v := range observedFiltered {
 		if _, ok := desiredFiltered[k]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + k, OldValue: v, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + k, OldValue: v, NewValue: nil})
 		}
 	}
 
 	// --- Immutable fields (reported for visibility, not corrected) ---
 
 	if desired.CidrBlock != observed.CidrBlock && observed.CidrBlock != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.cidrBlock (immutable, requires replacement)",
 			OldValue: observed.CidrBlock,
 			NewValue: desired.CidrBlock,
@@ -86,19 +86,12 @@ func ComputeFieldDiffs(desired VPCSpec, observed ObservedState) []FieldDiffEntry
 		desiredTenancy = "default"
 	}
 	if desiredTenancy != observed.InstanceTenancy && observed.InstanceTenancy != "" {
-		diffs = append(diffs, FieldDiffEntry{
-			Path:     "spec.instanceTenancy (immutable, ignored)",
+		diffs = append(diffs, drivers.FieldDiff{
+			Path:     "spec.instanceTenancy (immutable, requires replacement)",
 			OldValue: observed.InstanceTenancy,
 			NewValue: desiredTenancy,
 		})
 	}
 
 	return diffs
-}
-
-// FieldDiffEntry is the driver-specific diff unit.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }

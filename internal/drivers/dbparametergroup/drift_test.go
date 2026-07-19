@@ -48,7 +48,7 @@ func TestComputeFieldDiffs_ImmutableGroupName(t *testing.T) {
 	diffs := ComputeFieldDiffs(DBParameterGroupSpec{GroupName: "new", Type: TypeDB, Family: "f"}, ObservedState{GroupName: "old", Type: TypeDB, Family: "f"})
 	found := false
 	for _, d := range diffs {
-		if d.Path == "spec.groupName (immutable, ignored)" {
+		if d.Path == "spec.groupName (immutable, requires replacement)" {
 			found = true
 		}
 	}
@@ -59,7 +59,7 @@ func TestComputeFieldDiffs_ImmutableType(t *testing.T) {
 	diffs := ComputeFieldDiffs(DBParameterGroupSpec{GroupName: "g", Type: TypeCluster, Family: "f"}, ObservedState{GroupName: "g", Type: TypeDB, Family: "f"})
 	found := false
 	for _, d := range diffs {
-		if d.Path == "spec.type (immutable, ignored)" {
+		if d.Path == "spec.type (immutable, requires replacement)" {
 			found = true
 		}
 	}
@@ -70,7 +70,7 @@ func TestComputeFieldDiffs_ImmutableFamily(t *testing.T) {
 	diffs := ComputeFieldDiffs(DBParameterGroupSpec{GroupName: "g", Type: TypeDB, Family: "mysql8.0"}, ObservedState{GroupName: "g", Type: TypeDB, Family: "mysql5.7"})
 	found := false
 	for _, d := range diffs {
-		if d.Path == "spec.family (immutable, ignored)" {
+		if d.Path == "spec.family (immutable, requires replacement)" {
 			found = true
 		}
 	}

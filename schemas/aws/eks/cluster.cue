@@ -1,7 +1,7 @@
 package eks
 
 #EKSCluster: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "EKSCluster"
 
 	metadata: {

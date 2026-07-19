@@ -85,7 +85,7 @@ func TestSpecFromObserved_NilTags(t *testing.T) {
 // --- ServiceName tests ---
 
 func TestServiceName(t *testing.T) {
-	drv := NewS3BucketDriver(nil)
+	drv := NewGenericS3BucketDriver(nil)
 	assert.Equal(t, "S3Bucket", drv.ServiceName())
 }
 

@@ -13,7 +13,7 @@ import (
 func TestDynamoDBTableAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewDynamoDBTableAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"DynamoDBTable",
 		"metadata":{"name":"orders"},
 		"spec":{"region":"us-east-1","hashKey":"pk","hashKeyType":"S","rangeKey":"sk","rangeKeyType":"S","billingMode":"PROVISIONED","readCapacity":5,"writeCapacity":5,"tags":{"env":"dev"}}
@@ -42,6 +42,7 @@ func TestDynamoDBTableAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 func TestDynamoDBTableAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewDynamoDBTableAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
+		"apiVersion":"praxis.io/alpha",
 		"kind":"DynamoDBTable",
 		"metadata":{"name":"orders"},
 		"spec":{"hashKey":"pk"}

@@ -5,13 +5,10 @@
 // interface level. Each security group is scoped to a VPC and identified by
 // a unique group ID (sg-xxxx) assigned by AWS.
 //
-// This driver manages the full lifecycle: creation, rule convergence, tag
-// management, drift detection, and deletion. Rules are normalized into a
-// canonical set representation so that ordering differences between the
-// desired spec and AWS do not produce false-positive drift.
+// Provider-specific rule and tag convergence is bound to the shared Praxis
+// lifecycle kernel. Rules are normalized into a canonical set representation
+// so AWS ordering differences do not produce false-positive drift.
 package sg
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // SecurityGroupSpec is the user-declared desired state for a security group.
 // It maps directly to the fields accepted by the EC2 CreateSecurityGroup and
@@ -24,6 +21,7 @@ type SecurityGroupSpec struct {
 	IngressRules []IngressRule     `json:"ingressRules,omitempty"` // Inbound firewall rules (protocol/port/CIDR).
 	EgressRules  []EgressRule      `json:"egressRules,omitempty"`  // Outbound firewall rules.
 	Tags         map[string]string `json:"tags,omitempty"`         // AWS resource tags applied to the security group.
+	ManagedKey   string            `json:"managedKey,omitempty"`   // Internal ownership key derived from the Restate object key.
 }
 
 // IngressRule describes a single inbound permission entry.
@@ -55,6 +53,7 @@ type SecurityGroupOutputs struct {
 // returned by DescribeSecurityGroups. It is compared against the desired spec
 // during drift detection.
 type ObservedState struct {
+	Region       string            `json:"region,omitempty"`
 	GroupId      string            `json:"groupId"`
 	GroupName    string            `json:"groupName"`
 	Description  string            `json:"description"`
@@ -63,22 +62,4 @@ type ObservedState struct {
 	IngressRules []NormalizedRule  `json:"ingressRules"`
 	EgressRules  []NormalizedRule  `json:"egressRules"`
 	Tags         map[string]string `json:"tags"`
-}
-
-// SecurityGroupState is the single atomic state object persisted under
-// drivers.StateKey ("state") in the Restate Virtual Object's K/V store.
-// It bundles the desired spec, last observed AWS state, outputs, lifecycle
-// status, management mode, error messages, generation counter, and reconcile
-// scheduling metadata. All fields are written together in a single
-// restate.Set call to guarantee atomic state transitions.
-type SecurityGroupState struct {
-	Desired            SecurityGroupSpec    `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state from Describe.
-	Outputs            SecurityGroupOutputs `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status: Provisioning, Ready, Error, Deleting, Deleted.
-	Mode               types.Mode           `json:"mode"`                    // Managed (drift corrected) or Observed (drift reported only).
-	Error              string               `json:"error,omitempty"`         // Human-readable error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter, bumped on each Provision/Import.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of the last reconcile run.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Guards against scheduling duplicate delayed Reconcile messages.
 }

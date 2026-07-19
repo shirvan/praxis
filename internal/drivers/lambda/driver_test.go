@@ -5,12 +5,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	assert.Equal(t, ServiceName, NewLambdaFunctionDriver(nil).ServiceName())
+	assert.Equal(t, ServiceName, NewGenericLambdaFunctionDriver(nil).ServiceName())
 }
 
 func TestOutputsFromObserved(t *testing.T) {
@@ -28,11 +26,6 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, "Image", spec.PackageType)
 	assert.Equal(t, "img:1", spec.Code.ImageURI)
 	assert.Equal(t, map[string]string{"env": "dev"}, spec.Tags)
-}
-
-func TestDefaultLambdaImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultLambdaImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultLambdaImportMode(types.ModeManaged))
 }
 
 func TestValidateProvisionSpec(t *testing.T) {

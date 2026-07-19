@@ -1,7 +1,7 @@
 package iam
 
 #IAMPolicy: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "IAMPolicy"
 
 	metadata: {

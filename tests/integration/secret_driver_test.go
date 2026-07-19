@@ -4,11 +4,12 @@ package integration
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	smsdk "github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -27,12 +28,16 @@ import (
 
 func uniqueSecretName(t *testing.T) string {
 	t.Helper()
+	random := make([]byte, 6)
+	_, err := rand.Read(random)
+	require.NoError(t, err)
+	suffix := hex.EncodeToString(random)
 	name := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
 	name = strings.ReplaceAll(name, "_", "-")
 	if len(name) > 50 {
 		name = name[:50]
 	}
-	return fmt.Sprintf("praxis/test/%s-%d", name, time.Now().UnixNano()%100000)
+	return fmt.Sprintf("praxis/test/%s-%s", strings.Trim(name, "-"), suffix)
 }
 
 func setupSecretDriver(t *testing.T) (*ingress.Client, *smsdk.Client) {
@@ -41,10 +46,42 @@ func setupSecretDriver(t *testing.T) (*ingress.Client, *smsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	smClient := awsclient.NewSecretsManagerClient(awsCfg)
-	driver := secret.NewSecretsManagerSecretDriver(authservice.NewAuthClient())
+	driver := secret.NewGenericSecretsManagerSecretDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, smClient
+}
+
+func registerSecretCleanup(t *testing.T, smClient *smsdk.Client, name string) {
+	t.Helper()
+	t.Cleanup(func() {
+		described, err := smClient.DescribeSecret(context.Background(), &smsdk.DescribeSecretInput{SecretId: aws.String(name)})
+		if isSecretNotFound(err) {
+			return
+		}
+		if err != nil {
+			t.Errorf("describe secret %s for cleanup: %v", name, err)
+			return
+		}
+		if described.DeletedDate != nil {
+			_, err = smClient.RestoreSecret(context.Background(), &smsdk.RestoreSecretInput{SecretId: aws.String(name)})
+			if err != nil && !isSecretNotFound(err) {
+				t.Errorf("restore secret %s for cleanup: %v", name, err)
+				return
+			}
+		}
+		_, err = smClient.DeleteSecret(context.Background(), &smsdk.DeleteSecretInput{
+			SecretId:                   aws.String(name),
+			ForceDeleteWithoutRecovery: aws.Bool(true),
+		})
+		if err != nil && !isSecretNotFound(err) {
+			t.Errorf("force-delete secret %s during cleanup: %v", name, err)
+		}
+	})
+}
+
+func isSecretNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "ResourceNotFoundException")
 }
 
 func baseSecretSpec(name string) secret.SecretsManagerSecretSpec {
@@ -74,6 +111,7 @@ func secretKey(name string) string {
 func TestSecretProvision_CreatesSecret(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 
 	outputs := provisionSecret(t, client, key, baseSecretSpec(name))
@@ -87,8 +125,9 @@ func TestSecretProvision_CreatesSecret(t *testing.T) {
 }
 
 func TestSecretProvision_Idempotent(t *testing.T) {
-	client, _ := setupSecretDriver(t)
+	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 	spec := baseSecretSpec(name)
 
@@ -102,6 +141,7 @@ func TestSecretProvision_Idempotent(t *testing.T) {
 func TestSecretProvision_UpdatesValue(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 	spec := baseSecretSpec(name)
 
@@ -119,6 +159,7 @@ func TestSecretProvision_UpdatesValue(t *testing.T) {
 func TestSecretImport_ExistingSecret(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 
 	_, err := smClient.CreateSecret(context.Background(), &smsdk.CreateSecretInput{
 		Name:         aws.String(name),
@@ -144,6 +185,7 @@ func TestSecretImport_ExistingSecret(t *testing.T) {
 func TestSecretDelete_RemovesSecret(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 
 	provisionSecret(t, client, key, baseSecretSpec(name))
@@ -167,6 +209,7 @@ func TestSecretDelete_RemovesSecret(t *testing.T) {
 func TestSecretDelete_ForceDeletesImmediately(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 
 	spec := baseSecretSpec(name)
@@ -185,6 +228,7 @@ func TestSecretDelete_ForceDeletesImmediately(t *testing.T) {
 func TestSecretProvision_RestoresScheduledForDeletion(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 	spec := baseSecretSpec(name)
 
@@ -216,6 +260,7 @@ func TestSecretProvision_RestoresScheduledForDeletion(t *testing.T) {
 func TestSecretReconcile_DetectsValueDrift(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 
 	provisionSecret(t, client, key, baseSecretSpec(name))
@@ -242,6 +287,7 @@ func TestSecretReconcile_DetectsValueDrift(t *testing.T) {
 func TestSecretReconcile_DetectsTagDrift(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 
 	provisionSecret(t, client, key, baseSecretSpec(name))
@@ -270,6 +316,7 @@ func TestSecretReconcile_DetectsTagDrift(t *testing.T) {
 func TestSecretReconcile_ExternalDelete(t *testing.T) {
 	client, smClient := setupSecretDriver(t)
 	name := uniqueSecretName(t)
+	registerSecretCleanup(t, smClient, name)
 	key := secretKey(name)
 
 	provisionSecret(t, client, key, baseSecretSpec(name))
@@ -285,4 +332,7 @@ func TestSecretReconcile_ExternalDelete(t *testing.T) {
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Error, "deleted externally")
+	assert.True(t, result.ReplacementRequired)
+	_, err = smClient.DescribeSecret(context.Background(), &smsdk.DescribeSecretInput{SecretId: aws.String(name)})
+	require.Error(t, err, "Reconcile must report replacement without recreating the secret")
 }

@@ -2,7 +2,9 @@ package ec2
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -23,12 +25,13 @@ import (
 // Each method maps to one or more EC2 SDK calls and is rate-limited via a shared token-bucket limiter.
 // This interface enables unit testing by allowing injection of a mock implementation.
 type EC2API interface {
-	RunInstance(ctx context.Context, spec EC2InstanceSpec) (string, error)
+	RunInstance(ctx context.Context, spec EC2InstanceSpec, clientToken string) (string, error)
 	DescribeInstance(ctx context.Context, instanceId string) (ObservedState, error)
 	TerminateInstance(ctx context.Context, instanceId string) error
 	WaitUntilRunning(ctx context.Context, instanceId string) error
 	ModifyInstanceType(ctx context.Context, instanceId, newType string) error
 	ModifySecurityGroups(ctx context.Context, instanceId string, sgIds []string) error
+	UpdateIAMInstanceProfile(ctx context.Context, instanceId, profile string) error
 	UpdateMonitoring(ctx context.Context, instanceId string, enabled bool) error
 	UpdateTags(ctx context.Context, instanceId string, tags map[string]string) error
 	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
@@ -57,7 +60,7 @@ func NewEC2API(client *ec2sdk.Client) EC2API {
 // both ARN and name), RootVolume (BlockDeviceMappings), and Monitoring.
 // A praxis:managed-key tag is always applied for idempotent lookup.
 // Returns the new instance ID on success.
-func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec) (string, error) {
+func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec, clientToken string) (string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return "", err
 	}
@@ -68,6 +71,9 @@ func (r *realEC2API) RunInstance(ctx context.Context, spec EC2InstanceSpec) (str
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
 		SubnetId:     aws.String(spec.SubnetId),
+	}
+	if clientToken != "" {
+		input.ClientToken = aws.String(clientToken)
 	}
 
 	if spec.KeyName != "" {
@@ -159,9 +165,11 @@ func (r *realEC2API) DescribeInstance(ctx context.Context, instanceId string) (O
 	if inst.Monitoring != nil {
 		obs.Monitoring = inst.Monitoring.State == ec2types.MonitoringStateEnabled
 	}
-	if inst.IamInstanceProfile != nil {
-		obs.IamInstanceProfile = extractProfileName(aws.ToString(inst.IamInstanceProfile.Arn))
+	association, err := r.describeIAMInstanceProfileAssociation(ctx, instanceId)
+	if err != nil {
+		return ObservedState{}, err
 	}
+	obs.IamInstanceProfile = associatedProfileName(association)
 	for _, sg := range inst.SecurityGroups {
 		obs.SecurityGroupIds = append(obs.SecurityGroupIds, aws.ToString(sg.GroupId))
 	}
@@ -284,6 +292,141 @@ func (r *realEC2API) ModifySecurityGroups(ctx context.Context, instanceId string
 	return err
 }
 
+// UpdateIAMInstanceProfile converges the profile attached to an existing
+// instance. The operation is idempotent across partial associate, replace, and
+// disassociate attempts: every retry re-reads the live association before
+// deciding which mutation is still required.
+func (r *realEC2API) UpdateIAMInstanceProfile(ctx context.Context, instanceId, profile string) error {
+	desiredName := instanceProfileName(profile)
+	association, err := r.describeIAMInstanceProfileAssociation(ctx, instanceId)
+	if err != nil {
+		return err
+	}
+
+	if association != nil && association.State == ec2types.IamInstanceProfileAssociationStateDisassociating {
+		if err := r.waitForIAMInstanceProfile(ctx, instanceId, ""); err != nil {
+			return err
+		}
+		association = nil
+	}
+	if association != nil && association.State == ec2types.IamInstanceProfileAssociationStateAssociating {
+		currentName := associatedProfileName(association)
+		if currentName == "" {
+			return fmt.Errorf("instance %s has an associating IAM instance profile without an ARN", instanceId)
+		}
+		if err := r.waitForIAMInstanceProfile(ctx, instanceId, currentName); err != nil {
+			return err
+		}
+		association, err = r.describeIAMInstanceProfileAssociation(ctx, instanceId)
+		if err != nil {
+			return err
+		}
+	}
+
+	if association != nil && associatedProfileName(association) == desiredName {
+		return r.waitForIAMInstanceProfile(ctx, instanceId, desiredName)
+	}
+
+	if desiredName == "" {
+		if association == nil {
+			return nil
+		}
+		if err := r.limiter.Wait(ctx); err != nil {
+			return err
+		}
+		_, err = r.client.DisassociateIamInstanceProfile(ctx, &ec2sdk.DisassociateIamInstanceProfileInput{
+			AssociationId: association.AssociationId,
+		})
+		if err != nil {
+			return err
+		}
+		return r.waitForIAMInstanceProfile(ctx, instanceId, "")
+	}
+
+	profileSpec := iamInstanceProfileSpecification(profile)
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	if association == nil {
+		_, err = r.client.AssociateIamInstanceProfile(ctx, &ec2sdk.AssociateIamInstanceProfileInput{
+			InstanceId: aws.String(instanceId), IamInstanceProfile: profileSpec,
+		})
+	} else {
+		_, err = r.client.ReplaceIamInstanceProfileAssociation(ctx, &ec2sdk.ReplaceIamInstanceProfileAssociationInput{
+			AssociationId: association.AssociationId, IamInstanceProfile: profileSpec,
+		})
+	}
+	if err != nil {
+		return err
+	}
+	return r.waitForIAMInstanceProfile(ctx, instanceId, desiredName)
+}
+
+func (r *realEC2API) describeIAMInstanceProfileAssociation(ctx context.Context, instanceId string) (*ec2types.IamInstanceProfileAssociation, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	out, err := r.client.DescribeIamInstanceProfileAssociations(ctx, &ec2sdk.DescribeIamInstanceProfileAssociationsInput{
+		Filters: []ec2types.Filter{{Name: aws.String("instance-id"), Values: []string{instanceId}}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out.IamInstanceProfileAssociations) == 0 {
+		return nil, nil
+	}
+	if len(out.IamInstanceProfileAssociations) > 1 {
+		return nil, fmt.Errorf("instance %s has %d active IAM instance profile associations", instanceId, len(out.IamInstanceProfileAssociations))
+	}
+	return &out.IamInstanceProfileAssociations[0], nil
+}
+
+func (r *realEC2API) waitForIAMInstanceProfile(ctx context.Context, instanceId, desiredName string) error {
+	const (
+		pollInterval = 2 * time.Second
+		waitTimeout  = 2 * time.Minute
+	)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(waitTimeout)
+	defer timer.Stop()
+
+	for {
+		association, err := r.describeIAMInstanceProfileAssociation(ctx, instanceId)
+		if err != nil {
+			return err
+		}
+		if desiredName == "" {
+			if association == nil {
+				return nil
+			}
+		} else if association != nil &&
+			association.State == ec2types.IamInstanceProfileAssociationStateAssociated &&
+			associatedProfileName(association) == desiredName {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return fmt.Errorf("timed out waiting for instance %s IAM instance profile to converge to %q", instanceId, desiredName)
+		case <-ticker.C:
+		}
+	}
+}
+
+func iamInstanceProfileSpecification(profile string) *ec2types.IamInstanceProfileSpecification {
+	profile = strings.TrimSpace(profile)
+	result := &ec2types.IamInstanceProfileSpecification{}
+	if strings.HasPrefix(profile, "arn:") {
+		result.Arn = aws.String(profile)
+	} else {
+		result.Name = aws.String(profile)
+	}
+	return result
+}
+
 // UpdateMonitoring toggles detailed CloudWatch monitoring on the instance.
 // Calls MonitorInstances to enable or UnmonitorInstances to disable.
 func (r *realEC2API) UpdateMonitoring(ctx context.Context, instanceId string, enabled bool) error {
@@ -395,7 +538,7 @@ func IsNotFound(err error) bool {
 // IsInvalidParam returns true if the error is due to invalid parameters in the request
 // (bad AMI ID, invalid subnet, missing security group, etc.). These are terminal — retrying won't help.
 func IsInvalidParam(err error) bool {
-	return awserr.HasCode(err, "InvalidParameterValue", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound", "InvalidSubnetID.NotFound", "InvalidGroup.NotFound")
+	return awserr.HasCode(err, "InvalidParameterValue", "InvalidAMIID.Malformed", "InvalidAMIID.NotFound", "InvalidSubnetID.NotFound", "InvalidGroup.NotFound", "InvalidIamInstanceProfile.NotFound")
 }
 
 // IsInsufficientCapacity returns true if the error indicates AWS capacity limits
@@ -418,4 +561,24 @@ func extractProfileName(arn string) string {
 		return parts[len(parts)-1]
 	}
 	return arn
+}
+
+func instanceProfileName(profile string) string {
+	return strings.TrimSpace(extractProfileName(strings.TrimSpace(profile)))
+}
+
+func associatedProfileName(association *ec2types.IamInstanceProfileAssociation) string {
+	if association == nil || association.IamInstanceProfile == nil {
+		return ""
+	}
+	return instanceProfileName(aws.ToString(association.IamInstanceProfile.Arn))
+}
+
+// runInstancesClientToken combines Praxis's natural resource key with the
+// stable Restate invocation ID into the bounded token accepted by EC2. Retries
+// of one Provision return the original instance, while a later replacement
+// invocation receives a new token and can launch a fresh instance.
+func runInstancesClientToken(managedKey, invocationID string) string {
+	digest := sha256.Sum256([]byte(managedKey + "\x00" + invocationID))
+	return hex.EncodeToString(digest[:])
 }

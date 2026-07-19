@@ -23,12 +23,30 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
+// PlanProbeInput carries every typed value a plan-time provider lookup may
+// need. Identity is the descriptor-selected provider identifier; Desired and
+// Outputs remain available for APIs that need a second lookup key or stored
+// provider context.
+type PlanProbeInput[S any, O any] struct {
+	Key      string
+	Identity string
+	Desired  S
+	Outputs  O
+}
+
 // PlanProbeFunc looks up the live provider state for a resource during plan.
 // The bool reports whether the resource exists; a NotFound from the provider
-// must be translated to (zero, false, nil), and other errors returned as-is —
-// the generic adapter wraps the call in restate.Run and treats throttling as
-// retryable and everything else as terminal for the plan.
-type PlanProbeFunc[Obs any] func(ctx restate.RunContext, planID string) (Obs, bool, error)
+// must be translated to (zero, false, nil), and other errors returned as-is.
+type PlanProbeFunc[S any, O any, Obs any] func(ctx restate.RunContext, input PlanProbeInput[S, O]) (Obs, bool, error)
+
+// storedPlanIdentity is the common planning strategy for resources that can
+// only be described after a provider identifier has been persisted.
+func storedPlanIdentity[S any, O any](extract func(O) string) func(S, O) (string, bool) {
+	return func(_ S, outputs O) (string, bool) {
+		identity := extract(outputs)
+		return identity, identity != ""
+	}
+}
 
 // GenericDescriptor declares everything kind-specific the GenericAdapter
 // needs. S is the driver spec type, O the driver outputs type, Obs the
@@ -62,18 +80,18 @@ type GenericDescriptor[S any, O any, Obs any] struct {
 	// stored in deployment state and used for expression hydration.
 	NormalizeOutputs func(outputs O) map[string]any
 
-	// PlanID extracts the provider-native identifier used to describe the
-	// resource at plan time (e.g. a queue URL or instance ID). An empty
-	// return means the resource has never been provisioned → OpCreate.
-	PlanID func(outputs O) string
+	// PlanIdentity selects the provider-native identifier used during plan and
+	// reports whether a live probe is meaningful. Most kinds require a stored
+	// provider ID; name-addressable kinds may fall back to the desired name.
+	PlanIdentity func(desired S, outputs O) (identity string, probe bool)
 
 	// NewPlanProbe builds the plan-time describe function from AWS config.
 	// Implementations wrap the driver's API and its IsNotFound classifier.
-	NewPlanProbe func(cfg aws.Config) PlanProbeFunc[Obs]
+	NewPlanProbe func(cfg aws.Config) PlanProbeFunc[S, O, Obs]
 
 	// DiffFields compares the desired spec against observed provider state
 	// and returns field-level diffs (typically the driver's ComputeFieldDiffs).
-	DiffFields func(desired S, observed Obs) []types.FieldDiff
+	DiffFields func(desired S, observed Obs, outputs O) []types.FieldDiff
 
 	// SensitiveFields lists spec paths (dot notation, e.g. "spec.secretString")
 	// whose values must never appear in plan output. Matching field diffs — on
@@ -89,7 +107,7 @@ type GenericDescriptor[S any, O any, Obs any] struct {
 type GenericAdapter[S any, O any, Obs any] struct {
 	desc        GenericDescriptor[S, O, Obs]
 	auth        authservice.AuthClient
-	staticProbe PlanProbeFunc[Obs]
+	staticProbe PlanProbeFunc[S, O, Obs]
 }
 
 // NewGenericAdapter builds a production adapter that resolves plan-time AWS
@@ -100,13 +118,18 @@ func NewGenericAdapter[S any, O any, Obs any](desc GenericDescriptor[S, O, Obs],
 
 // NewGenericAdapterWithProbe builds an adapter with a fixed plan probe,
 // bypassing credential resolution. Used by tests.
-func NewGenericAdapterWithProbe[S any, O any, Obs any](desc GenericDescriptor[S, O, Obs], probe PlanProbeFunc[Obs]) *GenericAdapter[S, O, Obs] {
+func NewGenericAdapterWithProbe[S any, O any, Obs any](desc GenericDescriptor[S, O, Obs], probe PlanProbeFunc[S, O, Obs]) *GenericAdapter[S, O, Obs] {
 	return &GenericAdapter[S, O, Obs]{desc: desc, staticProbe: probe}
 }
 
 func (a *GenericAdapter[S, O, Obs]) Kind() string        { return a.desc.Kind }
 func (a *GenericAdapter[S, O, Obs]) ServiceName() string { return a.desc.Kind }
 func (a *GenericAdapter[S, O, Obs]) Scope() KeyScope     { return a.desc.Scope }
+
+// genericAdapter marks descriptor-backed adapters for package-level static
+// conformance checks. Embedded GenericAdapter values promote this method while
+// still allowing a resource to expose optional capabilities such as Lookup.
+func (a *GenericAdapter[S, O, Obs]) genericAdapter() {}
 
 // SensitiveFields exposes the descriptor's sensitive spec paths so callers
 // outside the adapter (e.g. the command-layer expression-resource fallback,
@@ -139,16 +162,24 @@ func (a *GenericAdapter[S, O, Obs]) decodeSpec(resourceDoc json.RawMessage) (S, 
 	return a.desc.DecodeSpec(doc.Spec, doc.Metadata.Name)
 }
 
-func (a *GenericAdapter[S, O, Obs]) Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error) {
+func (a *GenericAdapter[S, O, Obs]) Provision(ctx restate.Context, key string, account string, spec any, lifecycle types.LifecyclePolicy) (ProvisionInvocation, error) {
 	typedSpec, err := castSpec[S](spec)
 	if err != nil {
 		return nil, err
 	}
 	typedSpec = a.desc.PrepareSpec(typedSpec, key, account)
 
-	fut := restate.WithRequestType[S, O](
+	rawSpec, err := json.Marshal(typedSpec)
+	if err != nil {
+		return nil, fmt.Errorf("%s Provision: encode spec: %w", a.Kind(), err)
+	}
+	request := types.ProvisionRequest{
+		Spec:      rawSpec,
+		Lifecycle: types.NormalizeLifecyclePolicy(&lifecycle),
+	}
+	fut := restate.WithRequestType[types.ProvisionRequest, O](
 		restate.Object[O](ctx, a.ServiceName(), key, "Provision"),
-	).RequestFuture(typedSpec)
+	).RequestFuture(request)
 
 	return &provisionHandle[O]{
 		id:        fut.GetInvocationId(),
@@ -182,8 +213,8 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 	if getErr != nil {
 		return "", nil, fmt.Errorf("%s Plan: failed to read outputs for key %q: %w", a.Kind(), key, getErr)
 	}
-	planID := a.desc.PlanID(outputs)
-	if planID == "" {
+	identity, shouldProbe := a.desc.PlanIdentity(desired, outputs)
+	if !shouldProbe {
 		return planCreate(desired, a.desc.SensitiveFields)
 	}
 
@@ -197,7 +228,12 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 		Found bool `json:"found"`
 	}
 	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (describePlanResult, error) {
-		state, found, describeErr := probe(runCtx, planID)
+		state, found, describeErr := probe(runCtx, PlanProbeInput[S, O]{
+			Key:      key,
+			Identity: identity,
+			Desired:  desired,
+			Outputs:  outputs,
+		})
 		if describeErr != nil {
 			return describePlanResult{}, classifyPlanProbeError(describeErr)
 		}
@@ -210,7 +246,7 @@ func (a *GenericAdapter[S, O, Obs]) Plan(ctx restate.Context, key string, accoun
 		return planCreate(desired, a.desc.SensitiveFields)
 	}
 
-	fields := a.desc.DiffFields(desired, result.State)
+	fields := a.desc.DiffFields(desired, result.State, outputs)
 	if len(fields) == 0 {
 		return types.OpNoOp, nil, nil
 	}
@@ -252,7 +288,7 @@ func (a *GenericAdapter[S, O, Obs]) Import(ctx restate.Context, key string, acco
 // planProbe resolves the describe function for plan-time lookups: the static
 // test probe when set, otherwise a fresh probe built from the account's
 // resolved AWS credentials.
-func (a *GenericAdapter[S, O, Obs]) planProbe(ctx restate.Context, account string) (PlanProbeFunc[Obs], error) {
+func (a *GenericAdapter[S, O, Obs]) planProbe(ctx restate.Context, account string) (PlanProbeFunc[S, O, Obs], error) {
 	if a.staticProbe != nil {
 		return a.staticProbe, nil
 	}

@@ -18,7 +18,45 @@ import (
 	"github.com/shirvan/praxis/internal/eventing"
 )
 
+const driverRecoveryRecordStateKey = "external-delete-recovery"
+
+type driverRecoveryRecord struct {
+	Request orchestrator.ExternalDeleteRequest `json:"request"`
+	Calls   int                                `json:"calls"`
+}
+
+// driverRecoverySink completes the driver-only event harness at Core's
+// external-delete recovery boundary. These tests exercise driver reporting,
+// bridge translation, and dispatch; full DeploymentState recovery behavior is
+// covered by the Core lifecycle environment.
+type driverRecoverySink struct{}
+
+func (driverRecoverySink) ServiceName() string { return orchestrator.DeploymentStateServiceName }
+
+func (driverRecoverySink) HandleExternalDelete(ctx restate.ObjectContext, req orchestrator.ExternalDeleteRequest) (orchestrator.RecoveryResult, error) {
+	record, err := restate.Get[driverRecoveryRecord](ctx, driverRecoveryRecordStateKey)
+	if err != nil {
+		return orchestrator.RecoveryResult{}, err
+	}
+	record.Request = req
+	record.Calls++
+	restate.Set(ctx, driverRecoveryRecordStateKey, record)
+	return orchestrator.RecoveryResult{Manual: true, Reason: "driver event harness recorded recovery dispatch"}, nil
+}
+
+func (driverRecoverySink) GetExternalDelete(ctx restate.ObjectSharedContext, _ restate.Void) (driverRecoveryRecord, error) {
+	return restate.Get[driverRecoveryRecord](ctx, driverRecoveryRecordStateKey)
+}
+
 func setupDriverEventingEnv(t *testing.T, services ...any) *ingress.Client {
+	return setupDriverEventingEnvWithRecovery(t, false, services...)
+}
+
+func setupDriverEventingEnvWithCoreRecovery(t *testing.T, services ...any) *ingress.Client {
+	return setupDriverEventingEnvWithRecovery(t, true, services...)
+}
+
+func setupDriverEventingEnvWithRecovery(t *testing.T, coreRecovery bool, services ...any) *ingress.Client {
 	t.Helper()
 	absSchemaDir, err := filepath.Abs("../../schemas")
 	require.NoError(t, err)
@@ -31,6 +69,11 @@ func setupDriverEventingEnv(t *testing.T, services ...any) *ingress.Client {
 		restate.Reflect(orchestrator.ResourceEventBridge{}),
 		restate.Reflect(orchestrator.SinkRouter{}),
 		restate.Reflect(orchestrator.NewNotificationSinkConfig(absSchemaDir)),
+	}
+	if coreRecovery {
+		reflected = append(reflected, restate.Reflect(orchestrator.DeploymentStateObj{}))
+	} else {
+		reflected = append(reflected, restate.Reflect(driverRecoverySink{}))
 	}
 	for _, service := range services {
 		reflected = append(reflected, restate.Reflect(service))

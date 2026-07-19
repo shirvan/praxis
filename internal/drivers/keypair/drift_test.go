@@ -1,6 +1,7 @@
 package keypair
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,7 +47,7 @@ func TestComputeFieldDiffs_Tags(t *testing.T) {
 		ObservedState{Tags: map[string]string{"Name": "web", "env": "dev", "owner": "alice"}},
 	)
 
-	assert.ElementsMatch(t, []FieldDiffEntry{
+	assert.ElementsMatch(t, []drivers.FieldDiff{
 		{Path: "tags.env", OldValue: "dev", NewValue: "prod"},
 		{Path: "tags.team", OldValue: nil, NewValue: "platform"},
 		{Path: "tags.owner", OldValue: "alice", NewValue: nil},

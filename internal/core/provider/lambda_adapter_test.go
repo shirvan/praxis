@@ -13,7 +13,7 @@ import (
 func TestLambdaAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewLambdaAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"LambdaFunction",
 		"metadata":{"name":"processor"},
 		"spec":{

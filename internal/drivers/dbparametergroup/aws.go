@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 
 	"github.com/shirvan/praxis/internal/drivers"
 
@@ -42,6 +41,8 @@ type realDBParameterGroupAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+const managedKeyTag = "praxis:managed-key"
+
 // NewDBParameterGroupAPI creates a new API backed by the given RDS client.
 // Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewDBParameterGroupAPI(client *rdssdk.Client) DBParameterGroupAPI {
@@ -58,7 +59,7 @@ func (r *realDBParameterGroupAPI) CreateParameterGroup(ctx context.Context, spec
 			DBClusterParameterGroupName: aws.String(spec.GroupName),
 			DBParameterGroupFamily:      aws.String(spec.Family),
 			Description:                 aws.String(spec.Description),
-			Tags:                        toRDSTags(spec.Tags),
+			Tags:                        toRDSCreateTags(spec.Tags, spec.ManagedKey),
 		})
 		if err != nil {
 			return "", err
@@ -72,7 +73,7 @@ func (r *realDBParameterGroupAPI) CreateParameterGroup(ctx context.Context, spec
 		DBParameterGroupName:   aws.String(spec.GroupName),
 		DBParameterGroupFamily: aws.String(spec.Family),
 		Description:            aws.String(spec.Description),
-		Tags:                   toRDSTags(spec.Tags),
+		Tags:                   toRDSCreateTags(spec.Tags, spec.ManagedKey),
 	})
 	if err != nil {
 		return "", err
@@ -131,7 +132,8 @@ func (r *realDBParameterGroupAPI) DescribeParameterGroup(ctx context.Context, gr
 		if err != nil {
 			return ObservedState{}, err
 		}
-		observed.Tags = tags
+		observed.ManagedKey = tags[managedKeyTag]
+		observed.Tags = drivers.FilterPraxisTags(tags)
 	}
 	return observed, nil
 }
@@ -204,10 +206,11 @@ func (r *realDBParameterGroupAPI) DeleteParameterGroup(ctx context.Context, grou
 
 // UpdateTags performs diff-based tag updates: removes stale, adds new/changed.
 func (r *realDBParameterGroupAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
-	current, err := r.listTags(ctx, arn)
+	allCurrent, err := r.listTags(ctx, arn)
 	if err != nil {
 		return err
 	}
+	current := drivers.FilterPraxisTags(allCurrent)
 	filteredDesired := drivers.FilterPraxisTags(tags)
 	var remove []string
 	for key := range current {
@@ -291,7 +294,8 @@ func (r *realDBParameterGroupAPI) describeClusterParameters(ctx context.Context,
 	return params, nil
 }
 
-// listTags returns all non-praxis tags on the resource.
+// listTags returns all tags so ownership metadata can be checked separately
+// from user-managed drift.
 func (r *realDBParameterGroupAPI) listTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -303,12 +307,28 @@ func (r *realDBParameterGroupAPI) listTags(ctx context.Context, arn string) (map
 	tags := map[string]string{}
 	for _, tag := range out.TagList {
 		key := aws.ToString(tag.Key)
-		if strings.HasPrefix(key, "praxis:") {
-			continue
-		}
 		tags[key] = aws.ToString(tag.Value)
 	}
 	return tags, nil
+}
+
+func toRDSCreateTags(tags map[string]string, managedKey string) []rdstypes.Tag {
+	filtered := drivers.FilterPraxisTags(tags)
+	if managedKey != "" {
+		filtered[managedKeyTag] = managedKey
+	}
+	return toRDSTagsIncludingPraxis(filtered)
+}
+
+func toRDSTagsIncludingPraxis(tags map[string]string) []rdstypes.Tag {
+	out := make([]rdstypes.Tag, 0, len(tags))
+	for key, value := range tags {
+		out = append(out, rdstypes.Tag{Key: aws.String(key), Value: aws.String(value)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return aws.ToString(out[i].Key) < aws.ToString(out[j].Key)
+	})
+	return out
 }
 
 // toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
@@ -336,12 +356,17 @@ func IsNotFound(err error) bool {
 
 // IsAlreadyExists returns true if a parameter group with the same name exists.
 func IsAlreadyExists(err error) bool {
-	return awserr.HasCode(err, "DBParameterGroupAlreadyExistsFault", "DBParameterGroupQuotaExceededFault", "DBParameterGroupAlreadyExists", "DBClusterParameterGroupAlreadyExistsFault")
+	return awserr.HasCode(err, "DBParameterGroupAlreadyExistsFault", "DBParameterGroupAlreadyExists", "DBClusterParameterGroupAlreadyExistsFault", "DBClusterParameterGroupAlreadyExists")
+}
+
+// IsQuotaExceeded returns true when the account has no parameter-group capacity.
+func IsQuotaExceeded(err error) bool {
+	return awserr.HasCode(err, "DBParameterGroupQuotaExceededFault", "DBParameterGroupQuotaExceeded")
 }
 
 // IsInvalidState returns true if the parameter group is in a state preventing the operation.
 func IsInvalidState(err error) bool {
-	return awserr.HasCode(err, "InvalidDBParameterGroupStateFault", "InvalidDBClusterParameterGroupStateFault")
+	return awserr.HasCode(err, "InvalidDBParameterGroupStateFault", "InvalidDBParameterGroupState", "InvalidDBClusterParameterGroupStateFault", "InvalidDBClusterParameterGroupState")
 }
 
 // IsInvalidParam returns true if the error indicates invalid API parameters.

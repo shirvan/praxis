@@ -8,6 +8,9 @@ package types
 
 import "time"
 
+// APIVersion is the single resource-document contract accepted during alpha.
+const APIVersion = "praxis.io/alpha"
+
 // ApplyRequest is the payload accepted by PraxisCommandService.Apply.
 // Apply is the primary create/update entry point: it evaluates a CUE template,
 // builds a plan, and dispatches resources to drivers via the orchestrator.
@@ -624,7 +627,7 @@ type ApprovalResponse struct {
 // SavedPlan captures a workflow-ready execution plan plus the dry-run diff and
 // integrity metadata used for plan file workflows.
 type SavedPlan struct {
-	Version      int           `json:"version"`
+	Version      string        `json:"version"`
 	Plan         ExecutionPlan `json:"plan"`
 	Diff         *PlanResult   `json:"diff,omitempty"`
 	ContentHash  string        `json:"contentHash"`

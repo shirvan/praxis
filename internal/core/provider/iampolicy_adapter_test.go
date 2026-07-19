@@ -13,7 +13,7 @@ import (
 func TestIAMPolicyAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewIAMPolicyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"IAMPolicy",
 		"metadata":{"name":"app-policy"},
 		"spec":{

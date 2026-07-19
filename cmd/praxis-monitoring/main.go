@@ -7,25 +7,21 @@ import (
 	"os/signal"
 	"syscall"
 
-	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/config"
-	"github.com/shirvan/praxis/internal/drivers/dashboard"
-	"github.com/shirvan/praxis/internal/drivers/loggroup"
-	"github.com/shirvan/praxis/internal/drivers/metricalarm"
+	monitoringpack "github.com/shirvan/praxis/internal/driverpack/monitoring"
 )
 
 func main() {
 	cfg := config.Load()
 	auth := authservice.NewAuthClient()
-	rp := config.DefaultRetryPolicy()
 
-	srv := server.NewRestate().
-		Bind(restate.Reflect(loggroup.NewLogGroupDriver(auth), rp)).
-		Bind(restate.Reflect(metricalarm.NewMetricAlarmDriver(auth), rp)).
-		Bind(restate.Reflect(dashboard.NewDashboardDriver(auth), rp))
+	srv := server.NewRestate()
+	for _, definition := range monitoringpack.Definitions(auth) {
+		srv.Bind(definition)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 

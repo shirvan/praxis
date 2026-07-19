@@ -110,13 +110,13 @@ func amiDescriptor(staticAPI ami.AMIAPI) GenericDescriptor[ami.AMISpec, ami.AMIO
 			}
 		},
 
-		PlanID: func(out ami.AMIOutputs) string { return out.ImageId },
+		PlanIdentity: storedPlanIdentity[ami.AMISpec](func(out ami.AMIOutputs) string { return out.ImageId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ami.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ami.AMISpec, ami.AMIOutputs, ami.ObservedState] {
 			return amiProbe(ami.NewAMIAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired ami.AMISpec, observed ami.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ami.AMISpec, observed ami.ObservedState, _ ami.AMIOutputs) []types.FieldDiff {
 			rawDiffs := ami.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -128,8 +128,9 @@ func amiDescriptor(staticAPI ami.AMIAPI) GenericDescriptor[ami.AMISpec, ami.AMIO
 }
 
 // amiProbe adapts the driver API to the generic plan probe shape.
-func amiProbe(api ami.AMIAPI) PlanProbeFunc[ami.ObservedState] {
-	return func(runCtx restate.RunContext, imageID string) (ami.ObservedState, bool, error) {
+func amiProbe(api ami.AMIAPI) PlanProbeFunc[ami.AMISpec, ami.AMIOutputs, ami.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ami.AMISpec, ami.AMIOutputs]) (ami.ObservedState, bool, error) {
+		imageID := input.Identity
 		obs, err := api.DescribeImage(runCtx, imageID)
 		if err != nil {
 			if ami.IsNotFound(err) {

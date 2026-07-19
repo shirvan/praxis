@@ -54,7 +54,7 @@ func setupS3Driver(t *testing.T) (*ingress.Client, *s3sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	s3Client := awsclient.NewS3Client(awsCfg)
-	driver := s3.NewS3BucketDriver(authservice.NewAuthClient())
+	driver := s3.NewGenericS3BucketDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, s3Client

@@ -17,7 +17,7 @@ variables: {
 resources: {
 	// ── Static Assets Bucket ────────────────────────────
 	assets: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: name: "\(variables.name)-\(variables.environment)-assets"
 		spec: {
@@ -38,7 +38,7 @@ resources: {
 
 	// ── Application Logs Bucket ─────────────────────────
 	logs: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: name: "\(variables.name)-\(variables.environment)-logs"
 		spec: {
@@ -59,7 +59,7 @@ resources: {
 
 	// ── Backups Bucket (KMS encrypted) ──────────────────
 	backups: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: name: "\(variables.name)-\(variables.environment)-backups"
 		spec: {

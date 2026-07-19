@@ -75,13 +75,13 @@ func iamGroupDescriptor() GenericDescriptor[iamgroup.IAMGroupSpec, iamgroup.IAMG
 			return map[string]any{"arn": out.Arn, "groupId": out.GroupId, "groupName": out.GroupName}
 		},
 
-		PlanID: func(out iamgroup.IAMGroupOutputs) string { return out.GroupName },
+		PlanIdentity: storedPlanIdentity[iamgroup.IAMGroupSpec](func(out iamgroup.IAMGroupOutputs) string { return out.GroupName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamgroup.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs, iamgroup.ObservedState] {
 			return iamGroupProbe(iamgroup.NewIAMGroupAPI(awsclient.NewIAMClient(cfg)))
 		},
 
-		DiffFields: func(desired iamgroup.IAMGroupSpec, observed iamgroup.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired iamgroup.IAMGroupSpec, observed iamgroup.ObservedState, _ iamgroup.IAMGroupOutputs) []types.FieldDiff {
 			rawDiffs := iamgroup.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -93,8 +93,9 @@ func iamGroupDescriptor() GenericDescriptor[iamgroup.IAMGroupSpec, iamgroup.IAMG
 }
 
 // iamGroupProbe adapts the driver API to the generic plan probe shape.
-func iamGroupProbe(api iamgroup.IAMGroupAPI) PlanProbeFunc[iamgroup.ObservedState] {
-	return func(runCtx restate.RunContext, groupName string) (iamgroup.ObservedState, bool, error) {
+func iamGroupProbe(api iamgroup.IAMGroupAPI) PlanProbeFunc[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs, iamgroup.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs]) (iamgroup.ObservedState, bool, error) {
+		groupName := input.Identity
 		obs, err := api.DescribeGroup(runCtx, groupName)
 		if err != nil {
 			if iamgroup.IsNotFound(err) {

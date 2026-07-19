@@ -738,45 +738,6 @@ func NewResourceWaitTimeoutEvent(deploymentKey, workspace string, generation int
 	)
 }
 
-// --- Finalizer event builders ---
-
-// NewFinalizerStartedEvent creates the event emitted when a pre-delete hook begins.
-func NewFinalizerStartedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
-	return newResourceLifecycleEvent(
-		EventTypeFinalizerStarted, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
-		resourceEventPayload{
-			Message:      fmt.Sprintf("running pre-delete finalizer for %s", resourceName),
-			ResourceName: resourceName,
-			ResourceKind: resourceKind,
-		},
-	)
-}
-
-// NewFinalizerCompletedEvent creates the event emitted when a pre-delete hook completes.
-func NewFinalizerCompletedEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string) (cloudevents.Event, error) {
-	return newResourceLifecycleEvent(
-		EventTypeFinalizerCompleted, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityInfo,
-		resourceEventPayload{
-			Message:      fmt.Sprintf("pre-delete finalizer completed for %s", resourceName),
-			ResourceName: resourceName,
-			ResourceKind: resourceKind,
-		},
-	)
-}
-
-// NewFinalizerErrorEvent creates the event emitted when a finalizer hook fails.
-func NewFinalizerErrorEvent(deploymentKey, workspace string, generation int64, occurredAt time.Time, resourceName, resourceKind string, errMsg string) (cloudevents.Event, error) {
-	return newResourceLifecycleEvent(
-		EventTypeFinalizerError, deploymentKey, workspace, generation, occurredAt, resourceName, resourceKind, EventSeverityError,
-		resourceEventPayload{
-			Message:      fmt.Sprintf("finalizer error for %s: %s", resourceName, errMsg),
-			ResourceName: resourceName,
-			ResourceKind: resourceKind,
-			Error:        errMsg,
-		},
-	)
-}
-
 // --- Reconcile event builders ---
 
 // NewReconcileTriggeredEvent creates the event emitted when on-demand reconciliation

@@ -22,6 +22,21 @@
 
 ## Unit Tests
 
+### Shared Lifecycle Conformance
+
+Every new built-in driver should adopt both reusable black-box contracts from
+`internal/drivers/drivertest` using a stateful provider double and a real
+Restate test environment:
+
+- `RunCoreLifecycle` — create, identical re-provision, GetStatus/GetInputs/GetOutputs,
+  Delete, double Delete, retained tombstone, and post-delete Reconcile.
+- `RunObservedImportLifecycle` — read-only import baseline, no phantom drift,
+  Observed Delete rejection, and read-only Reconcile.
+
+Set `AllowNoopUpdates` only when the provider API genuinely requires a
+convergent write on every identical Provision. Keep field mutation, readiness,
+error, and fault-window cases in resource-specific tests.
+
 ### Driver Test (`driver_test.go`)
 
 Test handler logic with mock API:

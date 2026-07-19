@@ -44,7 +44,7 @@ func setupDBSubnetGroupDriver(t *testing.T) (*ingress.Client, *rdssdk.Client, *e
 	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := dbsubnetgroup.NewDBSubnetGroupDriver(authservice.NewAuthClient())
+	driver := dbsubnetgroup.NewGenericDBSubnetGroupDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, rdsClient, ec2Client

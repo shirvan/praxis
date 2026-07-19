@@ -8,7 +8,6 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/dag"
 	"github.com/shirvan/praxis/internal/core/orchestrator"
-	"github.com/shirvan/praxis/internal/core/provider"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
@@ -100,22 +99,12 @@ func (s *PraxisCommandService) cleanupMissingResources(
 		if err != nil {
 			return err
 		}
-		if preDeleter, ok := adapter.(provider.PreDeleter); ok {
-			if err := preDeleter.PreDelete(ctx, resource.Key); err != nil {
-				return fmt.Errorf("pre-delete removed resource %s: %w", resource.Name, err)
-			}
-		}
 		invocation, err := adapter.Delete(ctx, resource.Key)
 		if err != nil {
 			return fmt.Errorf("dispatch delete for removed resource %s: %w", resource.Name, err)
 		}
 		if err := invocation.Done(); err != nil {
 			return fmt.Errorf("delete removed resource %s: %w", resource.Name, err)
-		}
-		if postDeleter, ok := adapter.(provider.PostDeleter); ok {
-			if err := postDeleter.PostDelete(ctx, resource.Key); err != nil {
-				ctx.Log().Warn("post-delete hook failed for removed resource", "resource", resource.Name, "kind", resource.Kind, "error", err.Error())
-			}
 		}
 		if err := s.detachMissingResource(ctx, deploymentKey, resource.Name); err != nil {
 			return err

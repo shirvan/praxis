@@ -1,7 +1,7 @@
 package ecr
 
 #ECRLifecyclePolicy: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "ECRLifecyclePolicy"
 
 	metadata: {

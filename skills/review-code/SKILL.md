@@ -39,7 +39,7 @@ return fmt.Errorf("failed: %w", err)
 ```
 
 - [ ] All AWS API errors pass through a classifier
-- [ ] Terminal errors use `types.TerminalError()` wrapper
+- [ ] Terminal errors use `restate.TerminalError()` inside the `drivers.RunAWS()` callback
 - [ ] Retryable errors propagate unwrapped (Restate auto-retries)
 - [ ] Error messages include the operation name and resource identifier
 
@@ -54,10 +54,13 @@ return fmt.Errorf("failed: %w", err)
 
 | Convention | Check |
 |-----------|-------|
-| File layout | `driver.go`, `aws.go`, `drift.go`, `types.go`, `errors.go` |
-| Adapter file | `adapter.go` in the driver pack binary |
+| File layout | `generic.go`, `aws.go`, `drift.go`, `types.go`, plus focused tests |
+| Adapter file | `{resource}_adapter.go` under `internal/core/provider/` |
 | Key scope | `{deployment}/{resource}` |
-| Handler count | Exactly 6 handlers |
+| Handler contract | Exactly 8 required handlers; no extra public lifecycle hooks |
+| Lifecycle implementation | Shared `kernel.Driver`; resource packages supply only typed operations and capabilities |
+| Production binding | `genericbinding.Reflect` only |
+| Core adapter | Embedded `GenericAdapter`; no copied dispatch or planning lifecycle |
 | Package naming | Singular resource name (`bucket`, `instance`, not `buckets`) |
 
 ### 6. CUE Schema
@@ -145,7 +148,7 @@ tags := spec.Tags
 
 ```markdown
 ## Checklist
-- [ ] All 6 driver handlers implemented
+- [ ] All 8 required driver handlers implemented
 - [ ] Error classifiers cover known AWS errors
 - [ ] Drift detection covers all mutable spec fields
 - [ ] Unit tests pass (`just test-unit`)

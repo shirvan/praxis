@@ -29,6 +29,9 @@ func HasDrift(desired SSMParameterSpec, observed ObservedState) bool {
 // parameterFieldsDrift reports whether any field converged via PutParameter
 // (everything except tags) has diverged from the observed state.
 func parameterFieldsDrift(desired SSMParameterSpec, observed ObservedState) bool {
+	if desired.ParameterName != observed.ParameterName {
+		return true
+	}
 	if desired.Value != observed.Value {
 		return true
 	}
@@ -56,43 +59,40 @@ func parameterFieldsDrift(desired SSMParameterSpec, observed ObservedState) bool
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. SecureString values are masked.
-func ComputeFieldDiffs(desired SSMParameterSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SSMParameterSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if desired.ParameterName != observed.ParameterName {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.parameterName (immutable, requires replacement)", OldValue: observed.ParameterName, NewValue: desired.ParameterName,
+		})
+	}
 	if desired.Value != observed.Value {
 		oldValue, newValue := any(observed.Value), any(desired.Value)
 		if desired.Type == "SecureString" || observed.Type == "SecureString" {
 			oldValue, newValue = sensitivePlaceholder, sensitivePlaceholder
 		}
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.value", OldValue: oldValue, NewValue: newValue})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.value", OldValue: oldValue, NewValue: newValue})
 	}
 	if desired.Type != observed.Type {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.type", OldValue: observed.Type, NewValue: desired.Type})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.type", OldValue: observed.Type, NewValue: desired.Type})
 	}
 	if strings.TrimSpace(desired.Description) != strings.TrimSpace(observed.Description) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if !tierMatch(desired.Tier, observed.Tier) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tier", OldValue: normalizeTier(observed.Tier), NewValue: normalizeTier(desired.Tier)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.tier", OldValue: normalizeTier(observed.Tier), NewValue: normalizeTier(desired.Tier)})
 	}
 	if !kmsKeyMatch(desired.Type, desired.KmsKeyID, observed.KmsKeyID) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.kmsKeyId", OldValue: observed.KmsKeyID, NewValue: desired.KmsKeyID})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.kmsKeyId", OldValue: observed.KmsKeyID, NewValue: desired.KmsKeyID})
 	}
 	if strings.TrimSpace(desired.AllowedPattern) != strings.TrimSpace(observed.AllowedPattern) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.allowedPattern", OldValue: observed.AllowedPattern, NewValue: desired.AllowedPattern})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.allowedPattern", OldValue: observed.AllowedPattern, NewValue: desired.AllowedPattern})
 	}
 	if !dataTypeMatch(desired.DataType, observed.DataType) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.dataType", OldValue: normalizeDataType(observed.DataType), NewValue: normalizeDataType(desired.DataType)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.dataType", OldValue: normalizeDataType(observed.DataType), NewValue: normalizeDataType(desired.DataType)})
 	}
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.value").
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 // tierMatch treats an unset tier as Standard, which is what AWS reports for
@@ -137,20 +137,20 @@ func kmsKeyMatch(desiredType, desired, observed string) bool {
 	return false
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

@@ -107,13 +107,13 @@ func ec2Descriptor() GenericDescriptor[ec2.EC2InstanceSpec, ec2.EC2InstanceOutpu
 			return result
 		},
 
-		PlanID: func(out ec2.EC2InstanceOutputs) string { return out.InstanceId },
+		PlanIdentity: storedPlanIdentity[ec2.EC2InstanceSpec](func(out ec2.EC2InstanceOutputs) string { return out.InstanceId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ec2.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs, ec2.ObservedState] {
 			return ec2Probe(ec2.NewEC2API(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired ec2.EC2InstanceSpec, observed ec2.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ec2.EC2InstanceSpec, observed ec2.ObservedState, _ ec2.EC2InstanceOutputs) []types.FieldDiff {
 			rawDiffs := ec2.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -127,8 +127,9 @@ func ec2Descriptor() GenericDescriptor[ec2.EC2InstanceSpec, ec2.EC2InstanceOutpu
 // ec2Probe adapts the driver API to the generic plan probe shape. Instances in
 // terminated or shutting-down states are reported as absent so the plan
 // recreates them.
-func ec2Probe(api ec2.EC2API) PlanProbeFunc[ec2.ObservedState] {
-	return func(runCtx restate.RunContext, instanceID string) (ec2.ObservedState, bool, error) {
+func ec2Probe(api ec2.EC2API) PlanProbeFunc[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs, ec2.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs]) (ec2.ObservedState, bool, error) {
+		instanceID := input.Identity
 		obs, err := api.DescribeInstance(runCtx, instanceID)
 		if err != nil {
 			if ec2.IsNotFound(err) {

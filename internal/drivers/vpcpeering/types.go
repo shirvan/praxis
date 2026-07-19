@@ -10,8 +10,6 @@
 // The VPC IDs are immutable; only tags and peering options can be corrected.
 package vpcpeering
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name used to register this driver.
 const ServiceName = "VPCPeeringConnection"
 
@@ -60,17 +58,4 @@ type ObservedState struct {
 	RequesterOptions       *PeeringOptions   `json:"requesterOptions,omitempty"`
 	AccepterOptions        *PeeringOptions   `json:"accepterOptions,omitempty"`
 	Tags                   map[string]string `json:"tags"`
-}
-
-// VPCPeeringState is the single atomic state object stored under drivers.StateKey.
-type VPCPeeringState struct {
-	Desired            VPCPeeringSpec       `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state.
-	Outputs            VPCPeeringOutputs    `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status.
-	Mode               types.Mode           `json:"mode"`                    // Managed or Observed.
-	Error              string               `json:"error,omitempty"`         // Error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of last reconcile.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Deduplication flag for reconcile scheduling.
 }

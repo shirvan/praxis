@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewNLBDriver(nil)
+	drv := NewGenericNLBDriver(nil)
 	assert.Equal(t, "NLB", drv.ServiceName())
 }
 
@@ -31,12 +29,6 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, obs.CrossZoneLoadBalancing, spec.CrossZoneLoadBalancing)
 	assert.Equal(t, obs.DeletionProtection, spec.DeletionProtection)
 	assert.Equal(t, map[string]string{"env": "dev"}, spec.Tags, "praxis: tags should be filtered out")
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestApplyDefaults(t *testing.T) {
@@ -81,13 +73,17 @@ func TestValidateSpec(t *testing.T) {
 }
 
 func TestHasImmutableChange(t *testing.T) {
-	spec := NLBSpec{Scheme: "internet-facing"}
-	obs := ObservedState{Scheme: "internet-facing"}
+	spec := NLBSpec{Name: "nlb", Scheme: "internet-facing"}
+	obs := ObservedState{Name: "nlb", Scheme: "internet-facing"}
 	assert.False(t, hasImmutableChange(spec, obs))
 
 	schemeChanged := spec
 	schemeChanged.Scheme = "internal"
 	assert.True(t, hasImmutableChange(schemeChanged, obs))
+
+	nameChanged := spec
+	nameChanged.Name = "other"
+	assert.True(t, hasImmutableChange(nameChanged, obs))
 }
 
 func TestOutputsFromObserved(t *testing.T) {

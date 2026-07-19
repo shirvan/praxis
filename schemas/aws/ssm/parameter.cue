@@ -1,12 +1,14 @@
 package ssm
 
+import "strings"
+
 #SSMParameter: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "SSMParameter"
 
 	metadata: {
 		// Parameter names may be hierarchical paths, e.g. "/praxis/dev/db-host".
-		name: string & =~"^[a-zA-Z0-9_.\\-/]{1,2048}$"
+		name: string & strings.MinRunes(1) & strings.MaxRunes(1011) & =~"^[a-zA-Z0-9_.\\-/]+$"
 		labels: [string]: string
 	}
 

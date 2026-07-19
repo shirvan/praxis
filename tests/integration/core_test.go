@@ -112,10 +112,10 @@ func setupCoreStack(t *testing.T, extraServices ...restate.ServiceDefinition) *c
 	authClient := authservice.NewAuthClient()
 
 	// --- Typed drivers ---
-	s3Driver := drivers3.NewS3BucketDriver(authClient)
-	ec2Driver := driverec2.NewEC2InstanceDriver(authClient)
-	keyPairDriver := driverkeypair.NewKeyPairDriver(authClient)
-	sgDriver := driversg.NewSecurityGroupDriver(authClient)
+	s3Driver := drivers3.NewGenericS3BucketDriver(authClient)
+	ec2Driver := driverec2.NewGenericEC2InstanceDriver(authClient)
+	keyPairDriver := driverkeypair.NewGenericKeyPairDriver(authClient)
+	sgDriver := driversg.NewGenericSecurityGroupDriver(authClient)
 
 	// --- Provider adapter registry ---
 	//
@@ -374,7 +374,7 @@ func simpleS3Template(bucketName string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: %q
@@ -402,7 +402,7 @@ func simpleKeyPairTemplate(keyPairName string) string {
 	return fmt.Sprintf(`
 resources: {
 	key: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "KeyPair"
 		metadata: {
 			name: %q
@@ -423,7 +423,7 @@ func simpleS3TemplateWithPreventDestroy(bucketName string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: %q
@@ -456,7 +456,7 @@ func multiResourceTemplate(bucketName, sgName, vpcId string) string {
 	return fmt.Sprintf(`
 resources: {
 	appSG: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: {
 			name: %q
@@ -477,7 +477,7 @@ resources: {
 		}
 	}
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: %q
@@ -503,7 +503,7 @@ func rollbackFailureTemplate(bucketName, dependentBucketName string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: %q
@@ -518,7 +518,7 @@ resources: {
 		}
 	}
 	brokenBucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: %q
@@ -541,7 +541,7 @@ func cyclicDependencyTemplate() string {
 	return `
 resources: {
 	bucketA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: "bucket-a"
@@ -554,7 +554,7 @@ resources: {
 		}
 	}
 	bucketB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: "bucket-b"
@@ -591,13 +591,13 @@ func twoBucketTemplate(bucketA, bucketB string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucketA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: { region: "us-east-1" }
 	}
 	bucketB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: { region: "us-east-1" }
@@ -610,7 +610,7 @@ func oneBucketTemplate(bucketA string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucketA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: { region: "us-east-1" }
@@ -677,7 +677,7 @@ func TestCore_Apply_ForceReplace(t *testing.T) {
 	template := fmt.Sprintf(`
 resources: {
 	webSG: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: { name: %q }
 		spec: {
@@ -766,7 +766,7 @@ variables: {
 }
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: {
@@ -2172,7 +2172,7 @@ func TestCore_Delete_EmitsCloudEvents(t *testing.T) {
 	)
 	require.Equal(t, types.DeploymentComplete, state.Status)
 
-	// --- Record the pre-delete event count ---
+	// --- Record the event count before deletion ---
 	preDeleteEvents, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
 		env.ingress,
 		orchestrator.DeploymentEventStoreServiceName,

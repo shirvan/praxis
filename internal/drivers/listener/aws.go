@@ -63,8 +63,8 @@ func (r *realListenerAPI) CreateListener(ctx context.Context, spec ListenerSpec)
 	if spec.AlpnPolicy != "" {
 		input.AlpnPolicy = []string{spec.AlpnPolicy}
 	}
-	if len(spec.Tags) > 0 {
-		input.Tags = toELBTags(spec.Tags)
+	if tags := listenerManagedTags(spec.Tags, spec.ManagedKey); len(tags) > 0 {
+		input.Tags = toELBTags(tags)
 	}
 	out, err := r.client.CreateListener(ctx, input)
 	if err != nil {

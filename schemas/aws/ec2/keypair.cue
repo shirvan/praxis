@@ -1,7 +1,7 @@
 package ec2
 
 #KeyPair: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "KeyPair"
 
 	metadata: {

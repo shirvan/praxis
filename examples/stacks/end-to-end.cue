@@ -60,7 +60,8 @@ import "encoding/json"
 //   ✓ Lifecycle rules — preventDestroy on database + ignoreChanges
 //   ✓ Environment-aware logic — Multi-AZ RDS, monitoring, instance sizing
 //   ✓ SSM secret references — database master password
-//   ✓ All 45 resource kinds:
+//   ✓ All 45 application-stack resource kinds (the remaining six supported
+//     control-plane kinds are covered by foundation-services.cue):
 //       VPC, Subnet, IGW, NATGateway, EIP, RouteTable, SecurityGroup, NACL,
 //       VPCPeering, EC2, KeyPair, EBS, AMI, IAMRole, IAMPolicy,
 //       IAMInstanceProfile, IAMGroup, IAMUser, ACMCertificate,
@@ -74,7 +75,7 @@ import "encoding/json"
 //
 // Usage:
 //   praxis template register examples/stacks/end-to-end.cue \
-//     --description "Full-coverage test stack — all 45 resource kinds"
+//     --description "Full application-stack coverage — 45 resource kinds"
 //
 //   praxis deploy end-to-end --account local \
 //     -f examples/stacks/end-to-end.vars.json --dry-run
@@ -163,7 +164,7 @@ resources: {
 
 	// Route 53 hosted zone for DNS records (cert validation + app A-record).
 	hostedZone: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53HostedZone"
 		metadata: name: variables.domainName
 		spec: {
@@ -173,7 +174,7 @@ resources: {
 	}
 
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(_naming.prefix)-vpc"
 		spec: {
@@ -186,7 +187,7 @@ resources: {
 	}
 
 	igw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "InternetGateway"
 		metadata: name: "\(_naming.prefix)-igw"
 		spec: {
@@ -199,7 +200,7 @@ resources: {
 	// ── Public Subnets (web tier) ───────────────────────
 
 	publicSubnetA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-public-a"
 		spec: {
@@ -213,7 +214,7 @@ resources: {
 	}
 
 	publicSubnetB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-public-b"
 		spec: {
@@ -229,7 +230,7 @@ resources: {
 	// ── App Subnets (application tier) ──────────────────
 
 	appSubnetA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-app-a"
 		spec: {
@@ -242,7 +243,7 @@ resources: {
 	}
 
 	appSubnetB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-app-b"
 		spec: {
@@ -257,7 +258,7 @@ resources: {
 	// ── Data Subnets (database tier) ────────────────────
 
 	dataSubnetA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-data-a"
 		spec: {
@@ -270,7 +271,7 @@ resources: {
 	}
 
 	dataSubnetB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(_naming.prefix)-data-b"
 		spec: {
@@ -285,7 +286,7 @@ resources: {
 	// ── VPC Peering to Shared Services ──────────────────
 
 	vpcPeering: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPCPeeringConnection"
 		metadata: name: "\(_naming.prefix)-to-shared"
 		spec: {
@@ -304,7 +305,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	natEip: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ElasticIP"
 		metadata: name: "\(_naming.prefix)-nat-eip"
 		spec: {
@@ -315,7 +316,7 @@ resources: {
 	}
 
 	natgw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NATGateway"
 		metadata: name: "\(_naming.prefix)-natgw"
 		spec: {
@@ -328,7 +329,7 @@ resources: {
 	}
 
 	publicRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(_naming.prefix)-public-rt"
 		spec: {
@@ -347,7 +348,7 @@ resources: {
 	}
 
 	appRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(_naming.prefix)-app-rt"
 		spec: {
@@ -366,7 +367,7 @@ resources: {
 	}
 
 	dataRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(_naming.prefix)-data-rt"
 		spec: {
@@ -389,7 +390,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	publicNacl: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NetworkACL"
 		metadata: name: "\(_naming.prefix)-public-nacl"
 		spec: {
@@ -416,7 +417,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	albSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(_naming.prefix)-alb-sg"
 		spec: {
@@ -433,7 +434,7 @@ resources: {
 	}
 
 	appSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(_naming.prefix)-app-sg"
 		spec: {
@@ -452,7 +453,7 @@ resources: {
 	}
 
 	dataSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(_naming.prefix)-data-sg"
 		spec: {
@@ -473,7 +474,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	cert: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ACMCertificate"
 		metadata: name: "\(_naming.prefix)-cert"
 		spec: {
@@ -490,7 +491,7 @@ resources: {
 	}
 
 	validationRecord: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53Record"
 		metadata: name: "\(_naming.prefix)-cert-validation"
 		spec: {
@@ -507,7 +508,7 @@ resources: {
 	// ── DNS A-record pointing to ALB ────────────────────
 
 	appDnsRecord: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53Record"
 		metadata: name: "\(_naming.prefix)-app-dns"
 		spec: {
@@ -525,7 +526,7 @@ resources: {
 	// ── Route 53 Health Check ───────────────────────────
 
 	albHealthCheck: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53HealthCheck"
 		metadata: name: "\(_naming.prefix)-alb-health"
 		spec: {
@@ -545,7 +546,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	alb: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ALB"
 		metadata: name: "\(_naming.prefix)-alb"
 		spec: {
@@ -562,7 +563,7 @@ resources: {
 	}
 
 	targetGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "TargetGroup"
 		metadata: name: "\(_naming.prefix)-app-tg"
 		spec: {
@@ -585,7 +586,7 @@ resources: {
 	}
 
 	httpsListener: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Listener"
 		metadata: name: "\(_naming.prefix)-https"
 		spec: {
@@ -603,7 +604,7 @@ resources: {
 	}
 
 	httpRedirectListener: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Listener"
 		metadata: name: "\(_naming.prefix)-http-redirect"
 		spec: {
@@ -629,7 +630,7 @@ resources: {
 	// ── Listener Rules — path-based routing ─────────────
 
 	apiListenerRule: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ListenerRule"
 		metadata: name: "\(_naming.prefix)-api-rule"
 		spec: {
@@ -649,7 +650,7 @@ resources: {
 	}
 
 	healthListenerRule: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ListenerRule"
 		metadata: name: "\(_naming.prefix)-health-rule"
 		spec: {
@@ -675,7 +676,7 @@ resources: {
 	// ── NLB — internal TCP/gRPC service mesh ────────────
 
 	nlb: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NLB"
 		metadata: name: "\(_naming.prefix)-nlb"
 		spec: {
@@ -692,7 +693,7 @@ resources: {
 	}
 
 	grpcTargetGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "TargetGroup"
 		metadata: name: "\(_naming.prefix)-grpc-tg"
 		spec: {
@@ -713,7 +714,7 @@ resources: {
 	}
 
 	nlbListener: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Listener"
 		metadata: name: "\(_naming.prefix)-nlb-grpc"
 		spec: {
@@ -735,7 +736,7 @@ resources: {
 
 	// Generate one app server per availability zone
 	sshKeyPair: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "KeyPair"
 		metadata: name: "\(_naming.prefix)-ssh"
 		spec: {
@@ -748,7 +749,7 @@ resources: {
 	for idx, az in variables.availabilityZones {
 		let _az = az
 		"appServer-\(idx)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "EC2Instance"
 			metadata: name: "\(_naming.prefix)-app-\(idx)"
 			spec: {
@@ -775,7 +776,7 @@ resources: {
 
 		// EBS data volume per app server
 		"dataVolume-\(idx)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "EBSVolume"
 			metadata: name: "\(_naming.prefix)-data-vol-\(idx)"
 			spec: {
@@ -798,7 +799,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	dbSubnetGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "DBSubnetGroup"
 		metadata: name: "\(_naming.prefix)-db-subnets"
 		spec: {
@@ -813,7 +814,7 @@ resources: {
 	}
 
 	database: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RDSInstance"
 		metadata: name: "\(_naming.prefix)-db"
 		spec: {
@@ -840,7 +841,7 @@ resources: {
 	}
 
 	dbParamGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "DBParameterGroup"
 		metadata: name: "\(_naming.prefix)-db-params"
 		spec: {
@@ -860,7 +861,7 @@ resources: {
 	// Conditional: Aurora cluster (alternative to standalone RDS)
 	if variables.enableAurora {
 		auroraCluster: {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "AuroraCluster"
 			metadata: name: "\(_naming.prefix)-aurora"
 			spec: {
@@ -888,7 +889,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	appRole: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMRole"
 		metadata: name: "\(_naming.prefix)-app-role"
 		spec: {
@@ -906,7 +907,7 @@ resources: {
 	}
 
 	appPolicy: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMPolicy"
 		metadata: name: "\(_naming.prefix)-app-policy"
 		spec: {
@@ -956,7 +957,7 @@ resources: {
 	}
 
 	appInstanceProfile: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMInstanceProfile"
 		metadata: name: "\(_naming.prefix)-app-profile"
 		spec: {
@@ -967,7 +968,7 @@ resources: {
 	}
 
 	opsGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMGroup"
 		metadata: name: "\(_naming.prefix)-ops"
 		spec: {
@@ -979,7 +980,7 @@ resources: {
 	}
 
 	ciUser: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "IAMUser"
 		metadata: name: "\(_naming.prefix)-ci"
 		spec: {
@@ -997,7 +998,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	worker: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "LambdaFunction"
 		metadata: name: "\(_naming.prefix)-worker"
 		spec: {
@@ -1028,7 +1029,7 @@ resources: {
 	}
 
 	sharedLayer: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "LambdaLayer"
 		metadata: name: "\(_naming.prefix)-shared-layer"
 		spec: {
@@ -1044,7 +1045,7 @@ resources: {
 	}
 
 	workerSnsPermission: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "LambdaPermission"
 		metadata: name: "\(_naming.prefix)-worker-sns-perm"
 		spec: {
@@ -1057,7 +1058,7 @@ resources: {
 	}
 
 	workerDlqTrigger: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EventSourceMapping"
 		metadata: name: "\(_naming.prefix)-worker-sqs-trigger"
 		spec: {
@@ -1076,7 +1077,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	alertTopic: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SNSTopic"
 		metadata: name: "\(_naming.prefix)-alerts"
 		spec: {
@@ -1087,7 +1088,7 @@ resources: {
 	}
 
 	dlq: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SQSQueue"
 		metadata: name: "\(_naming.prefix)-dlq"
 		spec: {
@@ -1101,7 +1102,7 @@ resources: {
 
 	// SNS → SQS subscription (alerts fan-out to DLQ for processing)
 	alertToQueueSub: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SNSSubscription"
 		metadata: name: "\(_naming.prefix)-alert-to-dlq"
 		spec: {
@@ -1115,7 +1116,7 @@ resources: {
 
 	// SQS queue policy — allow SNS to publish to the DLQ
 	dlqPolicy: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SQSQueuePolicy"
 		metadata: name: "\(_naming.prefix)-dlq-policy"
 		spec: {
@@ -1140,7 +1141,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	appLogGroup: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "LogGroup"
 		metadata: name: "/praxis/\(_naming.prefix)/app"
 		spec: {
@@ -1153,7 +1154,7 @@ resources: {
 	// Conditional: CloudWatch alarm only when monitoring is enabled
 	if variables.enableMonitoring {
 		highErrorAlarm: {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "MetricAlarm"
 			metadata: name: "\(_naming.prefix)-high-5xx-errors"
 			spec: {
@@ -1176,7 +1177,7 @@ resources: {
 	// Conditional: CloudWatch dashboard for platform overview
 	if variables.enableMonitoring {
 		platformDashboard: {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "Dashboard"
 			metadata: name: "\(_naming.prefix)-dashboard"
 			spec: {
@@ -1238,7 +1239,7 @@ resources: {
 	// Generate one S3 bucket per entry in storageBuckets
 	for _, suffix in variables.storageBuckets {
 		"bucket-\(suffix)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "S3Bucket"
 			metadata: name: "\(_naming.prefix)-\(suffix)"
 			spec: {
@@ -1260,7 +1261,7 @@ resources: {
 	// Conditional: log-aggregator bucket (only when logging is enabled)
 	if variables.enableLogging {
 		"log-aggregator": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "S3Bucket"
 			metadata: name: "\(_naming.prefix)-logs"
 			spec: {
@@ -1283,7 +1284,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	appRegistry: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ECRRepository"
 		metadata: name: "\(_naming.prefix)-app"
 		spec: {
@@ -1296,7 +1297,7 @@ resources: {
 	}
 
 	registryLifecycle: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ECRLifecyclePolicy"
 		metadata: name: "\(_naming.prefix)-app-lifecycle"
 		spec: {
@@ -1335,7 +1336,7 @@ resources: {
 	// Conditional: create a regional AMI copy for the platform
 	if variables.enableGoldenAmi {
 		goldenAmi: {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "AMI"
 			metadata: name: "\(_naming.prefix)-golden"
 			spec: {

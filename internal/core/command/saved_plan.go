@@ -12,7 +12,7 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-const SavedPlanVersion = 1
+const SavedPlanVersion = "alpha"
 
 func executionPlanFromCompiled(
 	compiled *compiledTemplate,
@@ -117,7 +117,7 @@ func ReadSavedPlanFile(path string) (types.SavedPlan, error) {
 		return types.SavedPlan{}, fmt.Errorf("decode saved plan %q: %w", path, err)
 	}
 	if saved.Version != SavedPlanVersion {
-		return types.SavedPlan{}, fmt.Errorf("unsupported saved plan version %d", saved.Version)
+		return types.SavedPlan{}, fmt.Errorf("unsupported saved plan version %q; expected %q", saved.Version, SavedPlanVersion)
 	}
 	return saved, nil
 }
@@ -139,9 +139,6 @@ func cloneLifecycle(input *types.LifecyclePolicy) *types.LifecyclePolicy {
 	if input.IgnoreChanges != nil {
 		cloned.IgnoreChanges = append([]string(nil), input.IgnoreChanges...)
 	}
-	if input.Finalizers != nil {
-		cloned.Finalizers = append([]string(nil), input.Finalizers...)
-	}
 	if input.Retry != nil {
 		retry := *input.Retry
 		if input.Retry.MaxRetries != nil {
@@ -161,6 +158,10 @@ func cloneLifecycle(input *types.LifecyclePolicy) *types.LifecyclePolicy {
 			wait.Enabled = &value
 		}
 		cloned.Wait = &wait
+	}
+	if input.Recovery != nil {
+		recovery := *input.Recovery
+		cloned.Recovery = &recovery
 	}
 	return &cloned
 }

@@ -13,7 +13,7 @@ import (
 func TestIAMRoleAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewIAMRoleAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"IAMRole",
 		"metadata":{"name":"app-role"},
 		"spec":{

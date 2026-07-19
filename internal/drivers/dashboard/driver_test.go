@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewDashboardDriver(nil)
+	drv := NewGenericDashboardDriver(nil)
 	assert.Equal(t, "Dashboard", drv.ServiceName())
 }
 
@@ -34,12 +32,6 @@ func TestOutputsFromObserved(t *testing.T) {
 
 	assert.Equal(t, "arn:aws:cloudwatch::123456789012:dashboard/my-dash", out.DashboardArn)
 	assert.Equal(t, "my-dash", out.DashboardName)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestApplyDefaults(t *testing.T) {

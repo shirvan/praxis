@@ -45,7 +45,7 @@ variables: {
 
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: "\(variables.name)-\(variables.environment)-assets"
@@ -79,7 +79,7 @@ variables: {
 
 resources: {
 	appSG: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: {
 			name: "\(variables.name)-\(variables.environment)-sg"
@@ -101,7 +101,7 @@ resources: {
 		}
 	}
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: {
 			name: "\(variables.name)-\(variables.environment)-assets"

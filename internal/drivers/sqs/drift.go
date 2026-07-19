@@ -8,25 +8,21 @@
 package sqs
 
 import (
-	"fmt"
 	"maps"
 
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired SQSQueue spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired SQSQueueSpec, observed ObservedState) bool {
+	if desired.QueueName != observed.QueueName || desired.FifoQueue != observed.FifoQueue {
+		return true
+	}
+	if observedRegion := regionFromQueueARN(observed.QueueArn); observedRegion != "" && desired.Region != observedRegion {
+		return true
+	}
 	if desired.VisibilityTimeout != observed.VisibilityTimeout {
 		return true
 	}
@@ -72,11 +68,29 @@ func HasDrift(desired SQSQueueSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired SQSQueueSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SQSQueueSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if desired.Region != "" {
+		observedRegion := regionFromQueueARN(observed.QueueArn)
+		if observedRegion != "" && desired.Region != observedRegion {
+			diffs = append(diffs, drivers.FieldDiff{
+				Path: "spec.region (immutable, requires replacement)", OldValue: observedRegion, NewValue: desired.Region,
+			})
+		}
+	}
+	if desired.QueueName != observed.QueueName {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.queueName (immutable, requires replacement)", OldValue: observed.QueueName, NewValue: desired.QueueName,
+		})
+	}
+	if desired.FifoQueue != observed.FifoQueue {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.fifoQueue (immutable, requires replacement)", OldValue: observed.FifoQueue, NewValue: desired.FifoQueue,
+		})
+	}
 	addIntDiff := func(path string, desiredValue, observedValue int) {
 		if desiredValue != observedValue {
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: observedValue, NewValue: desiredValue})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: observedValue, NewValue: desiredValue})
 		}
 	}
 
@@ -87,7 +101,7 @@ func ComputeFieldDiffs(desired SQSQueueSpec, observed ObservedState) []FieldDiff
 	addIntDiff("spec.receiveMessageWaitTimeSeconds", desired.ReceiveMessageWaitTimeSeconds, observed.ReceiveMessageWaitTimeSeconds)
 
 	if !redrivePolicyEqual(desired.RedrivePolicy, observed.RedrivePolicy) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.redrivePolicy",
 			OldValue: observed.RedrivePolicy,
 			NewValue: desired.RedrivePolicy,
@@ -95,28 +109,28 @@ func ComputeFieldDiffs(desired SQSQueueSpec, observed ObservedState) []FieldDiff
 	}
 
 	if desired.KmsMasterKeyId != observed.KmsMasterKeyId {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.kmsMasterKeyId", OldValue: observed.KmsMasterKeyId, NewValue: desired.KmsMasterKeyId})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.kmsMasterKeyId", OldValue: observed.KmsMasterKeyId, NewValue: desired.KmsMasterKeyId})
 	}
 	if desired.KmsMasterKeyId != "" {
 		addIntDiff("spec.kmsDataKeyReusePeriodSeconds", desired.KmsDataKeyReusePeriodSeconds, observed.KmsDataKeyReusePeriodSeconds)
 	} else if desired.SqsManagedSseEnabled != observed.SqsManagedSseEnabled {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.sqsManagedSseEnabled", OldValue: observed.SqsManagedSseEnabled, NewValue: desired.SqsManagedSseEnabled})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.sqsManagedSseEnabled", OldValue: observed.SqsManagedSseEnabled, NewValue: desired.SqsManagedSseEnabled})
 	}
 
 	if desired.FifoQueue {
 		if desired.ContentBasedDeduplication != observed.ContentBasedDeduplication {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.contentBasedDeduplication", OldValue: observed.ContentBasedDeduplication, NewValue: desired.ContentBasedDeduplication})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.contentBasedDeduplication", OldValue: observed.ContentBasedDeduplication, NewValue: desired.ContentBasedDeduplication})
 		}
 		if desired.DeduplicationScope != "" && desired.DeduplicationScope != observed.DeduplicationScope {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.deduplicationScope", OldValue: observed.DeduplicationScope, NewValue: desired.DeduplicationScope})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.deduplicationScope", OldValue: observed.DeduplicationScope, NewValue: desired.DeduplicationScope})
 		}
 		if desired.FifoThroughputLimit != "" && desired.FifoThroughputLimit != observed.FifoThroughputLimit {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.fifoThroughputLimit", OldValue: observed.FifoThroughputLimit, NewValue: desired.FifoThroughputLimit})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.fifoThroughputLimit", OldValue: observed.FifoThroughputLimit, NewValue: desired.FifoThroughputLimit})
 		}
 	}
 
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{Path: "tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
 	}
 
 	return diffs
@@ -132,13 +146,11 @@ func redrivePolicyEqual(a, b *RedrivePolicy) bool {
 	return a.DeadLetterTargetArn == b.DeadLetterTargetArn && a.MaxReceiveCount == b.MaxReceiveCount
 }
 
-func mergeTags(user, system map[string]string) map[string]string {
-	merged := make(map[string]string, len(user)+len(system))
-	maps.Copy(merged, user)
-	maps.Copy(merged, system)
+func managedTags(user map[string]string, managedKey string) map[string]string {
+	merged := make(map[string]string, len(user)+1)
+	maps.Copy(merged, drivers.FilterPraxisTags(user))
+	if managedKey != "" {
+		merged["praxis:managed-key"] = managedKey
+	}
 	return merged
-}
-
-func formatManagedKeyConflict(managedKey, queueURL string) error {
-	return fmt.Errorf("queue %q in this region is already managed by Praxis (queueUrl: %s); remove the existing resource or use a different metadata.name", managedKey, queueURL)
 }

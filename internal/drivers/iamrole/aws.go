@@ -36,8 +36,6 @@ type IAMRoleAPI interface {
 	AttachManagedPolicy(ctx context.Context, roleName, policyArn string) error
 	DetachManagedPolicy(ctx context.Context, roleName, policyArn string) error
 	UpdateTags(ctx context.Context, roleName string, tags map[string]string) error
-	ListInstanceProfilesForRole(ctx context.Context, roleName string) ([]string, error)
-	RemoveRoleFromInstanceProfile(ctx context.Context, roleName, profileName string) error
 }
 
 // realIAMRoleAPI is the production implementation of IAMRoleAPI backed by the AWS SDK IAM client.
@@ -319,40 +317,6 @@ func (r *realIAMRoleAPI) UpdateTags(ctx context.Context, roleName string, tags m
 		}
 	}
 	return nil
-}
-
-// ListInstanceProfilesForRole returns the names of all instance profiles that have this role
-// associated. This is needed during deletion to detach the role from profiles before deleting it.
-func (r *realIAMRoleAPI) ListInstanceProfilesForRole(ctx context.Context, roleName string) ([]string, error) {
-	paginator := iamsdk.NewListInstanceProfilesForRolePaginator(r.client, &iamsdk.ListInstanceProfilesForRoleInput{RoleName: aws.String(roleName)})
-	var names []string
-	for paginator.HasMorePages() {
-		if err := r.limiter.Wait(ctx); err != nil {
-			return nil, err
-		}
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, profile := range page.InstanceProfiles {
-			names = append(names, aws.ToString(profile.InstanceProfileName))
-		}
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// RemoveRoleFromInstanceProfile detaches a role from an instance profile. Required before
-// the role can be deleted, since IAM enforces that roles cannot be deleted while associated.
-func (r *realIAMRoleAPI) RemoveRoleFromInstanceProfile(ctx context.Context, roleName, profileName string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	_, err := r.client.RemoveRoleFromInstanceProfile(ctx, &iamsdk.RemoveRoleFromInstanceProfileInput{
-		RoleName:            aws.String(roleName),
-		InstanceProfileName: aws.String(profileName),
-	})
-	return err
 }
 
 func (r *realIAMRoleAPI) listInlinePolicies(ctx context.Context, roleName string) (map[string]string, error) {

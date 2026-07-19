@@ -27,7 +27,7 @@ let prefix = "\(variables.name)-\(variables.environment)"
 resources: {
 	// ── VPC ─────────────────────────────────────────────
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(prefix)-vpc"
 		spec: {
@@ -45,7 +45,7 @@ resources: {
 	// ── Dynamic Subnets ─────────────────────────────────
 	for _, sub in variables.subnets {
 		"subnet-\(sub.suffix)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "Subnet"
 			metadata: name: "\(prefix)-\(sub.suffix)"
 			spec: {

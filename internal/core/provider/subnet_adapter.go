@@ -95,13 +95,13 @@ func subnetDescriptor() GenericDescriptor[subnet.SubnetSpec, subnet.SubnetOutput
 
 		NormalizeOutputs: normalizeSubnetOutputs,
 
-		PlanID: func(out subnet.SubnetOutputs) string { return out.SubnetId },
+		PlanIdentity: storedPlanIdentity[subnet.SubnetSpec](func(out subnet.SubnetOutputs) string { return out.SubnetId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[subnet.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState] {
 			return subnetProbe(subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired subnet.SubnetSpec, observed subnet.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired subnet.SubnetSpec, observed subnet.ObservedState, _ subnet.SubnetOutputs) []types.FieldDiff {
 			rawDiffs := subnet.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -133,8 +133,9 @@ func normalizeSubnetOutputs(out subnet.SubnetOutputs) map[string]any {
 }
 
 // subnetProbe adapts the driver API to the generic plan probe shape.
-func subnetProbe(api subnet.SubnetAPI) PlanProbeFunc[subnet.ObservedState] {
-	return func(runCtx restate.RunContext, subnetID string) (subnet.ObservedState, bool, error) {
+func subnetProbe(api subnet.SubnetAPI) PlanProbeFunc[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[subnet.SubnetSpec, subnet.SubnetOutputs]) (subnet.ObservedState, bool, error) {
+		subnetID := input.Identity
 		obs, err := api.DescribeSubnet(runCtx, subnetID)
 		if err != nil {
 			if subnet.IsNotFound(err) {

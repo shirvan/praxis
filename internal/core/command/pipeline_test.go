@@ -133,8 +133,10 @@ func TestParseLifecycle_Present(t *testing.T) {
 	raw := json.RawMessage(`{
 		"kind": "S3Bucket",
 		"lifecycle": {
+			"reconcile": "observe",
 			"preventDestroy": true,
-			"ignoreChanges": ["tags.lastModified", "tags.updatedBy"]
+			"ignoreChanges": ["tags.lastModified", "tags.updatedBy"],
+			"recovery": {"mode": "Manual", "timeout": "15m"}
 		},
 		"spec": {"region": "us-east-1"}
 	}`)
@@ -142,8 +144,12 @@ func TestParseLifecycle_Present(t *testing.T) {
 	lc, err := parseLifecycle(raw)
 	require.NoError(t, err)
 	require.NotNil(t, lc)
+	assert.Equal(t, types.ReconcileModeObserve, lc.Reconcile)
 	assert.True(t, lc.PreventDestroy)
 	assert.Equal(t, []string{"tags.lastModified", "tags.updatedBy"}, lc.IgnoreChanges)
+	require.NotNil(t, lc.Recovery)
+	assert.Equal(t, types.RecoveryModeManual, lc.Recovery.Mode)
+	assert.Equal(t, "15m", lc.Recovery.Timeout)
 }
 
 func TestParseLifecycle_Absent(t *testing.T) {
@@ -158,8 +164,21 @@ func TestParseLifecycle_Empty(t *testing.T) {
 	lc, err := parseLifecycle(raw)
 	require.NoError(t, err)
 	require.NotNil(t, lc)
+	assert.Equal(t, types.ReconcileModeAuto, lc.Reconcile)
 	assert.False(t, lc.PreventDestroy)
 	assert.Nil(t, lc.IgnoreChanges)
+}
+
+func TestParseLifecycle_RejectsInvalidReconcileModeAndPaths(t *testing.T) {
+	for name, raw := range map[string]json.RawMessage{
+		"mode": json.RawMessage(`{"lifecycle":{"reconcile":"sometimes"}}`),
+		"path": json.RawMessage(`{"lifecycle":{"reconcile":"auto","ignoreChanges":["spec.tags"]}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseLifecycle(raw)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestPlanResourcesFromGraph_PreservesLifecycle(t *testing.T) {

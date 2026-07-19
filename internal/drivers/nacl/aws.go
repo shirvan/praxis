@@ -294,7 +294,7 @@ func (r *realNetworkACLAPI) FindAssociationIdForSubnet(ctx context.Context, subn
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("no network ACL association found for subnet %s", subnetId)
+		return "", awserr.NotFound(fmt.Sprintf("no network ACL association found for subnet %s", subnetId))
 	case 1:
 		return matches[0], nil
 	default:

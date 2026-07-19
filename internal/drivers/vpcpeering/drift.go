@@ -13,8 +13,14 @@ import (
 //   - Requester and accepter peering options (DNS resolution) are compared.
 //   - VPC IDs are NOT checked — they are immutable.
 func HasDrift(desired VPCPeeringSpec, observed ObservedState) bool {
+	if observed.Status == "pending-acceptance" {
+		return desired.AutoAccept
+	}
 	if observed.Status != "active" {
 		return false
+	}
+	if desired.RequesterVpcId != observed.RequesterVpcId || desired.AccepterVpcId != observed.AccepterVpcId {
+		return true
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		return true
@@ -30,33 +36,33 @@ func HasDrift(desired VPCPeeringSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a human-readable list of differences for drift
 // event reporting, including tag and peering option differences.
-func ComputeFieldDiffs(desired VPCPeeringSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired VPCPeeringSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	desiredFiltered := drivers.FilterPraxisTags(desired.Tags)
 	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 
 	if optionsDrift(desired.RequesterOptions, observed.RequesterOptions) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.requesterOptions.allowDnsResolutionFromRemoteVpc",
 			OldValue: optionValue(observed.RequesterOptions),
 			NewValue: optionValue(desired.RequesterOptions),
 		})
 	}
 	if optionsDrift(desired.AccepterOptions, observed.AccepterOptions) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.accepterOptions.allowDnsResolutionFromRemoteVpc",
 			OldValue: optionValue(observed.AccepterOptions),
 			NewValue: optionValue(desired.AccepterOptions),
@@ -64,14 +70,14 @@ func ComputeFieldDiffs(desired VPCPeeringSpec, observed ObservedState) []FieldDi
 	}
 
 	if desired.RequesterVpcId != observed.RequesterVpcId && observed.RequesterVpcId != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.requesterVpcId (immutable, requires replacement)",
 			OldValue: observed.RequesterVpcId,
 			NewValue: desired.RequesterVpcId,
 		})
 	}
 	if desired.AccepterVpcId != observed.AccepterVpcId && observed.AccepterVpcId != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.accepterVpcId (immutable, requires replacement)",
 			OldValue: observed.AccepterVpcId,
 			NewValue: desired.AccepterVpcId,
@@ -79,12 +85,6 @@ func ComputeFieldDiffs(desired VPCPeeringSpec, observed ObservedState) []FieldDi
 	}
 
 	return diffs
-}
-
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 func optionsDrift(desired *PeeringOptions, observed *PeeringOptions) bool {

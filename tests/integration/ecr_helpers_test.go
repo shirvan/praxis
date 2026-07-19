@@ -45,7 +45,7 @@ func setupECRRepoDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
 	ecrClient := awsclient.NewECRClient(awsCfg)
 	skipIfECRUnavailable(t, ecrClient)
 
-	return setupDriverEventingEnv(t, ecrrepo.NewECRRepositoryDriver(authservice.NewAuthClient())), ecrClient
+	return setupDriverEventingEnv(t, ecrrepo.NewGenericECRRepositoryDriver(authservice.NewAuthClient())), ecrClient
 }
 
 func setupECRPolicyDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
@@ -56,5 +56,5 @@ func setupECRPolicyDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
 	ecrClient := awsclient.NewECRClient(awsCfg)
 	skipIfECRUnavailable(t, ecrClient)
 
-	return setupDriverEventingEnv(t, ecrpolicy.NewECRLifecyclePolicyDriver(authservice.NewAuthClient())), ecrClient
+	return setupDriverEventingEnv(t, ecrpolicy.NewGenericECRLifecyclePolicyDriver(authservice.NewAuthClient())), ecrClient
 }

@@ -11,14 +11,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.billingMode").
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired DynamoDBTable spec against the observed state
 // from AWS and returns true if any mutable field has diverged. It is called
 // during Reconcile to decide whether drift correction is needed. Immutable
@@ -51,33 +43,33 @@ func configDrift(desired DynamoDBTableSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging.
-func ComputeFieldDiffs(desired DynamoDBTableSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired DynamoDBTableSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	// Immutable fields — reported for visibility, never corrected in place.
 	if observed.HashKey != "" && desired.HashKey != observed.HashKey {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.hashKey (immutable, requires replacement)", OldValue: observed.HashKey, NewValue: desired.HashKey})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.hashKey (immutable, requires replacement)", OldValue: observed.HashKey, NewValue: desired.HashKey})
 	}
 	if observed.HashKey != "" && keyTypeOrDefault(desired.HashKeyType) != observed.HashKeyType {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.hashKeyType (immutable, requires replacement)", OldValue: observed.HashKeyType, NewValue: keyTypeOrDefault(desired.HashKeyType)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.hashKeyType (immutable, requires replacement)", OldValue: observed.HashKeyType, NewValue: keyTypeOrDefault(desired.HashKeyType)})
 	}
 	if desired.RangeKey != observed.RangeKey {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.rangeKey (immutable, requires replacement)", OldValue: observed.RangeKey, NewValue: desired.RangeKey})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.rangeKey (immutable, requires replacement)", OldValue: observed.RangeKey, NewValue: desired.RangeKey})
 	}
 	if desired.RangeKey != "" && observed.RangeKey != "" && keyTypeOrDefault(desired.RangeKeyType) != observed.RangeKeyType {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.rangeKeyType (immutable, requires replacement)", OldValue: observed.RangeKeyType, NewValue: keyTypeOrDefault(desired.RangeKeyType)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.rangeKeyType (immutable, requires replacement)", OldValue: observed.RangeKeyType, NewValue: keyTypeOrDefault(desired.RangeKeyType)})
 	}
 
 	// Mutable fields.
 	if billingModeOrDefault(desired.BillingMode) != billingModeOrDefault(observed.BillingMode) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.billingMode", OldValue: observed.BillingMode, NewValue: billingModeOrDefault(desired.BillingMode)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.billingMode", OldValue: observed.BillingMode, NewValue: billingModeOrDefault(desired.BillingMode)})
 	}
 	if isProvisioned(desired.BillingMode) {
 		if capacityOrDefault(desired.ReadCapacity) != observed.ReadCapacity {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.readCapacity", OldValue: observed.ReadCapacity, NewValue: capacityOrDefault(desired.ReadCapacity)})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.readCapacity", OldValue: observed.ReadCapacity, NewValue: capacityOrDefault(desired.ReadCapacity)})
 		}
 		if capacityOrDefault(desired.WriteCapacity) != observed.WriteCapacity {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.writeCapacity", OldValue: observed.WriteCapacity, NewValue: capacityOrDefault(desired.WriteCapacity)})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.writeCapacity", OldValue: observed.WriteCapacity, NewValue: capacityOrDefault(desired.WriteCapacity)})
 		}
 	}
 
@@ -85,20 +77,20 @@ func ComputeFieldDiffs(desired DynamoDBTableSpec, observed ObservedState) []Fiel
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

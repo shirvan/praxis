@@ -94,13 +94,13 @@ func auroraClusterDescriptor() GenericDescriptor[auroracluster.AuroraClusterSpec
 			return map[string]any{"clusterIdentifier": out.ClusterIdentifier, "clusterResourceId": out.ClusterResourceId, "arn": out.ARN, "endpoint": out.Endpoint, "readerEndpoint": out.ReaderEndpoint, "port": out.Port, "engine": out.Engine, "engineVersion": out.EngineVersion, "status": out.Status}
 		},
 
-		PlanID: func(out auroracluster.AuroraClusterOutputs) string { return out.ClusterIdentifier },
+		PlanIdentity: storedPlanIdentity[auroracluster.AuroraClusterSpec](func(out auroracluster.AuroraClusterOutputs) string { return out.ClusterIdentifier }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[auroracluster.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs, auroracluster.ObservedState] {
 			return auroraClusterProbe(auroracluster.NewAuroraClusterAPI(awsclient.NewRDSClient(cfg)))
 		},
 
-		DiffFields: func(desired auroracluster.AuroraClusterSpec, observed auroracluster.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired auroracluster.AuroraClusterSpec, observed auroracluster.ObservedState, _ auroracluster.AuroraClusterOutputs) []types.FieldDiff {
 			rawDiffs := auroracluster.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -113,8 +113,9 @@ func auroraClusterDescriptor() GenericDescriptor[auroracluster.AuroraClusterSpec
 }
 
 // auroraClusterProbe adapts the driver API to the generic plan probe shape.
-func auroraClusterProbe(api auroracluster.AuroraClusterAPI) PlanProbeFunc[auroracluster.ObservedState] {
-	return func(runCtx restate.RunContext, identifier string) (auroracluster.ObservedState, bool, error) {
+func auroraClusterProbe(api auroracluster.AuroraClusterAPI) PlanProbeFunc[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs, auroracluster.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs]) (auroracluster.ObservedState, bool, error) {
+		identifier := input.Identity
 		obs, err := api.DescribeDBCluster(runCtx, identifier)
 		if err != nil {
 			if auroracluster.IsNotFound(err) {

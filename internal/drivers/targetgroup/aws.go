@@ -78,8 +78,8 @@ func (r *realTargetGroupAPI) CreateTargetGroup(ctx context.Context, spec TargetG
 	if err := r.UpdateAttributes(ctx, arn, spec); err != nil {
 		return TargetGroupOutputs{}, err
 	}
-	if len(spec.Tags) > 0 {
-		if err := r.UpdateTags(ctx, arn, spec.Tags); err != nil {
+	if tags := targetGroupManagedTags(spec.Tags, spec.ManagedKey); len(tags) > 0 {
+		if err := r.UpdateTags(ctx, arn, tags); err != nil {
 			return TargetGroupOutputs{}, err
 		}
 	}

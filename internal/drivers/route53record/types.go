@@ -4,8 +4,6 @@
 // via UPSERT-based idempotent provisioning with drift detection.
 package route53record
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate virtual object service name used to register and address this driver.
 const ServiceName = "Route53Record"
 
@@ -74,17 +72,4 @@ type ObservedState struct {
 	GeoLocation      *GeoLocation `json:"geoLocation,omitempty"`
 	MultiValueAnswer bool         `json:"multiValueAnswer,omitempty"`
 	HealthCheckId    string       `json:"healthCheckId,omitempty"`
-}
-
-// RecordState is the full persisted state of this virtual-object, stored via restate.Set.
-type RecordState struct {
-	Desired            RecordSpec           `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            RecordOutputs        `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

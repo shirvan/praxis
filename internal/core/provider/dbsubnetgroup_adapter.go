@@ -84,13 +84,13 @@ func dbSubnetGroupDescriptor() GenericDescriptor[dbsubnetgroup.DBSubnetGroupSpec
 			}
 		},
 
-		PlanID: func(out dbsubnetgroup.DBSubnetGroupOutputs) string { return out.GroupName },
+		PlanIdentity: storedPlanIdentity[dbsubnetgroup.DBSubnetGroupSpec](func(out dbsubnetgroup.DBSubnetGroupOutputs) string { return out.GroupName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dbsubnetgroup.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs, dbsubnetgroup.ObservedState] {
 			return dbSubnetGroupProbe(dbsubnetgroup.NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg)))
 		},
 
-		DiffFields: func(desired dbsubnetgroup.DBSubnetGroupSpec, observed dbsubnetgroup.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired dbsubnetgroup.DBSubnetGroupSpec, observed dbsubnetgroup.ObservedState, _ dbsubnetgroup.DBSubnetGroupOutputs) []types.FieldDiff {
 			rawDiffs := dbsubnetgroup.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -102,8 +102,9 @@ func dbSubnetGroupDescriptor() GenericDescriptor[dbsubnetgroup.DBSubnetGroupSpec
 }
 
 // dbSubnetGroupProbe adapts the driver API to the generic plan probe shape.
-func dbSubnetGroupProbe(api dbsubnetgroup.DBSubnetGroupAPI) PlanProbeFunc[dbsubnetgroup.ObservedState] {
-	return func(runCtx restate.RunContext, groupName string) (dbsubnetgroup.ObservedState, bool, error) {
+func dbSubnetGroupProbe(api dbsubnetgroup.DBSubnetGroupAPI) PlanProbeFunc[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs, dbsubnetgroup.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs]) (dbsubnetgroup.ObservedState, bool, error) {
+		groupName := input.Identity
 		obs, err := api.DescribeDBSubnetGroup(runCtx, groupName)
 		if err != nil {
 			if dbsubnetgroup.IsNotFound(err) {

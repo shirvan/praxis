@@ -11,7 +11,7 @@ import (
 func TestListenerRuleAdapter_BuildKey(t *testing.T) {
 	adapter := NewListenerRuleAdapterWithAuth(nil)
 	doc := map[string]any{
-		"apiVersion": "praxis.io/v1",
+		"apiVersion": "praxis.io/alpha",
 		"kind":       "ListenerRule",
 		"metadata":   map[string]any{"name": "api-path-rule"},
 		"spec": map[string]any{
@@ -31,7 +31,7 @@ func TestListenerRuleAdapter_BuildKey(t *testing.T) {
 func TestListenerRuleAdapter_DecodeSpec(t *testing.T) {
 	adapter := NewListenerRuleAdapterWithAuth(nil)
 	doc := map[string]any{
-		"apiVersion": "praxis.io/v1",
+		"apiVersion": "praxis.io/alpha",
 		"kind":       "ListenerRule",
 		"metadata":   map[string]any{"name": "my-rule"},
 		"spec": map[string]any{

@@ -1,7 +1,7 @@
 package cloudwatch
 
 #Dashboard: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "Dashboard"
 
 	metadata: {

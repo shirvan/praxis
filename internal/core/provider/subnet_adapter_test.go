@@ -13,7 +13,7 @@ import (
 func TestSubnetAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewSubnetAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"Subnet",
 		"metadata":{"name":"public-a"},
 		"spec":{
@@ -76,7 +76,7 @@ func TestSubnetAdapter_NormalizeOutputs(t *testing.T) {
 func TestSubnetAdapter_DecodeSpec_MissingVpcID(t *testing.T) {
 	adapter := NewSubnetAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"Subnet",
+		"apiVersion":"praxis.io/alpha","kind":"Subnet",
 		"metadata":{"name":"public-a"},
 		"spec":{"region":"us-east-1","cidrBlock":"10.0.1.0/24","availabilityZone":"us-east-1a"}
 	}`)
@@ -88,7 +88,7 @@ func TestSubnetAdapter_DecodeSpec_MissingVpcID(t *testing.T) {
 func TestSubnetAdapter_DecodeSpec_MissingAvailabilityZone(t *testing.T) {
 	adapter := NewSubnetAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"Subnet",
+		"apiVersion":"praxis.io/alpha","kind":"Subnet",
 		"metadata":{"name":"public-a"},
 		"spec":{"region":"us-east-1","vpcId":"vpc-123","cidrBlock":"10.0.1.0/24"}
 	}`)

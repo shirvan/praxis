@@ -14,7 +14,7 @@ variables: {
 }
 
 resources: instance: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "EC2Instance"
 	metadata: name: "\(variables.name)-dev"
 	spec: {

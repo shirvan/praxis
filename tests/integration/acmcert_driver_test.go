@@ -47,7 +47,7 @@ func setupACMCertificateDriver(t *testing.T) (*ingress.Client, *acmsdk.Client) {
 	awsCfg := motoAWSConfig(t)
 	acmClient := awsclient.NewACMClient(awsCfg)
 	skipIfACMUnavailable(t, acmClient)
-	driver := acmcert.NewACMCertificateDriver(authservice.NewAuthClient())
+	driver := acmcert.NewGenericACMCertificateDriver(authservice.NewAuthClient())
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, acmClient
 }

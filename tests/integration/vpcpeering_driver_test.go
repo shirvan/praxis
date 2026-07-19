@@ -40,7 +40,7 @@ func setupVPCPeeringDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := vpcpeering.NewVPCPeeringDriver(authservice.NewAuthClient())
+	driver := vpcpeering.NewGenericVPCPeeringDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client

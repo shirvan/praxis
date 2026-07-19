@@ -88,13 +88,13 @@ func metricAlarmDescriptor() GenericDescriptor[metricalarm.MetricAlarmSpec, metr
 			return result
 		},
 
-		PlanID: func(out metricalarm.MetricAlarmOutputs) string { return out.AlarmName },
+		PlanIdentity: storedPlanIdentity[metricalarm.MetricAlarmSpec](func(out metricalarm.MetricAlarmOutputs) string { return out.AlarmName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[metricalarm.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs, metricalarm.ObservedState] {
 			return metricAlarmProbe(metricalarm.NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg)))
 		},
 
-		DiffFields: func(desired metricalarm.MetricAlarmSpec, observed metricalarm.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired metricalarm.MetricAlarmSpec, observed metricalarm.ObservedState, _ metricalarm.MetricAlarmOutputs) []types.FieldDiff {
 			rawDiffs := metricalarm.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -107,8 +107,9 @@ func metricAlarmDescriptor() GenericDescriptor[metricalarm.MetricAlarmSpec, metr
 
 // metricAlarmProbe adapts the driver API to the generic plan probe shape. The
 // driver's describe reports existence directly alongside the observed state.
-func metricAlarmProbe(api metricalarm.MetricAlarmAPI) PlanProbeFunc[metricalarm.ObservedState] {
-	return func(runCtx restate.RunContext, alarmName string) (metricalarm.ObservedState, bool, error) {
+func metricAlarmProbe(api metricalarm.MetricAlarmAPI) PlanProbeFunc[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs, metricalarm.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs]) (metricalarm.ObservedState, bool, error) {
+		alarmName := input.Identity
 		obs, found, err := api.DescribeAlarm(runCtx, alarmName)
 		if err != nil {
 			if metricalarm.IsNotFound(err) {

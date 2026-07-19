@@ -39,7 +39,7 @@ func setupDashboardDriver(t *testing.T) (*ingress.Client, *cwsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	cwClient := awsclient.NewCloudWatchClient(awsCfg)
-	driver := dashboard.NewDashboardDriver(authservice.NewAuthClient())
+	driver := dashboard.NewGenericDashboardDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, cwClient

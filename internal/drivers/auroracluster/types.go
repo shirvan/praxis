@@ -7,8 +7,6 @@
 // driver) connect to the cluster as readers/writers.
 package auroracluster
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for Aurora clusters.
 const ServiceName = "AuroraCluster"
 
@@ -19,7 +17,8 @@ type AuroraClusterSpec struct {
 	Account string `json:"account,omitempty"`
 
 	// Region is the AWS region for the cluster.
-	Region string `json:"region"`
+	Region     string `json:"region"`
+	ManagedKey string `json:"managedKey,omitempty"`
 
 	// ClusterIdentifier is the unique Aurora cluster identifier. Immutable.
 	ClusterIdentifier string `json:"clusterIdentifier"`
@@ -92,6 +91,7 @@ type AuroraClusterOutputs struct {
 // ObservedState captures the actual AWS-side configuration of an Aurora cluster
 // as returned by rds:DescribeDBClusters. Used for drift comparison.
 type ObservedState struct {
+	Region                       string            `json:"region,omitempty"`
 	ClusterIdentifier            string            `json:"clusterIdentifier"`
 	ClusterResourceId            string            `json:"clusterResourceId"`
 	ARN                          string            `json:"arn"`
@@ -114,17 +114,4 @@ type ObservedState struct {
 	ReaderEndpoint               string            `json:"readerEndpoint"`
 	Status                       string            `json:"status"`
 	Tags                         map[string]string `json:"tags"`
-}
-
-// AuroraClusterState is the single atomic state object stored under drivers.StateKey.
-type AuroraClusterState struct {
-	Desired            AuroraClusterSpec    `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            AuroraClusterOutputs `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

@@ -5,8 +5,6 @@
 // via assume-role trust policies, inline policies, and managed policy attachments.
 package iamrole
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate virtual object name used to register and address
 // IAM role driver instances. Each IAM role is keyed by its Praxis resource key.
 const ServiceName = "IAMRole"
@@ -62,19 +60,4 @@ type ObservedState struct {
 	ManagedPolicyArns        []string          `json:"managedPolicyArns,omitempty"`
 	Tags                     map[string]string `json:"tags,omitempty"`
 	CreateDate               string            `json:"createDate"`
-}
-
-// IAMRoleState is the durable state persisted in Restate's virtual object storage.
-// It tracks the desired spec, last observed AWS state, computed outputs, lifecycle status,
-// management mode (managed vs observed), error state, generation counter, and reconcile scheduling.
-type IAMRoleState struct {
-	Desired            IAMRoleSpec          `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            IAMRoleOutputs       `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

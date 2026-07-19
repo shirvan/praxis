@@ -38,7 +38,7 @@ func setupRouteTableDriverIntegration(t *testing.T) (*ingress.Client, *ec2sdk.Cl
 	configureLocalAccount(t)
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := routetable.NewRouteTableDriver(authservice.NewAuthClient())
+	driver := routetable.NewGenericRouteTableDriver(authservice.NewAuthClient())
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client
 }

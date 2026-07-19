@@ -10,8 +10,6 @@
 // reconciliation.
 package vpc
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for VPCs.
 const ServiceName = "VPC"
 
@@ -46,6 +44,7 @@ type VPCOutputs struct {
 // Three separate EC2 API calls are needed: DescribeVpcs (core attributes) plus
 // two DescribeVpcAttribute calls for EnableDnsHostnames and EnableDnsSupport.
 type ObservedState struct {
+	Region             string            `json:"region,omitempty"`
 	VpcId              string            `json:"vpcId"`
 	CidrBlock          string            `json:"cidrBlock"`
 	State              string            `json:"state"`
@@ -56,21 +55,4 @@ type ObservedState struct {
 	DhcpOptionsId      string            `json:"dhcpOptionsId"`
 	IsDefault          bool              `json:"isDefault"`
 	Tags               map[string]string `json:"tags"`
-}
-
-// VPCState is the single atomic state object stored under drivers.StateKey.
-// All fields are written together via restate.Set to guarantee consistent
-// state transitions across the Desired spec, Observed AWS state, and
-// lifecycle metadata.
-type VPCState struct {
-	Desired            VPCSpec              `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state from Describe.
-	Outputs            VPCOutputs           `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status: Provisioning, Ready, Error, Deleting, Deleted.
-	Mode               types.Mode           `json:"mode"`                    // Managed (drift corrected) or Observed (drift reported only).
-	Error              string               `json:"error,omitempty"`         // Human-readable error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter, bumped on each Provision/Import.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of the last reconcile run.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Guards against scheduling duplicate delayed Reconcile messages.
-	LateInitDone       bool                 `json:"lateInitDone,omitempty"`  // Whether late initialization has been applied.
 }

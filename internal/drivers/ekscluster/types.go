@@ -7,8 +7,6 @@
 // status tracking.
 package ekscluster
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object service name used to register the AWS EKS cluster driver.
 const ServiceName = "EKSCluster"
 
@@ -70,20 +68,4 @@ type ObservedState struct {
 	PublicAccessCidrs     []string          `json:"publicAccessCidrs,omitempty"`
 	EnabledLoggingTypes   []string          `json:"enabledLoggingTypes,omitempty"`
 	Tags                  map[string]string `json:"tags,omitempty"`
-}
-
-// EKSClusterState is the single atomic state object persisted under
-// drivers.StateKey in the Restate K/V store. It combines desired spec, observed
-// state, outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type EKSClusterState struct {
-	Desired            EKSClusterSpec       `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            EKSClusterOutputs    `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

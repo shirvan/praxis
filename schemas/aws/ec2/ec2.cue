@@ -1,7 +1,7 @@
 package ec2
 
 #EC2Instance: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "EC2Instance"
 
 	metadata: {

@@ -32,7 +32,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	cert: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ACMCertificate"
 		metadata: name: "\(variables.name)-\(variables.environment)-cert"
 		spec: {
@@ -53,7 +53,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	validationRecord: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Route53Record"
 		metadata: name: "\(variables.name)-\(variables.environment)-cert-validation"
 		spec: {
@@ -73,7 +73,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	httpsListener: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Listener"
 		metadata: name: "\(variables.name)-\(variables.environment)-https"
 		spec: {

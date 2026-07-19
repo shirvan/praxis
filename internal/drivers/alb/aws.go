@@ -72,8 +72,8 @@ func (r *realALBAPI) CreateALB(ctx context.Context, spec ALBSpec) (string, strin
 	} else {
 		input.Subnets = spec.Subnets
 	}
-	if len(spec.Tags) > 0 {
-		input.Tags = toELBTags(spec.Tags)
+	if tags := albManagedTags(spec.Tags, spec.ManagedKey); len(tags) > 0 {
+		input.Tags = toELBTags(tags)
 	}
 	out, err := r.client.CreateLoadBalancer(ctx, input)
 	if err != nil {

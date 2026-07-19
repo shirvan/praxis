@@ -1,11 +1,21 @@
 package iamgroup
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockAPIError struct {
@@ -30,6 +40,43 @@ func TestIsDeleteConflict_True(t *testing.T) {
 	assert.True(t, IsDeleteConflict(&mockAPIError{code: "DeleteConflict"}))
 }
 
+func TestRealIAMGroupAPIDeleteOnlyRequestsDeleteGroup(t *testing.T) {
+	var actions []string
+	httpClient := smithyhttp.ClientDoFunc(func(request *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(request.Body)
+		require.NoError(t, err)
+		values, err := url.ParseQuery(string(body))
+		require.NoError(t, err)
+		actions = append(actions, values.Get("Action"))
+		return &http.Response{
+			StatusCode: http.StatusConflict,
+			Header:     http.Header{"Content-Type": []string{"text/xml"}},
+			Body: io.NopCloser(strings.NewReader(
+				`<ErrorResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/"><Error><Type>Sender</Type><Code>DeleteConflict</Code><Message>group has external members</Message></Error><RequestId>test</RequestId></ErrorResponse>`,
+			)),
+			Request: request,
+		}, nil
+	})
+	client := iamsdk.NewFromConfig(aws.Config{
+		Region:      "us-east-1",
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		HTTPClient:  httpClient,
+	}, func(options *iamsdk.Options) {
+		options.BaseEndpoint = aws.String("https://iam.test")
+		options.RetryMaxAttempts = 1
+	})
+	api := NewIAMGroupAPI(client)
+
+	err := api.DeleteGroup(context.Background(), "member-group")
+	require.Error(t, err)
+	assert.True(t, IsDeleteConflict(err))
+	assert.Equal(t, []string{"DeleteGroup"}, actions, "deletion must not issue membership-list or membership-cleanup actions")
+}
+
 func TestIsMalformedPolicy_True(t *testing.T) {
 	assert.True(t, IsMalformedPolicy(&mockAPIError{code: "MalformedPolicyDocument"}))
+}
+
+func TestIsLimitExceeded_True(t *testing.T) {
+	assert.True(t, IsLimitExceeded(&mockAPIError{code: "LimitExceeded"}))
 }

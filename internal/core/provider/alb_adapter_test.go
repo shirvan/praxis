@@ -13,7 +13,7 @@ import (
 func TestALBAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewALBAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion": "praxis.io/v1",
+		"apiVersion": "praxis.io/alpha",
 		"kind": "ALB",
 		"metadata": {"name": "my-alb"},
 		"spec": {

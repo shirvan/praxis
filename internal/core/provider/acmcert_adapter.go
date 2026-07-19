@@ -122,13 +122,13 @@ func acmCertificateDescriptor() GenericDescriptor[acmcert.ACMCertificateSpec, ac
 			return result
 		},
 
-		PlanID: func(out acmcert.ACMCertificateOutputs) string { return out.CertificateArn },
+		PlanIdentity: storedPlanIdentity[acmcert.ACMCertificateSpec](func(out acmcert.ACMCertificateOutputs) string { return out.CertificateArn }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[acmcert.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs, acmcert.ObservedState] {
 			return acmCertificateProbe(acmcert.NewCertificateAPI(awsclient.NewACMClient(cfg)))
 		},
 
-		DiffFields: func(desired acmcert.ACMCertificateSpec, observed acmcert.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired acmcert.ACMCertificateSpec, observed acmcert.ObservedState, _ acmcert.ACMCertificateOutputs) []types.FieldDiff {
 			rawDiffs := acmcert.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -140,8 +140,9 @@ func acmCertificateDescriptor() GenericDescriptor[acmcert.ACMCertificateSpec, ac
 }
 
 // acmCertificateProbe adapts the driver API to the generic plan probe shape.
-func acmCertificateProbe(api acmcert.CertificateAPI) PlanProbeFunc[acmcert.ObservedState] {
-	return func(runCtx restate.RunContext, certificateArn string) (acmcert.ObservedState, bool, error) {
+func acmCertificateProbe(api acmcert.CertificateAPI) PlanProbeFunc[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs, acmcert.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs]) (acmcert.ObservedState, bool, error) {
+		certificateArn := input.Identity
 		obs, err := api.DescribeCertificate(runCtx, certificateArn)
 		if err != nil {
 			if acmcert.IsNotFound(err) {

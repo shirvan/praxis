@@ -118,6 +118,9 @@ internal/
   drivers/                     # Resource driver implementations
     contract.go                # Driver service contract docs
     state.go                   # Shared constants (StateKey, ReconcileInterval)
+    aws_run.go                 # Durable AWS operation + in-callback error classification
+    kernel/                    # Versioned generic lifecycle and standard handlers
+    drivertest/                # Shared black-box lifecycle conformance suites
     s3/                        # S3 bucket driver
     sg/                        # Security Group driver
     ec2/                       # EC2 instance driver
@@ -362,7 +365,7 @@ No AWS or Restate required. Tests the most complex logic in isolation:
 - **Drift detection** — Pure-function comparison per driver (HasDrift, ComputeFieldDiffs)
 - **Template engine** — CUE evaluation pipeline, schema validation, variable validation, data source extraction
 - **Plan diff** — Field-level diff rendering with Terraform-inspired sigils
-- **Provider adapters** — Kind mapping, key generation, spec decoding, output normalization (all 45 adapters)
+- **Provider adapters** — Kind mapping, key generation, spec decoding, output normalization (all 51 adapters)
 - **Registry** — Template storage, policy storage, index synchronization
 - **CLI** — Config parsing, output formatting, error rendering
 - **Auth** — Credential resolution, error classification, STS operations
@@ -381,7 +384,7 @@ No AWS or Restate required. Tests the most complex logic in isolation:
 | `infra/ratelimit` | 1 | **Complete** | Token bucket behavior, burst, refill |
 | `core/template` | 2 | **Good** | CUE evaluation, schema extraction, variable validation |
 | `core/registry` | 3 | **Good** | Template CRUD, policy scoping, index sync |
-| `core/provider` | 45 | **Near-complete** | All 45 adapters: BuildKey, DecodeSpec, NormalizeOutputs, Scope |
+| `core/provider` | 51 | **Near-complete** | All 51 adapters: BuildKey, DecodeSpec, NormalizeOutputs, Scope |
 | `core/command` | 5 | **Partial** | Service init, pipeline, datasource, template/policy handlers |
 | `core/orchestrator` | 8 | **Partial** | Workflow state, hydrator, event builders, notification sinks, resource index/conditions, backoff, timeouts |
 | `core/authservice` | 3 | **Partial** | Client, config, errors; service.go/sts.go lack direct unit tests |
@@ -445,6 +448,18 @@ Every driver package has 3 test files covering the core patterns:
 | LogGroup | 8 tests | 3 tests | 3 tests | Good |
 | MetricAlarm | 8 tests | 3 tests | 3 tests | Good |
 | Dashboard | 6 tests | 3 tests | 2 tests | Good |
+
+#### Restate-Backed Handler Conformance
+
+Driver packages with stateful provider doubles should adopt the shared
+`internal/drivers/drivertest` lifecycle harness. `RunCoreLifecycle` verifies
+idempotent create-or-converge, readable committed state, retained tombstones,
+double Delete, and provider-silent Reconcile after deletion.
+`RunObservedImportLifecycle` verifies a no-drift Observed baseline and prevents
+Delete or Reconcile from mutating provider state. New drivers are expected to
+run both contracts; resource-specific tests remain responsible for mutable,
+immutable, readiness, drift, and error capabilities. These tests use a real
+Restate test environment with an in-memory provider double; they do not contact AWS.
 
 #### Layer 2: Driver Integration Tests
 
@@ -555,11 +570,13 @@ Each driver is a **Restate Virtual Object** managing the lifecycle of a single c
 
 ```text
 internal/drivers/<kind>/
-├── types.go       # Spec, Outputs, ObservedState, State structs
+├── types.go       # Spec, Outputs, and ObservedState types
 ├── aws.go         # AWS SDK wrapper behind a testable interface
 ├── drift.go       # Pure-function drift detection
-├── driver.go      # Restate Virtual Object with lifecycle handlers
-├── driver_test.go # Unit tests
+├── generic.go     # Resource operations and kernel descriptor
+├── generic_test.go # Shared lifecycle conformance tests
+├── driver_test.go # Resource-specific lifecycle tests, when needed
+├── aws_test.go    # Error-classification tests
 └── drift_test.go  # Drift detection tests
 
 cmd/praxis-<pack>/
@@ -571,7 +588,7 @@ schemas/aws/<service>/<kind>.cue  # CUE schema for user-facing spec
 
 ### Driver Contract
 
-Every driver Virtual Object implements 6 handlers. See [DRIVERS.md](DRIVERS.md) for full signatures and semantics.
+Every driver Virtual Object implements 8 required handlers. See [DRIVERS.md](DRIVERS.md) for full signatures and semantics.
 
 | Handler     | Type      | Purpose                                      |
 |-------------|-----------|----------------------------------------------|
@@ -579,8 +596,10 @@ Every driver Virtual Object implements 6 handlers. See [DRIVERS.md](DRIVERS.md) 
 | `Import`    | Exclusive | Adopt existing resource                      |
 | `Delete`    | Exclusive | Remove the resource                          |
 | `Reconcile` | Exclusive | Periodic drift detection + correction        |
+| `ClearState`| Exclusive | Explicitly reset all Virtual Object state    |
 | `GetStatus` | Shared    | Return lifecycle status, mode, generation    |
 | `GetOutputs`| Shared    | Return resource outputs (ARN, endpoint, etc.)|
+| `GetInputs` | Shared    | Return the stored desired input spec         |
 
 ### Key Design Rules
 
@@ -632,8 +651,8 @@ flowchart TD
     F --> G["7. Write unit + integration tests"]
 ```
 
-1. Create `internal/drivers/<kind>/` with types, aws wrapper, drift detection, and driver
-2. Add the driver to the appropriate domain pack entry point (e.g., add a VPC driver to `cmd/praxis-network/main.go` via an additional `.Bind()` call). The `config.DefaultRetryPolicy()` is already applied to all `restate.Reflect()` calls in every pack, so your new driver inherits the bounded retry policy (50 attempts, exponential backoff, pause on exhaustion) automatically.
+1. Create `internal/drivers/<kind>/` with types, AWS wrapper, drift detection, resource operations, and a generic kernel descriptor
+2. Add the driver to the appropriate domain pack entry point through `genericbinding.Reflect`. This enforces the generic-driver contract and applies the bounded retry policy (50 attempts, exponential backoff, pause on exhaustion).
 3. Create CUE schema in `schemas/aws/<service>/<kind>.cue`
 4. Add provider adapter in `internal/core/provider/` (adapter + registry entry + key scope)
 5. Update `docker-compose.yaml` registration if the driver pack is new
@@ -642,9 +661,9 @@ flowchart TD
 
 ### Reference Implementations
 
-Study the S3 driver (`internal/drivers/s3/`), Security Group driver (`internal/drivers/sg/`), EC2 driver (`internal/drivers/ec2/`), VPC driver (`internal/drivers/vpc/`), EIP driver (`internal/drivers/eip/`), AMI driver (`internal/drivers/ami/`), EBS driver (`internal/drivers/ebs/`), and KeyPair driver (`internal/drivers/keypair/`) — every pattern described here is demonstrated in those implementations.
-
-The EC2 driver was built from [EC2_DRIVER_PLAN.md](ec2/EC2_DRIVER_PLAN.md), which documents the full process — CUE schema, types, AWS wrapper, drift detection, driver handlers, adapter, registry integration, Docker/Justfile wiring, and tests — with design rationale for each decision.
+Study the S3 driver (`internal/drivers/s3/`) for the complete shape. The
+production conformance tests ensure every registered resource uses that same
+generic lifecycle and binding path.
 
 ## Code Style
 

@@ -24,11 +24,11 @@ func HasDrift(desired IGWSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a human-readable list of differences between
 // the desired spec and observed state, used for drift event reporting.
-func ComputeFieldDiffs(desired IGWSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired IGWSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.VpcId != observed.AttachedVpcId {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.vpcId",
 			OldValue: observed.AttachedVpcId,
 			NewValue: desired.VpcId,
@@ -39,23 +39,16 @@ func ComputeFieldDiffs(desired IGWSpec, observed ObservedState) []FieldDiffEntry
 	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 
 	return diffs
-}
-
-// FieldDiffEntry represents a single field difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }

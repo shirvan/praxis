@@ -85,13 +85,13 @@ func iamInstanceProfileDescriptor() GenericDescriptor[iaminstanceprofile.IAMInst
 			}
 		},
 
-		PlanID: func(out iaminstanceprofile.IAMInstanceProfileOutputs) string { return out.InstanceProfileName },
+		PlanIdentity: storedPlanIdentity[iaminstanceprofile.IAMInstanceProfileSpec](func(out iaminstanceprofile.IAMInstanceProfileOutputs) string { return out.InstanceProfileName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iaminstanceprofile.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs, iaminstanceprofile.ObservedState] {
 			return iamInstanceProfileProbe(iaminstanceprofile.NewIAMInstanceProfileAPI(awsclient.NewIAMClient(cfg)))
 		},
 
-		DiffFields: func(desired iaminstanceprofile.IAMInstanceProfileSpec, observed iaminstanceprofile.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired iaminstanceprofile.IAMInstanceProfileSpec, observed iaminstanceprofile.ObservedState, _ iaminstanceprofile.IAMInstanceProfileOutputs) []types.FieldDiff {
 			rawDiffs := iaminstanceprofile.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -103,8 +103,9 @@ func iamInstanceProfileDescriptor() GenericDescriptor[iaminstanceprofile.IAMInst
 }
 
 // iamInstanceProfileProbe adapts the driver API to the generic plan probe shape.
-func iamInstanceProfileProbe(api iaminstanceprofile.IAMInstanceProfileAPI) PlanProbeFunc[iaminstanceprofile.ObservedState] {
-	return func(runCtx restate.RunContext, profileName string) (iaminstanceprofile.ObservedState, bool, error) {
+func iamInstanceProfileProbe(api iaminstanceprofile.IAMInstanceProfileAPI) PlanProbeFunc[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs, iaminstanceprofile.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs]) (iaminstanceprofile.ObservedState, bool, error) {
+		profileName := input.Identity
 		obs, err := api.DescribeInstanceProfile(runCtx, profileName)
 		if err != nil {
 			if iaminstanceprofile.IsNotFound(err) {

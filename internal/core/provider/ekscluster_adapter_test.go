@@ -13,7 +13,7 @@ import (
 func TestEKSClusterAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewEKSClusterAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"EKSCluster",
 		"metadata":{"name":"prod-cluster"},
 		"spec":{"region":"us-east-1","roleArn":"arn:aws:iam::123:role/eks","subnetIds":["subnet-1","subnet-2"],"endpointPublicAccess":true,"tags":{"env":"prod"}}
@@ -39,6 +39,7 @@ func TestEKSClusterAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 func TestEKSClusterAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewEKSClusterAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
+		"apiVersion":"praxis.io/alpha",
 		"kind":"EKSCluster",
 		"metadata":{"name":"prod-cluster"},
 		"spec":{"roleArn":"arn:aws:iam::123:role/eks"}

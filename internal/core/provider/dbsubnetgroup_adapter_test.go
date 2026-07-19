@@ -13,7 +13,7 @@ import (
 func TestDBSubnetGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewDBSubnetGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"DBSubnetGroup",
 		"metadata":{"name":"my-subnet-group"},
 		"spec":{

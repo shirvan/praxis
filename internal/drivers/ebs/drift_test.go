@@ -34,20 +34,20 @@ func TestHasDrift_TagsChanged(t *testing.T) {
 	assert.True(t, HasDrift(desired, observed))
 }
 
-func TestHasDrift_ImmutableFieldIgnored(t *testing.T) {
+func TestHasDrift_ImmutableFieldRequiresReplacement(t *testing.T) {
 	desired := EBSVolumeSpec{AvailabilityZone: "us-east-1b", VolumeType: "gp3", SizeGiB: 20}
 	observed := ObservedState{AvailabilityZone: "us-east-1a", VolumeType: "gp3", SizeGiB: 20, State: "available"}
-	assert.False(t, HasDrift(desired, observed))
+	assert.True(t, HasDrift(desired, observed))
 }
 
 func TestComputeFieldDiffs_ShrinkNotSupported(t *testing.T) {
 	diffs := ComputeFieldDiffs(EBSVolumeSpec{VolumeType: "gp3", SizeGiB: 10}, ObservedState{VolumeType: "gp3", SizeGiB: 20})
 	assert.Len(t, diffs, 1)
-	assert.Equal(t, "spec.sizeGiB (shrink not supported, ignored)", diffs[0].Path)
+	assert.Equal(t, "spec.sizeGiB (shrink not supported, requires replacement)", diffs[0].Path)
 }
 
 func TestComputeFieldDiffs_ImmutableAZ(t *testing.T) {
 	diffs := ComputeFieldDiffs(EBSVolumeSpec{AvailabilityZone: "us-east-1b", VolumeType: "gp3", SizeGiB: 20}, ObservedState{AvailabilityZone: "us-east-1a", VolumeType: "gp3", SizeGiB: 20})
 	assert.Len(t, diffs, 1)
-	assert.Equal(t, "spec.availabilityZone (immutable, ignored)", diffs[0].Path)
+	assert.Equal(t, "spec.availabilityZone (immutable, requires replacement)", diffs[0].Path)
 }

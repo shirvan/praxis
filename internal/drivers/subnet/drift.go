@@ -33,11 +33,11 @@ func HasDrift(desired SubnetSpec, observed ObservedState) bool {
 // event reporting. Reports both mutable fields (MapPublicIpOnLaunch, tags)
 // and immutable fields (CidrBlock, AvailabilityZone, VpcId) for visibility,
 // even though immutable fields cannot be corrected.
-func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.MapPublicIpOnLaunch != observed.MapPublicIpOnLaunch {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.mapPublicIpOnLaunch",
 			OldValue: observed.MapPublicIpOnLaunch,
 			NewValue: desired.MapPublicIpOnLaunch,
@@ -48,19 +48,19 @@ func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEn
 	observedFiltered := drivers.FilterPraxisTags(observed.Tags)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 
 	if desired.CidrBlock != observed.CidrBlock && observed.CidrBlock != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.cidrBlock (immutable, requires replacement)",
 			OldValue: observed.CidrBlock,
 			NewValue: desired.CidrBlock,
@@ -68,7 +68,7 @@ func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEn
 	}
 
 	if desired.AvailabilityZone != observed.AvailabilityZone && observed.AvailabilityZone != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.availabilityZone (immutable, requires replacement)",
 			OldValue: observed.AvailabilityZone,
 			NewValue: desired.AvailabilityZone,
@@ -76,7 +76,7 @@ func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEn
 	}
 
 	if desired.VpcId != observed.VpcId && observed.VpcId != "" {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.vpcId (immutable, requires replacement)",
 			OldValue: observed.VpcId,
 			NewValue: desired.VpcId,
@@ -84,10 +84,4 @@ func ComputeFieldDiffs(desired SubnetSpec, observed ObservedState) []FieldDiffEn
 	}
 
 	return diffs
-}
-
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }

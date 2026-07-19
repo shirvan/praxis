@@ -11,7 +11,8 @@
 | [API.md](API.md) | Integrators / Agents | The HTTP API — every operation as a Restate ingress call, with OpenAPI spec |
 | [TEMPLATES.md](TEMPLATES.md) | Platform Engineers | CUE template system: variables, expressions, data sources, policies, lifecycle rules |
 | [ORCHESTRATOR.md](ORCHESTRATOR.md) | Contributors | Deployment workflows, DAG scheduling, state lifecycle, delete/rollback flows |
-| [DRIVERS.md](DRIVERS.md) | Contributors | Driver model, 6-handler contract, state, drift detection, building new drivers |
+| [DRIVERS.md](DRIVERS.md) | Contributors | Driver model, 8-handler contract, state, drift detection, building new drivers |
+| [GENERIC_DRIVERS.md](GENERIC_DRIVERS.md) | Contributors | Generic lifecycle kernel, one production shape, and alpha version policy |
 | [AUTH.md](AUTH.md) | Everyone | Credential management, workspaces, account selection |
 | [EVENTS.md](EVENTS.md) | Contributors | CloudEvents pipeline, event types, webhook sinks, retention |
 | [ERRORS.md](ERRORS.md) | Contributors | Error classification, status codes, stable error codes |

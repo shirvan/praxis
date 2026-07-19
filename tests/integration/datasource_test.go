@@ -52,8 +52,8 @@ func setupDataSourcePlanStack(t *testing.T) *dataSourcePlanEnv {
 		// Plan consults prior deployment state for diff computation and
 		// collects live outputs from the drivers of expression-bearing resources.
 		restate.Reflect(orchestrator.DeploymentStateObj{}),
-		restate.Reflect(s3driver.NewS3BucketDriver(authClient)),
-		restate.Reflect(sgdriver.NewSecurityGroupDriver(authClient)),
+		restate.Reflect(s3driver.NewGenericS3BucketDriver(authClient)),
+		restate.Reflect(sgdriver.NewGenericSecurityGroupDriver(authClient)),
 	)
 
 	return &dataSourcePlanEnv{
@@ -90,7 +90,7 @@ data: {
 }
 resources: {
 	webSG: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "SecurityGroup"
 		metadata: name: "web-sg"
 		spec: {
@@ -127,7 +127,7 @@ data: {
 }
 resources: {
 	copyBucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "S3Bucket"
 		metadata: name: "` + uniqueBucket(t) + `"
 		spec: {
@@ -159,7 +159,7 @@ data: {
 }
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "S3Bucket"
 		metadata: name: "placeholder-bucket"
 		spec: {

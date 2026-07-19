@@ -13,7 +13,7 @@ import (
 func TestESMAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewESMAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"EventSourceMapping",
 		"metadata":{"name":"orders-consumer"},
 		"spec":{

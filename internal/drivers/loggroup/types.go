@@ -1,12 +1,10 @@
 // Package loggroup implements the Praxis driver for AWS CloudWatch Log Group resources.
 //
-// This file defines the spec, outputs, observed-state, and reconciliation-state
-// types that flow through the driver lifecycle (Provision → Reconcile → Delete).
+// This file defines the spec, outputs, and observed-state types that flow
+// through the driver lifecycle (Provision → Reconcile → Delete).
 // The spec is the user's desired configuration; the observed state is read from
-// Amazon CloudWatch Logs; the driver state couples both together with status tracking.
+// Amazon CloudWatch Logs. Durable lifecycle state is owned by the generic kernel.
 package loggroup
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object service name used to register the AWS CloudWatch Log Group driver.
 const ServiceName = "LogGroup"
@@ -49,20 +47,4 @@ type ObservedState struct {
 	CreationTime    int64             `json:"creationTime"`
 	StoredBytes     int64             `json:"storedBytes"`
 	Tags            map[string]string `json:"tags,omitempty"`
-}
-
-// LogGroupState is the single atomic state object persisted under drivers.StateKey
-// in the Restate K/V store. It combines desired spec, observed state,
-// outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type LogGroupState struct {
-	Desired            LogGroupSpec         `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            LogGroupOutputs      `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

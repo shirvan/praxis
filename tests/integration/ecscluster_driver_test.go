@@ -44,7 +44,7 @@ func setupECSClusterDriver(t *testing.T) (*ingress.Client, *ecssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ecsClient := awsclient.NewECSClient(awsCfg)
-	driver := ecscluster.NewECSClusterDriver(authservice.NewAuthClient())
+	driver := ecscluster.NewGenericECSClusterDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ecsClient

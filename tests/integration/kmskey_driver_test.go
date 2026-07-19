@@ -44,7 +44,7 @@ func setupKMSKeyDriver(t *testing.T) (*ingress.Client, *kmssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	kmsClient := awsclient.NewKMSClient(awsCfg)
-	driver := kmskey.NewKMSKeyDriver(authservice.NewAuthClient())
+	driver := kmskey.NewGenericKMSKeyDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, kmsClient

@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -186,10 +187,14 @@ func Start(t *testing.T, services ...restate.ServiceDefinition) *TestEnvironment
 		res, err := http.DefaultClient.Do(req)
 		if err == nil {
 			lastStatus = res.StatusCode
+			responseBody, readErr := io.ReadAll(res.Body)
 			_ = res.Body.Close()
 			if res.StatusCode == http.StatusCreated || res.StatusCode == http.StatusOK {
 				registered = true
 				break
+			}
+			if readErr == nil && len(responseBody) > 0 {
+				t.Logf("restatetest: deployment registration response: %s", strings.TrimSpace(string(responseBody)))
 			}
 		}
 		t.Logf("restatetest: deployment registration attempt %d failed (status %d, err %v)", attempt, lastStatus, err)

@@ -10,12 +10,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	snssdk "github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 
+	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
@@ -25,6 +27,7 @@ type TopicAPI interface {
 	GetTopicAttributes(ctx context.Context, topicArn string) (ObservedState, error)
 	SetTopicAttribute(ctx context.Context, topicArn, attrName, attrValue string) error
 	DeleteTopic(ctx context.Context, topicArn string) error
+	HasSubscriptions(ctx context.Context, topicArn string) (bool, error)
 	UpdateTags(ctx context.Context, topicArn string, tags map[string]string) error
 	FindByName(ctx context.Context, topicName string) (string, error)
 }
@@ -156,6 +159,22 @@ func (r *realTopicAPI) DeleteTopic(ctx context.Context, topicArn string) error {
 	return err
 }
 
+// HasSubscriptions reports whether deleting the topic would cascade-delete any
+// separately owned SNS subscriptions. SNS has no non-cascading DeleteTopic API,
+// so the driver uses this read as a deletion safety gate.
+func (r *realTopicAPI) HasSubscriptions(ctx context.Context, topicArn string) (bool, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return false, err
+	}
+	out, err := r.client.ListSubscriptionsByTopic(ctx, &snssdk.ListSubscriptionsByTopicInput{
+		TopicArn: aws.String(topicArn),
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(out.Subscriptions) > 0, nil
+}
+
 // UpdateTags updates mutable properties of the AWS SNS Topic via Amazon Simple Notification Service (SNS).
 func (r *realTopicAPI) UpdateTags(ctx context.Context, topicArn string, tags map[string]string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
@@ -180,6 +199,7 @@ func (r *realTopicAPI) UpdateTags(ctx context.Context, topicArn string, tags map
 	}
 
 	if len(removeKeys) > 0 {
+		sort.Strings(removeKeys)
 		if err := r.limiter.Wait(ctx); err != nil {
 			return err
 		}
@@ -196,7 +216,13 @@ func (r *realTopicAPI) UpdateTags(ctx context.Context, topicArn string, tags map
 			return err
 		}
 		snsTags := make([]snstypes.Tag, 0, len(tags))
-		for k, v := range tags {
+		keys := make([]string, 0, len(tags))
+		for key := range tags {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := tags[k]
 			snsTags = append(snsTags, snstypes.Tag{
 				Key:   aws.String(k),
 				Value: aws.String(v),
@@ -289,4 +315,11 @@ func isAuthError(err error) bool {
 		return true
 	}
 	return strings.Contains(err.Error(), "AuthorizationError")
+}
+
+// IsConflict reports SNS mutations that cannot succeed unchanged.
+func IsConflict(err error) bool {
+	return awserr.HasCode(err,
+		"ConcurrentAccessException", "StaleTagException", "TagLimitExceededException",
+	)
 }

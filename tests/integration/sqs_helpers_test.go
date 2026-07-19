@@ -49,7 +49,7 @@ func setupSQSQueueDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
 	sqsClient := awsclient.NewSQSClient(awsCfg)
 	skipIfSQSUnavailable(t, sqsClient)
 
-	return setupDriverEventingEnv(t, sqs.NewSQSQueueDriver(authservice.NewAuthClient())), sqsClient
+	return setupDriverEventingEnv(t, sqs.NewGenericSQSQueueDriver(authservice.NewAuthClient())), sqsClient
 }
 
 func setupSQSQueuePolicyDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
@@ -60,5 +60,5 @@ func setupSQSQueuePolicyDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
 	sqsClient := awsclient.NewSQSClient(awsCfg)
 	skipIfSQSUnavailable(t, sqsClient)
 
-	return setupDriverEventingEnv(t, sqspolicy.NewSQSQueuePolicyDriver(authservice.NewAuthClient())), sqsClient
+	return setupDriverEventingEnv(t, sqspolicy.NewGenericSQSQueuePolicyDriver(authservice.NewAuthClient())), sqsClient
 }

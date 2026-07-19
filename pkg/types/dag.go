@@ -1,6 +1,10 @@
 package types
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
 
 // DeletionPolicy controls what happens to the underlying cloud resource when a
 // managed resource is removed from the deployment.
@@ -33,6 +37,33 @@ type ResourceWaitPolicy struct {
 	MaxWait      string `json:"maxWait,omitempty"`
 }
 
+// RecoveryMode controls what Core does when reconciliation finds a managed
+// resource in an error state that requires provisioning to recover.
+type RecoveryMode string
+
+const (
+	RecoveryModeAutomatic RecoveryMode = "Automatic"
+	RecoveryModeManual    RecoveryMode = "Manual"
+)
+
+// RecoveryPolicy configures Core-owned recovery. Automatic recovery replays
+// the current deployment DAG; Manual records the condition and waits for an
+// explicit apply. An empty timeout permits retries without a deadline.
+type RecoveryPolicy struct {
+	Mode    RecoveryMode `json:"mode,omitempty"`
+	Timeout string       `json:"timeout,omitempty"`
+}
+
+// ReconcileMode controls whether periodic reconciliation may write to the
+// provider. Auto restores the declared desired state. Observe reports drift
+// without provider mutations and keeps an otherwise healthy resource ready.
+type ReconcileMode string
+
+const (
+	ReconcileModeAuto    ReconcileMode = "auto"
+	ReconcileModeObserve ReconcileMode = "observe"
+)
+
 // LifecyclePolicy controls resource-level update and delete behavior.
 //
 // Templates declare an optional lifecycle block alongside spec. The command
@@ -40,6 +71,10 @@ type ResourceWaitPolicy struct {
 // the orchestrator, where it influences plan-diff filtering and delete-time
 // protection.
 type LifecyclePolicy struct {
+	// Reconcile controls periodic drift correction. The command pipeline
+	// normalizes an omitted value to auto before dispatching the resource.
+	Reconcile ReconcileMode `json:"reconcile"`
+
 	// PreventDestroy makes the orchestrator refuse to delete this resource.
 	// A delete workflow that encounters a protected resource records an error
 	// rather than calling the driver's Delete handler.
@@ -59,14 +94,53 @@ type LifecyclePolicy struct {
 	// Timeouts overrides create/update/delete timeouts for this resource.
 	Timeouts *ResourceTimeouts `json:"timeouts,omitempty"`
 
-	// Finalizers declares optional pre/post-delete cleanup hooks.
-	Finalizers []string `json:"finalizers,omitempty"`
-
 	// DeletionPolicy controls whether deletion destroys or orphans the resource.
 	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
 
 	// Wait controls post-provision readiness polling.
 	Wait *ResourceWaitPolicy `json:"wait,omitempty"`
+
+	// Recovery controls error-state recovery discovered by reconciliation.
+	Recovery *RecoveryPolicy `json:"recovery,omitempty"`
+}
+
+// NormalizeLifecyclePolicy returns the single alpha lifecycle contract used
+// by Core and drivers. The zero-value policy means automatic reconciliation.
+func NormalizeLifecyclePolicy(policy *LifecyclePolicy) LifecyclePolicy {
+	if policy == nil {
+		return LifecyclePolicy{Reconcile: ReconcileModeAuto}
+	}
+	normalized := *policy
+	if normalized.Reconcile == "" {
+		normalized.Reconcile = ReconcileModeAuto
+	}
+	if policy.IgnoreChanges != nil {
+		normalized.IgnoreChanges = append([]string(nil), policy.IgnoreChanges...)
+	}
+	return normalized
+}
+
+// ValidateLifecyclePolicy validates the user-facing alpha lifecycle contract.
+func ValidateLifecyclePolicy(policy LifecyclePolicy) error {
+	if policy.Reconcile != ReconcileModeAuto && policy.Reconcile != ReconcileModeObserve {
+		return fmt.Errorf("lifecycle.reconcile must be %q or %q", ReconcileModeAuto, ReconcileModeObserve)
+	}
+	for _, path := range policy.IgnoreChanges {
+		if path == "" || strings.HasPrefix(path, "spec.") || strings.HasPrefix(path, ".") || strings.HasSuffix(path, ".") || strings.Contains(path, "..") {
+			return fmt.Errorf("lifecycle.ignoreChanges path %q must be a non-empty dot-separated path relative to spec", path)
+		}
+	}
+	return nil
+}
+
+// ProvisionRequest is the alpha driver Provision contract. Spec is raw JSON
+// because Restate 1.6 requires a non-generic top-level request type for a valid
+// discovery schema; the generic kernel decodes it into its concrete S type.
+// Keeping lifecycle policy beside the provider spec lets the kernel persist one
+// reconciliation policy without resource-local fields or side-channel handlers.
+type ProvisionRequest struct {
+	Spec      json.RawMessage `json:"spec"`
+	Lifecycle LifecyclePolicy `json:"lifecycle"`
 }
 
 // ResourceNode represents a single node in the deployment dependency graph.

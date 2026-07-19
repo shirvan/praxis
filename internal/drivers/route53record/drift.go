@@ -2,16 +2,10 @@ package route53record
 
 import (
 	"fmt"
+	"github.com/shirvan/praxis/internal/drivers"
 	"sort"
 	"strings"
 )
-
-// FieldDiffEntry describes a single field-level difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
 
 // HasDrift returns true if any mutable field differs between the desired spec and observed state.
 // Normalises both sides before comparison.
@@ -23,21 +17,21 @@ func HasDrift(desired RecordSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a per-field list of differences. Reports name, type, hostedZoneId,
 // and setIdentifier as informational immutable diffs; checks all other fields for actionable drift.
-func ComputeFieldDiffs(desired RecordSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired RecordSpec, observed ObservedState) []drivers.FieldDiff {
 	desired, _ = normalizeRecordSpec(desired)
 	observed = normalizeObservedState(observed)
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
 	if observed.Name != "" && desired.Name != observed.Name {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.name (immutable, ignored)", OldValue: observed.Name, NewValue: desired.Name})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.name (immutable, ignored)", OldValue: observed.Name, NewValue: desired.Name})
 	}
 	if observed.Type != "" && desired.Type != observed.Type {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.type (immutable, ignored)", OldValue: observed.Type, NewValue: desired.Type})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.type (immutable, ignored)", OldValue: observed.Type, NewValue: desired.Type})
 	}
 	if observed.HostedZoneId != "" && desired.HostedZoneId != observed.HostedZoneId {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.hostedZoneId (immutable, ignored)", OldValue: observed.HostedZoneId, NewValue: desired.HostedZoneId})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.hostedZoneId (immutable, ignored)", OldValue: observed.HostedZoneId, NewValue: desired.HostedZoneId})
 	}
 	if observed.SetIdentifier != "" && desired.SetIdentifier != observed.SetIdentifier {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.setIdentifier (immutable, ignored)", OldValue: observed.SetIdentifier, NewValue: desired.SetIdentifier})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.setIdentifier (immutable, ignored)", OldValue: observed.SetIdentifier, NewValue: desired.SetIdentifier})
 	}
 	diffs = appendIfDiff(diffs, "spec.ttl", observed.TTL, desired.TTL)
 	diffs = appendIfDiff(diffs, "spec.weight", observed.Weight, desired.Weight)
@@ -46,13 +40,13 @@ func ComputeFieldDiffs(desired RecordSpec, observed ObservedState) []FieldDiffEn
 	diffs = appendIfDiff(diffs, "spec.multiValueAnswer", observed.MultiValueAnswer, desired.MultiValueAnswer)
 	diffs = appendIfDiff(diffs, "spec.healthCheckId", observed.HealthCheckId, desired.HealthCheckId)
 	if !resourceRecordsMatch(desired.ResourceRecords, observed.ResourceRecords) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.resourceRecords", OldValue: observed.ResourceRecords, NewValue: desired.ResourceRecords})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.resourceRecords", OldValue: observed.ResourceRecords, NewValue: desired.ResourceRecords})
 	}
 	if !aliasTargetsMatch(desired.AliasTarget, observed.AliasTarget) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.aliasTarget", OldValue: observed.AliasTarget, NewValue: desired.AliasTarget})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.aliasTarget", OldValue: observed.AliasTarget, NewValue: desired.AliasTarget})
 	}
 	if !geoLocationsMatch(desired.GeoLocation, observed.GeoLocation) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.geoLocation", OldValue: observed.GeoLocation, NewValue: desired.GeoLocation})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.geoLocation", OldValue: observed.GeoLocation, NewValue: desired.GeoLocation})
 	}
 	return diffs
 }
@@ -133,9 +127,9 @@ func normalizeObservedState(observed ObservedState) ObservedState {
 	return observed
 }
 
-func appendIfDiff(diffs []FieldDiffEntry, path string, oldValue, newValue any) []FieldDiffEntry {
+func appendIfDiff(diffs []drivers.FieldDiff, path string, oldValue, newValue any) []drivers.FieldDiff {
 	if fmt.Sprint(oldValue) != fmt.Sprint(newValue) {
-		return append(diffs, FieldDiffEntry{Path: path, OldValue: oldValue, NewValue: newValue})
+		return append(diffs, drivers.FieldDiff{Path: path, OldValue: oldValue, NewValue: newValue})
 	}
 	return diffs
 }

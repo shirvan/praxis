@@ -40,7 +40,7 @@ func setupKeyPairDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := ec2sdk.NewFromConfig(awsCfg)
-	driver := keypair.NewKeyPairDriver(authservice.NewAuthClient())
+	driver := keypair.NewGenericKeyPairDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client
@@ -145,7 +145,7 @@ func TestKeyPairImport_ExistingKeyPair(t *testing.T) {
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, "KeyPair", key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
-	assert.Equal(t, types.ModeManaged, status.Mode)
+	assert.Equal(t, types.ModeObserved, status.Mode)
 }
 
 func TestKeyPairDelete_RemovesKeyPair(t *testing.T) {

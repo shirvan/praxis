@@ -1,6 +1,7 @@
 package iamrole
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"testing"
 
@@ -82,14 +83,14 @@ func TestComputeFieldDiffs_AllFields(t *testing.T) {
 		},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: "/ops/", NewValue: "/app/"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.description", OldValue: "old", NewValue: "new"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.maxSessionDuration", OldValue: int32(3600), NewValue: int32(7200)})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.permissionsBoundary", OldValue: "old-boundary", NewValue: "new-boundary"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.managedPolicyArns", OldValue: []string{"a"}, NewValue: []string{"a", "b"}})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "tags.env", OldValue: "dev", NewValue: "prod"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "tags.owner", OldValue: "alice", NewValue: nil})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.inlinePolicies.inline", OldValue: `{"Statement":[{"Action":"s3:PutObject"}],"Version":"2012-10-17"}`, NewValue: `{"Statement":[{"Action":"s3:GetObject"}],"Version":"2012-10-17"}`})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.path (immutable, requires replacement)", OldValue: "/ops/", NewValue: "/app/"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.description", OldValue: "old", NewValue: "new"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.maxSessionDuration", OldValue: int32(3600), NewValue: int32(7200)})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.permissionsBoundary", OldValue: "old-boundary", NewValue: "new-boundary"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.managedPolicyArns", OldValue: []string{"a"}, NewValue: []string{"a", "b"}})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "tags.env", OldValue: "dev", NewValue: "prod"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "tags.owner", OldValue: "alice", NewValue: nil})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.inlinePolicies.inline", OldValue: `{"Statement":[{"Action":"s3:PutObject"}],"Version":"2012-10-17"}`, NewValue: `{"Statement":[{"Action":"s3:GetObject"}],"Version":"2012-10-17"}`})
 }
 
 func TestNormalizePolicyDocument(t *testing.T) {

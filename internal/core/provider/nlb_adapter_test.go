@@ -11,6 +11,7 @@ import (
 func TestNLBAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewNLBAdapterWithAuth(nil)
 	doc := json.RawMessage(`{
+		"apiVersion": "praxis.io/alpha",
 		"kind": "NLB",
 		"metadata": {"name": "my-nlb"},
 		"spec": {"region": "us-east-1", "subnets": ["subnet-1"]}

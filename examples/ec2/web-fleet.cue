@@ -20,7 +20,7 @@ variables: {
 resources: {
 	// ── Web Security Group ──────────────────────────────
 	webSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(variables.name)-\(variables.environment)-web-sg"
 		spec: {
@@ -44,7 +44,7 @@ resources: {
 
 	// ── Web Server A (AZ-a) ─────────────────────────────
 	webA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)-web-a"
 		spec: {
@@ -70,7 +70,7 @@ resources: {
 
 	// ── Web Server B (AZ-b) ─────────────────────────────
 	webB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)-web-b"
 		spec: {
@@ -96,7 +96,7 @@ resources: {
 
 	// ── Shared Data Volume (AZ-a) ───────────────────────
 	dataVolume: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EBSVolume"
 		metadata: name: "\(variables.name)-\(variables.environment)-data"
 		spec: {

@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewLogGroupDriver(nil)
+	drv := NewGenericLogGroupDriver(nil)
 	assert.Equal(t, "LogGroup", drv.ServiceName())
 }
 
@@ -61,12 +59,6 @@ func TestOutputsFromObserved_NilRetention(t *testing.T) {
 		RetentionInDays: nil,
 	})
 	assert.Equal(t, int32(0), out.RetentionInDays)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestApplyDefaults(t *testing.T) {

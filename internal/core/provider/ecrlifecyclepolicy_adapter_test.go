@@ -13,7 +13,7 @@ import (
 func TestECRLifecyclePolicyAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewECRLifecyclePolicyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECRLifecyclePolicy",
 		"metadata":{"name":"my-repo-lcp"},
 		"spec":{
@@ -81,7 +81,7 @@ func TestECRLifecyclePolicyAdapter_NormalizeOutputs_Minimal(t *testing.T) {
 func TestECRLifecyclePolicyAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewECRLifecyclePolicyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECRLifecyclePolicy",
 		"metadata":{"name":"lcp"},
 		"spec":{"repositoryName":"my-repo","lifecyclePolicyText":"{\"rules\":[]}"}
@@ -93,7 +93,7 @@ func TestECRLifecyclePolicyAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestECRLifecyclePolicyAdapter_DecodeSpec_MissingRepositoryName(t *testing.T) {
 	adapter := NewECRLifecyclePolicyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECRLifecyclePolicy",
 		"metadata":{"name":"lcp"},
 		"spec":{"region":"us-east-1","lifecyclePolicyText":"{\"rules\":[]}"}

@@ -13,7 +13,7 @@ import (
 func TestS3Adapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"S3Bucket",
 		"metadata":{"name":"my-bucket"},
 		"spec":{
@@ -61,11 +61,8 @@ func TestS3Adapter_Scope(t *testing.T) {
 	assert.Equal(t, KeyScopeGlobal, adapter.Scope())
 }
 
-func TestS3Adapter_ImplementsCleanupHooks(t *testing.T) {
+func TestS3Adapter_ImplementsDeleteTimeout(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
-	_, ok := any(adapter).(PreDeleter)
-	assert.True(t, ok)
-
 	timeouts, ok := any(adapter).(TimeoutDefaultsProvider)
 	assert.True(t, ok)
 	assert.Equal(t, "10m", timeouts.DefaultTimeouts().Delete)
@@ -89,7 +86,7 @@ func TestS3Adapter_NormalizeOutputs_AllFields(t *testing.T) {
 func TestS3Adapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"S3Bucket",
+		"apiVersion":"praxis.io/alpha","kind":"S3Bucket",
 		"metadata":{"name":"my-bucket"},
 		"spec":{"versioning":true}
 	}`)
@@ -101,7 +98,7 @@ func TestS3Adapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestS3Adapter_DecodeSpec_MissingName(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"S3Bucket",
+		"apiVersion":"praxis.io/alpha","kind":"S3Bucket",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1"}
 	}`)
@@ -113,7 +110,7 @@ func TestS3Adapter_DecodeSpec_MissingName(t *testing.T) {
 func TestS3Adapter_BuildKey_MissingName(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"S3Bucket",
+		"apiVersion":"praxis.io/alpha","kind":"S3Bucket",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1"}
 	}`)

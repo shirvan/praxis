@@ -266,7 +266,29 @@ Error codes use `SCREAMING_SNAKE_CASE` with domain prefixes for grouping. The `E
 
 ## AWS Error Classification
 
-### Shared Classifier (`internal/drivers/awserr/`)
+### Shared Boundary (`internal/drivers/aws_run.go`)
+
+Every provider call uses `drivers.RunAWS` with an explicit, non-nil
+resource classifier. `RunAWS` performs classification inside the
+`restate.Run` callback, before Restate decides whether to retry. Its shared
+policy is applied to all drivers:
+
+| Condition | Result |
+|-----------|--------|
+| Already-terminal error | Preserved unchanged |
+| Throttling | Bare error; Restate retries |
+| Access denied | Terminal **403** |
+| Expired credentials | Terminal **401** |
+| Hard service/account quota | Terminal **503** |
+| Provider request validation | Terminal **400** |
+| Resource-specific not-found/conflict | Delegated to the explicit driver classifier |
+| Unknown/transient failure | Bare error; Restate retries |
+
+Passing a nil classifier is a programming error and is rejected before the
+provider operation runs. A source-level conformance test scans every driver so
+new call sites cannot silently bypass classification.
+
+### AWS Code Matching (`internal/drivers/awserr/`)
 
 All drivers classify AWS SDK errors using the shared `awserr` package. This package extracts smithy error codes from the SDK error chain and provides generic matching helpers:
 
@@ -288,6 +310,7 @@ The package also provides cross-cutting classifiers for error categories that ar
 | `IsThrottled(err)` | `Throttling`, `ThrottlingException`, `RequestLimitExceeded`, `TooManyRequestsException` | Always retryable — never wrap in `TerminalError` |
 | `IsAccessDenied(err)` | `AccessDenied`, `AccessDeniedException`, `UnauthorizedAccess`, `AuthorizationError`, `AuthFailure`, `Forbidden`, `InvalidClientTokenId`, `SignatureDoesNotMatch` | IAM/credential issues |
 | `IsExpiredToken(err)` | `ExpiredToken`, `ExpiredTokenException`, `RequestExpired`, `TokenRefreshRequired` | Session/token expiry |
+| `IsQuotaExceeded(err)` | Unambiguous service/account quota codes | Hard limit; terminal 503 |
 
 ### Per-Driver Classifiers
 
@@ -309,7 +332,10 @@ func IsInsufficientCapacity(err error) bool {
 }
 ```
 
-These per-driver classifiers handle the AWS service-specific error codes while the generic smithy extraction lives in `awserr`.
+These per-driver classifiers handle service-specific semantics while
+`RunAWS` enforces the common retry/status policy. Generic codes such as
+`LimitExceededException` remain service-specific because AWS uses that same
+name for both hard quotas and retryable control-plane concurrency limits.
 
 #### What classified errors look like in practice
 
@@ -442,6 +468,8 @@ Error: deployment "prod" is currently deleting; run `praxis observe Deployment/p
 
 | File | Purpose |
 |------|---------|
+| `internal/drivers/aws_run.go` | Durable provider-call boundary and shared retry/status policy |
+| `internal/drivers/aws_run_test.go` | Shared policy tests and all-driver explicit-classifier conformance |
 | `internal/drivers/awserr/classify.go` | Shared AWS error code extraction and cross-cutting classifiers |
 | `internal/drivers/awserr/classify_test.go` | Tests for shared classifiers |
 | `internal/drivers/*/aws.go` | Per-driver AWS wrapper with service-specific classifiers |

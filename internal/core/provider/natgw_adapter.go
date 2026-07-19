@@ -112,13 +112,13 @@ func natgwDescriptor() GenericDescriptor[natgw.NATGatewaySpec, natgw.NATGatewayO
 			return result
 		},
 
-		PlanID: func(out natgw.NATGatewayOutputs) string { return out.NatGatewayId },
+		PlanIdentity: storedPlanIdentity[natgw.NATGatewaySpec](func(out natgw.NATGatewayOutputs) string { return out.NatGatewayId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[natgw.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[natgw.NATGatewaySpec, natgw.NATGatewayOutputs, natgw.ObservedState] {
 			return natgwProbe(natgw.NewNATGatewayAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired natgw.NATGatewaySpec, observed natgw.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired natgw.NATGatewaySpec, observed natgw.ObservedState, _ natgw.NATGatewayOutputs) []types.FieldDiff {
 			rawDiffs := natgw.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -130,8 +130,9 @@ func natgwDescriptor() GenericDescriptor[natgw.NATGatewaySpec, natgw.NATGatewayO
 }
 
 // natgwProbe adapts the driver API to the generic plan probe shape.
-func natgwProbe(api natgw.NATGatewayAPI) PlanProbeFunc[natgw.ObservedState] {
-	return func(runCtx restate.RunContext, natGatewayID string) (natgw.ObservedState, bool, error) {
+func natgwProbe(api natgw.NATGatewayAPI) PlanProbeFunc[natgw.NATGatewaySpec, natgw.NATGatewayOutputs, natgw.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[natgw.NATGatewaySpec, natgw.NATGatewayOutputs]) (natgw.ObservedState, bool, error) {
+		natGatewayID := input.Identity
 		obs, err := api.DescribeNATGateway(runCtx, natGatewayID)
 		if err != nil {
 			if natgw.IsNotFound(err) {

@@ -11,7 +11,7 @@ variables: {
 }
 
 resources: vpc: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "VPC"
 	metadata: name: "\(variables.name)-\(variables.environment)-vpc"
 	spec: {

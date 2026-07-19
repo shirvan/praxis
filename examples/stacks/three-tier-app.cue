@@ -32,7 +32,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(variables.name)-\(variables.environment)-vpc"
 		spec: {
@@ -49,7 +49,7 @@ resources: {
 	}
 
 	igw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "InternetGateway"
 		metadata: name: "\(variables.name)-\(variables.environment)-igw"
 		spec: {
@@ -63,7 +63,7 @@ resources: {
 	}
 
 	publicSubnet: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-public"
 		spec: {
@@ -81,7 +81,7 @@ resources: {
 	}
 
 	privateSubnet: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-private"
 		spec: {
@@ -98,7 +98,7 @@ resources: {
 	}
 
 	natEip: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "ElasticIP"
 		metadata: name: "\(variables.name)-\(variables.environment)-nat-eip"
 		spec: {
@@ -109,7 +109,7 @@ resources: {
 	}
 
 	natgw: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NATGateway"
 		metadata: name: "\(variables.name)-\(variables.environment)-natgw"
 		spec: {
@@ -122,7 +122,7 @@ resources: {
 	}
 
 	publicRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(variables.name)-\(variables.environment)-public-rt"
 		spec: {
@@ -138,7 +138,7 @@ resources: {
 	}
 
 	privateRT: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "RouteTable"
 		metadata: name: "\(variables.name)-\(variables.environment)-private-rt"
 		spec: {
@@ -158,7 +158,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	webSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(variables.name)-\(variables.environment)-web-sg"
 		spec: {
@@ -175,7 +175,7 @@ resources: {
 	}
 
 	appSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(variables.name)-\(variables.environment)-app-sg"
 		spec: {
@@ -198,7 +198,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	webServer: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)-web"
 		spec: {
@@ -218,7 +218,7 @@ resources: {
 	}
 
 	appServer: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)-app"
 		spec: {
@@ -242,7 +242,7 @@ resources: {
 	// ═══════════════════════════════════════════════════
 
 	artifacts: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: name: "\(variables.name)-\(variables.environment)-artifacts"
 		spec: {

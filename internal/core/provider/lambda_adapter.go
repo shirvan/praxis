@@ -97,18 +97,18 @@ func lambdaDescriptor() GenericDescriptor[lambda.LambdaFunctionSpec, lambda.Lamb
 
 		// The existence check is on FunctionArn (as in the hand-rolled Plan),
 		// while the describe call uses the function name.
-		PlanID: func(out lambda.LambdaFunctionOutputs) string {
+		PlanIdentity: storedPlanIdentity[lambda.LambdaFunctionSpec](func(out lambda.LambdaFunctionOutputs) string {
 			if out.FunctionArn == "" {
 				return ""
 			}
 			return out.FunctionName
-		},
+		}),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambda.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs, lambda.ObservedState] {
 			return lambdaProbe(lambda.NewLambdaAPI(awsclient.NewLambdaClient(cfg)))
 		},
 
-		DiffFields: func(desired lambda.LambdaFunctionSpec, observed lambda.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired lambda.LambdaFunctionSpec, observed lambda.ObservedState, _ lambda.LambdaFunctionOutputs) []types.FieldDiff {
 			rawDiffs := lambda.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -120,8 +120,9 @@ func lambdaDescriptor() GenericDescriptor[lambda.LambdaFunctionSpec, lambda.Lamb
 }
 
 // lambdaProbe adapts the driver API to the generic plan probe shape.
-func lambdaProbe(api lambda.LambdaAPI) PlanProbeFunc[lambda.ObservedState] {
-	return func(runCtx restate.RunContext, functionName string) (lambda.ObservedState, bool, error) {
+func lambdaProbe(api lambda.LambdaAPI) PlanProbeFunc[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs, lambda.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs]) (lambda.ObservedState, bool, error) {
+		functionName := input.Identity
 		obs, err := api.DescribeFunction(runCtx, functionName)
 		if err != nil {
 			if lambda.IsNotFound(err) {

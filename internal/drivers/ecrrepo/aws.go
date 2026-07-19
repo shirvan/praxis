@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/shirvan/praxis/internal/drivers"
@@ -168,8 +169,10 @@ func (r *realRepositoryAPI) UpdateTags(ctx context.Context, arn string, tags map
 	}
 	desired := make(map[string]string, len(tags))
 	maps.Copy(desired, tags)
-	if managedKey := current["praxis:managed-key"]; managedKey != "" {
-		desired["praxis:managed-key"] = managedKey
+	for key, value := range current {
+		if strings.HasPrefix(key, "praxis:") && key != "praxis:managed-key" {
+			desired[key] = value
+		}
 	}
 	keysToRemove := make([]string, 0)
 	for key := range current {
@@ -177,6 +180,7 @@ func (r *realRepositoryAPI) UpdateTags(ctx context.Context, arn string, tags map
 			keysToRemove = append(keysToRemove, key)
 		}
 	}
+	slices.Sort(keysToRemove)
 	if len(keysToRemove) > 0 {
 		if _, err := r.client.UntagResource(ctx, &ecrsdk.UntagResourceInput{ResourceArn: aws.String(arn), TagKeys: keysToRemove}); err != nil {
 			return err
@@ -262,7 +266,13 @@ func awsTags(tags map[string]string) []ecrtypes.Tag {
 		return nil
 	}
 	out := make([]ecrtypes.Tag, 0, len(tags))
-	for key, value := range tags {
+	keys := make([]string, 0, len(tags))
+	for key := range tags {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		value := tags[key]
 		keyCopy := key
 		valueCopy := value
 		out = append(out, ecrtypes.Tag{Key: &keyCopy, Value: &valueCopy})
@@ -289,6 +299,9 @@ func regionFromRepositoryARN(arn string) string {
 
 // IsNotFound returns true if the AWS error indicates the AWS ECR Repository does not exist.
 func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
 	if awserr.HasCode(err, "RepositoryNotFoundException") {
 		return true
 	}

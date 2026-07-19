@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewVPCPeeringDriver(nil)
+	drv := NewGenericVPCPeeringDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
 }
 
@@ -51,12 +49,6 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, obs.RequesterCidrBlock, out.RequesterCidrBlock)
 	assert.Equal(t, obs.AccepterCidrBlock, out.AccepterCidrBlock)
 	assert.Equal(t, obs.Status, out.Status)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestValidateSpec(t *testing.T) {

@@ -1,7 +1,7 @@
 package elb
 
 #TargetGroup: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "TargetGroup"
 
 	metadata: {

@@ -13,7 +13,7 @@ import (
 func TestSecretsManagerSecretAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewSecretsManagerSecretAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SecretsManagerSecret",
 		"metadata":{"name":"db-password"},
 		"spec":{"region":"us-east-1","description":"database password","secretString":"hunter2","tags":{"env":"dev"}}
@@ -38,6 +38,7 @@ func TestSecretsManagerSecretAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 func TestSecretsManagerSecretAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewSecretsManagerSecretAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SecretsManagerSecret",
 		"metadata":{"name":"db-password"},
 		"spec":{"secretString":"hunter2"}

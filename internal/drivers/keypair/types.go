@@ -1,71 +1,32 @@
 // Package keypair implements the Praxis driver for AWS EC2 Key Pairs.
-// Key pairs are used for SSH access to EC2 instances and can be either
-// AWS-generated (private key returned once) or imported from a public key.
 package keypair
 
-import "github.com/shirvan/praxis/pkg/types"
-
-// ServiceName is the Restate Virtual Object name for the Key Pair driver.
 const ServiceName = "KeyPair"
 
-// KeyPairSpec defines the desired state for an EC2 Key Pair.
-// KeyName and KeyType are immutable after creation.
-// If PublicKeyMaterial is set, ImportKeyPair is used; otherwise CreateKeyPair
-// generates both halves and returns the private key exactly once.
 type KeyPairSpec struct {
-	Account           string            `json:"account,omitempty"`           // Praxis account alias → resolved to AWS credentials.
-	Region            string            `json:"region"`                      // AWS region.
-	KeyName           string            `json:"keyName"`                     // Immutable: the name of the key pair in AWS.
-	KeyType           string            `json:"keyType"`                     // Immutable: "rsa" or "ed25519".
-	PublicKeyMaterial string            `json:"publicKeyMaterial,omitempty"` // Optional: user-provided public key (triggers ImportKeyPair instead of CreateKeyPair).
-	Tags              map[string]string `json:"tags,omitempty"`              // Mutable: user-defined tags (praxis: prefix tags are system-managed).
+	Account           string            `json:"account,omitempty"`
+	Region            string            `json:"region"`
+	KeyName           string            `json:"keyName"`
+	KeyType           string            `json:"keyType"`
+	PublicKeyMaterial string            `json:"publicKeyMaterial,omitempty"`
+	Tags              map[string]string `json:"tags,omitempty"`
+	ManagedKey        string            `json:"managedKey,omitempty"`
 }
 
-// KeyPairOutputs are the user-facing outputs after provisioning.
-// PrivateKeyMaterial is only populated on initial CreateKeyPair (not on subsequent reads).
+// KeyPairOutputs contains public metadata. PrivateKeyMaterial is populated
+// only in the initial create response; the generic state envelope never stores it.
 type KeyPairOutputs struct {
 	KeyName            string `json:"keyName"`
 	KeyPairId          string `json:"keyPairId"`
 	KeyFingerprint     string `json:"keyFingerprint"`
 	KeyType            string `json:"keyType"`
-	PrivateKeyMaterial string `json:"privateKeyMaterial,omitempty"` // Only present on first creation.
+	PrivateKeyMaterial string `json:"privateKeyMaterial,omitempty"`
 }
 
-// KeyPairDurableOutputs is the only output shape permitted in Restate K/V
-// state. It intentionally has no private-key field: this type-level boundary
-// prevents a later refactor from accidentally assigning one-time key material
-// to durable driver state.
-//
-// The initial Provision response still uses KeyPairOutputs because AWS returns
-// generated private key material exactly once. Restate journals that response;
-// callers that require no durable secret exposure must import a public key
-// instead of asking AWS to generate the pair.
-type KeyPairDurableOutputs struct {
-	KeyName        string `json:"keyName"`
-	KeyPairId      string `json:"keyPairId"`
-	KeyFingerprint string `json:"keyFingerprint"`
-	KeyType        string `json:"keyType"`
-}
-
-// ObservedState captures the last-observed AWS state of the key pair.
 type ObservedState struct {
 	KeyName        string            `json:"keyName"`
 	KeyPairId      string            `json:"keyPairId"`
 	KeyFingerprint string            `json:"keyFingerprint"`
 	KeyType        string            `json:"keyType"`
 	Tags           map[string]string `json:"tags"`
-}
-
-// KeyPairState is the full durable state stored in the Restate Virtual Object.
-// A single drivers.StateKey maps to this struct for each key pair instance.
-type KeyPairState struct {
-	Desired            KeyPairSpec           `json:"desired"`                 // Last-accepted spec from Provision or Import.
-	Observed           ObservedState         `json:"observed"`                // Last-observed AWS state.
-	Outputs            KeyPairDurableOutputs `json:"outputs"`                 // Non-secret outputs; the type cannot hold private key material.
-	Status             types.ResourceStatus  `json:"status"`                  // Lifecycle status (Provisioning, Ready, Error, Deleted).
-	Mode               types.Mode            `json:"mode"`                    // Managed (full control) or Observed (read-only).
-	Error              string                `json:"error,omitempty"`         // Last error message, if any.
-	Generation         int64                 `json:"generation"`              // Monotonically increasing version counter.
-	LastReconcile      string                `json:"lastReconcile,omitempty"` // RFC3339 timestamp of last reconcile.
-	ReconcileScheduled bool                  `json:"reconcileScheduled"`      // Dedup guard for delayed Reconcile messages.
 }

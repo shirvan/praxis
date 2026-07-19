@@ -228,16 +228,19 @@ type DeploymentState struct {
 // ResourceState is the deployment-scoped view of one resource during
 // orchestration.
 type ResourceState struct {
-	Name          string                         `json:"name"`
-	Kind          string                         `json:"kind"`
-	DriverService string                         `json:"driverService,omitempty"`
-	Key           string                         `json:"key"`
-	DependsOn     []string                       `json:"dependsOn,omitempty"`
-	Status        types.DeploymentResourceStatus `json:"status"`
-	Error         string                         `json:"error,omitempty"`
-	Lifecycle     *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
-	PriorReady    bool                           `json:"priorReady,omitempty"`
-	Conditions    []types.Condition              `json:"conditions,omitempty"`
+	Name              string                         `json:"name"`
+	Kind              string                         `json:"kind"`
+	DriverService     string                         `json:"driverService,omitempty"`
+	Key               string                         `json:"key"`
+	DependsOn         []string                       `json:"dependsOn,omitempty"`
+	Status            types.DeploymentResourceStatus `json:"status"`
+	Error             string                         `json:"error,omitempty"`
+	Lifecycle         *types.LifecyclePolicy         `json:"lifecycle,omitempty"`
+	PriorReady        bool                           `json:"priorReady,omitempty"`
+	Conditions        []types.Condition              `json:"conditions,omitempty"`
+	RecoveryStartedAt *time.Time                     `json:"recoveryStartedAt,omitempty"`
+	RecoveryDeadline  *time.Time                     `json:"recoveryDeadline,omitempty"`
+	RecoveryAttempts  int                            `json:"recoveryAttempts,omitempty"`
 }
 
 // DeploymentResult is the final workflow output returned from both apply and
@@ -312,6 +315,22 @@ type ReconcileAllRequest struct {
 type ReconcileAllResponse struct {
 	Triggered int      `json:"triggered"`
 	Skipped   []string `json:"skipped,omitempty"`
+}
+
+// ExternalDeleteRequest asks Core to handle replacement after a driver reports
+// that its provider resource no longer exists.
+type ExternalDeleteRequest struct {
+	ResourceName string     `json:"resourceName"`
+	Mode         types.Mode `json:"mode,omitempty"`
+	Error        string     `json:"error,omitempty"`
+}
+
+// RecoveryResult reports whether Core started a DAG replay or deliberately
+// left the resource waiting for an explicit apply.
+type RecoveryResult struct {
+	Started bool   `json:"started"`
+	Manual  bool   `json:"manual"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // RollbackResource identifies a single resource that was successfully provisioned

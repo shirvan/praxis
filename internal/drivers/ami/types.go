@@ -9,8 +9,6 @@
 // corresponds to one managed AMI. State is persisted in Restate's durable K/V store.
 package ami
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name used to register the AMI driver.
 const ServiceName = "AMI"
 
@@ -111,18 +109,4 @@ type ObservedState struct {
 	LaunchPermPublic   bool              `json:"launchPermPublic"`
 	LaunchPermAccounts []string          `json:"launchPermAccounts,omitempty"`
 	DeprecationTime    string            `json:"deprecationTime,omitempty"`
-}
-
-// AMIState is the atomic state object persisted in Restate's K/V store for each Virtual Object key.
-// See EC2InstanceState for field semantics (same pattern across all drivers).
-type AMIState struct {
-	Desired            AMISpec              `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            AMIOutputs           `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

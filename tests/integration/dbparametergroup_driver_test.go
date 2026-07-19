@@ -41,7 +41,7 @@ func setupDBParameterGroupDriver(t *testing.T) (*ingress.Client, *rdssdk.Client)
 
 	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
-	driver := dbparametergroup.NewDBParameterGroupDriver(authservice.NewAuthClient())
+	driver := dbparametergroup.NewGenericDBParameterGroupDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, rdsClient

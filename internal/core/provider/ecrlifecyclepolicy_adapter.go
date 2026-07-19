@@ -79,13 +79,13 @@ func ecrLifecyclePolicyDescriptor() GenericDescriptor[ecrpolicy.ECRLifecyclePoli
 			return result
 		},
 
-		PlanID: func(out ecrpolicy.ECRLifecyclePolicyOutputs) string { return out.RepositoryName },
+		PlanIdentity: storedPlanIdentity[ecrpolicy.ECRLifecyclePolicySpec](func(out ecrpolicy.ECRLifecyclePolicyOutputs) string { return out.RepositoryName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecrpolicy.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs, ecrpolicy.ObservedState] {
 			return ecrLifecyclePolicyProbe(ecrpolicy.NewLifecyclePolicyAPI(awsclient.NewECRClient(cfg)))
 		},
 
-		DiffFields: func(desired ecrpolicy.ECRLifecyclePolicySpec, observed ecrpolicy.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ecrpolicy.ECRLifecyclePolicySpec, observed ecrpolicy.ObservedState, _ ecrpolicy.ECRLifecyclePolicyOutputs) []types.FieldDiff {
 			rawDiffs := ecrpolicy.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -97,8 +97,9 @@ func ecrLifecyclePolicyDescriptor() GenericDescriptor[ecrpolicy.ECRLifecyclePoli
 }
 
 // ecrLifecyclePolicyProbe adapts the driver API to the generic plan probe shape.
-func ecrLifecyclePolicyProbe(api ecrpolicy.LifecyclePolicyAPI) PlanProbeFunc[ecrpolicy.ObservedState] {
-	return func(runCtx restate.RunContext, repositoryName string) (ecrpolicy.ObservedState, bool, error) {
+func ecrLifecyclePolicyProbe(api ecrpolicy.LifecyclePolicyAPI) PlanProbeFunc[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs, ecrpolicy.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs]) (ecrpolicy.ObservedState, bool, error) {
+		repositoryName := input.Identity
 		obs, err := api.GetLifecyclePolicy(runCtx, repositoryName)
 		if err != nil {
 			if ecrpolicy.IsNotFound(err) {

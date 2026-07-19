@@ -40,7 +40,7 @@ func setupMetricAlarmDriver(t *testing.T) (*ingress.Client, *cwsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	cwClient := awsclient.NewCloudWatchClient(awsCfg)
-	driver := metricalarm.NewMetricAlarmDriver(authservice.NewAuthClient())
+	driver := metricalarm.NewGenericMetricAlarmDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, cwClient
@@ -103,6 +103,57 @@ func TestMetricAlarmProvision_Idempotent(t *testing.T) {
 
 	assert.Equal(t, out1.AlarmArn, out2.AlarmArn)
 	assert.Equal(t, out1.AlarmName, out2.AlarmName)
+}
+
+func TestMetricAlarmProvision_UpdatesDimensionsActionsAndTags(t *testing.T) {
+	client, cwClient := setupMetricAlarmDriver(t)
+	name := uniqueAlarmName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+	spec := defaultAlarmSpec(name)
+	spec.Dimensions = map[string]string{"Zone": "us-east-1a", "InstanceId": "i-original"}
+	spec.AlarmActions = []string{
+		"arn:aws:sns:us-east-1:123456789012:z-action",
+		"arn:aws:sns:us-east-1:123456789012:a-action",
+	}
+	_, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+		client, metricalarm.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+
+	spec.Dimensions = map[string]string{"InstanceId": "i-updated", "AutoScalingGroupName": "api"}
+	spec.AlarmActions = []string{"arn:aws:sns:us-east-1:123456789012:updated"}
+	spec.OKActions = []string{"arn:aws:sns:us-east-1:123456789012:ok"}
+	spec.Threshold = 90
+	spec.Tags = map[string]string{"env": "prod", "team": "platform"}
+	_, err = ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+		client, metricalarm.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+
+	described, err := cwClient.DescribeAlarms(context.Background(), &cwsdk.DescribeAlarmsInput{AlarmNames: []string{name}})
+	require.NoError(t, err)
+	require.Len(t, described.MetricAlarms, 1)
+	alarm := described.MetricAlarms[0]
+	assert.InDelta(t, 90, aws.ToFloat64(alarm.Threshold), 0.01)
+	assert.ElementsMatch(t, spec.AlarmActions, alarm.AlarmActions)
+	assert.ElementsMatch(t, spec.OKActions, alarm.OKActions)
+	observedDimensions := map[string]string{}
+	for _, dimension := range alarm.Dimensions {
+		observedDimensions[aws.ToString(dimension.Name)] = aws.ToString(dimension.Value)
+	}
+	assert.Equal(t, spec.Dimensions, observedDimensions)
+
+	tags, err := cwClient.ListTagsForResource(context.Background(), &cwsdk.ListTagsForResourceInput{
+		ResourceARN: alarm.AlarmArn,
+	})
+	require.NoError(t, err)
+	observedTags := map[string]string{}
+	for _, tag := range tags.Tags {
+		observedTags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+	}
+	assert.Equal(t, "prod", observedTags["env"])
+	assert.Equal(t, "platform", observedTags["team"])
+	assert.Equal(t, key, observedTags["praxis:managed-key"])
 }
 
 func TestMetricAlarmImport_ExistingAlarm(t *testing.T) {
@@ -190,4 +241,27 @@ func TestMetricAlarmReconcile_DetectsThresholdDrift(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "drift should be detected")
 	assert.True(t, result.Correcting, "managed mode should correct drift")
+}
+
+func TestMetricAlarmReconcile_ExternalDeleteRequiresReplacement(t *testing.T) {
+	client, cwClient := setupMetricAlarmDriver(t)
+	name := uniqueAlarmName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+	_, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+		client, metricalarm.ServiceName, key, "Provision",
+	).Request(t.Context(), defaultAlarmSpec(name))
+	require.NoError(t, err)
+	_, err = cwClient.DeleteAlarms(context.Background(), &cwsdk.DeleteAlarmsInput{AlarmNames: []string{name}})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, metricalarm.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.ReplacementRequired)
+	assert.Contains(t, result.Error, "MetricAlarm resource was deleted externally")
+
+	described, err := cwClient.DescribeAlarms(context.Background(), &cwsdk.DescribeAlarmsInput{AlarmNames: []string{name}})
+	require.NoError(t, err)
+	assert.Empty(t, described.MetricAlarms, "Reconcile must not recreate an externally deleted alarm")
 }

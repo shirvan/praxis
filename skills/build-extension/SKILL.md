@@ -6,7 +6,7 @@
 
 **Prerequisites**:
 - Read [docs/EXTENDING.md](../../docs/EXTENDING.md) for the extension model
-- Read [docs/DRIVERS.md](../../docs/DRIVERS.md) for the 6-handler contract
+- Read [docs/DRIVERS.md](../../docs/DRIVERS.md) for the 8-handler contract
 
 ---
 
@@ -18,28 +18,32 @@
 - **Provider** (the cloud/SaaS platform)
 - **Operations**: Provision? Delete? Drift detection? Plan?
 
-### 2. Implement the 6-Handler Contract
+### 2. Implement the 8-Handler Contract
 
 Your service must expose these Restate service handlers:
 
 ```
 {ServiceName}/Provision   — Create or update the resource
+{ServiceName}/Import      — Adopt an existing resource
 {ServiceName}/Delete      — Remove the resource
+{ServiceName}/Reconcile   — Check for and optionally correct drift
 {ServiceName}/GetStatus   — Return current status and outputs
 {ServiceName}/GetOutputs  — Return resolved output fields
-{ServiceName}/Reconcile   — Check for drift, return diff
-{ServiceName}/Plan        — Dry-run: return planned changes
+{ServiceName}/GetInputs   — Return the stored desired input
+{ServiceName}/ClearState  — Explicitly reset all Virtual Object state
 ```
 
 #### Handler Signatures (conceptual)
 
 ```
 Provision(ctx, key string, spec map[string]any) → (outputs map[string]any, error)
+Import(ctx, key string, ref ImportRef) → (outputs map[string]any, error)
 Delete(ctx, key string) → error
+Reconcile(ctx, key string) → ReconcileResult
 GetStatus(ctx, key string) → Status
 GetOutputs(ctx, key string) → map[string]any
-Reconcile(ctx, key string) → DriftResult
-Plan(ctx, key string, spec map[string]any) → PlanResult
+GetInputs(ctx, key string) → map[string]any
+ClearState(ctx, key string) → error
 ```
 
 ### 3. Key Scope
@@ -131,7 +135,7 @@ curl -X POST http://localhost:9070/deployments \
 
 ## Verification Checklist
 
-- [ ] All 6 handlers respond correctly
+- [ ] All 8 required handlers respond correctly
 - [ ] Provision is idempotent (re-provision same key = no error)
 - [ ] Delete handles "already deleted" gracefully
 - [ ] Reconcile returns meaningful diffs
@@ -159,7 +163,7 @@ func (d *DNSRecordDriver) Provision(ctx restate.ObjectContext, spec map[string]a
     return map[string]any{"record_id": "cf-123"}, nil
 }
 
-// ... implement other 5 handlers ...
+// ... implement the other 7 required handlers ...
 
 func main() {
     srv := server.NewRestate().

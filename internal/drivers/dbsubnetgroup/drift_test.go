@@ -50,7 +50,7 @@ func TestComputeFieldDiffs_ImmutableGroupName(t *testing.T) {
 	diffs := ComputeFieldDiffs(DBSubnetGroupSpec{GroupName: "new-name", Description: "d", SubnetIds: []string{"subnet-1", "subnet-2"}}, ObservedState{GroupName: "old-name", Description: "d", SubnetIds: []string{"subnet-1", "subnet-2"}})
 	found := false
 	for _, d := range diffs {
-		if d.Path == "spec.groupName (immutable, ignored)" {
+		if d.Path == "spec.groupName (immutable, requires replacement)" {
 			found = true
 		}
 	}

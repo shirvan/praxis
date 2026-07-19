@@ -108,13 +108,13 @@ func vpcPeeringDescriptor() GenericDescriptor[vpcpeering.VPCPeeringSpec, vpcpeer
 			}
 		},
 
-		PlanID: func(out vpcpeering.VPCPeeringOutputs) string { return out.VpcPeeringConnectionId },
+		PlanIdentity: storedPlanIdentity[vpcpeering.VPCPeeringSpec](func(out vpcpeering.VPCPeeringOutputs) string { return out.VpcPeeringConnectionId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpcpeering.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs, vpcpeering.ObservedState] {
 			return vpcPeeringProbe(vpcpeering.NewVPCPeeringAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired vpcpeering.VPCPeeringSpec, observed vpcpeering.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired vpcpeering.VPCPeeringSpec, observed vpcpeering.ObservedState, _ vpcpeering.VPCPeeringOutputs) []types.FieldDiff {
 			rawDiffs := vpcpeering.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -126,8 +126,9 @@ func vpcPeeringDescriptor() GenericDescriptor[vpcpeering.VPCPeeringSpec, vpcpeer
 }
 
 // vpcPeeringProbe adapts the driver API to the generic plan probe shape.
-func vpcPeeringProbe(api vpcpeering.VPCPeeringAPI) PlanProbeFunc[vpcpeering.ObservedState] {
-	return func(runCtx restate.RunContext, peeringID string) (vpcpeering.ObservedState, bool, error) {
+func vpcPeeringProbe(api vpcpeering.VPCPeeringAPI) PlanProbeFunc[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs, vpcpeering.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs]) (vpcpeering.ObservedState, bool, error) {
+		peeringID := input.Identity
 		obs, err := api.DescribeVPCPeeringConnection(runCtx, peeringID)
 		if err != nil {
 			if vpcpeering.IsNotFound(err) {

@@ -56,8 +56,8 @@ func (r *realListenerRuleAPI) CreateRule(ctx context.Context, listenerArn string
 		Conditions:  toAWSConditions(spec.Conditions),
 		Actions:     toAWSActions(spec.Actions),
 	}
-	if len(spec.Tags) > 0 {
-		input.Tags = toELBTags(spec.Tags)
+	if tags := listenerRuleManagedTags(spec.Tags, spec.ManagedKey); len(tags) > 0 {
+		input.Tags = toELBTags(tags)
 	}
 	out, err := r.client.CreateRule(ctx, input)
 	if err != nil {

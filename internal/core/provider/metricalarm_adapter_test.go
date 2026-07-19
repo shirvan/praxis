@@ -13,7 +13,7 @@ import (
 func TestMetricAlarmAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewMetricAlarmAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"MetricAlarm",
 		"metadata":{"name":"cpu-high"},
 		"spec":{

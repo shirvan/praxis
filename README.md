@@ -27,7 +27,7 @@ Restate Cloud.
 # Declare a bucket in a CUE template (typed, validated, with defaults)
 cat > bucket.cue <<'CUE'
 resources: archive: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "S3Bucket"
     metadata: name: "orders-archive"
     spec: {

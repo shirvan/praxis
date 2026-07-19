@@ -6,6 +6,7 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHasDrift_NoDrift(t *testing.T) {
@@ -28,6 +29,13 @@ func TestHasDrift_DisplayNameChanged(t *testing.T) {
 	desired := SNSTopicSpec{DisplayName: "New Name"}
 	observed := ObservedState{DisplayName: "Old Name"}
 	assert.True(t, HasDrift(desired, observed))
+}
+
+func TestHasDrift_ImmutableIdentityChanged(t *testing.T) {
+	assert.True(t, HasDrift(
+		SNSTopicSpec{TopicName: "desired", FifoTopic: true},
+		ObservedState{TopicName: "current", FifoTopic: false},
+	))
 }
 
 func TestHasDrift_KmsKeyChanged(t *testing.T) {
@@ -141,6 +149,16 @@ func TestComputeFieldDiffs_DisplayName(t *testing.T) {
 	assert.Equal(t, "spec.displayName", diffs[0].Path)
 	assert.Equal(t, "Old Name", diffs[0].OldValue)
 	assert.Equal(t, "New Name", diffs[0].NewValue)
+}
+
+func TestComputeFieldDiffs_AnnotatesImmutableIdentity(t *testing.T) {
+	diffs := ComputeFieldDiffs(
+		SNSTopicSpec{TopicName: "desired", FifoTopic: true},
+		ObservedState{TopicName: "current", FifoTopic: false},
+	)
+	require.Len(t, diffs, 2)
+	assert.Contains(t, diffs[0].Path, "immutable")
+	assert.Contains(t, diffs[1].Path, "immutable")
 }
 
 func TestComputeFieldDiffs_KmsKey(t *testing.T) {

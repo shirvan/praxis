@@ -40,7 +40,7 @@ func setupLogGroupDriver(t *testing.T) (*ingress.Client, *cwlogssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	cwLogsClient := awsclient.NewCloudWatchLogsClient(awsCfg)
-	driver := loggroup.NewLogGroupDriver(authservice.NewAuthClient())
+	driver := loggroup.NewGenericLogGroupDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, cwLogsClient

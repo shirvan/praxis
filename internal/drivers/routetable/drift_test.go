@@ -1,6 +1,7 @@
 package routetable
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,6 +33,24 @@ func TestHasDrift_RouteTargetChanged(t *testing.T) {
 	desired := RouteTableSpec{Routes: []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}}}
 	observed := ObservedState{Routes: []ObservedRoute{{DestinationCidrBlock: "0.0.0.0/0", NatGatewayId: "nat-123", Origin: "CreateRoute", State: "active"}}}
 	assert.True(t, HasDrift(desired, observed))
+}
+
+func TestHasDrift_VPCIdentityChanged(t *testing.T) {
+	assert.True(t, HasDrift(
+		RouteTableSpec{VpcId: "vpc-new"},
+		ObservedState{VpcId: "vpc-old"},
+	))
+}
+
+func TestComputeFieldDiffs_VPCRequiresReplacement(t *testing.T) {
+	diffs := ComputeFieldDiffs(
+		RouteTableSpec{VpcId: "vpc-new"},
+		ObservedState{VpcId: "vpc-old"},
+	)
+	require.Len(t, diffs, 1)
+	assert.Equal(t, drivers.FieldDiff{
+		Path: "spec.vpcId (immutable, requires replacement)", OldValue: "vpc-old", NewValue: "vpc-new",
+	}, diffs[0])
 }
 
 func TestHasDrift_LocalAndPropagatedIgnored(t *testing.T) {

@@ -143,3 +143,88 @@ func TestSQSQueueDelete_RemovesQueue(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, sqs.IsNotFound(err), "expected deleted queue to be reported as not found: %v", err)
 }
+
+func TestSQSQueueProvision_UpdatePreservesSeparateQueuePolicy(t *testing.T) {
+	client, sqsClient := setupSQSQueueDriver(t)
+	queueName := uniqueQueueName(t, false)
+	key := fmt.Sprintf("us-east-1~%s", queueName)
+	spec := sqs.SQSQueueSpec{
+		Account: integrationAccountName, Region: "us-east-1", QueueName: queueName,
+		VisibilityTimeout: 30, Tags: map[string]string{"env": "initial"},
+	}
+
+	outputs, err := ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+		client, sqs.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"sqs:GetQueueAttributes","Resource":%q}]}`, outputs.QueueArn)
+	_, err = sqsClient.SetQueueAttributes(t.Context(), &sqssdk.SetQueueAttributesInput{
+		QueueUrl: aws.String(outputs.QueueUrl), Attributes: map[string]string{"Policy": policy},
+	})
+	require.NoError(t, err)
+	baseline, err := sqsClient.GetQueueAttributes(t.Context(), &sqssdk.GetQueueAttributesInput{
+		QueueUrl:       aws.String(outputs.QueueUrl),
+		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNamePolicy},
+	})
+	require.NoError(t, err)
+	if baseline.Attributes[string(sqstypes.QueueAttributeNamePolicy)] == "" {
+		t.Skip("Moto accepts SetQueueAttributes(Policy) but does not persist/return it; request-shape ownership is covered by the stateful driver test")
+	}
+	_, err = sqsClient.SetQueueAttributes(t.Context(), &sqssdk.SetQueueAttributesInput{
+		QueueUrl: aws.String(outputs.QueueUrl), Attributes: map[string]string{"VisibilityTimeout": "60"},
+	})
+	require.NoError(t, err)
+	control, err := sqsClient.GetQueueAttributes(t.Context(), &sqssdk.GetQueueAttributesInput{
+		QueueUrl:       aws.String(outputs.QueueUrl),
+		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNamePolicy},
+	})
+	require.NoError(t, err)
+	if control.Attributes[string(sqstypes.QueueAttributeNamePolicy)] == "" {
+		t.Skip("Moto clears Policy on an unrelated direct SetQueueAttributes call; it cannot verify AWS policy preservation")
+	}
+
+	spec.VisibilityTimeout = 75
+	spec.Tags = map[string]string{"env": "updated"}
+	_, err = ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+		client, sqs.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+
+	attrs, err := sqsClient.GetQueueAttributes(t.Context(), &sqssdk.GetQueueAttributesInput{
+		QueueUrl: aws.String(outputs.QueueUrl), AttributeNames: []sqstypes.QueueAttributeName{
+			sqstypes.QueueAttributeNameVisibilityTimeout, sqstypes.QueueAttributeNamePolicy,
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "75", attrs.Attributes[string(sqstypes.QueueAttributeNameVisibilityTimeout)])
+	assert.JSONEq(t, policy, attrs.Attributes[string(sqstypes.QueueAttributeNamePolicy)],
+		"SQSQueue convergence must not absorb or overwrite the separate SQSQueuePolicy resource")
+	tags, err := sqsClient.ListQueueTags(t.Context(), &sqssdk.ListQueueTagsInput{QueueUrl: aws.String(outputs.QueueUrl)})
+	require.NoError(t, err)
+	assert.Equal(t, key, tags.Tags["praxis:managed-key"])
+}
+
+func TestSQSQueueImport_ByARN(t *testing.T) {
+	client, sqsClient := setupSQSQueueDriver(t)
+	queueName := uniqueQueueName(t, false)
+	created, err := sqsClient.CreateQueue(t.Context(), &sqssdk.CreateQueueInput{QueueName: aws.String(queueName)})
+	require.NoError(t, err)
+	attrs, err := sqsClient.GetQueueAttributes(t.Context(), &sqssdk.GetQueueAttributesInput{
+		QueueUrl:       aws.String(aws.ToString(created.QueueUrl)),
+		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameQueueArn},
+	})
+	require.NoError(t, err)
+	queueARN := attrs.Attributes[string(sqstypes.QueueAttributeNameQueueArn)]
+
+	key := fmt.Sprintf("us-east-1~%s", queueName)
+	outputs, err := ingress.Object[types.ImportRef, sqs.SQSQueueOutputs](
+		client, sqs.ServiceName, key, "Import",
+	).Request(t.Context(), types.ImportRef{ResourceID: queueARN, Account: integrationAccountName})
+	require.NoError(t, err)
+	assert.Equal(t, queueARN, outputs.QueueArn)
+	assert.Equal(t, queueName, outputs.QueueName)
+
+	tags, err := sqsClient.ListQueueTags(t.Context(), &sqssdk.ListQueueTagsInput{QueueUrl: created.QueueUrl})
+	require.NoError(t, err)
+	assert.NotContains(t, tags.Tags, "praxis:managed-key", "Observed import must remain provider-read-only")
+}

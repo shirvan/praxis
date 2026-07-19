@@ -35,7 +35,6 @@ type IAMPolicyAPI interface {
 	GetPolicyDocument(ctx context.Context, policyArn, versionID string) (string, error)
 	ListPolicyVersions(ctx context.Context, policyArn string) ([]PolicyVersionInfo, error)
 	DeletePolicyVersion(ctx context.Context, policyArn, versionID string) error
-	DetachAllPrincipals(ctx context.Context, policyArn string) error
 	UpdateTags(ctx context.Context, policyArn string, tags map[string]string) error
 }
 
@@ -158,25 +157,14 @@ func (r *realIAMPolicyAPI) DeletePolicy(ctx context.Context, policyArn string) e
 	return err
 }
 
-// CreatePolicyVersion creates a new default version with the given document. IAM limits
-// policies to 5 versions; this method auto-deletes the oldest non-default version if at capacity.
+// CreatePolicyVersion creates a new default AWS managed-policy version. The
+// generic driver journals version listing, limit rotation, and creation as
+// separate provider operations so partial completion is replay-safe.
 func (r *realIAMPolicyAPI) CreatePolicyVersion(ctx context.Context, policyArn, policyDocument string) error {
-	versions, err := r.ListPolicyVersions(ctx, policyArn)
-	if err != nil {
-		return err
-	}
-	if len(versions) >= 5 {
-		oldest := findOldestNonDefault(versions)
-		if oldest != "" {
-			if err := r.DeletePolicyVersion(ctx, policyArn, oldest); err != nil {
-				return err
-			}
-		}
-	}
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
 	}
-	_, err = r.client.CreatePolicyVersion(ctx, &iamsdk.CreatePolicyVersionInput{
+	_, err := r.client.CreatePolicyVersion(ctx, &iamsdk.CreatePolicyVersionInput{
 		PolicyArn:      aws.String(policyArn),
 		PolicyDocument: aws.String(policyDocument),
 		SetAsDefault:   true,
@@ -230,39 +218,6 @@ func (r *realIAMPolicyAPI) DeletePolicyVersion(ctx context.Context, policyArn, v
 		VersionId: aws.String(versionID),
 	})
 	return err
-}
-
-// DetachAllPrincipals removes the policy from all attached roles, users, and groups.
-// Required before policy deletion since IAM prevents deleting policies with attachments.
-func (r *realIAMPolicyAPI) DetachAllPrincipals(ctx context.Context, policyArn string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	paginator := iamsdk.NewListEntitiesForPolicyPaginator(r.client, &iamsdk.ListEntitiesForPolicyInput{
-		PolicyArn: aws.String(policyArn),
-	})
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return err
-		}
-		for _, role := range page.PolicyRoles {
-			if err := r.detachRolePolicy(ctx, policyArn, aws.ToString(role.RoleName)); err != nil {
-				return err
-			}
-		}
-		for _, user := range page.PolicyUsers {
-			if err := r.detachUserPolicy(ctx, policyArn, aws.ToString(user.UserName)); err != nil {
-				return err
-			}
-		}
-		for _, group := range page.PolicyGroups {
-			if err := r.detachGroupPolicy(ctx, policyArn, aws.ToString(group.GroupName)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (r *realIAMPolicyAPI) UpdateTags(ctx context.Context, policyArn string, tags map[string]string) error {
@@ -329,39 +284,6 @@ func (r *realIAMPolicyAPI) listPolicyTags(ctx context.Context, policyArn string)
 		}
 	}
 	return tags, nil
-}
-
-func (r *realIAMPolicyAPI) detachRolePolicy(ctx context.Context, policyArn, roleName string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	_, err := r.client.DetachRolePolicy(ctx, &iamsdk.DetachRolePolicyInput{
-		PolicyArn: aws.String(policyArn),
-		RoleName:  aws.String(roleName),
-	})
-	return err
-}
-
-func (r *realIAMPolicyAPI) detachUserPolicy(ctx context.Context, policyArn, userName string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	_, err := r.client.DetachUserPolicy(ctx, &iamsdk.DetachUserPolicyInput{
-		PolicyArn: aws.String(policyArn),
-		UserName:  aws.String(userName),
-	})
-	return err
-}
-
-func (r *realIAMPolicyAPI) detachGroupPolicy(ctx context.Context, policyArn, groupName string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	_, err := r.client.DetachGroupPolicy(ctx, &iamsdk.DetachGroupPolicyInput{
-		PolicyArn: aws.String(policyArn),
-		GroupName: aws.String(groupName),
-	})
-	return err
 }
 
 // findOldestNonDefault returns the version ID of the oldest non-default policy version,

@@ -40,7 +40,7 @@ func setupNACLDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := nacl.NewNetworkACLDriver(authservice.NewAuthClient())
+	driver := nacl.NewGenericNetworkACLDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client
