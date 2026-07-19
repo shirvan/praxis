@@ -29,7 +29,7 @@ func newGenericEventSourceMappingDriverWithFactory(auth authservice.AuthClient, 
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[EventSourceMappingSpec, EventSourceMappingOutputs, ObservedState]{
 		ServiceName:  ServiceName,
-		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true, Readiness: true},
+		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, Readiness: true},
 		Operations:   ops,
 		Prepare: func(ctx restate.ObjectContext, spec EventSourceMappingSpec) (EventSourceMappingSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
@@ -110,30 +110,30 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired EventSourc
 	}, classifyESMMutation)
 	return kernel.CreateResult[EventSourceMappingOutputs]{SeedOutputs: outputs}, err
 }
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next EventSourceMappingSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next EventSourceMappingSpec, _ ObservedState, currentOutputs EventSourceMappingOutputs) (EventSourceMappingOutputs, error) {
 	if previous.EventSourceArn != "" && previous.EventSourceArn != next.EventSourceArn || startingPositionChanged(previous, next) {
-		return restate.TerminalError(fmt.Errorf("startingPosition, startingPositionTimestamp, and eventSourceArn are immutable for event source mappings"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("startingPosition, startingPositionTimestamp, and eventSourceArn are immutable for event source mappings"), 409)
 	}
-	return nil
+	return currentOutputs, nil
 }
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EventSourceMappingSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EventSourceMappingSpec, observed ObservedState, currentOutputs EventSourceMappingOutputs) (EventSourceMappingOutputs, error) {
 	if desired.EventSourceArn != observed.EventSourceArn {
-		return restate.TerminalError(fmt.Errorf("eventSourceArn is immutable; delete and reprovision the event source mapping"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("eventSourceArn is immutable; delete and reprovision the event source mapping"), 409)
 	}
 	if !HasDrift(desired, observed) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.UpdateEventSourceMapping(rc, observed.UUID, desired)
 	}, classifyESMMutation); err != nil {
-		return err
+		return currentOutputs, err
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (string, error) { return api.WaitForStableState(rc, observed.UUID) }, classifyESMMutation)
-	return err
+	return currentOutputs, err
 }
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired EventSourceMappingSpec, outputs EventSourceMappingOutputs) error {
 	if outputs.UUID == "" {

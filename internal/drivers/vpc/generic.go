@@ -34,7 +34,7 @@ func newGenericVPCDriverWithFactory(auth authservice.AuthClient, factory func(aw
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, LateInitialization: true,
+			LateInitialization: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec VPCSpec) (VPCSpec, error) {
@@ -110,29 +110,29 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired VPCSpec) (
 	return kernel.CreateResult[VPCOutputs]{SeedOutputs: VPCOutputs{VpcId: vpcID}}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next VPCSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next VPCSpec, _ ObservedState, currentOutputs VPCOutputs) (VPCOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.CidrBlock != next.CidrBlock:
-		return restate.TerminalError(fmt.Errorf("cidrBlock is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("cidrBlock is immutable; delete and reprovision to change it"), 409)
 	case previous.InstanceTenancy != next.InstanceTenancy:
-		return restate.TerminalError(fmt.Errorf("instanceTenancy is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("instanceTenancy is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired VPCSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired VPCSpec, observed ObservedState, currentOutputs VPCOutputs) (VPCOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	vpcID := observed.VpcId
 	if vpcID == "" {
-		return restate.TerminalError(fmt.Errorf("cannot converge VPC without a vpcId"), 500)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("cannot converge VPC without a vpcId"), 500)
 	}
 
 	// AWS requires support before hostnames when enabling and hostnames before
@@ -141,31 +141,31 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired VPCSpec,
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyDnsSupport(rc, vpcID, true)
 		}, classifyVPCMutation); err != nil {
-			return fmt.Errorf("modify DNS support: %w", err)
+			return currentOutputs, fmt.Errorf("modify DNS support: %w", err)
 		}
 	}
 	if desired.EnableDnsHostnames != observed.EnableDnsHostnames {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyDnsHostnames(rc, vpcID, desired.EnableDnsHostnames)
 		}, classifyVPCMutation); err != nil {
-			return fmt.Errorf("modify DNS hostnames: %w", err)
+			return currentOutputs, fmt.Errorf("modify DNS hostnames: %w", err)
 		}
 	}
 	if !desired.EnableDnsSupport && observed.EnableDnsSupport {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyDnsSupport(rc, vpcID, false)
 		}, classifyVPCMutation); err != nil {
-			return fmt.Errorf("modify DNS support: %w", err)
+			return currentOutputs, fmt.Errorf("modify DNS support: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, vpcID, desired.Tags)
 		}, classifyVPCMutation); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired VPCSpec, outputs VPCOutputs) error {

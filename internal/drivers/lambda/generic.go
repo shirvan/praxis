@@ -32,7 +32,7 @@ func newGenericLambdaFunctionDriverWithFactory(auth authservice.AuthClient, fact
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[LambdaFunctionSpec, LambdaFunctionOutputs, ObservedState]{
 		ServiceName:  ServiceName,
-		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true, Readiness: true},
+		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, Readiness: true},
 		Operations:   ops,
 		Prepare: func(ctx restate.ObjectContext, spec LambdaFunctionSpec) (LambdaFunctionSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
@@ -120,50 +120,50 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired LambdaFunc
 	return kernel.CreateResult[LambdaFunctionOutputs]{SeedOutputs: LambdaFunctionOutputs{FunctionArn: arn, FunctionName: desired.FunctionName}}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previous, next LambdaFunctionSpec, observed ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previous, next LambdaFunctionSpec, observed ObservedState, currentOutputs LambdaFunctionOutputs) (LambdaFunctionOutputs, error) {
 	if previous.PackageType != "" && previous.PackageType != next.PackageType {
-		return restate.TerminalError(fmt.Errorf("packageType is immutable; delete and recreate the function to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("packageType is immutable; delete and recreate the function to change it"), 409)
 	}
 	if previous.FunctionName != "" && previous.FunctionName != next.FunctionName {
-		return restate.TerminalError(fmt.Errorf("functionName is immutable; delete and recreate the function to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("functionName is immutable; delete and recreate the function to change it"), 409)
 	}
 	if !slices.Equal(normalizeArchitectures(previous.Architectures), normalizeArchitectures(next.Architectures)) {
-		return restate.TerminalError(fmt.Errorf("architectures are immutable; delete and recreate the function to change them"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("architectures are immutable; delete and recreate the function to change them"), 409)
 	}
 	if !codeSpecChanged(previous.Code, next.Code) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, next.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.UpdateFunctionCode(rc, next)
 	}, classifyLambdaMutation); err != nil {
-		return err
+		return currentOutputs, err
 	}
-	return waitFunctionStable(ctx, api, observed.FunctionName)
+	return currentOutputs, waitFunctionStable(ctx, api, observed.FunctionName)
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaFunctionSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaFunctionSpec, observed ObservedState, currentOutputs LambdaFunctionOutputs) (LambdaFunctionOutputs, error) {
 	if desired.FunctionName != observed.FunctionName || (observed.PackageType != "" && desired.PackageType != observed.PackageType) || !slices.Equal(normalizeArchitectures(desired.Architectures), normalizeArchitectures(observed.Architectures)) {
-		return restate.TerminalError(fmt.Errorf("lambda function has immutable changes; delete and reprovision it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("lambda function has immutable changes; delete and reprovision it"), 409)
 	}
 	if owner := observed.Tags["praxis:managed-key"]; owner != "" && owner != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf("lambda function is owned by Praxis object %q", owner), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("lambda function is owned by Praxis object %q", owner), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if HasDrift(desired, observed) {
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateFunctionConfiguration(rc, desired, observed)
 		}, classifyLambdaMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 		if err := waitFunctionStable(ctx, api, desired.FunctionName); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) || observed.Tags["praxis:managed-key"] != desired.ManagedKey {
@@ -171,7 +171,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaFu
 			return restate.Void{}, api.UpdateTags(rc, observed.FunctionArn, withManagedKey(desired.ManagedKey, desired.Tags))
 		}, classifyLambdaMutation)
 	}
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired LambdaFunctionSpec, outputs LambdaFunctionOutputs) error {

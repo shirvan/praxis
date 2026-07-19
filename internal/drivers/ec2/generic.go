@@ -37,7 +37,7 @@ func NewGenericEC2InstanceDriverWithFactory(auth authservice.AuthClient, factory
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, LateInitialization: true,
+			LateInitialization: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec EC2InstanceSpec) (EC2InstanceSpec, error) {
@@ -110,73 +110,73 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired EC2Instance
 	}, err
 }
 
-func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next EC2InstanceSpec, _ ObservedState) error {
+func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next EC2InstanceSpec, _ ObservedState, currentOutputs EC2InstanceOutputs) (EC2InstanceOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.ImageId != next.ImageId:
-		return restate.TerminalError(fmt.Errorf("imageId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("imageId is immutable; delete and reprovision to change it"), 409)
 	case previous.SubnetId != next.SubnetId:
-		return restate.TerminalError(fmt.Errorf("subnetId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("subnetId is immutable; delete and reprovision to change it"), 409)
 	case previous.KeyName != next.KeyName:
-		return restate.TerminalError(fmt.Errorf("keyName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keyName is immutable; delete and reprovision to change it"), 409)
 	case previous.UserData != next.UserData:
-		return restate.TerminalError(fmt.Errorf("userData is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("userData is immutable; delete and reprovision to change it"), 409)
 	case !reflect.DeepEqual(previous.RootVolume, next.RootVolume):
-		return restate.TerminalError(fmt.Errorf("rootVolume is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("rootVolume is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired EC2InstanceSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired EC2InstanceSpec, observed ObservedState, currentOutputs EC2InstanceOutputs) (EC2InstanceOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	instanceID := observed.InstanceId
 	if instanceID == "" {
-		return restate.TerminalError(fmt.Errorf("cannot converge EC2 instance without an instanceId"), 500)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("cannot converge EC2 instance without an instanceId"), 500)
 	}
 
 	if desired.InstanceType != observed.InstanceType {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyInstanceType(rc, instanceID, desired.InstanceType)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("modify instance type: %w", err)
+			return currentOutputs, fmt.Errorf("modify instance type: %w", err)
 		}
 	}
 	if len(desired.SecurityGroupIds) > 0 && !securityGroupsMatch(desired.SecurityGroupIds, observed.SecurityGroupIds) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifySecurityGroups(rc, instanceID, desired.SecurityGroupIds)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("modify security groups: %w", err)
+			return currentOutputs, fmt.Errorf("modify security groups: %w", err)
 		}
 	}
 	if !instanceProfilesMatch(desired.IamInstanceProfile, observed.IamInstanceProfile) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateIAMInstanceProfile(rc, instanceID, desired.IamInstanceProfile)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("update IAM instance profile: %w", err)
+			return currentOutputs, fmt.Errorf("update IAM instance profile: %w", err)
 		}
 	}
 	if desired.Monitoring != observed.Monitoring {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateMonitoring(rc, instanceID, desired.Monitoring)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("update monitoring: %w", err)
+			return currentOutputs, fmt.Errorf("update monitoring: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, instanceID, desired.Tags)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired EC2InstanceSpec, outputs EC2InstanceOutputs) error {

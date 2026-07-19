@@ -3,6 +3,7 @@ package lambdalayer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/smithy-go"
 	restate "github.com/restatedev/sdk-go"
@@ -24,6 +25,8 @@ type statefulLayerAPI struct {
 	versions                         map[int64]ObservedState
 	creates, reads, updates, deletes int
 	publishErr                       error
+	permissionErr                    error
+	permissionErrOnce                bool
 }
 
 func newStatefulLayerAPI() *statefulLayerAPI {
@@ -82,6 +85,14 @@ func (f *statefulLayerAPI) ListLayerVersions(_ context.Context, name string) ([]
 func (f *statefulLayerAPI) SyncLayerVersionPermissions(_ context.Context, _ string, v int64, p PermissionsSpec) (PermissionsSpec, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.permissionErr != nil {
+		err := f.permissionErr
+		if f.permissionErrOnce {
+			f.permissionErr = nil
+			f.permissionErrOnce = false
+		}
+		return PermissionsSpec{}, err
+	}
 	o, ok := f.versions[v]
 	if !ok {
 		return PermissionsSpec{}, layerNotFound()
@@ -111,6 +122,12 @@ func (f *statefulLayerAPI) failPublish(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.publishErr = err
+}
+func (f *statefulLayerAPI) failPermissionOnce(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.permissionErr = err
+	f.permissionErrOnce = true
 }
 func layerObserved(v int64, s LambdaLayerSpec) ObservedState {
 	return ObservedState{LayerArn: "arn:layer:" + s.LayerName, LayerVersionArn: "arn:layer:" + s.LayerName + ":" + string(rune('0'+v)), LayerName: s.LayerName, Version: v, Description: s.Description, CompatibleRuntimes: append([]string(nil), s.CompatibleRuntimes...), CompatibleArchitectures: append([]string(nil), s.CompatibleArchitectures...), LicenseInfo: s.LicenseInfo, CodeSize: 1, CodeSha256: s.Code.ZipFile, Permissions: desiredPermissions(s)}
@@ -213,6 +230,68 @@ func TestGenericLayerExternalVersionCorrectionFailureIsVisibleAndDoesNotAdvanceO
 	require.NoError(t, err)
 	assert.Equal(t, outputs.Version, stored.Version, "failed republish must not claim a new managed version")
 	assert.Equal(t, types.StatusError, statusForLayer(t, c, key).Status)
+
+	visible, err := ingress.Object[restate.Void, types.ReconcileResult](c, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, visible.Drift)
+	assert.False(t, visible.Correcting, "error-state reconciliation remains visibility-only")
+	stored, err = ingress.Object[restate.Void, LambdaLayerOutputs](c, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, outputs.Version, stored.Version, "visibility-only reconciliation must not adopt the external version")
+}
+
+func TestGenericLayerPermissionSyncAfterPublishUsesJournalReplayAndRollback(t *testing.T) {
+	t.Run("transient sync retries without another publish", func(t *testing.T) {
+		api := newStatefulLayerAPI()
+		client := setupGenericLayer(t, api)
+		key := "us-east-1~permission-retry"
+		spec := genericLayerSpec()
+		spec.Permissions = &PermissionsSpec{Public: true}
+		_, err := provisionLayer(t, client, key, spec, types.ReconcileModeAuto)
+		require.NoError(t, err)
+
+		external := spec
+		external.Description = "external"
+		api.externalPublish(external)
+		api.failPermissionOnce(errors.New("temporary permission service failure"))
+
+		result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		assert.True(t, result.Drift)
+		assert.True(t, result.Correcting)
+		assert.Empty(t, result.Error)
+		assert.Equal(t, 2, api.snapshot().Creates, "Restate must replay the journaled publish result")
+		assert.Zero(t, api.snapshot().Deletes)
+	})
+
+	t.Run("terminal sync deletes the just-published version", func(t *testing.T) {
+		api := newStatefulLayerAPI()
+		client := setupGenericLayer(t, api)
+		key := "us-east-1~permission-rollback"
+		spec := genericLayerSpec()
+		spec.Permissions = &PermissionsSpec{Public: true}
+		outputs, err := provisionLayer(t, client, key, spec, types.ReconcileModeAuto)
+		require.NoError(t, err)
+
+		external := spec
+		external.Description = "external"
+		api.externalPublish(external)
+		api.failPermissionOnce(&smithy.GenericAPIError{Code: "InvalidParameterValueException", Message: "invalid permission"})
+
+		result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		assert.True(t, result.Drift)
+		assert.True(t, result.Correcting)
+		assert.Contains(t, result.Error, "invalid permission")
+		assert.Equal(t, 2, api.snapshot().Creates)
+		assert.Equal(t, 1, api.snapshot().Deletes, "terminal partial failure must compensate the publish")
+		versions, listErr := api.ListLayerVersions(t.Context(), spec.LayerName)
+		require.NoError(t, listErr)
+		assert.ElementsMatch(t, []int64{1, 2}, versions, "the failed desired version must not remain published")
+		stored, getErr := ingress.Object[restate.Void, LambdaLayerOutputs](client, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})
+		require.NoError(t, getErr)
+		assert.Equal(t, outputs.Version, stored.Version)
+	})
 }
 
 func statusForLayer(t *testing.T, client *ingress.Client, key string) types.StatusResponse {

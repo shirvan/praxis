@@ -349,7 +349,6 @@ resources: archive: {
         <tr><td><strong>Execution guarantee</strong></td><td>None (can leave partial state)</td><td>At-least-once</td><td class="praxis">Exactly-once (journaled)</td></tr>
         <tr><td><strong>Crash recovery</strong></td><td>Manual intervention</td><td>Controller restart</td><td class="praxis">Automatic journal replay</td></tr>
         <tr><td><strong>Template language</strong></td><td>HCL</td><td>YAML + Compositions</td><td class="praxis">CUE</td></tr>
-        <tr><td><strong>Extension model</strong></td><td>Go providers</td><td>Go controllers</td><td class="praxis">Any language, no fork</td></tr>
       </table>
     </div>
   </div>
@@ -425,17 +424,19 @@ resources: archive: {
         key-value store. Query the object and you see everything about that resource.</p>
       </div>
       <div>
-        <pre><code><span class="c-comment"># Every driver implements the same six handlers</span>
+        <pre><code><span class="c-comment"># Every built-in driver implements the same eight handlers</span>
 
 Exclusive (single-writer):
-  Provision(spec)  → outputs   <span class="c-comment"># create or update</span>
+  Provision(request) → outputs <span class="c-comment"># spec + lifecycle policy</span>
   Import(ref)      → outputs   <span class="c-comment"># adopt existing</span>
   Delete()                     <span class="c-comment"># remove</span>
   Reconcile()      → result    <span class="c-comment"># check drift, fix it</span>
+  ClearState()                 <span class="c-comment"># reset object state</span>
 
 Shared (concurrent-read):
   GetStatus()      → status
-  GetOutputs()     → outputs   <span class="c-comment"># ARN, ID, etc.</span></code></pre>
+  GetOutputs()     → outputs   <span class="c-comment"># ARN, ID, etc.</span>
+  GetInputs()      → spec      <span class="c-comment"># stored desired input</span></code></pre>
       </div>
     </div>
 
@@ -784,31 +785,6 @@ resources: webSG: {
   <span class="c-key">"deployment"</span>:   <span class="c-str">"web"</span>,
   <span class="c-key">"data"</span>: { <span class="c-key">"message"</span>: <span class="c-str">"ingress rules restored to match spec"</span> }
 }</code></pre>
-      </div>
-    </div>
-
-    <div class="feature">
-      <div>
-        <h3>Extensible without forking</h3>
-        <p>Restate doesn't distinguish built-in from external services. Write a driver in
-        Python, TypeScript, Go, Java, Kotlin, or Rust in your own repository, register it
-        with the same Restate instance, and it participates in DAG orchestration, output
-        expressions, state tracking, and the event stream alongside built-in drivers.</p>
-        <p>No plugin SDK. No fork. No changes to Praxis.</p>
-      </div>
-      <div>
-        <pre><code><span class="c-comment"># docs/EXTENDING.md: a Cloudflare DNS driver (trimmed)</span>
-import restate
-
-cf_driver = restate.VirtualObject(<span class="c-str">"CloudflareDNSRecord"</span>)
-
-@cf_driver.handler()
-async def Provision(ctx, spec):
-    record = await ctx.run_typed(<span class="c-str">"create DNS record"</span>,
-        api.create_record, zone_id=spec.zone_id,
-        record={<span class="c-str">"type"</span>: spec.type, <span class="c-str">"name"</span>: spec.name})
-    return DNSRecordOutputs(record_id=record[<span class="c-str">"id"</span>],
-        fqdn=record[<span class="c-str">"name"</span>])</code></pre>
       </div>
     </div>
 

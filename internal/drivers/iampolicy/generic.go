@@ -36,7 +36,7 @@ func newGenericIAMPolicyDriverWithFactory(auth authservice.AuthClient, factory f
 	return kernel.MustNew(kernel.Descriptor[IAMPolicySpec, IAMPolicyOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec IAMPolicySpec) (IAMPolicySpec, error) {
@@ -95,33 +95,33 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired IAMPolicySp
 	return kernel.CreateResult[IAMPolicyOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMPolicySpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMPolicySpec, observed ObservedState, currentOutputs IAMPolicyOutputs) (IAMPolicyOutputs, error) {
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if desired.PolicyName != observed.PolicyName {
-		return restate.TerminalError(fmt.Errorf("policyName is immutable; delete and recreate the policy to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("policyName is immutable; delete and recreate the policy to change it"), 409)
 	}
 	if desired.Path != observed.Path {
-		return restate.TerminalError(fmt.Errorf("path is immutable; delete and recreate the policy to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("path is immutable; delete and recreate the policy to change it"), 409)
 	}
 	if desired.Description != observed.Description {
-		return restate.TerminalError(fmt.Errorf("description is immutable; delete and recreate the policy to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("description is immutable; delete and recreate the policy to change it"), 409)
 	}
 	if !policyDocumentsEqual(desired.PolicyDocument, observed.PolicyDocument) {
 		if err := o.rotateDefaultVersion(ctx, api, observed.Arn, desired.PolicyDocument); err != nil {
-			return fmt.Errorf("update policy document: %w", err)
+			return currentOutputs, fmt.Errorf("update policy document: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.Arn, desired.Tags)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("update policy tags: %w", err)
+			return currentOutputs, fmt.Errorf("update policy tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired IAMPolicySpec, outputs IAMPolicyOutputs) error {

@@ -46,7 +46,7 @@ func newGenericSecurityGroupDriverWithFactory(auth authservice.AuthClient, facto
 	return kernel.MustNew(kernel.Descriptor[SecurityGroupSpec, SecurityGroupOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SecurityGroupSpec) (SecurityGroupSpec, error) {
@@ -135,25 +135,25 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired SecurityGro
 	}}, err
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SecurityGroupSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SecurityGroupSpec, observed ObservedState, currentOutputs SecurityGroupOutputs) (SecurityGroupOutputs, error) {
 	if err := immutableIdentityError(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if err := o.applyRuleDiff(ctx, api, observed.GroupId, desired, observed); err != nil {
-		return err
+		return currentOutputs, err
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.GroupId, desired.Tags)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("update security group tags: %w", err)
+			return currentOutputs, fmt.Errorf("update security group tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired SecurityGroupSpec, outputs SecurityGroupOutputs) error {

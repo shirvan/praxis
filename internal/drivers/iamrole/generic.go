@@ -34,7 +34,7 @@ func newGenericIAMRoleDriverWithFactory(auth authservice.AuthClient, factory fun
 	return kernel.MustNew(kernel.Descriptor[IAMRoleSpec, IAMRoleOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec IAMRoleSpec) (IAMRoleSpec, error) {
@@ -94,25 +94,25 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired IAMRoleSpec
 	return kernel.CreateResult[IAMRoleOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next IAMRoleSpec, _ ObservedState) error {
+func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next IAMRoleSpec, _ ObservedState, currentOutputs IAMRoleOutputs) (IAMRoleOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.RoleName != next.RoleName:
-		return restate.TerminalError(fmt.Errorf("roleName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("roleName is immutable; delete and reprovision to change it"), 409)
 	case previous.Path != next.Path:
-		return restate.TerminalError(fmt.Errorf("path is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("path is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMRoleSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMRoleSpec, observed ObservedState, currentOutputs IAMRoleOutputs) (IAMRoleOutputs, error) {
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return o.convergeRole(ctx, api, desired, observed)
+	return currentOutputs, o.convergeRole(ctx, api, desired, observed)
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired IAMRoleSpec, outputs IAMRoleOutputs) error {

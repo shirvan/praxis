@@ -36,7 +36,7 @@ func newGenericSecretsManagerSecretDriverWithFactory(auth authservice.AuthClient
 	return kernel.MustNew(kernel.Descriptor[SecretsManagerSecretSpec, SecretsManagerSecretOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SecretsManagerSecretSpec) (SecretsManagerSecretSpec, error) {
@@ -100,12 +100,12 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired SecretsMana
 	return kernel.CreateResult[SecretsManagerSecretOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SecretsManagerSecretSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SecretsManagerSecretSpec, observed ObservedState, currentOutputs SecretsManagerSecretOutputs) (SecretsManagerSecretOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return o.convergeSecret(ctx, api, desired, observed)
+	return currentOutputs, o.convergeSecret(ctx, api, desired, observed)
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired SecretsManagerSecretSpec, outputs SecretsManagerSecretOutputs) error {

@@ -34,7 +34,7 @@ func newGenericECRLifecyclePolicyDriverWithFactory(auth authservice.AuthClient, 
 	return kernel.MustNew(kernel.Descriptor[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec ECRLifecyclePolicySpec) (ECRLifecyclePolicySpec, error) {
@@ -98,21 +98,21 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired ECRLifecyc
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECRLifecyclePolicySpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECRLifecyclePolicySpec, observed ObservedState, currentOutputs ECRLifecyclePolicyOutputs) (ECRLifecyclePolicyOutputs, error) {
 	if err := validateImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if normalizePolicy(desired.LifecyclePolicyText) == normalizePolicy(observed.LifecyclePolicyText) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.PutLifecyclePolicy(rc, desired)
 	}, classifyLifecyclePolicyMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired ECRLifecyclePolicySpec, outputs ECRLifecyclePolicyOutputs) error {

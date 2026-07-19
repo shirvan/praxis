@@ -37,7 +37,7 @@ func newGenericSQSQueueDriverWithFactory(auth authservice.AuthClient, factory fu
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, LateInitialization: true,
+			LateInitialization: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SQSQueueSpec) (SQSQueueSpec, error) {
@@ -136,16 +136,16 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired SQSQueueSp
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SQSQueueSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SQSQueueSpec, observed ObservedState, currentOutputs SQSQueueOutputs) (SQSQueueOutputs, error) {
 	if err := validateImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if current := observed.Tags["praxis:managed-key"]; current != "" && current != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"queue %q is tagged as owned by Praxis object %q, not %q",
 			desired.QueueName, current, desired.ManagedKey,
 		), 409)
@@ -153,13 +153,13 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SQSQueue
 
 	attrs, err := changedQueueAttributes(desired, observed)
 	if err != nil {
-		return restate.TerminalError(err, 400)
+		return currentOutputs, restate.TerminalError(err, 400)
 	}
 	if len(attrs) > 0 {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.SetQueueAttributes(rc, observed.QueueUrl, attrs)
 		}, classifyQueueMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 
@@ -169,7 +169,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SQSQueue
 			return restate.Void{}, api.UpdateTags(rc, observed.QueueUrl, managedTags(desired.Tags, desired.ManagedKey))
 		}, classifyQueueMutation)
 	}
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired SQSQueueSpec, outputs SQSQueueOutputs) error {

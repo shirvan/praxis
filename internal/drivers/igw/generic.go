@@ -33,7 +33,7 @@ func newGenericIGWDriverWithFactory(auth authservice.AuthClient, factory func(aw
 	return kernel.MustNew(kernel.Descriptor[IGWSpec, IGWOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec IGWSpec) (IGWSpec, error) {
@@ -107,14 +107,14 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired IGWSpec) (
 	return kernel.CreateResult[IGWOutputs]{SeedOutputs: IGWOutputs{InternetGatewayId: internetGatewayID}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired IGWSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired IGWSpec, observed ObservedState, currentOutputs IGWOutputs) (IGWOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	internetGatewayID := observed.InternetGatewayId
 	if internetGatewayID == "" {
-		return restate.TerminalError(fmt.Errorf("cannot converge internet gateway without an internetGatewayId"), 500)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("cannot converge internet gateway without an internetGatewayId"), 500)
 	}
 
 	if desired.VpcId != observed.AttachedVpcId {
@@ -126,7 +126,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired IGWSpec,
 				}
 				return restate.Void{}, detachErr
 			}, classifyIGWMutation); err != nil {
-				return fmt.Errorf("detach from VPC: %w", err)
+				return currentOutputs, fmt.Errorf("detach from VPC: %w", err)
 			}
 		}
 
@@ -149,7 +149,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired IGWSpec,
 				internetGatewayID, desired.VpcId,
 			), 409)
 		}, classifyIGWMutation); err != nil {
-			return fmt.Errorf("attach to VPC: %w", err)
+			return currentOutputs, fmt.Errorf("attach to VPC: %w", err)
 		}
 	}
 
@@ -157,10 +157,10 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired IGWSpec,
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, internetGatewayID, desired.Tags)
 		}, classifyIGWMutation); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired IGWSpec, outputs IGWOutputs) error {

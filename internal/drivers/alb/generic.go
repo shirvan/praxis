@@ -40,7 +40,7 @@ func newGenericALBDriverWithFactory(auth authservice.AuthClient, factory func(aw
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[ALBSpec, ALBOutputs, ObservedState]{
 		ServiceName:  ServiceName,
-		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true},
+		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true},
 		Operations:   ops,
 		Prepare: func(ctx restate.ObjectContext, spec ALBSpec) (ALBSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
@@ -123,44 +123,44 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired ALBSpec) (
 	return kernel.CreateResult[ALBOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ALBSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ALBSpec, observed ObservedState, currentOutputs ALBOutputs) (ALBOutputs, error) {
 	if hasImmutableChange(desired, observed) {
-		return restate.TerminalError(fmt.Errorf("ALB %q has immutable changes (name or scheme); delete and reprovision it", observed.Name), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("ALB %q has immutable changes (name or scheme); delete and reprovision it", observed.Name), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	arn := observed.LoadBalancerArn
 	if desired.IpAddressType != observed.IpAddressType {
 		if err = runALBMutation(ctx, func(rc restate.RunContext) error { return api.SetIpAddressType(rc, arn, desired.IpAddressType) }); err != nil {
-			return fmt.Errorf("set IP address type: %w", err)
+			return currentOutputs, fmt.Errorf("set IP address type: %w", err)
 		}
 	}
 	if !sortedStringsEqual(resolveSubnets(desired), observed.Subnets) {
 		if err = runALBMutation(ctx, func(rc restate.RunContext) error { return api.SetSubnets(rc, arn, resolveSubnetMappings(desired)) }); err != nil {
-			return fmt.Errorf("set subnets: %w", err)
+			return currentOutputs, fmt.Errorf("set subnets: %w", err)
 		}
 	}
 	if !sortedStringsEqual(sortedCopy(desired.SecurityGroups), observed.SecurityGroups) {
 		if err = runALBMutation(ctx, func(rc restate.RunContext) error { return api.SetSecurityGroups(rc, arn, desired.SecurityGroups) }); err != nil {
-			return fmt.Errorf("set security groups: %w", err)
+			return currentOutputs, fmt.Errorf("set security groups: %w", err)
 		}
 	}
 	attrs := buildAttributeMap(desired)
 	if !maps.Equal(attrs, buildAttributeMapFromObserved(observed)) {
 		if err = runALBMutation(ctx, func(rc restate.RunContext) error { return api.ModifyAttributes(rc, arn, attrs) }); err != nil {
-			return fmt.Errorf("modify attributes: %w", err)
+			return currentOutputs, fmt.Errorf("modify attributes: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) || observed.Tags[managedKeyTag] != desired.ManagedKey {
 		if err = runALBMutation(ctx, func(rc restate.RunContext) error {
 			return api.UpdateTags(rc, arn, albManagedTags(desired.Tags, desired.ManagedKey))
 		}); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired ALBSpec, outputs ALBOutputs) error {

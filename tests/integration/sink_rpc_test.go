@@ -17,8 +17,7 @@ import (
 )
 
 // rpcSinkReceiver is a plain Restate service that records every CloudEvent the
-// SinkRouter delivers to it, standing in for an external automation consumer
-// (the Pattern 2 integration from docs/EXTENDING.md).
+// SinkRouter delivers to it, standing in for an external automation consumer.
 type rpcSinkReceiver struct {
 	mu       sync.Mutex
 	received []string

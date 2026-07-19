@@ -27,12 +27,6 @@
 | **run-project** | [run-project/SKILL.md](run-project/SKILL.md) | Build, run, and test the project | Setting up dev environment, running tests |
 | **debug-deployment** | [debug-deployment/SKILL.md](debug-deployment/SKILL.md) | Debug deployment failures and errors | Investigating failed deployments |
 
-### Extension
-
-| Skill | Path | Description | When to Use |
-|-------|------|-------------|-------------|
-| **build-extension** | [build-extension/SKILL.md](build-extension/SKILL.md) | Build a custom Praxis extension | Creating extensions in any language |
-
 ### Quality
 
 | Skill | Path | Description | When to Use |

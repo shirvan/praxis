@@ -29,7 +29,7 @@ func newGenericAMIDriverWithFactory(auth authservice.AuthClient, factory func(aw
 		factory = func(cfg aws.Config) AMIAPI { return NewAMIAPI(awsclient.NewEC2Client(cfg)) }
 	}
 	ops := &genericOperations{auth: auth, apiFactory: factory}
-	return kernel.MustNew(kernel.Descriptor[AMISpec, AMIOutputs, ObservedState]{ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true, Readiness: true, ConvergeWhilePending: true}, Operations: ops,
+	return kernel.MustNew(kernel.Descriptor[AMISpec, AMIOutputs, ObservedState]{ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, Readiness: true, ConvergeWhilePending: true}, Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec AMISpec) (AMISpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
 			if err != nil {
@@ -115,22 +115,22 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired AMISpec) (
 	}, classifyAMIMutation)
 	return kernel.CreateResult[AMIOutputs]{SeedOutputs: AMIOutputs{ImageId: id, Name: desired.Name}}, err
 }
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next AMISpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next AMISpec, _ ObservedState, currentOutputs AMIOutputs) (AMIOutputs, error) {
 	if previous.Name != "" && previous.Name != next.Name || !reflect.DeepEqual(previous.Source, next.Source) {
-		return restate.TerminalError(fmt.Errorf("AMI name and source are immutable; delete and reprovision the AMI"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("AMI name and source are immutable; delete and reprovision the AMI"), 409)
 	}
-	return nil
+	return currentOutputs, nil
 }
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AMISpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AMISpec, observed ObservedState, currentOutputs AMIOutputs) (AMIOutputs, error) {
 	if desired.Name != observed.Name {
-		return restate.TerminalError(fmt.Errorf("AMI name is immutable; delete and reprovision the AMI"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("AMI name is immutable; delete and reprovision the AMI"), 409)
 	}
 	if owner := observed.Tags["praxis:managed-key"]; owner != "" && owner != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf("AMI is owned by Praxis object %q", owner), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("AMI is owned by Praxis object %q", owner), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	run := func(fn func(restate.RunContext) error) error {
 		_, e := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) { return restate.Void{}, fn(rc) }, classifyAMIMutation)
@@ -140,30 +140,30 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AMISpec,
 		if err := run(func(rc restate.RunContext) error {
 			return api.ModifyDescription(rc, observed.ImageId, desired.Description)
 		}); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !drivers.TagsMatch(desiredTags(desired), observed.Tags) || observed.Tags["praxis:managed-key"] != desired.ManagedKey {
 		if err := run(func(rc restate.RunContext) error { return api.UpdateTags(rc, observed.ImageId, desiredTags(desired)) }); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if hasLaunchPermDrift(desired.LaunchPermissions, observed) {
 		if err := run(func(rc restate.RunContext) error {
 			return api.ModifyLaunchPermissions(rc, observed.ImageId, desired.LaunchPermissions)
 		}); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if hasDeprecationDrift(desired.Deprecation, observed.DeprecationTime) {
 		if desired.Deprecation == nil {
-			return run(func(rc restate.RunContext) error { return api.DisableDeprecation(rc, observed.ImageId) })
+			return currentOutputs, run(func(rc restate.RunContext) error { return api.DisableDeprecation(rc, observed.ImageId) })
 		}
-		return run(func(rc restate.RunContext) error {
+		return currentOutputs, run(func(rc restate.RunContext) error {
 			return api.EnableDeprecation(rc, observed.ImageId, desired.Deprecation.DeprecateAt)
 		})
 	}
-	return nil
+	return currentOutputs, nil
 }
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired AMISpec, outputs AMIOutputs) error {
 	if outputs.ImageId == "" {

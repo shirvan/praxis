@@ -55,6 +55,28 @@ func (d *Driver[S, O, Obs]) readinessFailure(result ReadinessResult) error {
 	return restate.TerminalError(fmt.Errorf("provider readiness failed for %s: %s", d.ServiceName(), message), 409)
 }
 
+// correctionFailure preserves terminal provider feedback as durable lifecycle
+// visibility, but returns transient failures from the handler. Returning the
+// latter lets Restate retry the invocation from its journal, replaying any
+// successful provider write instead of executing it a second time.
+func (d *Driver[S, O, Obs]) correctionFailure(
+	ctx restate.ObjectContext,
+	state *State[S, O, Obs],
+	err error,
+	now time.Time,
+	result types.ReconcileResult,
+) (types.ReconcileResult, error) {
+	result.Error = err.Error()
+	if !restate.IsTerminalError(err) {
+		return result, err
+	}
+	markError(state, err, types.ReasonProvisionFailed, now)
+	restate.Set(ctx, drivers.StateKey, *state)
+	d.scheduleReconcile(ctx, state)
+	result.Conditions = state.Conditions
+	return result, nil
+}
+
 func restoreDesiredOnProvisionConflict[S, O, Obs any](state *State[S, O, Obs], previousDesired S, previousReconcile types.ReconcileMode, previousIgnoreChanges []string, hasPreviousDesired bool, err error) {
 	if hasPreviousDesired && restate.IsTerminalError(err) && restate.ErrorCode(err) == 409 {
 		state.Desired = previousDesired
@@ -126,9 +148,11 @@ func (d *Driver[S, O, Obs]) Provision(ctx restate.ObjectContext, request types.P
 		setCondition(&state, types.ConditionInitialized, types.ConditionTrue, types.ReasonLateInitialized, message, now)
 	}
 	if err == nil && observation.Exists && existedBeforeCreate && hasPreviousDesired {
-		if changeOperations, ok := d.descriptor.Operations.(ProvisionChangeOperations[S, Obs]); ok {
-			err = changeOperations.ConvergeProvisionChange(ctx, previousDesired, desired, observation.Value)
+		if changeOperations, ok := d.descriptor.Operations.(ProvisionChangeOperations[S, O, Obs]); ok {
+			var committed O
+			committed, err = changeOperations.ConvergeProvisionChange(ctx, previousDesired, desired, observation.Value, seed)
 			if err == nil {
+				seed = committed
 				observation, err = d.descriptor.Operations.Observe(ctx, desired, seed)
 			} else {
 				// A failed previous/current comparison rejects the new contract.
@@ -166,8 +190,10 @@ func (d *Driver[S, O, Obs]) Provision(ctx restate.ObjectContext, request types.P
 		return zero, err
 	}
 	if readiness.Phase == ReadinessPending && d.descriptor.Capabilities.ConvergeWhilePending {
-		err = d.descriptor.Operations.Converge(ctx, desired, observation.Value)
+		var committed O
+		committed, err = d.descriptor.Operations.Converge(ctx, desired, observation.Value, seed)
 		if err == nil {
+			seed = committed
 			observation, err = d.descriptor.Operations.Observe(ctx, desired, seed)
 		}
 		if err != nil {
@@ -206,8 +232,10 @@ func (d *Driver[S, O, Obs]) Provision(ctx restate.ObjectContext, request types.P
 		return selectProvisionResponse(state.Outputs, createOnlyResponse), nil
 	}
 	if d.descriptor.HasDrift(desired, observation.Value) {
-		err = d.descriptor.Operations.Converge(ctx, desired, observation.Value)
+		var committed O
+		committed, err = d.descriptor.Operations.Converge(ctx, desired, observation.Value, seed)
 		if err == nil {
+			seed = committed
 			observation, err = d.descriptor.Operations.Observe(ctx, desired, seed)
 		}
 	}
@@ -440,7 +468,7 @@ func (d *Driver[S, O, Obs]) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	}
 
 	state.Observed = observation.Value
-	state.Outputs = d.descriptor.OutputsFromObserved(observation.Value, state.Outputs)
+	observedOutputs := d.descriptor.OutputsFromObserved(observation.Value, state.Outputs)
 	readiness, readinessErr := d.readiness(observation.Value)
 	if readinessErr != nil {
 		setCondition(&state, types.ConditionHealthy, types.ConditionUnknown, types.ReasonRetrying, readinessErr.Error(), now)
@@ -450,6 +478,7 @@ func (d *Driver[S, O, Obs]) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	}
 	correctingPending := false
 	if state.Status != types.StatusError && readiness.Phase == ReadinessFailed {
+		state.Outputs = observedOutputs
 		readinessErr = d.readinessFailure(readiness)
 		markError(&state, readinessErr, types.ReasonProvisionFailed, now)
 		setCondition(&state, types.ConditionHealthy, types.ConditionTrue, types.ReasonSucceeded, "provider resource is reachable", now)
@@ -460,40 +489,31 @@ func (d *Driver[S, O, Obs]) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	if state.Status != types.StatusError && readiness.Phase == ReadinessPending &&
 		state.Mode == types.ModeManaged && state.Reconcile == types.ReconcileModeAuto && d.descriptor.Capabilities.ConvergeWhilePending {
 		correctingPending = true
-		if convergeErr := d.descriptor.Operations.Converge(ctx, state.Desired, observation.Value); convergeErr != nil {
-			markError(&state, convergeErr, types.ReasonProvisionFailed, now)
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Correcting: true, Error: convergeErr.Error(), Conditions: state.Conditions}, nil
+		committed, convergeErr := d.descriptor.Operations.Converge(ctx, state.Desired, observation.Value, state.Outputs)
+		if convergeErr != nil {
+			return d.correctionFailure(ctx, &state, convergeErr, now, types.ReconcileResult{Correcting: true})
 		}
-		observation, err = d.descriptor.Operations.Observe(ctx, state.Desired, state.Outputs)
+		observation, err = d.descriptor.Operations.Observe(ctx, state.Desired, committed)
 		if err != nil || !observation.Exists {
 			if err == nil {
-				err = fmt.Errorf("%s resource disappeared while converging pending state", d.ServiceName())
+				err = restate.TerminalError(fmt.Errorf("%s resource disappeared while converging pending state", d.ServiceName()), 409)
 			}
-			markError(&state, err, types.ReasonProvisionFailed, now)
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Correcting: true, Error: err.Error(), Conditions: state.Conditions}, nil
+			return d.correctionFailure(ctx, &state, err, now, types.ReconcileResult{Correcting: true})
 		}
 		state.Observed = observation.Value
-		state.Outputs = d.descriptor.OutputsFromObserved(observation.Value, state.Outputs)
+		state.Outputs = d.descriptor.OutputsFromObserved(observation.Value, committed)
+		observedOutputs = state.Outputs
 		readiness, readinessErr = d.readiness(observation.Value)
 		if readinessErr != nil {
-			markError(&state, readinessErr, types.ReasonProvisionFailed, now)
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Correcting: true, Error: readinessErr.Error(), Conditions: state.Conditions}, nil
+			return d.correctionFailure(ctx, &state, readinessErr, now, types.ReconcileResult{Correcting: true})
 		}
 		if readiness.Phase == ReadinessFailed {
 			readinessErr = d.readinessFailure(readiness)
-			markError(&state, readinessErr, types.ReasonProvisionFailed, now)
-			restate.Set(ctx, drivers.StateKey, state)
-			d.scheduleReconcile(ctx, &state)
-			return types.ReconcileResult{Correcting: true, Error: readinessErr.Error(), Conditions: state.Conditions}, nil
+			return d.correctionFailure(ctx, &state, readinessErr, now, types.ReconcileResult{Correcting: true})
 		}
 	}
 	if state.Status != types.StatusError && readiness.Phase == ReadinessPending {
+		state.Outputs = observedOutputs
 		markAwaitingReadiness(&state, readiness.Message, now)
 		setCondition(&state, types.ConditionHealthy, types.ConditionTrue, types.ReasonSucceeded, "provider resource is reachable", now)
 		restate.Set(ctx, drivers.StateKey, state)
@@ -520,6 +540,12 @@ func (d *Driver[S, O, Obs]) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	// Error state reconciliation remains visibility-only. Provision is the
 	// explicit recovery operation and is the only path back to active writes.
 	if state.Status == types.StatusError || !drift || state.Mode == types.ModeObserved || state.Reconcile == types.ReconcileModeObserve {
+		// Outputs represent the last provider identity Praxis successfully
+		// committed. Preserve them while drift is merely being reported so a
+		// later visibility-only pass cannot silently adopt the external identity.
+		if !drift {
+			state.Outputs = observedOutputs
+		}
 		if drift {
 			drivers.ReportDriftEvent(ctx, d.ServiceName(), eventing.DriftEventDetected, "")
 		}
@@ -527,37 +553,31 @@ func (d *Driver[S, O, Obs]) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 		d.scheduleReconcile(ctx, &state)
 		return types.ReconcileResult{Drift: drift, Correcting: correctingPending, Conditions: state.Conditions}, nil
 	}
-	if !d.descriptor.Capabilities.ManagedDriftCorrection {
-		// Drift correction is disabled for this resource, so the observed
-		// difference is the requested operating policy rather than a lifecycle
-		// failure. Keep the resource healthy, expose DriftFree=False, and leave
-		// the provider untouched.
-		drivers.ReportDriftEvent(ctx, d.ServiceName(), eventing.DriftEventDetected, "")
-		restate.Set(ctx, drivers.StateKey, state)
-		d.scheduleReconcile(ctx, &state)
-		return types.ReconcileResult{Drift: true, Correcting: false, Conditions: state.Conditions}, nil
-	}
-
 	drivers.ReportDriftEvent(ctx, d.ServiceName(), eventing.DriftEventDetected, "")
-	if err := d.descriptor.Operations.Converge(ctx, state.Desired, observation.Value); err != nil {
-		markError(&state, err, types.ReasonProvisionFailed, now)
-		restate.Set(ctx, drivers.StateKey, state)
-		d.scheduleReconcile(ctx, &state)
-		return types.ReconcileResult{Drift: true, Correcting: true, Error: err.Error(), Conditions: state.Conditions}, nil
+	committed, err := d.descriptor.Operations.Converge(ctx, state.Desired, observation.Value, state.Outputs)
+	if err != nil {
+		return d.correctionFailure(ctx, &state, err, now, types.ReconcileResult{Drift: true, Correcting: true})
 	}
-	corrected, err := d.descriptor.Operations.Observe(ctx, state.Desired, state.Outputs)
+	corrected, err := d.descriptor.Operations.Observe(ctx, state.Desired, committed)
 	if err != nil || !corrected.Exists {
 		if err == nil {
-			err = fmt.Errorf("%s resource disappeared after drift correction", d.ServiceName())
+			err = restate.TerminalError(fmt.Errorf("%s resource disappeared after drift correction", d.ServiceName()), 409)
 		}
-		markError(&state, err, types.ReasonProvisionFailed, now)
-		restate.Set(ctx, drivers.StateKey, state)
-		d.scheduleReconcile(ctx, &state)
-		return types.ReconcileResult{Drift: true, Correcting: true, Error: err.Error(), Conditions: state.Conditions}, nil
+		return d.correctionFailure(ctx, &state, err, now, types.ReconcileResult{Drift: true, Correcting: true})
 	}
 	state.Observed = corrected.Value
-	state.Outputs = d.descriptor.OutputsFromObserved(corrected.Value, state.Outputs)
+	state.Outputs = d.descriptor.OutputsFromObserved(corrected.Value, committed)
+	correctedReadiness, readinessErr := d.readiness(corrected.Value)
+	if readinessErr != nil {
+		return d.correctionFailure(ctx, &state, readinessErr, now, types.ReconcileResult{Drift: true, Correcting: true})
+	}
+	if correctedReadiness.Phase == ReadinessFailed {
+		return d.correctionFailure(ctx, &state, d.readinessFailure(correctedReadiness), now, types.ReconcileResult{Drift: true, Correcting: true})
+	}
 	setCondition(&state, types.ConditionDriftFree, types.ConditionTrue, types.ReasonDriftCorrected, "provider drift was corrected", now)
+	if correctedReadiness.Phase == ReadinessPending {
+		markAwaitingReadiness(&state, correctedReadiness.Message, now)
+	}
 	restate.Set(ctx, drivers.StateKey, state)
 	d.scheduleReconcile(ctx, &state)
 	drivers.ReportDriftEvent(ctx, d.ServiceName(), eventing.DriftEventCorrected, "")

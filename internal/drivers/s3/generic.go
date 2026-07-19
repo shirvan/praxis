@@ -37,7 +37,7 @@ func NewGenericS3BucketDriverWithFactory(auth authservice.AuthClient, factory fu
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, LateInitialization: true,
+			LateInitialization: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec S3BucketSpec) (S3BucketSpec, error) {
@@ -95,28 +95,28 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired S3BucketSpe
 	}, err
 }
 
-func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next S3BucketSpec, _ ObservedState) error {
+func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next S3BucketSpec, _ ObservedState, currentOutputs S3BucketOutputs) (S3BucketOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.BucketName != next.BucketName:
-		return restate.TerminalError(fmt.Errorf("bucketName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("bucketName is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired S3BucketSpec, _ ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired S3BucketSpec, _ ObservedState, currentOutputs S3BucketOutputs) (S3BucketOutputs, error) {
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.ConfigureBucket(rc, desired)
 	}, classifyMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired S3BucketSpec, outputs S3BucketOutputs) error {

@@ -35,7 +35,6 @@ func newGenericACMCertificateDriverWithFactory(auth authservice.AuthClient, fact
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec ACMCertificateSpec) (ACMCertificateSpec, error) {
@@ -99,29 +98,29 @@ func (o *genericCertificateOperations) Create(ctx restate.ObjectContext, desired
 	}, err
 }
 
-func (o *genericCertificateOperations) Converge(ctx restate.ObjectContext, desired ACMCertificateSpec, observed ObservedState) error {
+func (o *genericCertificateOperations) Converge(ctx restate.ObjectContext, desired ACMCertificateSpec, observed ObservedState, currentOutputs ACMCertificateOutputs) (ACMCertificateOutputs, error) {
 	if err := validateImmutableFields(desired, observed); err != nil {
-		return restate.TerminalError(fmt.Errorf("ACM certificate identity is immutable: %w; delete and reprovision", err), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("ACM certificate identity is immutable: %w; delete and reprovision", err), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateCertificateOptions(rc, observed.CertificateArn, desired.Options)
 		}, classifyCertificateMutation); err != nil {
-			return fmt.Errorf("update certificate options: %w", err)
+			return currentOutputs, fmt.Errorf("update certificate options: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.CertificateArn, desired.Tags)
 		}, classifyCertificateMutation); err != nil {
-			return fmt.Errorf("update certificate tags: %w", err)
+			return currentOutputs, fmt.Errorf("update certificate tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericCertificateOperations) Delete(ctx restate.ObjectContext, desired ACMCertificateSpec, outputs ACMCertificateOutputs) error {

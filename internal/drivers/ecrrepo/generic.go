@@ -36,7 +36,7 @@ func newGenericECRRepositoryDriverWithFactory(auth authservice.AuthClient, facto
 	return kernel.MustNew(kernel.Descriptor[ECRRepositorySpec, ECRRepositoryOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec ECRRepositorySpec) (ECRRepositorySpec, error) {
@@ -96,36 +96,36 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired ECRReposit
 	return kernel.CreateResult[ECRRepositoryOutputs]{SeedOutputs: outputsFromObserved(observed)}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECRRepositorySpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECRRepositorySpec, observed ObservedState, currentOutputs ECRRepositoryOutputs) (ECRRepositoryOutputs, error) {
 	if observed.RepositoryName != "" && desired.RepositoryName != observed.RepositoryName {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"repositoryName is immutable for %s: current=%s desired=%s",
 			observed.RepositoryArn, observed.RepositoryName, desired.RepositoryName,
 		), 409)
 	}
 	if !encryptionEqual(desired.EncryptionConfiguration, observed.EncryptionConfiguration) {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"encryptionConfiguration is immutable for %s; delete and recreate the repository to change it",
 			observed.RepositoryArn,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 
 	if desired.ImageTagMutability != observed.ImageTagMutability {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateImageTagMutability(rc, desired.RepositoryName, desired.ImageTagMutability)
 		}, classifyRepositoryMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !scanningEqual(desired.ImageScanningConfiguration, observed.ImageScanningConfiguration) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateScanningConfiguration(rc, desired.RepositoryName, desired.ImageScanningConfiguration)
 		}, classifyRepositoryMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if normalizeJSON(desired.RepositoryPolicy) != normalizeJSON(observed.RepositoryPolicy) {
@@ -137,21 +137,21 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECRRepos
 				}
 				return restate.Void{}, deleteErr
 			}, classifyRepositoryMutation); err != nil {
-				return err
+				return currentOutputs, err
 			}
 		} else if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.PutRepositoryPolicy(rc, desired.RepositoryName, desired.RepositoryPolicy)
 		}, classifyRepositoryMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) && observed.RepositoryArn != "" {
 		_, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.RepositoryArn, tagsForApply(desired.Tags, desired.ManagedKey))
 		}, classifyRepositoryMutation)
-		return err
+		return currentOutputs, err
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired ECRRepositorySpec, outputs ECRRepositoryOutputs) error {

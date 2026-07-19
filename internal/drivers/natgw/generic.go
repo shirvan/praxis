@@ -35,7 +35,7 @@ func newGenericNATGatewayDriverWithFactory(auth authservice.AuthClient, factory 
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, Readiness: true,
+			Readiness: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec NATGatewaySpec) (NATGatewaySpec, error) {
@@ -134,38 +134,38 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired NATGateway
 	return kernel.CreateResult[NATGatewayOutputs]{SeedOutputs: NATGatewayOutputs{NatGatewayId: id}}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next NATGatewaySpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next NATGatewaySpec, _ ObservedState, currentOutputs NATGatewayOutputs) (NATGatewayOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.SubnetId != next.SubnetId:
-		return restate.TerminalError(fmt.Errorf("subnetId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("subnetId is immutable; delete and reprovision to change it"), 409)
 	case previous.ConnectivityType != next.ConnectivityType:
-		return restate.TerminalError(fmt.Errorf("connectivityType is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("connectivityType is immutable; delete and reprovision to change it"), 409)
 	case previous.AllocationId != next.AllocationId:
-		return restate.TerminalError(fmt.Errorf("allocationId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("allocationId is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired NATGatewaySpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired NATGatewaySpec, observed ObservedState, currentOutputs NATGatewayOutputs) (NATGatewayOutputs, error) {
 	if err := validateNATImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if drivers.TagsMatch(desired.Tags, observed.Tags) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.UpdateTags(rc, observed.NatGatewayId, desired.Tags)
 	}, classifyNATMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired NATGatewaySpec, outputs NATGatewayOutputs) error {

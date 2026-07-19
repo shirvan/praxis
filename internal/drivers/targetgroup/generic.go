@@ -30,7 +30,7 @@ func newGenericTargetGroupDriverWithFactory(auth authservice.AuthClient, factory
 	}
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[TargetGroupSpec, TargetGroupOutputs, ObservedState]{
-		ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true}, Operations: ops,
+		ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true}, Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec TargetGroupSpec) (TargetGroupSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
 			if err != nil {
@@ -99,36 +99,36 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, d TargetGroupSpec)
 	}, classifyTGMutation)
 	return kernel.CreateResult[TargetGroupOutputs]{SeedOutputs: out}, err
 }
-func (o *genericOperations) Converge(ctx restate.ObjectContext, d TargetGroupSpec, obs ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, d TargetGroupSpec, obs ObservedState, currentOutputs TargetGroupOutputs) (TargetGroupOutputs, error) {
 	if d.Name != obs.Name || hasImmutableChange(d, obs) {
-		return restate.TerminalError(fmt.Errorf("target group %q has immutable changes; delete and reprovision it", obs.Name), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("target group %q has immutable changes; delete and reprovision it", obs.Name), 409)
 	}
 	if owner := obs.Tags["praxis:managed-key"]; owner != "" && owner != d.ManagedKey {
-		return restate.TerminalError(fmt.Errorf("target group %s is owned by Praxis object %q", obs.TargetGroupArn, owner), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("target group %s is owned by Praxis object %q", obs.TargetGroupArn, owner), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, d.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if d.HealthCheck != obs.HealthCheck {
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyTargetGroup(rc, obs.TargetGroupArn, d)
 		}, classifyTGMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if d.DeregistrationDelay != obs.DeregistrationDelay || !stickinessEqual(d.Stickiness, obs.Stickiness) {
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateAttributes(rc, obs.TargetGroupArn, d)
 		}, classifyTGMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !targetsEqual(d.Targets, obs.Targets) {
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTargets(rc, obs.TargetGroupArn, d.Targets, obs.Targets)
 		}, classifyTGMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !drivers.TagsMatch(d.Tags, obs.Tags) || obs.Tags["praxis:managed-key"] != d.ManagedKey {
@@ -136,7 +136,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, d TargetGroupSpe
 			return restate.Void{}, api.UpdateTags(rc, obs.TargetGroupArn, targetGroupManagedTags(d.Tags, d.ManagedKey))
 		}, classifyTGMutation)
 	}
-	return err
+	return currentOutputs, err
 }
 func (o *genericOperations) Delete(ctx restate.ObjectContext, d TargetGroupSpec, out TargetGroupOutputs) error {
 	if out.TargetGroupArn == "" {

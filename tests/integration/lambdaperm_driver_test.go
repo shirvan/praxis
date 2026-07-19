@@ -156,7 +156,7 @@ func TestLambdaPermissionDelete_RemovesPermission(t *testing.T) {
 	}
 }
 
-func TestLambdaPermissionReconcile_DetectsExternalDelete(t *testing.T) {
+func TestLambdaPermissionReconcile_ReportsExternalDelete(t *testing.T) {
 	client, lambdaClient := setupPermissionDriver(t)
 	funcName := uniqueFunctionName(t)
 	stmtId := uniqueStatementId(t)
@@ -183,14 +183,14 @@ func TestLambdaPermissionReconcile_DetectsExternalDelete(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Permissions are replace-only: the driver flags the external delete as an
-	// error rather than re-adding the statement (detect-only behavior).
+	// Reconcile reports external deletion and requires an explicit Provision to
+	// recreate the permission; it never performs an implicit replacement.
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](
 		client, lambdaperm.ServiceName, key, "Reconcile",
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Error, "deleted externally", "external delete should be reported")
-	assert.False(t, result.Correcting, "permission driver is detect-only; no correction is performed")
+	assert.False(t, result.Correcting, "external deletion requires explicit reprovisioning")
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](
 		client, lambdaperm.ServiceName, key, "GetStatus",

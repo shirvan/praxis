@@ -178,7 +178,7 @@ type operations struct { /* auth + API factory */ }
 
 func (o *operations) Observe(ctx restate.ObjectContext, desired {Resource}Spec, outputs {Resource}Outputs) (kernel.Observation[ObservedState], error) { /* Describe */ }
 func (o *operations) Create(ctx restate.ObjectContext, desired {Resource}Spec) (kernel.CreateResult[{Resource}Outputs], error) { /* Create + wait */ }
-func (o *operations) Converge(ctx restate.ObjectContext, desired {Resource}Spec, observed ObservedState) error { /* mutable fields */ }
+func (o *operations) Converge(ctx restate.ObjectContext, desired {Resource}Spec, observed ObservedState, currentOutputs {Resource}Outputs) ({Resource}Outputs, error) { /* mutable fields; return committed outputs */ }
 func (o *operations) Delete(ctx restate.ObjectContext, desired {Resource}Spec, outputs {Resource}Outputs) error { /* idempotent delete */ }
 func (o *operations) Import(ctx restate.ObjectContext, ref types.ImportRef) (kernel.Observation[ObservedState], error) { /* lookup */ }
 
@@ -187,8 +187,7 @@ func NewGeneric{Resource}Driver(auth authservice.AuthClient) *kernel.Driver[{Res
     return kernel.MustNew(kernel.Descriptor[{Resource}Spec, {Resource}Outputs, ObservedState]{
         ServiceName: ServiceName,
         Capabilities: kernel.Capabilities{
-            Declared: true, Import: true, ObservedMode: true,
-            Delete: true, ManagedDriftCorrection: true,
+            Declared: true, Import: true, ObservedMode: true, Delete: true,
         },
         Operations: ops,
         Prepare: prepareSpec,
@@ -196,6 +195,7 @@ func NewGeneric{Resource}Driver(auth authservice.AuthClient) *kernel.Driver[{Res
         DesiredFromObserved: desiredFromObserved,
         OutputsFromObserved: outputsFromObserved,
         HasDrift: HasDrift,
+        FieldDiffs: ComputeFieldDiffs,
     })
 }
 ```

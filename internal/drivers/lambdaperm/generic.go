@@ -37,7 +37,7 @@ func newGenericLambdaPermissionDriverWithFactory(auth authservice.AuthClient, fa
 	return kernel.MustNew(kernel.Descriptor[LambdaPermissionSpec, LambdaPermissionOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec LambdaPermissionSpec) (LambdaPermissionSpec, error) {
@@ -111,28 +111,28 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired LambdaPerm
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaPermissionSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaPermissionSpec, observed ObservedState, currentOutputs LambdaPermissionOutputs) (LambdaPermissionOutputs, error) {
 	if desired.FunctionName != observed.FunctionName {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"functionName is immutable; delete and reprovision the Lambda permission to move it from %s to %s",
 			observed.FunctionName, desired.FunctionName,
 		), 409)
 	}
 	if desired.StatementId != observed.StatementId {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"statementId is immutable; delete and reprovision the Lambda permission to change it from %s to %s",
 			observed.StatementId, desired.StatementId,
 		), 409)
 	}
 	if observed.recoveredByIdentity {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"lambda permission %s already exists on %s with different configuration",
 			desired.StatementId, desired.FunctionName,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		removeErr := api.RemovePermission(rc, observed.FunctionName, observed.StatementId)
@@ -141,7 +141,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaPe
 		}
 		return restate.Void{}, removeErr
 	}, classifyPermissionMutation); err != nil {
-		return err
+		return currentOutputs, err
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (string, error) {
 		existing, getErr := api.GetPermission(rc, desired.FunctionName, desired.StatementId)
@@ -159,7 +159,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaPe
 		}
 		return api.AddPermission(rc, desired)
 	}, classifyPermissionMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired LambdaPermissionSpec, outputs LambdaPermissionOutputs) error {

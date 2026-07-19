@@ -35,7 +35,7 @@ func newGenericSubnetDriverWithFactory(auth authservice.AuthClient, factory func
 	return kernel.MustNew(kernel.Descriptor[SubnetSpec, SubnetOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SubnetSpec) (SubnetSpec, error) {
@@ -111,29 +111,29 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired SubnetSpec)
 	return kernel.CreateResult[SubnetOutputs]{SeedOutputs: SubnetOutputs{SubnetId: subnetID}}, err
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SubnetSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SubnetSpec, observed ObservedState, currentOutputs SubnetOutputs) (SubnetOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if observed.SubnetId == "" {
-		return restate.TerminalError(fmt.Errorf("cannot converge subnet without a subnetId"), 500)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("cannot converge subnet without a subnetId"), 500)
 	}
 	if desired.MapPublicIpOnLaunch != observed.MapPublicIpOnLaunch {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyMapPublicIp(rc, observed.SubnetId, desired.MapPublicIpOnLaunch)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("modify mapPublicIpOnLaunch: %w", err)
+			return currentOutputs, fmt.Errorf("modify mapPublicIpOnLaunch: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.SubnetId, desired.Tags)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired SubnetSpec, outputs SubnetOutputs) error {

@@ -34,7 +34,6 @@ func newGenericHostedZoneDriverWithFactory(auth authservice.AuthClient, factory 
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec HostedZoneSpec) (HostedZoneSpec, error) {
@@ -107,23 +106,23 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired HostedZone
 	return kernel.CreateResult[HostedZoneOutputs]{SeedOutputs: HostedZoneOutputs{HostedZoneId: normalizeHostedZoneID(zoneID)}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HostedZoneSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HostedZoneSpec, observed ObservedState, currentOutputs HostedZoneOutputs) (HostedZoneOutputs, error) {
 	if normalizeZoneName(desired.Name) != normalizeZoneName(observed.Name) {
-		return restate.TerminalError(fmt.Errorf("hosted zone name is immutable: observed %q, requested %q; delete and reprovision", observed.Name, desired.Name), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("hosted zone name is immutable: observed %q, requested %q; delete and reprovision", observed.Name, desired.Name), 409)
 	}
 	if desired.IsPrivate != observed.IsPrivate {
-		return restate.TerminalError(fmt.Errorf("hosted zone isPrivate is immutable: observed %t, requested %t; delete and reprovision", observed.IsPrivate, desired.IsPrivate), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("hosted zone isPrivate is immutable: observed %t, requested %t; delete and reprovision", observed.IsPrivate, desired.IsPrivate), 409)
 	}
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	zoneID := observed.HostedZoneId
 	if normalizeZoneComment(desired.Comment) != normalizeZoneComment(observed.Comment) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateComment(rc, zoneID, desired.Comment)
 		}, classifyHostedZoneMutation); err != nil {
-			return fmt.Errorf("update hosted zone comment: %w", err)
+			return currentOutputs, fmt.Errorf("update hosted zone comment: %w", err)
 		}
 	}
 	if desired.IsPrivate {
@@ -142,7 +141,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HostedZo
 			if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.AssociateVPC(rc, zoneID, vpc)
 			}, classifyHostedZoneMutation); err != nil {
-				return fmt.Errorf("associate hosted zone VPC %s: %w", key, err)
+				return currentOutputs, fmt.Errorf("associate hosted zone VPC %s: %w", key, err)
 			}
 		}
 		for key, vpc := range observedSet {
@@ -152,7 +151,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HostedZo
 			if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 				return restate.Void{}, api.DisassociateVPC(rc, zoneID, vpc)
 			}, classifyHostedZoneMutation); err != nil {
-				return fmt.Errorf("disassociate hosted zone VPC %s: %w", key, err)
+				return currentOutputs, fmt.Errorf("disassociate hosted zone VPC %s: %w", key, err)
 			}
 		}
 	}
@@ -160,10 +159,10 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HostedZo
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, zoneID, desired.Tags)
 		}, classifyHostedZoneMutation); err != nil {
-			return fmt.Errorf("update hosted zone tags: %w", err)
+			return currentOutputs, fmt.Errorf("update hosted zone tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired HostedZoneSpec, outputs HostedZoneOutputs) error {

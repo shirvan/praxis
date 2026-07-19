@@ -176,22 +176,27 @@ func TestLambdaLayerReconcile_DetectsExternalPublish(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, pubOut.Version, int64(1), "external publish should create a newer version")
 
-	// Layer versions are immutable, so the driver detects drift but cannot
-	// correct in place — Reconcile is detect-only for Lambda layers.
+	// Layer versions are immutable, so correction publishes a new version from
+	// the persisted desired artifact and makes that version the managed output.
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](
 		client, lambdalayer.ServiceName, key, "Reconcile",
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "external publish should be detected as drift")
-	assert.False(t, result.Correcting, "layer driver is detect-only; no correction is performed")
+	assert.True(t, result.Correcting, "layer driver should supersede the external version")
+	assert.Empty(t, result.Error)
 
-	// The externally published version must remain untouched.
+	corrected, err := ingress.Object[restate.Void, lambdalayer.LambdaLayerOutputs](
+		client, lambdalayer.ServiceName, key, "GetOutputs",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	require.Greater(t, corrected.Version, pubOut.Version)
 	desc, err := lambdaClient.GetLayerVersion(context.Background(), &lambdasdk.GetLayerVersionInput{
 		LayerName:     aws.String(name),
-		VersionNumber: aws.Int64(pubOut.Version),
+		VersionNumber: aws.Int64(corrected.Version),
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "externally published version", aws.ToString(desc.Description))
+	assert.Equal(t, defaultLayerSpec(name).Description, aws.ToString(desc.Description))
 }
 
 func TestLambdaLayerGetStatus_ReturnsReady(t *testing.T) {

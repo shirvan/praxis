@@ -31,7 +31,7 @@ func newGenericNetworkACLDriverWithFactory(auth authservice.AuthClient, factory 
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[NetworkACLSpec, NetworkACLOutputs, ObservedState]{
 		ServiceName:  ServiceName,
-		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true},
+		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true},
 		Operations:   ops,
 		Prepare: func(ctx restate.ObjectContext, spec NetworkACLSpec) (NetworkACLSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
@@ -100,17 +100,17 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired NetworkACL
 	return kernel.CreateResult[NetworkACLOutputs]{SeedOutputs: NetworkACLOutputs{NetworkAclId: id, VpcId: desired.VpcId}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired NetworkACLSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired NetworkACLSpec, observed ObservedState, currentOutputs NetworkACLOutputs) (NetworkACLOutputs, error) {
 	if desired.VpcId != observed.VpcId {
-		return restate.TerminalError(fmt.Errorf("network ACL vpcId is immutable: observed %q, requested %q; delete and reprovision", observed.VpcId, desired.VpcId), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("network ACL vpcId is immutable: observed %q, requested %q; delete and reprovision", observed.VpcId, desired.VpcId), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	// The convergence helpers contain only provider-specific rule and association
 	// sequencing; lifecycle state remains owned by the generic kernel.
-	return o.applyDesiredState(ctx, api, observed.NetworkAclId, desired, observed)
+	return currentOutputs, o.applyDesiredState(ctx, api, observed.NetworkAclId, desired, observed)
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired NetworkACLSpec, outputs NetworkACLOutputs) error {

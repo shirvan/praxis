@@ -34,7 +34,7 @@ func newGenericDBParameterGroupDriverWithFactory(auth authservice.AuthClient, fa
 	return kernel.MustNew(kernel.Descriptor[DBParameterGroupSpec, DBParameterGroupOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec DBParameterGroupSpec) (DBParameterGroupSpec, error) {
@@ -121,35 +121,35 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired DBParamete
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired DBParameterGroupSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired DBParameterGroupSpec, observed ObservedState, currentOutputs DBParameterGroupOutputs) (DBParameterGroupOutputs, error) {
 	if err := validateImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if observed.ManagedKey != "" && observed.ManagedKey != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"db parameter group %q is owned by Praxis object %q, not %q",
 			observed.GroupName, observed.ManagedKey, desired.ManagedKey,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if !parametersEqual(desired.Parameters, observed.Parameters) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateParameters(rc, desired, observed)
 		}, classifyDBParameterGroupMutation); err != nil {
-			return fmt.Errorf("update db parameter group parameters: %w", err)
+			return currentOutputs, fmt.Errorf("update db parameter group parameters: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		}, classifyDBParameterGroupMutation); err != nil {
-			return fmt.Errorf("update db parameter group tags: %w", err)
+			return currentOutputs, fmt.Errorf("update db parameter group tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired DBParameterGroupSpec, outputs DBParameterGroupOutputs) error {

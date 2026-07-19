@@ -37,7 +37,7 @@ func newGenericMetricAlarmDriverWithFactory(auth authservice.AuthClient, factory
 	return kernel.MustNew(kernel.Descriptor[MetricAlarmSpec, MetricAlarmOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec MetricAlarmSpec) (MetricAlarmSpec, error) {
@@ -92,23 +92,23 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired MetricAlar
 	}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired MetricAlarmSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired MetricAlarmSpec, observed ObservedState, currentOutputs MetricAlarmOutputs) (MetricAlarmOutputs, error) {
 	if observed.AlarmName != "" && desired.AlarmName != observed.AlarmName {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"alarmName is immutable for %s: current=%s desired=%s",
 			observed.AlarmArn, observed.AlarmName, desired.AlarmName,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 
 	if hasConfigurationDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.PutMetricAlarm(rc, desired)
 		}, classifyAlarmMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 
@@ -117,17 +117,17 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired MetricAl
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UntagResource(rc, observed.AlarmArn, toRemove)
 		}, classifyAlarmMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if len(toAdd) > 0 {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.TagResource(rc, observed.AlarmArn, toAdd)
 		}, classifyAlarmMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired MetricAlarmSpec, outputs MetricAlarmOutputs) error {
