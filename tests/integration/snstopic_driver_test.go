@@ -71,6 +71,35 @@ func TestSNSTopic_Provision_Idempotent(t *testing.T) {
 	assert.Equal(t, out1.TopicName, out2.TopicName)
 }
 
+func TestSNSTopic_ProvisionFIFOAndRejectsImmutableTypeChange(t *testing.T) {
+	client, snsClient := setupSNSTopicDriver(t)
+	topicName := uniqueTopicName(t) + ".fifo"
+	key := fmt.Sprintf("us-east-1~%s", topicName)
+	spec := snstopic.SNSTopicSpec{
+		Account: integrationAccountName, Region: "us-east-1", TopicName: topicName,
+		FifoTopic: true, ContentBasedDeduplication: true,
+	}
+	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+		client, snstopic.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+
+	attributes, err := snsClient.GetTopicAttributes(context.Background(), &snssdk.GetTopicAttributesInput{
+		TopicArn: aws.String(outputs.TopicArn),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "true", attributes.Attributes["FifoTopic"])
+	assert.Equal(t, "true", attributes.Attributes["ContentBasedDeduplication"])
+
+	spec.FifoTopic = false
+	spec.ContentBasedDeduplication = false
+	_, err = ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+		client, snstopic.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fifoTopic is immutable")
+}
+
 func TestSNSTopic_Import(t *testing.T) {
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
@@ -125,6 +154,45 @@ func TestSNSTopic_Delete(t *testing.T) {
 		TopicArn: aws.String(outputs.TopicArn),
 	})
 	require.Error(t, err, "topic should be deleted from Moto")
+}
+
+func TestSNSTopic_DeleteRejectsExistingSubscription(t *testing.T) {
+	client, snsClient := setupSNSTopicDriver(t)
+	topicName := uniqueTopicName(t)
+	key := fmt.Sprintf("us-east-1~%s", topicName)
+	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+		client, snstopic.ServiceName, key, "Provision",
+	).Request(t.Context(), snstopic.SNSTopicSpec{
+		Account: integrationAccountName, Region: "us-east-1", TopicName: topicName,
+	})
+	require.NoError(t, err)
+
+	queueSuffix := topicName
+	if len(queueSuffix) > 30 {
+		queueSuffix = queueSuffix[len(queueSuffix)-30:]
+	}
+	queueARN := createSQSQueueARNDirect(t, "topic-delete-boundary-"+queueSuffix)
+	subscription, err := snsClient.Subscribe(context.Background(), &snssdk.SubscribeInput{
+		TopicArn: aws.String(outputs.TopicArn), Protocol: aws.String("sqs"), Endpoint: aws.String(queueARN),
+		ReturnSubscriptionArn: true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, aws.ToString(subscription.SubscriptionArn))
+
+	_, err = ingress.Object[restate.Void, restate.Void](
+		client, snstopic.ServiceName, key, "Delete",
+	).Request(t.Context(), restate.Void{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "subscriptions exist")
+
+	_, err = snsClient.GetTopicAttributes(context.Background(), &snssdk.GetTopicAttributesInput{
+		TopicArn: aws.String(outputs.TopicArn),
+	})
+	require.NoError(t, err, "a rejected delete must leave the topic intact")
+	_, err = snsClient.GetSubscriptionAttributes(context.Background(), &snssdk.GetSubscriptionAttributesInput{
+		SubscriptionArn: subscription.SubscriptionArn,
+	})
+	require.NoError(t, err, "a rejected topic delete must not cascade-delete the subscription")
 }
 
 func TestSNSTopicDelete_ObservedModeBlocked(t *testing.T) {

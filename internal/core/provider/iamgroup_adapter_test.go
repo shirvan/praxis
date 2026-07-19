@@ -13,7 +13,7 @@ import (
 func TestIAMGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewIAMGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"IAMGroup",
 		"metadata":{"name":"app-group"},
 		"spec":{

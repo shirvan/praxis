@@ -17,6 +17,7 @@ const (
 	ConditionProvisioned = "Provisioned"
 	ConditionHealthy     = "Healthy"
 	ConditionDriftFree   = "DriftFree"
+	ConditionInitialized = "Initialized"
 )
 
 const (
@@ -26,19 +27,22 @@ const (
 )
 
 const (
-	ReasonDispatched      = "Dispatched"
-	ReasonSucceeded       = "Succeeded"
-	ReasonProvisionFailed = "ProvisionFailed"
-	ReasonDeleteFailed    = "DeleteFailed"
-	ReasonDeleting        = "Deleting"
-	ReasonDriftDetected   = "DriftDetected"
-	ReasonDriftCorrected  = "DriftCorrected"
-	ReasonExternalDelete  = "ExternalDelete"
-	ReasonNotFound        = "NotFound"
-	ReasonSkipped         = "Skipped"
-	ReasonRetrying        = "Retrying"
-	ReasonTimedOut        = "TimedOut"
-	ReasonOrphaned        = "Orphaned"
+	ReasonDispatched          = "Dispatched"
+	ReasonSucceeded           = "Succeeded"
+	ReasonProvisionFailed     = "ProvisionFailed"
+	ReasonDeleteFailed        = "DeleteFailed"
+	ReasonDeleting            = "Deleting"
+	ReasonDriftDetected       = "DriftDetected"
+	ReasonDriftCorrected      = "DriftCorrected"
+	ReasonExternalDelete      = "ExternalDelete"
+	ReasonNotFound            = "NotFound"
+	ReasonSkipped             = "Skipped"
+	ReasonRetrying            = "Retrying"
+	ReasonTimedOut            = "TimedOut"
+	ReasonOrphaned            = "Orphaned"
+	ReasonLateInitialized     = "LateInitialized"
+	ReasonReplacementRequired = "ReplacementRequired"
+	ReasonRecoveryScheduled   = "RecoveryScheduled"
 )
 
 // SetCondition replaces or inserts a condition keyed by Type. The caller is

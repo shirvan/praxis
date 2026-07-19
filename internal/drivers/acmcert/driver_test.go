@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewACMCertificateDriver(nil)
+	drv := NewGenericACMCertificateDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
 }
 
@@ -55,9 +53,4 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Len(t, outputs.DNSValidationRecords, 1)
 	assert.Equal(t, "2026-01-01T00:00:00Z", outputs.NotBefore)
 	assert.Equal(t, "2027-01-01T00:00:00Z", outputs.NotAfter)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultACMCertificateImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultACMCertificateImportMode(types.ModeManaged))
 }

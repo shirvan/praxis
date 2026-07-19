@@ -187,7 +187,7 @@ func (r *realNATGatewayAPI) FindByManagedKey(ctx context.Context, managedKey str
 			continue
 		}
 		state := string(out.NatGateways[i].State)
-		if state != string(ec2types.NatGatewayStatePending) && state != string(ec2types.NatGatewayStateAvailable) {
+		if state == string(ec2types.NatGatewayStateDeleting) || state == string(ec2types.NatGatewayStateDeleted) {
 			continue
 		}
 		if id := aws.ToString(out.NatGateways[i].NatGatewayId); id != "" {
@@ -262,6 +262,9 @@ func singleManagedKeyMatch(managedKey string, matches []string) (string, error) 
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false
+	}
+	if awserr.IsNotFoundErr(err) {
+		return true
 	}
 	var nf *notFoundError
 	if errors.As(err, &nf) {

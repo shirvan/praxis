@@ -10,17 +10,15 @@ package snssub
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level change for plan output.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
-// HasDrift returns true if the desired spec and observed state differ on mutable fields.
+// HasDrift includes immutable identity fields so Provision reaches the
+// convergence guard and rejects an impossible in-place change.
 func HasDrift(desired SNSSubscriptionSpec, observed ObservedState) bool {
+	if desired.TopicArn != observed.TopicArn || desired.Protocol != observed.Protocol || desired.Endpoint != observed.Endpoint {
+		return true
+	}
 	if !filterPoliciesEqual(desired.FilterPolicy, observed.FilterPolicy) {
 		return true
 	}
@@ -43,46 +41,61 @@ func HasDrift(desired SNSSubscriptionSpec, observed ObservedState) bool {
 }
 
 // ComputeFieldDiffs returns field-level differences for plan output.
-func ComputeFieldDiffs(desired SNSSubscriptionSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SNSSubscriptionSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if desired.TopicArn != observed.TopicArn {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.topicArn (immutable, requires replacement)", OldValue: observed.TopicArn, NewValue: desired.TopicArn,
+		})
+	}
+	if desired.Protocol != observed.Protocol {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.protocol (immutable, requires replacement)", OldValue: observed.Protocol, NewValue: desired.Protocol,
+		})
+	}
+	if desired.Endpoint != observed.Endpoint {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.endpoint (immutable, requires replacement)", OldValue: observed.Endpoint, NewValue: desired.Endpoint,
+		})
+	}
 
 	if !filterPoliciesEqual(desired.FilterPolicy, observed.FilterPolicy) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.filterPolicy",
 			OldValue: observed.FilterPolicy,
 			NewValue: desired.FilterPolicy,
 		})
 	}
 	if !filterPolicyScopesEqual(desired.FilterPolicyScope, observed.FilterPolicyScope) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.filterPolicyScope",
 			OldValue: observed.FilterPolicyScope,
 			NewValue: desired.FilterPolicyScope,
 		})
 	}
 	if desired.RawMessageDelivery != observed.RawMessageDelivery {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.rawMessageDelivery",
 			OldValue: observed.RawMessageDelivery,
 			NewValue: desired.RawMessageDelivery,
 		})
 	}
 	if !optionalPoliciesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.deliveryPolicy",
 			OldValue: observed.DeliveryPolicy,
 			NewValue: desired.DeliveryPolicy,
 		})
 	}
 	if !optionalPoliciesEqual(desired.RedrivePolicy, observed.RedrivePolicy) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.redrivePolicy",
 			OldValue: observed.RedrivePolicy,
 			NewValue: desired.RedrivePolicy,
 		})
 	}
 	if desired.SubscriptionRoleArn != observed.SubscriptionRoleArn {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.subscriptionRoleArn",
 			OldValue: observed.SubscriptionRoleArn,
 			NewValue: desired.SubscriptionRoleArn,

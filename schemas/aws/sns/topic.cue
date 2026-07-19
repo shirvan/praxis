@@ -1,7 +1,7 @@
 package sns
 
 #SNSTopic: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "SNSTopic"
 
 	metadata: {

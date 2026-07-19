@@ -34,3 +34,14 @@ func TestIsInvalidParam(t *testing.T) {
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidParameterException"}))
 	assert.False(t, IsInvalidParam(&mockAPIError{code: "LimitExceededException"}))
 }
+
+func TestTagDiffAddsMissingManagedKeyWithoutRemovingOtherInternalTags(t *testing.T) {
+	toAdd, toRemove := tagDiff(
+		map[string]string{"env": "prod"},
+		map[string]string{"env": "prod", "praxis:other": "preserve"},
+		"us-east-1~/praxis/generic",
+	)
+
+	assert.Equal(t, map[string]string{"praxis:managed-key": "us-east-1~/praxis/generic"}, toAdd)
+	assert.Empty(t, toRemove)
+}

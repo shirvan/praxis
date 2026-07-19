@@ -13,7 +13,7 @@ import (
 func TestSNSSubscriptionAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewSNSSubscriptionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SNSSubscription",
 		"metadata":{"name":"my-sub"},
 		"spec":{
@@ -90,7 +90,7 @@ func TestSNSSubscriptionAdapter_Scope(t *testing.T) {
 func TestSNSSubscriptionAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewSNSSubscriptionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SNSSubscription",
+		"apiVersion":"praxis.io/alpha","kind":"SNSSubscription",
 		"metadata":{"name":"sub"},
 		"spec":{"topicArn":"arn:aws:sns:us-east-1:123:topic","protocol":"sqs","endpoint":"arn:aws:sqs:us-east-1:123:q"}
 	}`)
@@ -102,7 +102,7 @@ func TestSNSSubscriptionAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestSNSSubscriptionAdapter_DecodeSpec_MissingTopicArn(t *testing.T) {
 	adapter := NewSNSSubscriptionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SNSSubscription",
+		"apiVersion":"praxis.io/alpha","kind":"SNSSubscription",
 		"metadata":{"name":"sub"},
 		"spec":{"region":"us-east-1","protocol":"sqs","endpoint":"arn:aws:sqs:us-east-1:123:q"}
 	}`)
@@ -114,7 +114,7 @@ func TestSNSSubscriptionAdapter_DecodeSpec_MissingTopicArn(t *testing.T) {
 func TestSNSSubscriptionAdapter_DecodeSpec_MissingProtocol(t *testing.T) {
 	adapter := NewSNSSubscriptionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SNSSubscription",
+		"apiVersion":"praxis.io/alpha","kind":"SNSSubscription",
 		"metadata":{"name":"sub"},
 		"spec":{"region":"us-east-1","topicArn":"arn:aws:sns:us-east-1:123:topic","endpoint":"arn:aws:sqs:us-east-1:123:q"}
 	}`)
@@ -126,7 +126,7 @@ func TestSNSSubscriptionAdapter_DecodeSpec_MissingProtocol(t *testing.T) {
 func TestSNSSubscriptionAdapter_DecodeSpec_MissingEndpoint(t *testing.T) {
 	adapter := NewSNSSubscriptionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SNSSubscription",
+		"apiVersion":"praxis.io/alpha","kind":"SNSSubscription",
 		"metadata":{"name":"sub"},
 		"spec":{"region":"us-east-1","topicArn":"arn:aws:sns:us-east-1:123:topic","protocol":"sqs"}
 	}`)

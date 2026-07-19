@@ -13,7 +13,7 @@ import (
 func TestSecurityGroupAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SecurityGroup",
 		"metadata":{"name":"web-sg"},
 		"spec":{
@@ -77,7 +77,7 @@ func TestSecurityGroupAdapter_NormalizeOutputs_AllFields(t *testing.T) {
 func TestSecurityGroupAdapter_DecodeSpec_MissingGroupName(t *testing.T) {
 	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SecurityGroup",
+		"apiVersion":"praxis.io/alpha","kind":"SecurityGroup",
 		"metadata":{"name":"web-sg"},
 		"spec":{"description":"test","vpcId":"vpc-123"}
 	}`)
@@ -89,7 +89,7 @@ func TestSecurityGroupAdapter_DecodeSpec_MissingGroupName(t *testing.T) {
 func TestSecurityGroupAdapter_BuildKey_MissingVpcId(t *testing.T) {
 	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SecurityGroup",
+		"apiVersion":"praxis.io/alpha","kind":"SecurityGroup",
 		"metadata":{"name":"web-sg"},
 		"spec":{"groupName":"web-sg","description":"test"}
 	}`)
@@ -101,7 +101,7 @@ func TestSecurityGroupAdapter_BuildKey_MissingVpcId(t *testing.T) {
 func TestSecurityGroupAdapter_BuildKey_MissingGroupName(t *testing.T) {
 	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SecurityGroup",
+		"apiVersion":"praxis.io/alpha","kind":"SecurityGroup",
 		"metadata":{"name":"web-sg"},
 		"spec":{"description":"test","vpcId":"vpc-123"}
 	}`)

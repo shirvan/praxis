@@ -12,8 +12,6 @@
 // work; they would each add their own converge/drift surface.
 package dynamodbtable
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object service name used to register the AWS DynamoDB table driver.
 const ServiceName = "DynamoDBTable"
 
@@ -71,20 +69,4 @@ type ObservedState struct {
 	WriteCapacity int64             `json:"writeCapacity,omitempty"`
 	ItemCount     int64             `json:"itemCount,omitempty"`
 	Tags          map[string]string `json:"tags,omitempty"`
-}
-
-// DynamoDBTableState is the single atomic state object persisted under
-// drivers.StateKey in the Restate K/V store. It combines desired spec, observed
-// state, outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type DynamoDBTableState struct {
-	Desired            DynamoDBTableSpec    `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            DynamoDBTableOutputs `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

@@ -6,8 +6,6 @@
 // Amazon Elastic Container Registry (ECR); the driver state couples both together with status tracking.
 package ecrpolicy
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object service name used to register the AWS ECR Lifecycle Policy driver.
 const ServiceName = "ECRLifecyclePolicy"
 
@@ -38,20 +36,4 @@ type ObservedState struct {
 	RepositoryArn       string `json:"repositoryArn,omitempty"`
 	RegistryId          string `json:"registryId,omitempty"`
 	LifecyclePolicyText string `json:"lifecyclePolicyText"`
-}
-
-// ECRLifecyclePolicyState is the single atomic state object persisted under drivers.StateKey
-// in the Restate K/V store. It combines desired spec, observed state,
-// outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type ECRLifecyclePolicyState struct {
-	Desired            ECRLifecyclePolicySpec    `json:"desired"`
-	Observed           ObservedState             `json:"observed"`
-	Outputs            ECRLifecyclePolicyOutputs `json:"outputs"`
-	Status             types.ResourceStatus      `json:"status"`
-	Mode               types.Mode                `json:"mode"`
-	Error              string                    `json:"error,omitempty"`
-	Generation         int64                     `json:"generation"`
-	LastReconcile      string                    `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                      `json:"reconcileScheduled"`
 }

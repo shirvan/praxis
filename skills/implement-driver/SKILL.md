@@ -21,7 +21,7 @@ File: `schemas/aws/{resource}/{resource}.cue`
 package {resource}
 
 #{Resource}: {
-    apiVersion: "praxis.io/v1"
+    apiVersion: "praxis.io/alpha"
     kind:       "{Resource}"
 
     metadata: {
@@ -58,8 +58,6 @@ File: `internal/drivers/{resource}/types.go`
 ```go
 package {resource}
 
-import "github.com/shirvan/praxis/pkg/types"
-
 const ServiceName = "{Resource}"
 
 type {Resource}Spec struct {
@@ -80,18 +78,11 @@ type ObservedState struct {
     Tags map[string]string `json:"tags,omitempty"`
 }
 
-type {Resource}State struct {
-    Desired            {Resource}Spec       `json:"desired"`
-    Observed           ObservedState        `json:"observed"`
-    Outputs            {Resource}Outputs    `json:"outputs"`
-    Status             types.ResourceStatus `json:"status"`
-    Mode               types.Mode           `json:"mode"`
-    Error              string               `json:"error,omitempty"`
-    Generation         int64                `json:"generation"`
-    LastReconcile      string               `json:"lastReconcile,omitempty"`
-    ReconcileScheduled bool                 `json:"reconcileScheduled"`
-}
 ```
+
+Do not define a resource-local lifecycle state for new drivers. The generic
+kernel persists `kernel.State[{Resource}Spec, {Resource}Outputs, ObservedState]`
+as a versioned envelope.
 
 ### 3. Create AWS API Wrapper
 
@@ -168,93 +159,58 @@ func ComputeFieldDiffs(desired {Resource}Spec, observed ObservedState) []FieldDi
 }
 ```
 
-### 5. Create Driver (Virtual Object)
+### 5. Create Typed Operations and Descriptor
 
-File: `internal/drivers/{resource}/driver.go`
+File: `internal/drivers/{resource}/generic.go`
 
 ```go
 package {resource}
 
 import (
     restate "github.com/restatedev/sdk-go"
+    "github.com/shirvan/praxis/internal/core/authservice"
     "github.com/shirvan/praxis/internal/drivers"
+    "github.com/shirvan/praxis/internal/drivers/kernel"
     "github.com/shirvan/praxis/pkg/types"
 )
 
-type {Resource}Driver struct {
-    apiFactory func(account string) ({Resource}API, error)
-}
+type operations struct { /* auth + API factory */ }
 
-func New{Resource}Driver(auth /* auth registry */) *{Resource}Driver {
-    return &{Resource}Driver{
-        apiFactory: func(account string) ({Resource}API, error) {
-            // Resolve AWS config from auth registry
-            // Return New{Resource}API(client)
+func (o *operations) Observe(ctx restate.ObjectContext, desired {Resource}Spec, outputs {Resource}Outputs) (kernel.Observation[ObservedState], error) { /* Describe */ }
+func (o *operations) Create(ctx restate.ObjectContext, desired {Resource}Spec) (kernel.CreateResult[{Resource}Outputs], error) { /* Create + wait */ }
+func (o *operations) Converge(ctx restate.ObjectContext, desired {Resource}Spec, observed ObservedState) error { /* mutable fields */ }
+func (o *operations) Delete(ctx restate.ObjectContext, desired {Resource}Spec, outputs {Resource}Outputs) error { /* idempotent delete */ }
+func (o *operations) Import(ctx restate.ObjectContext, ref types.ImportRef) (kernel.Observation[ObservedState], error) { /* lookup */ }
+
+func NewGeneric{Resource}Driver(auth authservice.AuthClient) *kernel.Driver[{Resource}Spec, {Resource}Outputs, ObservedState] {
+    ops := &operations{/* configure auth and API factory */}
+    return kernel.MustNew(kernel.Descriptor[{Resource}Spec, {Resource}Outputs, ObservedState]{
+        ServiceName: ServiceName,
+        Capabilities: kernel.Capabilities{
+            Declared: true, Import: true, ObservedMode: true,
+            Delete: true, ManagedDriftCorrection: true,
         },
-    }
-}
-
-func (d *{Resource}Driver) ServiceName() string { return ServiceName }
-
-// Provision — Exclusive handler: create or converge
-func (d *{Resource}Driver) Provision(ctx restate.ObjectContext, spec {Resource}Spec) ({Resource}Outputs, error) {
-    state := drivers.GetState[{Resource}State](ctx)
-    api, err := d.apiFactory(spec.Account)
-    // 1. Check if exists (Describe)
-    // 2. If not found → Create
-    // 3. If found → Converge mutable fields
-    // 4. Tag with praxis:managed-key
-    // 5. Update state (desired, observed, outputs, status=Ready)
-    // 6. Schedule reconciliation
-    // 7. Return outputs
-}
-
-// Import — Exclusive handler: adopt existing resource
-func (d *{Resource}Driver) Import(ctx restate.ObjectContext, ref types.ImportRef) ({Resource}Outputs, error) {
-    // 1. Describe resource by ID
-    // 2. Capture observed as both desired AND observed
-    // 3. Set mode=Managed (or Observed if ref says so)
-    // 4. Schedule reconciliation
-}
-
-// Delete — Exclusive handler
-func (d *{Resource}Driver) Delete(ctx restate.ObjectContext) error {
-    // 1. Load state
-    // 2. Delete from AWS
-    // 3. Set status=Deleted
-    // 4. Do NOT schedule reconciliation
-}
-
-// Reconcile — Exclusive handler: drift detection + correction
-func (d *{Resource}Driver) Reconcile(ctx restate.ObjectContext) (types.ReconcileResult, error) {
-    // 1. Load state
-    // 2. Describe resource (check for external deletion)
-    // 3. HasDrift(desired, observed)
-    // 4. If managed: correct drift
-    // 5. If observed: report only
-    // 6. Reschedule timer
-    // 7. Emit drift events via drivers.ReportDriftEvent()
-}
-
-// GetStatus — Shared handler (concurrent reads)
-func (d *{Resource}Driver) GetStatus(ctx restate.ObjectSharedContext) (types.StatusResponse, error) {
-    state := drivers.GetState[{Resource}State](ctx)
-    return types.StatusResponse{Status: state.Status, Error: state.Error, Mode: state.Mode}, nil
-}
-
-// GetOutputs — Shared handler
-func (d *{Resource}Driver) GetOutputs(ctx restate.ObjectSharedContext) ({Resource}Outputs, error) {
-    state := drivers.GetState[{Resource}State](ctx)
-    return state.Outputs, nil
+        Operations: ops,
+        Prepare: prepareSpec,
+        Validate: validateSpec,
+        DesiredFromObserved: desiredFromObserved,
+        OutputsFromObserved: outputsFromObserved,
+        HasDrift: HasDrift,
+    })
 }
 ```
 
+Use `drivers.RunAWS` for provider calls. Delete must fail clearly when provider
+prerequisites are not satisfied; do not add a cleanup handler. For
+server-defaulted spec fields, declare
+`LateInitialization: true` and supply the pure `LateInitialize` descriptor hook.
+
 ### 6. Wire Into Binary
 
-Add the driver to the appropriate `cmd/praxis-{domain}/main.go`:
+Add the driver to the appropriate `internal/driverpack/{domain}/definitions.go`:
 
 ```go
-Bind(restate.Reflect({resource}.New{Resource}Driver(cfg.Auth())))
+genericbinding.Reflect({resource}.NewGeneric{Resource}Driver(auth), rp)
 ```
 
 ### 7. Create Provider Adapter
@@ -281,11 +237,14 @@ Add or update the service in `docker-compose.yaml` if creating a new pack.
 3. **Scheduling reconciliation after delete**: Never do this
 4. **Not filtering praxis:* tags**: Will cause false drift positives
 5. **Missing Account field in Spec**: Injected at dispatch time, must be in struct
-6. **Non-atomic state updates**: Use single `restate.Set(ctx, drivers.StateKey, state)`
+6. **Resource-local lifecycle handlers/state**: New drivers use the generic kernel
+7. **Compatibility paths**: Do not add state upgrades, dual reads, aliases, or migrations without owner approval
 
 ## Reference Implementations
 
-Good examples to follow:
-- **Simple**: `internal/drivers/s3/` (Global scope, straightforward CRUD)
-- **Region-scoped**: `internal/drivers/vpc/` (Region scope, multiple mutable fields)
-- **Custom-scoped**: `internal/drivers/sg/` (Custom scope, complex normalization)
+Good generic examples to follow:
+- **Simple/upsert**: `internal/drivers/dashboard/generic.go`
+- **Composite**: `internal/drivers/kmskey/generic.go`
+- **Async/waiter**: `internal/drivers/dynamodbtable/generic.go`
+- **Late initialization/safe delete**: `internal/drivers/s3/generic.go`
+- **Generic driver architecture**: `docs/GENERIC_DRIVERS.md`

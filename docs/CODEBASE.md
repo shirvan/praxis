@@ -12,7 +12,7 @@ praxis/
 ├── internal/               # Private packages (core business logic)
 │   ├── cli/                # Cobra CLI commands
 │   ├── core/               # Coordination layer (14 subpackages)
-│   ├── drivers/            # AWS resource drivers (45 packages)
+│   ├── drivers/            # AWS resource drivers (51 packages)
 │   ├── eventing/           # CloudEvents contracts shared with drivers
 │   └── infra/              # AWS client wrappers, rate limiting
 ├── pkg/types/              # Public shared types
@@ -56,7 +56,7 @@ praxis/
 | `diff/` | Plan diff engine (field-level comparison) |
 | `jsonpath/` | JSON path get/set utilities |
 | `orchestrator/` | Workflows, deployment state, events, sinks, hydrator, indexes |
-| `provider/` | Adapter registry (Kind → ServiceName), 45 adapter files |
+| `provider/` | Adapter registry (Kind → ServiceName), 51 adapter files |
 | `registry/` | Template + Policy registries (Restate Virtual Objects) |
 | `resolver/` | SSM parameter resolution |
 | `template/` | CUE evaluation engine |
@@ -64,22 +64,23 @@ praxis/
 
 ## Driver Package Layout (`internal/drivers/{resource}/`)
 
-Each of the 45 driver packages follows this pattern:
+Each of the 51 driver packages follows this pattern:
 
 ```
 {resource}/
-  types.go          — Spec, Outputs, ObservedState, State structs
+  types.go          — Spec, Outputs, and ObservedState types
   aws.go            — API interface + real implementation
   drift.go          — HasDrift(), ComputeFieldDiffs()
-  driver.go         — Virtual Object + 6 handlers
-  driver_test.go    — Handler logic tests
+  generic.go        — Resource operations + generic kernel descriptor
+  generic_test.go   — Shared lifecycle conformance suite
+  driver_test.go    — Resource-specific lifecycle tests, when needed
   aws_test.go       — Error classification tests
   drift_test.go     — Drift detection tests
 ```
 
 Shared driver code:
-- `internal/drivers/contract.go` — StateKey constant, helpers
-- `internal/drivers/state.go` — State management utilities
+- `internal/drivers/kernel/` — The one lifecycle implementation and durable state envelope
+- `internal/driverpack/genericbinding/` — The one production Restate binding path
 - `internal/drivers/tags.go` — Tag comparison helpers
 - `internal/drivers/drift_events.go` — Drift event emission
 - `internal/drivers/autherr.go` — Auth error classifiers
@@ -90,7 +91,7 @@ Shared driver code:
 One adapter per driver, plus shared infrastructure:
 - `{resource}_adapter.go` — Implements `provider.Adapter` interface
 - `{resource}_adapter_test.go` — Spec decoding tests
-- `registry.go` — Central registry, `NewRegistry()` wires all 45 adapters
+- `registry.go` — Central registry, `NewRegistry()` wires all 51 adapters
 - `keys.go` — Key scope types, `JoinKey()`/`SplitKey()`
 - `adapter.go` — Adapter interface definition
 
@@ -114,7 +115,7 @@ One adapter per driver, plus shared infrastructure:
 | Task | Start Here |
 |------|------------|
 | Follow a deploy request | `internal/cli/deploy.go` → `internal/core/command/handlers_apply.go` → `internal/core/orchestrator/workflow.go` |
-| Understand a driver | `internal/drivers/{resource}/driver.go` → `types.go` → `aws.go` → `drift.go` |
+| Understand a driver | `internal/drivers/{resource}/generic.go` → `types.go` → `aws.go` → `drift.go` → `internal/drivers/kernel/` |
 | Template evaluation | `internal/core/template/engine.go` → `internal/core/command/pipeline.go` |
 | DAG scheduling | `internal/core/dag/graph.go` → `scheduler.go` → `parser.go` |
 | Error handling | `internal/drivers/awserr/classify.go` → `internal/core/template/errors.go` |

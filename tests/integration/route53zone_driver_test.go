@@ -30,7 +30,7 @@ func setupRoute53ZoneDriver(t *testing.T) (*ingress.Client, *route53sdk.Client) 
 	awsCfg := motoAWSConfig(t)
 	r53Client := awsclient.NewRoute53Client(awsCfg)
 	ensureRoute53Enabled(t, r53Client)
-	driver := route53zone.NewHostedZoneDriver(authservice.NewAuthClient())
+	driver := route53zone.NewGenericHostedZoneDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, r53Client

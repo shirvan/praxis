@@ -6,16 +6,10 @@
 package lambdalayer
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"slices"
 	"sort"
 )
-
-// FieldDiffEntry represents a single field difference with JSON path and old/new values.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
 
 // HasDrift returns true if any field differs between desired and observed state.
 func HasDrift(desired LambdaLayerSpec, observed ObservedState, outputs LambdaLayerOutputs) bool {
@@ -25,22 +19,22 @@ func HasDrift(desired LambdaLayerSpec, observed ObservedState, outputs LambdaLay
 // ComputeFieldDiffs returns per-field diffs.
 // Checks: version mismatch (external publish), description, compatibleRuntimes,
 // compatibleArchitectures, licenseInfo, and permissions (accountIds + public flag).
-func ComputeFieldDiffs(desired LambdaLayerSpec, observed ObservedState, outputs LambdaLayerOutputs) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired LambdaLayerSpec, observed ObservedState, outputs LambdaLayerOutputs) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	if outputs.Version != 0 && observed.Version != outputs.Version {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.version (external publish detected)", OldValue: observed.Version, NewValue: outputs.Version})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.version (external publish detected)", OldValue: observed.Version, NewValue: outputs.Version})
 	}
 	if desired.Description != observed.Description {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if !sortedSlicesEqual(desired.CompatibleRuntimes, observed.CompatibleRuntimes) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.compatibleRuntimes", OldValue: observed.CompatibleRuntimes, NewValue: desired.CompatibleRuntimes})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.compatibleRuntimes", OldValue: observed.CompatibleRuntimes, NewValue: desired.CompatibleRuntimes})
 	}
 	if !sortedSlicesEqual(desired.CompatibleArchitectures, observed.CompatibleArchitectures) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.compatibleArchitectures", OldValue: observed.CompatibleArchitectures, NewValue: desired.CompatibleArchitectures})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.compatibleArchitectures", OldValue: observed.CompatibleArchitectures, NewValue: desired.CompatibleArchitectures})
 	}
 	if desired.LicenseInfo != observed.LicenseInfo {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.licenseInfo", OldValue: observed.LicenseInfo, NewValue: desired.LicenseInfo})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.licenseInfo", OldValue: observed.LicenseInfo, NewValue: desired.LicenseInfo})
 	}
 	desiredPerms := PermissionsSpec{}
 	if desired.Permissions != nil {
@@ -48,7 +42,7 @@ func ComputeFieldDiffs(desired LambdaLayerSpec, observed ObservedState, outputs 
 	}
 	observedPerms := normalizePermissions(observed.Permissions)
 	if !slices.Equal(desiredPerms.AccountIds, observedPerms.AccountIds) || desiredPerms.Public != observedPerms.Public {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.permissions", OldValue: observedPerms, NewValue: desiredPerms})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.permissions", OldValue: observedPerms, NewValue: desiredPerms})
 	}
 	return diffs
 }

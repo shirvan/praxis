@@ -71,6 +71,7 @@ praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.jso
 | Template | Description | Resources |
 |----------|-------------|-----------|
 | `ec2-web-stack` | VPC + security group + EC2 instance | VPC → SecurityGroup → EC2Instance |
+| `foundation-services` | Minimal control-plane services | DynamoDB + ECS + EKS + KMS + SSM + Secrets Manager |
 | `three-tier-app` | Full three-tier: VPC, subnets, IGW, NAT, security groups, web + app servers, S3 (with lifecycle rules) | 13 resources |
 | `network-locked-app` | Defense-in-depth: VPC + NACL + SG + EC2 | VPC → Subnet → NetworkACL + SecurityGroup → EC2Instance |
 

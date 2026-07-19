@@ -6,8 +6,6 @@
 // Amazon CloudWatch; the driver state couples both together with status tracking.
 package dashboard
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object service name used to register the AWS CloudWatch Dashboard driver.
 const ServiceName = "Dashboard"
 
@@ -36,22 +34,6 @@ type ObservedState struct {
 	DashboardArn  string `json:"dashboardArn"`
 	DashboardName string `json:"dashboardName"`
 	DashboardBody string `json:"dashboardBody"`
-}
-
-// DashboardState is the single atomic state object persisted under drivers.StateKey
-// in the Restate K/V store. It combines desired spec, observed state,
-// outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type DashboardState struct {
-	Desired            DashboardSpec        `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            DashboardOutputs     `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }
 
 // ValidationMessage carries a dashboard body validation error with an optional data-path locator.

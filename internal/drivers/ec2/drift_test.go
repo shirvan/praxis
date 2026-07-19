@@ -85,6 +85,22 @@ func TestHasDrift_MonitoringChanged(t *testing.T) {
 	assert.True(t, ec2.HasDrift(spec, obs))
 }
 
+func TestHasDrift_IAMInstanceProfileChanged(t *testing.T) {
+	spec := ec2.EC2InstanceSpec{InstanceType: "t3.micro", IamInstanceProfile: "new-profile", Tags: map[string]string{}}
+	obs := ec2.ObservedState{InstanceType: "t3.micro", IamInstanceProfile: "old-profile", State: "running", Tags: map[string]string{}}
+	assert.True(t, ec2.HasDrift(spec, obs))
+}
+
+func TestHasDrift_IAMInstanceProfileARNAndNameAreEquivalent(t *testing.T) {
+	spec := ec2.EC2InstanceSpec{
+		InstanceType:       "t3.micro",
+		IamInstanceProfile: "arn:aws:iam::123456789012:instance-profile/platform/app-profile",
+		Tags:               map[string]string{},
+	}
+	obs := ec2.ObservedState{InstanceType: "t3.micro", IamInstanceProfile: "app-profile", State: "running", Tags: map[string]string{}}
+	assert.False(t, ec2.HasDrift(spec, obs))
+}
+
 func TestHasDrift_TagAdded(t *testing.T) {
 	spec := ec2.EC2InstanceSpec{InstanceType: "t3.micro", Tags: map[string]string{"env": "prod"}}
 	obs := ec2.ObservedState{InstanceType: "t3.micro", State: "running", Tags: map[string]string{}}
@@ -153,9 +169,9 @@ func TestComputeFieldDiffs_ImmutableFields(t *testing.T) {
 	for _, d := range diffs {
 		paths[d.Path] = true
 	}
-	assert.True(t, paths["spec.imageId (immutable, ignored)"])
-	assert.True(t, paths["spec.subnetId (immutable, ignored)"])
-	assert.True(t, paths["spec.keyName (immutable, ignored)"])
+	assert.True(t, paths["spec.imageId (immutable, requires replacement)"])
+	assert.True(t, paths["spec.subnetId (immutable, requires replacement)"])
+	assert.True(t, paths["spec.keyName (immutable, requires replacement)"])
 }
 
 func TestComputeFieldDiffs_IgnoresPraxisTags(t *testing.T) {
@@ -171,22 +187,24 @@ func TestComputeFieldDiffs_IgnoresPraxisTags(t *testing.T) {
 func TestComputeFieldDiffs_ReportsMutableAndImmutable(t *testing.T) {
 	diffs := ec2.ComputeFieldDiffs(
 		ec2.EC2InstanceSpec{
-			ImageId:          "ami-0123456789abcdef0",
-			InstanceType:     "t3.small",
-			SubnetId:         "subnet-new",
-			KeyName:          "key-new",
-			SecurityGroupIds: []string{"sg-b"},
-			Monitoring:       true,
-			Tags:             map[string]string{"env": "prod"},
+			ImageId:            "ami-0123456789abcdef0",
+			InstanceType:       "t3.small",
+			SubnetId:           "subnet-new",
+			KeyName:            "key-new",
+			SecurityGroupIds:   []string{"sg-b"},
+			IamInstanceProfile: "new-profile",
+			Monitoring:         true,
+			Tags:               map[string]string{"env": "prod"},
 		},
 		ec2.ObservedState{
-			ImageId:          "ami-aaaaaaaa",
-			InstanceType:     "t3.micro",
-			SubnetId:         "subnet-old",
-			KeyName:          "key-old",
-			SecurityGroupIds: []string{"sg-a"},
-			Monitoring:       false,
-			Tags:             map[string]string{"env": "dev", "praxis:managed-key": "k"},
+			ImageId:            "ami-aaaaaaaa",
+			InstanceType:       "t3.micro",
+			SubnetId:           "subnet-old",
+			KeyName:            "key-old",
+			SecurityGroupIds:   []string{"sg-a"},
+			IamInstanceProfile: "old-profile",
+			Monitoring:         false,
+			Tags:               map[string]string{"env": "dev", "praxis:managed-key": "k"},
 		},
 	)
 	assert.NotEmpty(t, diffs)
@@ -197,9 +215,10 @@ func TestComputeFieldDiffs_ReportsMutableAndImmutable(t *testing.T) {
 	}
 	assert.True(t, paths["spec.instanceType"])
 	assert.True(t, paths["spec.securityGroupIds"])
+	assert.True(t, paths["spec.iamInstanceProfile"])
 	assert.True(t, paths["spec.monitoring"])
-	assert.True(t, paths["spec.imageId (immutable, ignored)"])
-	assert.True(t, paths["spec.subnetId (immutable, ignored)"])
-	assert.True(t, paths["spec.keyName (immutable, ignored)"])
+	assert.True(t, paths["spec.imageId (immutable, requires replacement)"])
+	assert.True(t, paths["spec.subnetId (immutable, requires replacement)"])
+	assert.True(t, paths["spec.keyName (immutable, requires replacement)"])
 	assert.True(t, paths["tags.env"])
 }

@@ -9,6 +9,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
 	"reflect"
 )
 
@@ -22,24 +23,15 @@ func HasDrift(desired DashboardSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired DashboardSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired DashboardSpec, observed ObservedState) []drivers.FieldDiff {
 	if bodiesEqual(desired.DashboardBody, observed.DashboardBody) {
 		return nil
 	}
-	return []FieldDiffEntry{{
+	return []drivers.FieldDiff{{
 		Path:     "spec.dashboardBody",
 		OldValue: truncateBody(observed.DashboardBody, 200),
 		NewValue: truncateBody(desired.DashboardBody, 200),
 	}}
-}
-
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 func bodiesEqual(desired, observed string) bool {

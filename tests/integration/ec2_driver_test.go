@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	iamsdk "github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -42,9 +43,9 @@ func setupEC2Driver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := ec2.NewEC2InstanceDriver(authservice.NewAuthClient())
+	driver := ec2.NewGenericEC2InstanceDriver(authservice.NewAuthClient())
 
-	return setupDriverEventingEnv(t, driver), ec2Client
+	return setupDriverEventingEnvWithCoreRecovery(t, driver), ec2Client
 }
 
 func getDefaultSubnetId(t *testing.T, ec2Client *ec2sdk.Client) string {
@@ -181,6 +182,67 @@ func TestEC2Provision_Idempotent(t *testing.T) {
 	assert.Equal(t, out1.InstanceId, out2.InstanceId, "re-provision should reuse same instance")
 }
 
+func TestEC2Provision_ConvergesIAMInstanceProfileAttachment(t *testing.T) {
+	client, ec2Client := setupEC2Driver(t)
+	iamClient := awsclient.NewIAMClient(motoAWSConfig(t))
+	subnetId := getDefaultSubnetId(t, ec2Client)
+	name := uniqueInstanceName(t)
+	key := fmt.Sprintf("us-east-1~%s", name)
+
+	profileA := createEC2TestInstanceProfile(t, iamClient, "profile-a", "role-a")
+	profileB := createEC2TestInstanceProfile(t, iamClient, "profile-b", "role-b")
+	spec := ec2.EC2InstanceSpec{
+		Account: integrationAccountName, Region: "us-east-1", ImageId: "ami-0123456789abcdef0",
+		InstanceType: "t3.micro", SubnetId: subnetId, IamInstanceProfile: profileA,
+		ManagedKey: key, Tags: map[string]string{"Name": name},
+	}
+
+	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), spec)
+	require.NoError(t, err)
+	assertEC2InstanceProfile(t, ec2Client, outputs.InstanceId, profileA)
+
+	spec.IamInstanceProfile = profileB
+	_, err = ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), spec)
+	require.NoError(t, err)
+	assertEC2InstanceProfile(t, ec2Client, outputs.InstanceId, profileB)
+
+	spec.IamInstanceProfile = ""
+	_, err = ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), spec)
+	require.NoError(t, err)
+	assertEC2InstanceProfile(t, ec2Client, outputs.InstanceId, "")
+}
+
+func createEC2TestInstanceProfile(t *testing.T, iamClient *iamsdk.Client, profilePrefix, rolePrefix string) string {
+	t.Helper()
+	profileName := uniqueIAMName(t, profilePrefix)
+	roleName := uniqueIAMName(t, rolePrefix)
+	createIAMRole(t, iamClient, roleName)
+	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
+	_, err := iamClient.CreateInstanceProfile(t.Context(), &iamsdk.CreateInstanceProfileInput{InstanceProfileName: aws.String(profileName)})
+	require.NoError(t, err)
+	_, err = iamClient.AddRoleToInstanceProfile(t.Context(), &iamsdk.AddRoleToInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName), RoleName: aws.String(roleName),
+	})
+	require.NoError(t, err)
+	return profileName
+}
+
+func assertEC2InstanceProfile(t *testing.T, ec2Client *ec2sdk.Client, instanceID, expectedName string) {
+	t.Helper()
+	out, err := ec2Client.DescribeIamInstanceProfileAssociations(t.Context(), &ec2sdk.DescribeIamInstanceProfileAssociationsInput{
+		Filters: []ec2types.Filter{{Name: aws.String("instance-id"), Values: []string{instanceID}}},
+	})
+	require.NoError(t, err)
+	if expectedName == "" {
+		assert.Empty(t, out.IamInstanceProfileAssociations)
+		return
+	}
+	require.Len(t, out.IamInstanceProfileAssociations, 1)
+	profile := out.IamInstanceProfileAssociations[0].IamInstanceProfile
+	require.NotNil(t, profile)
+	assert.True(t, strings.HasSuffix(aws.ToString(profile.Arn), "/"+expectedName))
+}
+
 func TestEC2Delete_TerminatesInstance(t *testing.T) {
 	client, ec2Client := setupEC2Driver(t)
 	name := uniqueInstanceName(t)
@@ -299,7 +361,20 @@ func TestEC2Reconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	subnetId := getDefaultSubnetId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 	streamKey := "dep-ec2-external-delete-" + name
-	registerDriftEventOwner(t, client, key, streamKey, name, ec2.ServiceName)
+	_, err := ingress.Object[orchestrator.DeploymentPlan, int64](
+		client, orchestrator.DeploymentStateServiceName, streamKey, "InitDeployment",
+	).Request(t.Context(), orchestrator.DeploymentPlan{
+		Key: streamKey, Workspace: "integration", CreatedAt: time.Now().UTC(),
+		Resources: []orchestrator.PlanResource{{
+			Name: name, Kind: ec2.ServiceName, DriverService: ec2.ServiceName, Key: key,
+			Lifecycle: &types.LifecyclePolicy{Recovery: &types.RecoveryPolicy{Mode: types.RecoveryModeManual}},
+		}},
+	})
+	require.NoError(t, err)
+	_, err = ingress.Object[orchestrator.StatusUpdate, restate.Void](
+		client, orchestrator.DeploymentStateServiceName, streamKey, "SetStatus",
+	).Request(t.Context(), orchestrator.StatusUpdate{Status: types.DeploymentComplete, UpdatedAt: time.Now().UTC()})
+	require.NoError(t, err)
 
 	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
@@ -321,7 +396,35 @@ func TestEC2Reconcile_EmitsExternalDeleteEvent(t *testing.T) {
 		client, "EC2Instance", key, "Reconcile",
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
-	assert.Contains(t, result.Error, "instance")
+	assert.Equal(t, "EC2Instance resource was deleted externally", result.Error)
 	assert.Contains(t, pollDriftEventTypes(t, client, streamKey, orchestrator.EventTypeDriftExternalDelete), orchestrator.EventTypeDriftExternalDelete)
+	recoveryState := pollEC2ManualRecoveryState(t, client, streamKey, name)
+	assert.Equal(t, types.DeploymentComplete, recoveryState.Status)
+	resourceState := recoveryState.Resources[name]
+	require.NotNil(t, resourceState)
+	assert.Equal(t, types.DeploymentResourceError, resourceState.Status)
+	assert.Equal(t, result.Error, resourceState.Error)
+	require.Len(t, resourceState.Conditions, 1)
+	assert.Equal(t, types.ReasonReplacementRequired, resourceState.Conditions[0].Reason)
 	assert.Equal(t, eventing.DriftEventExternalDelete, strings.TrimPrefix(orchestrator.EventTypeDriftExternalDelete, "dev.praxis.drift."))
+}
+
+func pollEC2ManualRecoveryState(t *testing.T, client *ingress.Client, streamKey, resourceName string) *orchestrator.DeploymentState {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		state, err := ingress.Object[restate.Void, *orchestrator.DeploymentState](
+			client, orchestrator.DeploymentStateServiceName, streamKey, "GetState",
+		).Request(t.Context(), restate.Void{})
+		require.NoError(t, err)
+		if state != nil {
+			if resource := state.Resources[resourceName]; resource != nil && resource.Status == types.DeploymentResourceError {
+				return state
+			}
+		}
+		if time.Now().After(deadline) {
+			require.FailNow(t, "timed out waiting for EC2 manual recovery state")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }

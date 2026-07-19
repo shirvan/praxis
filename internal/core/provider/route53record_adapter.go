@@ -93,7 +93,7 @@ func route53RecordDescriptor() GenericDescriptor[route53record.RecordSpec, route
 
 		// The plan ID packs the record identity (zone ID, FQDN, type, optional
 		// set identifier) into one key-shaped string; the probe unpacks it.
-		PlanID: func(out route53record.RecordOutputs) string {
+		PlanIdentity: storedPlanIdentity[route53record.RecordSpec](func(out route53record.RecordOutputs) string {
 			if out.FQDN == "" {
 				return ""
 			}
@@ -102,13 +102,13 @@ func route53RecordDescriptor() GenericDescriptor[route53record.RecordSpec, route
 				parts = append(parts, out.SetIdentifier)
 			}
 			return JoinKey(parts...)
-		},
+		}),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53record.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53record.RecordSpec, route53record.RecordOutputs, route53record.ObservedState] {
 			return route53RecordProbe(route53record.NewRecordAPI(awsclient.NewRoute53Client(cfg)))
 		},
 
-		DiffFields: func(desired route53record.RecordSpec, observed route53record.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired route53record.RecordSpec, observed route53record.ObservedState, _ route53record.RecordOutputs) []types.FieldDiff {
 			rawDiffs := route53record.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -121,8 +121,9 @@ func route53RecordDescriptor() GenericDescriptor[route53record.RecordSpec, route
 
 // route53RecordProbe adapts the driver API to the generic plan probe shape.
 // The plan ID carries the packed record identity produced by PlanID.
-func route53RecordProbe(api route53record.RecordAPI) PlanProbeFunc[route53record.ObservedState] {
-	return func(runCtx restate.RunContext, planID string) (route53record.ObservedState, bool, error) {
+func route53RecordProbe(api route53record.RecordAPI) PlanProbeFunc[route53record.RecordSpec, route53record.RecordOutputs, route53record.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[route53record.RecordSpec, route53record.RecordOutputs]) (route53record.ObservedState, bool, error) {
+		planID := input.Identity
 		parts := strings.Split(planID, KeySeparator)
 		if len(parts) < 3 {
 			return route53record.ObservedState{}, false, fmt.Errorf("Route53Record plan ID %q must be <hostedZoneId>~<fqdn>~<type>[~<setIdentifier>]", planID)

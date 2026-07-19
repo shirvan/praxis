@@ -1,7 +1,7 @@
 package route53
 
 #Route53Record: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "Route53Record"
 
 	metadata: {

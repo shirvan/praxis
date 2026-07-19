@@ -13,7 +13,7 @@ import (
 func TestLambdaPermissionAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewLambdaPermissionAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"LambdaPermission",
 		"metadata":{"name":"allow-s3"},
 		"spec":{

@@ -13,7 +13,7 @@ import (
 func TestIAMUserAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewIAMUserAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"IAMUser",
 		"metadata":{"name":"app-user"},
 		"spec":{

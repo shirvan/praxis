@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewDBParameterGroupDriver(nil)
+	drv := NewGenericDBParameterGroupDriver(nil)
 	assert.Equal(t, "DBParameterGroup", drv.ServiceName())
 }
 
@@ -68,11 +66,6 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, "arn:aws:rds:us-east-1:123456:pg:my-pg", out.ARN)
 	assert.Equal(t, "mysql8.0", out.Family)
 	assert.Equal(t, TypeDB, out.Type)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
 }
 
 func TestParameterGroupTypeFromKey(t *testing.T) {

@@ -14,14 +14,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.description").
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired KMSKey spec against the observed state from AWS
 // and returns true if any mutable field has diverged. It is called during
 // Reconcile to decide whether drift correction is needed. Immutable fields (key
@@ -45,43 +37,43 @@ func configDrift(desired KMSKeySpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging.
-func ComputeFieldDiffs(desired KMSKeySpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired KMSKeySpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	// Immutable fields — reported for visibility, never corrected in place.
 	if observed.KeyUsage != "" && desired.KeyUsage != observed.KeyUsage {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.keyUsage (immutable, requires replacement)", OldValue: observed.KeyUsage, NewValue: desired.KeyUsage})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.keyUsage (immutable, requires replacement)", OldValue: observed.KeyUsage, NewValue: desired.KeyUsage})
 	}
 	if observed.KeySpec != "" && desired.KeySpec != observed.KeySpec {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.keySpec (immutable, requires replacement)", OldValue: observed.KeySpec, NewValue: desired.KeySpec})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.keySpec (immutable, requires replacement)", OldValue: observed.KeySpec, NewValue: desired.KeySpec})
 	}
 
 	// Mutable fields.
 	if desired.Description != observed.Description {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if desired.EnableKeyRotation != observed.EnableKeyRotation {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.enableKeyRotation", OldValue: observed.EnableKeyRotation, NewValue: desired.EnableKeyRotation})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.enableKeyRotation", OldValue: observed.EnableKeyRotation, NewValue: desired.EnableKeyRotation})
 	}
 
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

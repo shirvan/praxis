@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewIAMRoleDriver(nil)
+	drv := NewGenericIAMRoleDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
 }
 
@@ -56,9 +54,4 @@ func TestDiffStringSets(t *testing.T) {
 	add, remove := diffStringSets([]string{"a", "b"}, []string{"b", "c"})
 	assert.Equal(t, []string{"a"}, add)
 	assert.Equal(t, []string{"c"}, remove)
-}
-
-func TestStateShape(t *testing.T) {
-	state := IAMRoleState{Status: types.StatusReady}
-	assert.Equal(t, types.StatusReady, state.Status)
 }

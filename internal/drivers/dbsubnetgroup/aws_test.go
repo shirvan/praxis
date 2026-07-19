@@ -31,6 +31,12 @@ func TestIsNotFound_False(t *testing.T) {
 
 func TestIsAlreadyExists_True(t *testing.T) {
 	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBSubnetGroupAlreadyExistsFault"}))
+	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBSubnetGroupAlreadyExists"}))
+}
+
+func TestIsQuotaExceeded(t *testing.T) {
+	assert.True(t, IsQuotaExceeded(&mockAPIError{code: "DBSubnetGroupQuotaExceeded"}))
+	assert.False(t, IsQuotaExceeded(errors.New("timeout")))
 }
 
 func TestIsAlreadyExists_False(t *testing.T) {

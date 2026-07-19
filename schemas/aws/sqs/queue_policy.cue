@@ -1,7 +1,7 @@
 package sqs
 
 #SQSQueuePolicy: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "SQSQueuePolicy"
 
 	metadata: {

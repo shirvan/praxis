@@ -7,20 +7,23 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares desired spec against observed state for all mutable fields:
 // engineVersion, port, dbSubnetGroupName, dbClusterParameterGroupName,
 // vpcSecurityGroupIds, storageEncrypted, kmsKeyId, backup settings,
 // deletionProtection, enabledCloudwatchLogsExports, and tags.
-// Immutable fields (engine, masterUsername, databaseName) are NOT checked here.
+// Immutable identity fields are checked so Provision can reject changes before
+// attempting any mutable convergence.
 func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
+	if desired.ClusterIdentifier != observed.ClusterIdentifier || desired.Engine != observed.Engine || desired.MasterUsername != observed.MasterUsername || desired.StorageEncrypted != observed.StorageEncrypted {
+		return true
+	}
+	if desired.DatabaseName != "" && desired.DatabaseName != observed.DatabaseName {
+		return true
+	}
+	if desired.KMSKeyId != "" && desired.KMSKeyId != observed.KMSKeyId {
+		return true
+	}
 	if desired.EngineVersion != observed.EngineVersion {
 		return true
 	}
@@ -57,12 +60,12 @@ func HasDrift(desired AuroraClusterSpec, observed ObservedState) bool {
 // ComputeFieldDiffs returns a structured list of differences for display.
 // Immutable fields (engine, masterUsername, databaseName, storageEncrypted, kmsKeyId)
 // are annotated with "(immutable, ignored)" so operators see them but the driver won't correct.
-func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []drivers.FieldDiff {
 	desired = applyDefaults(desired)
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
 	appendIfDifferent := func(path string, oldValue any, newValue any) {
 		if oldValue != newValue {
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: oldValue, NewValue: newValue})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: oldValue, NewValue: newValue})
 		}
 	}
 	appendIfDifferent("spec.engineVersion", observed.EngineVersion, desired.EngineVersion)
@@ -76,7 +79,7 @@ func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []Fiel
 		appendIfDifferent("spec.dbClusterParameterGroupName", observed.DBClusterParameterGroupName, desired.DBClusterParameterGroupName)
 	}
 	if !stringSliceEqual(desired.VpcSecurityGroupIds, observed.VpcSecurityGroupIds) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcSecurityGroupIds", OldValue: observed.VpcSecurityGroupIds, NewValue: desired.VpcSecurityGroupIds})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.vpcSecurityGroupIds", OldValue: observed.VpcSecurityGroupIds, NewValue: desired.VpcSecurityGroupIds})
 	}
 	if desired.StorageEncrypted != observed.StorageEncrypted {
 		appendIfDifferent("spec.storageEncrypted (immutable, ignored)", observed.StorageEncrypted, desired.StorageEncrypted)
@@ -93,7 +96,7 @@ func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []Fiel
 	}
 	appendIfDifferent("spec.deletionProtection", observed.DeletionProtection, desired.DeletionProtection)
 	if !stringSliceEqual(desired.EnabledCloudwatchLogsExports, observed.EnabledCloudwatchLogsExports) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.enabledCloudwatchLogsExports", OldValue: observed.EnabledCloudwatchLogsExports, NewValue: desired.EnabledCloudwatchLogsExports})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.enabledCloudwatchLogsExports", OldValue: observed.EnabledCloudwatchLogsExports, NewValue: desired.EnabledCloudwatchLogsExports})
 	}
 	if desired.Engine != "" {
 		appendIfDifferent("spec.engine (immutable, ignored)", observed.Engine, desired.Engine)
@@ -106,14 +109,14 @@ func ComputeFieldDiffs(desired AuroraClusterSpec, observed ObservedState) []Fiel
 	}
 	for key, value := range drivers.FilterPraxisTags(desired.Tags) {
 		if current, ok := drivers.FilterPraxisTags(observed.Tags)[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range drivers.FilterPraxisTags(observed.Tags) {
 		if _, ok := drivers.FilterPraxisTags(desired.Tags)[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

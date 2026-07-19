@@ -16,6 +16,8 @@ package orchestrator
 import (
 	"fmt"
 	"sort"
+	"strings"
+	"time"
 
 	restate "github.com/restatedev/sdk-go"
 
@@ -260,6 +262,11 @@ func (DeploymentStateObj) UpdateResource(ctx restate.ObjectContext, update Resou
 	if update.Outputs != nil {
 		state.Outputs[update.Name] = update.Outputs
 	}
+	if update.Status == types.DeploymentResourceReady {
+		resource.RecoveryStartedAt = nil
+		resource.RecoveryDeadline = nil
+		resource.RecoveryAttempts = 0
+	}
 	state.UpdatedAt = now
 	restate.Set(ctx, "state", state)
 	return nil
@@ -467,6 +474,131 @@ func (DeploymentStateObj) ReconcileAll(ctx restate.ObjectContext, req ReconcileA
 	}
 	sort.Strings(skipped)
 	return ReconcileAllResponse{Triggered: triggered, Skipped: skipped}, nil
+}
+
+// HandleExternalDelete applies the deployment's recovery policy after a
+// driver reports that a provider resource disappeared. Replacement is owned by
+// Core: automatic mode replays the stored deployment plan so dependencies are
+// rehydrated; manual mode only records the condition and waits for apply.
+func (DeploymentStateObj) HandleExternalDelete(ctx restate.ObjectContext, req ExternalDeleteRequest) (RecoveryResult, error) {
+	state, err := restate.Get[*DeploymentState](ctx, "state")
+	if err != nil {
+		return RecoveryResult{}, err
+	}
+	if state == nil {
+		return RecoveryResult{}, restate.TerminalError(fmt.Errorf("deployment %q not found", restate.Key(ctx)), 404)
+	}
+	resourceName := strings.TrimSpace(req.ResourceName)
+	resource, ok := state.Resources[resourceName]
+	if !ok || resource == nil {
+		return RecoveryResult{}, restate.TerminalError(fmt.Errorf("resource %q not found in deployment %q", resourceName, restate.Key(ctx)), 404)
+	}
+	switch state.Status {
+	case types.DeploymentPending, types.DeploymentRunning, types.DeploymentDeleting, types.DeploymentAwaitingApproval:
+		return RecoveryResult{Reason: fmt.Sprintf("deployment is already %s", state.Status)}, nil
+	case types.DeploymentDeleted, types.DeploymentCancelled:
+		return RecoveryResult{Manual: true, Reason: fmt.Sprintf("deployment is %s", state.Status)}, nil
+	}
+
+	now, err := currentTime(ctx)
+	if err != nil {
+		return RecoveryResult{}, err
+	}
+	message := strings.TrimSpace(req.Error)
+	if message == "" {
+		message = fmt.Sprintf("%s was deleted outside Praxis and requires replacement", resourceName)
+	}
+	resource.Status = types.DeploymentResourceError
+	resource.Error = message
+	resource.Conditions = types.SetCondition(resource.Conditions, types.Condition{
+		Type: types.ConditionReady, Status: types.ConditionFalse,
+		Reason: types.ReasonReplacementRequired, Message: message,
+	}, now)
+	state.UpdatedAt = now
+
+	mode, timeout, err := resolveRecoveryPolicy(resource.Lifecycle, req.Mode)
+	if err != nil {
+		return RecoveryResult{}, restate.TerminalError(err, 400)
+	}
+	if mode == types.RecoveryModeManual {
+		restate.Set(ctx, "state", state)
+		return RecoveryResult{Manual: true, Reason: "recovery policy waits for an explicit apply"}, nil
+	}
+
+	if resource.RecoveryStartedAt == nil {
+		started := now
+		resource.RecoveryStartedAt = &started
+		if timeout > 0 {
+			deadline := now.Add(timeout)
+			resource.RecoveryDeadline = &deadline
+		}
+	}
+	if resource.RecoveryDeadline != nil && !now.Before(*resource.RecoveryDeadline) {
+		resource.Conditions = types.SetCondition(resource.Conditions, types.Condition{
+			Type: types.ConditionReady, Status: types.ConditionFalse,
+			Reason: types.ReasonTimedOut, Message: "automatic recovery deadline expired; waiting for an explicit apply",
+		}, now)
+		restate.Set(ctx, "state", state)
+		return RecoveryResult{Manual: true, Reason: "automatic recovery deadline expired"}, nil
+	}
+
+	plan, err := restate.Get[*DeploymentPlan](ctx, planSnapshotKey(state.Generation))
+	if err != nil {
+		return RecoveryResult{}, err
+	}
+	if plan == nil {
+		return RecoveryResult{}, restate.TerminalError(fmt.Errorf("current deployment plan is unavailable for recovery"), 409)
+	}
+	recoveryPlan := *plan
+	recoveryPlan.Resources = append([]PlanResource(nil), plan.Resources...)
+	recoveryPlan.ForceReplace = []string{resourceName}
+	recoveryPlan.RequiresApproval = false
+	recoveryPlan.CreatedAt = now
+
+	resource.RecoveryAttempts++
+	attempt := resource.RecoveryAttempts
+	resource.Status = types.DeploymentResourcePending
+	resource.Error = fmt.Sprintf("automatic recovery attempt %d scheduled: %s", attempt, message)
+	resource.Conditions = types.SetCondition(resource.Conditions, types.Condition{
+		Type: types.ConditionReady, Status: types.ConditionFalse,
+		Reason: types.ReasonRecoveryScheduled, Message: resource.Error,
+	}, now)
+	state.Status = types.DeploymentPending
+	state.Error = ""
+	state.Cancelled = false
+	restate.Set(ctx, "state", state)
+
+	workflowID := fmt.Sprintf("%s-gen-%d-recovery-%s-%d", state.Key, state.Generation, resourceName, attempt)
+	restate.WorkflowSend(ctx, DeploymentWorkflowServiceName, workflowID, "Run").Send(
+		recoveryPlan,
+		restate.WithIdempotencyKey(workflowID),
+	)
+	return RecoveryResult{Started: true, Reason: resource.Error}, nil
+}
+
+func resolveRecoveryPolicy(lifecycle *types.LifecyclePolicy, resourceMode types.Mode) (types.RecoveryMode, time.Duration, error) {
+	mode := types.RecoveryModeAutomatic
+	var timeout time.Duration
+	if lifecycle != nil && lifecycle.Recovery != nil {
+		configured := lifecycle.Recovery
+		if configured.Mode != "" {
+			mode = configured.Mode
+		}
+		if configured.Timeout != "" {
+			parsed, err := time.ParseDuration(configured.Timeout)
+			if err != nil || parsed <= 0 {
+				return "", 0, fmt.Errorf("invalid lifecycle.recovery.timeout %q", configured.Timeout)
+			}
+			timeout = parsed
+		}
+	}
+	if mode != types.RecoveryModeAutomatic && mode != types.RecoveryModeManual {
+		return "", 0, fmt.Errorf("invalid lifecycle.recovery.mode %q", mode)
+	}
+	if resourceMode == types.ModeObserved {
+		mode = types.RecoveryModeManual
+	}
+	return mode, timeout, nil
 }
 
 // MoveResource renames a resource within this deployment. The deployment must

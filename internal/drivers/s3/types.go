@@ -3,8 +3,6 @@
 // reconcile (drift detection and correction), and status/output queries.
 package s3
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // S3BucketSpec is the desired state for an S3 bucket.
 // This is what Core sends to the Provision handler after hydrating
 // output expressions and resolving SSM references.
@@ -70,47 +68,4 @@ type ObservedState struct {
 	VersioningStatus string            `json:"versioningStatus"` // "Enabled" | "Suspended" | ""
 	EncryptionAlgo   string            `json:"encryptionAlgo"`
 	Tags             map[string]string `json:"tags"`
-}
-
-// S3BucketState is the single atomic state object stored under driver.StateKey.
-// All fields are written together in one restate.Set() call, ensuring no
-// torn state after crash-during-replay.
-type S3BucketState struct {
-	// Desired is the user's declared configuration.
-	Desired S3BucketSpec `json:"desired"`
-
-	// Observed is the actual configuration in AWS, populated during reconcile.
-	Observed ObservedState `json:"observed"`
-
-	// Outputs are the values produced after provisioning (ARN, domain, etc.).
-	Outputs S3BucketOutputs `json:"outputs"`
-
-	// Status is the current lifecycle status of this resource.
-	Status types.ResourceStatus `json:"status"`
-
-	// Mode is Managed (drift corrected) or Observed (drift reported only).
-	Mode types.Mode `json:"mode"`
-
-	// Error holds the error message when Status is Error.
-	Error string `json:"error,omitempty"`
-
-	// Generation is a monotonically increasing counter incremented on every
-	// Provision and Import call. Enables:
-	// - Cheap conflict detection ("am I reconciling the spec the user intended?")
-	// - Core to correlate "I requested generation N, has the driver reached it?"
-	Generation int64 `json:"generation"`
-
-	// LastReconcile is the RFC3339 timestamp of the last completed reconciliation.
-	LastReconcile string `json:"lastReconcile,omitempty"`
-
-	// ReconcileScheduled is set to true when a delayed reconcile message has been
-	// sent and cleared when Reconcile begins execution. This prevents fan-out:
-	// without it, Provision, Import, and each Reconcile would all schedule their
-	// own successor, leading to exponentially growing timers. At most one pending
-	// reconcile exists per object at any time.
-	ReconcileScheduled bool `json:"reconcileScheduled"`
-
-	// LateInitDone is set after the driver has merged server-defaulted values
-	// back into Desired following the first successful provision.
-	LateInitDone bool `json:"lateInitDone,omitempty"`
 }

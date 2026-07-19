@@ -1,7 +1,7 @@
 package rds
 
 #RDSInstance: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "RDSInstance"
 
 	metadata: {

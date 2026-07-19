@@ -18,17 +18,16 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level change for plan output.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift returns true if the desired spec and observed state differ on mutable fields.
 // Optional attributes are declarative: omission means the provider default or
 // absence, never "leave an existing value unmanaged".
 func HasDrift(desired SNSTopicSpec, observed ObservedState) bool {
+	if desired.TopicName != "" && observed.TopicName != "" && desired.TopicName != observed.TopicName {
+		return true
+	}
+	if desired.FifoTopic != observed.FifoTopic {
+		return true
+	}
 	if desired.DisplayName != observed.DisplayName {
 		return true
 	}
@@ -51,46 +50,60 @@ func HasDrift(desired SNSTopicSpec, observed ObservedState) bool {
 }
 
 // ComputeFieldDiffs returns field-level differences for plan output.
-func ComputeFieldDiffs(desired SNSTopicSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SNSTopicSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
+	if desired.TopicName != "" && desired.TopicName != observed.TopicName {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path:     "spec.topicName (immutable, requires replacement)",
+			OldValue: observed.TopicName,
+			NewValue: desired.TopicName,
+		})
+	}
+	if desired.FifoTopic != observed.FifoTopic {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path:     "spec.fifoTopic (immutable, requires replacement)",
+			OldValue: observed.FifoTopic,
+			NewValue: desired.FifoTopic,
+		})
+	}
 	if desired.DisplayName != observed.DisplayName {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.displayName",
 			OldValue: observed.DisplayName,
 			NewValue: desired.DisplayName,
 		})
 	}
 	if !topicPoliciesEqual(desired.Policy, observed) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.policy",
 			OldValue: observed.Policy,
 			NewValue: desired.Policy,
 		})
 	}
 	if !optionalTopicPoliciesEqual(desired.DeliveryPolicy, observed.DeliveryPolicy) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.deliveryPolicy",
 			OldValue: observed.DeliveryPolicy,
 			NewValue: desired.DeliveryPolicy,
 		})
 	}
 	if desired.KmsMasterKeyId != observed.KmsMasterKeyId {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.kmsMasterKeyId",
 			OldValue: observed.KmsMasterKeyId,
 			NewValue: desired.KmsMasterKeyId,
 		})
 	}
 	if desired.ContentBasedDeduplication != observed.ContentBasedDeduplication {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.contentBasedDeduplication",
 			OldValue: observed.ContentBasedDeduplication,
 			NewValue: desired.ContentBasedDeduplication,
 		})
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "tags",
 			OldValue: drivers.FilterPraxisTags(observed.Tags),
 			NewValue: drivers.FilterPraxisTags(desired.Tags),

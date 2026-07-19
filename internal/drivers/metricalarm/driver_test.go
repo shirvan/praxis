@@ -5,12 +5,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewMetricAlarmDriver(nil)
+	drv := NewGenericMetricAlarmDriver(nil)
 	assert.Equal(t, "MetricAlarm", drv.ServiceName())
 }
 
@@ -55,6 +53,11 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, map[string]string{"env": "dev"}, spec.Tags, "praxis: tags should be filtered out")
 }
 
+func TestSpecFromObserved_OmittedDatapointsKeepsProviderDefault(t *testing.T) {
+	spec := specFromObserved(ObservedState{DatapointsToAlarm: 0, EvaluationPeriods: 3})
+	assert.Nil(t, spec.DatapointsToAlarm)
+}
+
 func TestOutputsFromObserved(t *testing.T) {
 	out := outputsFromObserved(ObservedState{
 		AlarmArn:    "arn:aws:cloudwatch:us-east-1:123:alarm:cpu-high",
@@ -67,12 +70,6 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, "cpu-high", out.AlarmName)
 	assert.Equal(t, "OK", out.StateValue)
 	assert.Equal(t, "Threshold not crossed", out.StateReason)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestApplyDefaults(t *testing.T) {

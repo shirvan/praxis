@@ -35,7 +35,12 @@ func TestIsNotFound_False(t *testing.T) {
 func TestIsAlreadyExists_DBParameterGroup(t *testing.T) {
 	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBParameterGroupAlreadyExistsFault"}))
 	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBClusterParameterGroupAlreadyExistsFault"}))
-	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBParameterGroupQuotaExceededFault"}))
+	assert.True(t, IsAlreadyExists(&mockAPIError{code: "DBParameterGroupAlreadyExists"}))
+}
+
+func TestIsQuotaExceeded(t *testing.T) {
+	assert.True(t, IsQuotaExceeded(&mockAPIError{code: "DBParameterGroupQuotaExceeded"}))
+	assert.False(t, IsQuotaExceeded(errors.New("timeout")))
 }
 
 func TestIsAlreadyExists_False(t *testing.T) {
@@ -46,6 +51,7 @@ func TestIsAlreadyExists_False(t *testing.T) {
 func TestIsInvalidState_True(t *testing.T) {
 	assert.True(t, IsInvalidState(&mockAPIError{code: "InvalidDBParameterGroupStateFault"}))
 	assert.True(t, IsInvalidState(&mockAPIError{code: "InvalidDBClusterParameterGroupStateFault"}))
+	assert.True(t, IsInvalidState(&mockAPIError{code: "InvalidDBParameterGroupState"}))
 }
 
 func TestIsInvalidState_False(t *testing.T) {

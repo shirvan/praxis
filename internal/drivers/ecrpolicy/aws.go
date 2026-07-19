@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsarn "github.com/aws/aws-sdk-go-v2/aws/arn"
 	ecrsdk "github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/smithy-go"
 
@@ -25,7 +26,7 @@ import (
 // to manage a AWS ECR Lifecycle Policy. The real implementation calls AWS;
 // tests supply a mock to verify driver logic without network calls.
 type LifecyclePolicyAPI interface {
-	PutLifecyclePolicy(ctx context.Context, spec ECRLifecyclePolicySpec) (ObservedState, error)
+	PutLifecyclePolicy(ctx context.Context, spec ECRLifecyclePolicySpec) error
 	GetLifecyclePolicy(ctx context.Context, repositoryName string) (ObservedState, error)
 	DeleteLifecyclePolicy(ctx context.Context, repositoryName string) error
 }
@@ -41,15 +42,12 @@ func NewLifecyclePolicyAPI(client *ecrsdk.Client) LifecyclePolicyAPI {
 	return &realLifecyclePolicyAPI{client: client, limiter: ratelimit.Shared("ecr-lifecycle-policy", 15, 5)}
 }
 
-func (r *realLifecyclePolicyAPI) PutLifecyclePolicy(ctx context.Context, spec ECRLifecyclePolicySpec) (ObservedState, error) {
+func (r *realLifecyclePolicyAPI) PutLifecyclePolicy(ctx context.Context, spec ECRLifecyclePolicySpec) error {
 	if err := r.limiter.Wait(ctx); err != nil {
-		return ObservedState{}, err
+		return err
 	}
 	_, err := r.client.PutLifecyclePolicy(ctx, &ecrsdk.PutLifecyclePolicyInput{RepositoryName: aws.String(spec.RepositoryName), LifecyclePolicyText: aws.String(spec.LifecyclePolicyText)})
-	if err != nil {
-		return ObservedState{}, err
-	}
-	return r.GetLifecyclePolicy(ctx, spec.RepositoryName)
+	return err
 }
 
 // GetLifecyclePolicy reads the current state of the AWS ECR Lifecycle Policy from Amazon Elastic Container Registry (ECR).
@@ -105,15 +103,18 @@ func normalizePolicy(value string) string {
 }
 
 func regionFromRepositoryARN(arn string) string {
-	parts := strings.Split(arn, ":")
-	if len(parts) > 3 {
-		return parts[3]
+	parsed, err := awsarn.Parse(strings.TrimSpace(arn))
+	if err == nil && parsed.Service == "ecr" {
+		return parsed.Region
 	}
 	return ""
 }
 
 // IsNotFound returns true if the AWS error indicates the AWS ECR Lifecycle Policy does not exist.
 func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
 	if awserr.HasCode(err, "LifecyclePolicyNotFoundException", "RepositoryNotFoundException") {
 		return true
 	}

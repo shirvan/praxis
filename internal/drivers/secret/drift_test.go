@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,6 +34,18 @@ func TestHasDrift_ValueChanged(t *testing.T) {
 	observed := observedInSync()
 	observed.SecretString = "old-secret"
 	assert.True(t, HasDrift(desiredSpec(), observed))
+}
+
+func TestHasDrift_NameChangedRequiresReplacement(t *testing.T) {
+	desired := desiredSpec()
+	observed := observedInSync()
+	observed.Name = "different-secret"
+
+	assert.True(t, HasDrift(desired, observed))
+	diffs := ComputeFieldDiffs(desired, observed)
+	assert.Contains(t, diffs, drivers.FieldDiff{
+		Path: "spec.name (immutable, requires replacement)", OldValue: "different-secret", NewValue: desired.Name,
+	})
 }
 
 func TestHasDrift_DescriptionChanged(t *testing.T) {

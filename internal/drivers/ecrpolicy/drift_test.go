@@ -46,7 +46,7 @@ func TestHasDrift_PolicyTextJSONNormalized(t *testing.T) {
 }
 
 func TestHasDrift_RepositoryNameImmutable(t *testing.T) {
-	// Repository name change is still reported as drift (immutable, ignored)
+	// Repository name changes require replacement.
 	spec := ecrpolicy.ECRLifecyclePolicySpec{
 		RepositoryName:      "new-repo",
 		LifecyclePolicyText: `{"rules":[]}`,
@@ -95,7 +95,7 @@ func TestComputeFieldDiffs_ImmutableRepositoryName(t *testing.T) {
 	}
 	diffs := ecrpolicy.ComputeFieldDiffs(spec, obs)
 	assert.Len(t, diffs, 1)
-	assert.Equal(t, "spec.repositoryName (immutable, ignored)", diffs[0].Path)
+	assert.Equal(t, "spec.repositoryName (immutable, requires replacement)", diffs[0].Path)
 }
 
 func TestComputeFieldDiffs_PolicyTextNormalized(t *testing.T) {

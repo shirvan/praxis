@@ -13,7 +13,7 @@ import (
 func TestRoute53HostedZoneAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewRoute53HostedZoneAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"Route53HostedZone",
 		"metadata":{"name":"Example.COM."},
 		"spec":{

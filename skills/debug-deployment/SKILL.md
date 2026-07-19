@@ -127,7 +127,7 @@ curl http://localhost:8080/{DriverServiceName}/{key}/GetOutputs
 | Area | Files to Check |
 |------|---------------|
 | Deployment lifecycle | `internal/core/orchestrator/workflow.go` |
-| Failed resource | `internal/drivers/{resource}/driver.go` (Provision handler) |
+| Failed resource | `internal/drivers/{resource}/generic.go` (resource operations) and `internal/drivers/kernel/` (lifecycle handler) |
 | Template errors | `internal/core/template/engine.go`, `errors.go` |
 | DAG issues | `internal/core/dag/graph.go`, `parser.go` |
 | Error classification | `internal/drivers/{resource}/aws.go` (classifiers) |

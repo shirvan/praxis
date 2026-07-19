@@ -3,8 +3,6 @@
 // remove + add since individual statements cannot be modified in-place.
 package lambdaperm
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for the Lambda Permission driver.
 const ServiceName = "LambdaPermission"
 
@@ -41,17 +39,9 @@ type ObservedState struct {
 	SourceAccount    string `json:"sourceAccount,omitempty"`
 	EventSourceToken string `json:"eventSourceToken,omitempty"`
 	Condition        string `json:"condition,omitempty"`
-}
-
-// LambdaPermissionState is the full durable state stored in the Restate Virtual Object.
-type LambdaPermissionState struct {
-	Desired            LambdaPermissionSpec    `json:"desired"`
-	Observed           ObservedState           `json:"observed"`
-	Outputs            LambdaPermissionOutputs `json:"outputs"`
-	Status             types.ResourceStatus    `json:"status"`
-	Mode               types.Mode              `json:"mode"`
-	Error              string                  `json:"error,omitempty"`
-	Generation         int64                   `json:"generation"`
-	LastReconcile      string                  `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                    `json:"reconcileScheduled"`
+	// recoveredByIdentity is request-local evidence that Observe found a
+	// statement before this Praxis object had committed outputs. It prevents a
+	// same-key collision from being destructively replaced while still allowing
+	// an exact statement left by an ambiguous AddPermission response to recover.
+	recoveredByIdentity bool
 }

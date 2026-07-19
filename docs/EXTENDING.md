@@ -403,7 +403,7 @@ variables: {
 resources: {
     // Built-in Praxis driver: provisions an ALB
     loadBalancer: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "ALB"
         metadata: name: "webapp-alb-\(variables.env)"
         spec: {
@@ -416,7 +416,7 @@ resources: {
 
     // Your custom driver: creates a DNS record pointing to the ALB
     dnsRecord: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "CloudflareDNSRecord"
         metadata: name: "\(variables.domain)-\(variables.env)"
         spec: {
@@ -746,7 +746,7 @@ curl -X POST http://localhost:9070/deployments \
 # 3. Use in CUE templates (reference by kind)
 resources: {
     myResource: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "YourCustomKind"
         metadata: name: "my-resource"
         spec: { /* your driver's spec */ }

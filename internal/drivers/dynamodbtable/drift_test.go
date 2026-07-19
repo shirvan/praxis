@@ -1,6 +1,7 @@
 package dynamodbtable
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -110,7 +111,7 @@ func TestHasDrift_ManagedKeyNotDrift(t *testing.T) {
 	assert.False(t, HasDrift(spec, observed))
 }
 
-func pathsOf(diffs []FieldDiffEntry) []string {
+func pathsOf(diffs []drivers.FieldDiff) []string {
 	out := make([]string, 0, len(diffs))
 	for _, d := range diffs {
 		out = append(out, d.Path)

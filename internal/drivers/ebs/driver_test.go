@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewEBSVolumeDriver(nil)
+	drv := NewGenericEBSVolumeDriver(nil)
 	assert.Equal(t, "EBSVolume", drv.ServiceName())
 }
 
@@ -36,11 +34,6 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, obs.KmsKeyId, spec.KmsKeyId)
 	assert.Equal(t, obs.SnapshotId, spec.SnapshotId)
 	assert.Equal(t, map[string]string{"Name": "data"}, spec.Tags)
-}
-
-func TestDefaultEBSImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultEBSImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultEBSImportMode(types.ModeManaged))
 }
 
 func TestVolumeNeedsModification_TypeChange(t *testing.T) {

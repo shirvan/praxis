@@ -1,6 +1,7 @@
 package ekscluster
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -94,8 +95,9 @@ func TestComputeFieldDiffs_ImmutableFieldsAnnotated(t *testing.T) {
 	paths := pathsOf(ComputeFieldDiffs(spec, observed))
 	assert.Contains(t, paths, "spec.roleArn (immutable, requires replacement)")
 	assert.Contains(t, paths, "spec.subnetIds (immutable, requires replacement)")
-	// Immutable-only divergence is not correctable drift.
-	assert.False(t, HasDrift(spec, observed), "immutable fields must not report as correctable drift")
+	// Immutable divergence must reach Converge so the driver can return the
+	// explicit replacement-required conflict instead of silently reporting Ready.
+	assert.True(t, HasDrift(spec, observed), "immutable fields must surface replacement-required drift")
 }
 
 func TestNormalizePublicCidrs(t *testing.T) {
@@ -109,7 +111,7 @@ func TestStringSetEqual(t *testing.T) {
 	assert.True(t, stringSetEqual(nil, nil))
 }
 
-func pathsOf(diffs []FieldDiffEntry) []string {
+func pathsOf(diffs []drivers.FieldDiff) []string {
 	out := make([]string, 0, len(diffs))
 	for _, d := range diffs {
 		out = append(out, d.Path)

@@ -13,7 +13,7 @@ import (
 func TestECSClusterAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewECSClusterAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECSCluster",
 		"metadata":{"name":"services"},
 		"spec":{"region":"us-east-1","containerInsights":"enabled","capacityProviders":["FARGATE"],"tags":{"env":"dev"}}
@@ -38,6 +38,7 @@ func TestECSClusterAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 func TestECSClusterAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewECSClusterAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ECSCluster",
 		"metadata":{"name":"services"},
 		"spec":{}

@@ -34,7 +34,7 @@ Each resource needs: `apiVersion`, `kind`, `metadata.name`, and `spec`:
 ```cue
 resources: {
     myVpc: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "VPC"
         metadata: name: "\(variables.name)-vpc"
         spec: {
@@ -66,7 +66,7 @@ resources: {
     }
     
     mySubnet: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "Subnet"
         metadata: name: "\(variables.name)-subnet"
         spec: {
@@ -78,7 +78,7 @@ resources: {
     }
     
     mySg: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "SecurityGroup"
         metadata: name: "\(variables.name)-sg"
         spec: {
@@ -212,7 +212,7 @@ variables: {
 
 resources: {
     vpc: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "VPC"
         metadata: name: "\(variables.name)-vpc"
         spec: {
@@ -225,7 +225,7 @@ resources: {
     }
 
     publicSubnet: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "Subnet"
         metadata: name: "\(variables.name)-public"
         spec: {
@@ -239,7 +239,7 @@ resources: {
     }
 
     webSg: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "SecurityGroup"
         metadata: name: "\(variables.name)-web-sg"
         spec: {
@@ -259,7 +259,7 @@ resources: {
 
     if variables.env == "prod" {
         dbSubnetGroup: {
-            apiVersion: "praxis.io/v1"
+            apiVersion: "praxis.io/alpha"
             kind:       "DBSubnetGroup"
             lifecycle: preventDestroy: true
             metadata: name: "\(variables.name)-db-subnets"
@@ -293,4 +293,4 @@ Deploy: `praxis deploy -f template.cue -v env=prod -v name=myapp`
 
 ## Available Resource Kinds
 
-See [docs/DRIVERS.md](../../docs/DRIVERS.md) for the full list of 45 supported kinds and their schemas in `schemas/aws/`.
+See [docs/DRIVERS.md](../../docs/DRIVERS.md) for the full list of 51 supported kinds and their schemas in `schemas/aws/`.

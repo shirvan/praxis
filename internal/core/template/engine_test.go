@@ -130,7 +130,7 @@ func TestEngine_Evaluate_UnknownKind(t *testing.T) {
 	tmpl := `
 resources: {
 	rec: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "DNSRecord"
 		metadata: name: "typo"
 		spec: { hostedZoneId: "Z1", name: "x.example.com", type: "CNAME" }
@@ -892,6 +892,10 @@ resources: {
 		lifecycle: {
 			preventDestroy: true
 			ignoreChanges: ["tags.lastModified"]
+			recovery: {
+				mode: "Manual"
+				timeout: "15m"
+			}
 		}
 		spec: {
 			region: "us-east-1"
@@ -913,6 +917,10 @@ resources: {
 	ignoreChanges, ok := lc["ignoreChanges"].([]any)
 	require.True(t, ok)
 	assert.Equal(t, "tags.lastModified", ignoreChanges[0])
+	recovery, ok := lc["recovery"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Manual", recovery["mode"])
+	assert.Equal(t, "15m", recovery["timeout"])
 }
 
 func TestEngine_EvaluateBytes_LifecycleBlockOptional(t *testing.T) {
@@ -940,6 +948,22 @@ resources: {
 	require.NoError(t, json.Unmarshal(specs["bucket"], &parsed))
 	_, hasLifecycle := parsed["lifecycle"]
 	assert.False(t, hasLifecycle, "lifecycle should not appear when not declared")
+}
+
+func TestEngine_EvaluateBytes_RejectsNonAlphaAPIVersion(t *testing.T) {
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas", "aws"))
+	require.NoError(t, err)
+	eng := NewEngine(absSchemaDir)
+
+	_, err = eng.EvaluateBytes([]byte(`
+resources: bucket: {
+	apiVersion: "praxis.io/v1"
+	kind: "S3Bucket"
+	metadata: name: "test-bucket"
+	spec: region: "us-east-1"
+}
+`), nil)
+	require.Error(t, err)
 }
 
 func TestEngine_EvaluateBytes_LifecycleBlockNoSchema(t *testing.T) {
@@ -1106,6 +1130,18 @@ func exampleCases() []exampleCase {
 				"cidrBlock": "10.0.0.0/16", "subnetId": "subnet-abc123",
 			},
 			minResources: 3,
+		},
+		{
+			name: "stacks/foundation-services",
+			path: "examples/stacks/foundation-services.cue",
+			vars: map[string]any{
+				"name": "platform", "region": "us-east-1",
+				"eksRoleArn":         "arn:aws:iam::123456789012:role/platform-eks",
+				"eksSubnetIds":       []string{"subnet-aaa", "subnet-bbb"},
+				"eksSecurityGroupId": "sg-abc123",
+				"bootstrapSecret":    "replace-through-protected-input",
+			},
+			minResources: 6,
 		},
 		{
 			name:         "stacks/network-locked-app",

@@ -21,7 +21,7 @@ import (
 )
 
 // S3Adapter is the descriptor-driven adapter for S3Bucket, extended with
-// pre-delete bucket cleanup, per-kind default timeouts, a custom live Observe,
+// per-kind default timeouts, a custom live Observe,
 // and a data-source Lookup. The Observe and Lookup paths need a planning API
 // client, so the adapter keeps the auth/staticPlanningAPI/apiFactory wiring.
 type S3Adapter struct {
@@ -93,13 +93,13 @@ func s3Descriptor() GenericDescriptor[s3.S3BucketSpec, s3.S3BucketOutputs, s3.Ob
 			}
 		},
 
-		PlanID: func(out s3.S3BucketOutputs) string { return out.BucketName },
+		PlanIdentity: storedPlanIdentity[s3.S3BucketSpec](func(out s3.S3BucketOutputs) string { return out.BucketName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[s3.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[s3.S3BucketSpec, s3.S3BucketOutputs, s3.ObservedState] {
 			return s3Probe(s3.NewS3API(awsclient.NewS3Client(cfg)))
 		},
 
-		DiffFields: func(desired s3.S3BucketSpec, observed s3.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired s3.S3BucketSpec, observed s3.ObservedState, _ s3.S3BucketOutputs) []types.FieldDiff {
 			rawDiffs := s3.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -111,8 +111,9 @@ func s3Descriptor() GenericDescriptor[s3.S3BucketSpec, s3.S3BucketOutputs, s3.Ob
 }
 
 // s3Probe adapts the driver API to the generic plan probe shape.
-func s3Probe(api s3.S3API) PlanProbeFunc[s3.ObservedState] {
-	return func(runCtx restate.RunContext, bucketName string) (s3.ObservedState, bool, error) {
+func s3Probe(api s3.S3API) PlanProbeFunc[s3.S3BucketSpec, s3.S3BucketOutputs, s3.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[s3.S3BucketSpec, s3.S3BucketOutputs]) (s3.ObservedState, bool, error) {
+		bucketName := input.Identity
 		obs, err := api.DescribeBucket(runCtx, bucketName)
 		if err != nil {
 			if s3.IsNotFound(err) {
@@ -146,15 +147,7 @@ func NewS3AdapterWithAPI(api s3.S3API) *S3Adapter {
 	}
 }
 
-// PreDelete runs bucket cleanup before the delete workflow issues Delete.
-func (a *S3Adapter) PreDelete(ctx restate.Context, key string) error {
-	_, err := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "PreDelete"),
-	).Request(restate.Void{})
-	return err
-}
-
-// DefaultTimeouts provides a longer delete timeout for bucket emptying.
+// DefaultTimeouts provides a longer delete timeout for bucket deletion.
 func (a *S3Adapter) DefaultTimeouts() types.ResourceTimeouts {
 	return types.ResourceTimeouts{Delete: "10m"}
 }

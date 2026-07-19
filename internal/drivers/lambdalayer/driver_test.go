@@ -5,12 +5,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	assert.Equal(t, ServiceName, NewLambdaLayerDriver(nil).ServiceName())
+	assert.Equal(t, ServiceName, NewGenericLambdaLayerDriver(nil).ServiceName())
 }
 
 func TestOutputsFromObserved(t *testing.T) {
@@ -24,9 +22,4 @@ func TestOutputsFromObserved(t *testing.T) {
 func TestValidateProvisionSpec(t *testing.T) {
 	spec := applyDefaults(LambdaLayerSpec{Region: "us-east-1", LayerName: "deps", Code: CodeSpec{ZipFile: "Zm9v"}})
 	require.NoError(t, validateProvisionSpec(spec))
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
 }

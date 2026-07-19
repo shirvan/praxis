@@ -13,7 +13,7 @@ import (
 func TestNATGatewayAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewNATGatewayAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"NATGateway",
 		"metadata":{"name":"nat-a"},
 		"spec":{"region":"us-east-1","subnetId":"subnet-123","allocationId":"eipalloc-123","tags":{"env":"dev"}}

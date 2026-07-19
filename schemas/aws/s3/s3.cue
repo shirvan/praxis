@@ -1,7 +1,7 @@
 package s3
 
 #S3Bucket: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "S3Bucket"
 
 	metadata: {

@@ -1,7 +1,7 @@
 package subnet
 
 #Subnet: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "Subnet"
 
 	metadata: {

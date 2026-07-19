@@ -40,7 +40,7 @@ func setupEBSDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := ebs.NewEBSVolumeDriver(authservice.NewAuthClient())
+	driver := ebs.NewGenericEBSVolumeDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client

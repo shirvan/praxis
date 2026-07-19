@@ -88,13 +88,13 @@ func igwDescriptor() GenericDescriptor[igw.IGWSpec, igw.IGWOutputs, igw.Observed
 			}
 		},
 
-		PlanID: func(out igw.IGWOutputs) string { return out.InternetGatewayId },
+		PlanIdentity: storedPlanIdentity[igw.IGWSpec](func(out igw.IGWOutputs) string { return out.InternetGatewayId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[igw.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[igw.IGWSpec, igw.IGWOutputs, igw.ObservedState] {
 			return igwProbe(igw.NewIGWAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired igw.IGWSpec, observed igw.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired igw.IGWSpec, observed igw.ObservedState, _ igw.IGWOutputs) []types.FieldDiff {
 			rawDiffs := igw.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -106,8 +106,9 @@ func igwDescriptor() GenericDescriptor[igw.IGWSpec, igw.IGWOutputs, igw.Observed
 }
 
 // igwProbe adapts the driver API to the generic plan probe shape.
-func igwProbe(api igw.IGWAPI) PlanProbeFunc[igw.ObservedState] {
-	return func(runCtx restate.RunContext, gatewayID string) (igw.ObservedState, bool, error) {
+func igwProbe(api igw.IGWAPI) PlanProbeFunc[igw.IGWSpec, igw.IGWOutputs, igw.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[igw.IGWSpec, igw.IGWOutputs]) (igw.ObservedState, bool, error) {
+		gatewayID := input.Identity
 		obs, err := api.DescribeInternetGateway(runCtx, gatewayID)
 		if err != nil {
 			if igw.IsNotFound(err) {

@@ -8,13 +8,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry describes a single field-level difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift returns true if any mutable field differs between desired and observed state.
 // Type and requestInterval are immutable and excluded from actionable drift.
 func HasDrift(desired HealthCheckSpec, observed ObservedState) bool {
@@ -25,16 +18,16 @@ func HasDrift(desired HealthCheckSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a per-field list of differences. Reports type and requestInterval
 // as informational immutable diffs; checks all other mutable fields, including tags.
-func ComputeFieldDiffs(desired HealthCheckSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired HealthCheckSpec, observed ObservedState) []drivers.FieldDiff {
 	desired, _ = normalizeHealthCheckSpec(desired)
 	observed = normalizeObservedState(observed)
 
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
 	if desired.Type != "" && observed.Type != "" && desired.Type != observed.Type {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.type (immutable, ignored)", OldValue: observed.Type, NewValue: desired.Type})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.type (immutable, ignored)", OldValue: observed.Type, NewValue: desired.Type})
 	}
 	if desired.RequestInterval != 0 && observed.RequestInterval != 0 && desired.RequestInterval != observed.RequestInterval {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.requestInterval (immutable, ignored)", OldValue: observed.RequestInterval, NewValue: desired.RequestInterval})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.requestInterval (immutable, ignored)", OldValue: observed.RequestInterval, NewValue: desired.RequestInterval})
 	}
 	diffs = appendIfDiff(diffs, "spec.ipAddress", observed.IPAddress, desired.IPAddress)
 	diffs = appendIfDiff(diffs, "spec.port", observed.Port, desired.Port)
@@ -133,41 +126,41 @@ func defaultPortForHealthCheck(checkType string) int32 {
 	}
 }
 
-func appendIfDiff(diffs []FieldDiffEntry, path string, oldValue, newValue any) []FieldDiffEntry {
+func appendIfDiff(diffs []drivers.FieldDiff, path string, oldValue, newValue any) []drivers.FieldDiff {
 	if fmt.Sprint(oldValue) != fmt.Sprint(newValue) {
-		return append(diffs, FieldDiffEntry{Path: path, OldValue: oldValue, NewValue: newValue})
+		return append(diffs, drivers.FieldDiff{Path: path, OldValue: oldValue, NewValue: newValue})
 	}
 	return diffs
 }
 
-func computeSliceDiff(path string, desired, observed []string) []FieldDiffEntry {
+func computeSliceDiff(path string, desired, observed []string) []drivers.FieldDiff {
 	desired = normalizeStringSlice(desired)
 	observed = normalizeStringSlice(observed)
 	if len(desired) != len(observed) {
-		return []FieldDiffEntry{{Path: path, OldValue: observed, NewValue: desired}}
+		return []drivers.FieldDiff{{Path: path, OldValue: observed, NewValue: desired}}
 	}
 	for index := range desired {
 		if desired[index] != observed[index] {
-			return []FieldDiffEntry{{Path: path, OldValue: observed, NewValue: desired}}
+			return []drivers.FieldDiff{{Path: path, OldValue: observed, NewValue: desired}}
 		}
 	}
 	return nil
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredFiltered := drivers.FilterPraxisTags(desired)
 	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

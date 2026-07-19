@@ -13,7 +13,7 @@ import (
 func TestLambdaLayerAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewLambdaLayerAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"LambdaLayer",
 		"metadata":{"name":"deps"},
 		"spec":{

@@ -11,7 +11,7 @@ data: existingVpc: {
 }
 
 resources: webSG: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "SecurityGroup"
 	metadata: name: "\(variables.name)-\(variables.environment)-sg"
 	spec: {

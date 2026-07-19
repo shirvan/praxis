@@ -1,6 +1,7 @@
 package ecscluster
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,7 +71,7 @@ func TestStringSetEqual(t *testing.T) {
 	assert.True(t, stringSetEqual(nil, nil))
 }
 
-func pathsOf(diffs []FieldDiffEntry) []string {
+func pathsOf(diffs []drivers.FieldDiff) []string {
 	out := make([]string, 0, len(diffs))
 	for _, d := range diffs {
 		out = append(out, d.Path)

@@ -1,10 +1,12 @@
 package lambdaperm
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/aws/smithy-go"
+	restate "github.com/restatedev/sdk-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,6 +39,31 @@ func TestIsPreconditionFailed(t *testing.T) {
 func TestIsThrottled_OtherError(t *testing.T) {
 	assert.False(t, IsThrottled(&smithy.GenericAPIError{Code: "ResourceNotFoundException"}))
 	assert.False(t, IsThrottled(fmt.Errorf("plain error")))
+}
+
+func TestClassifyPermissionMutation(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+		want restate.Code
+	}{
+		{name: "validation", code: "InvalidParameterValueException", want: 400},
+		{name: "not found", code: "ResourceNotFoundException", want: 404},
+		{name: "conflict", code: "ResourceConflictException", want: 409},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyPermissionMutation(&smithy.GenericAPIError{Code: tt.code})
+			assert.True(t, restate.IsTerminalError(got))
+			assert.Equal(t, tt.want, restate.ErrorCode(got))
+		})
+	}
+
+	terminal := restate.TerminalError(errors.New("already classified"), 422)
+	got := classifyPermissionMutation(terminal)
+	assert.Same(t, terminal, got, "already-terminal error must be returned unchanged")
+	assert.Equal(t, restate.Code(422), restate.ErrorCode(got))
 }
 
 func TestObservedFromStatement_Basic(t *testing.T) {

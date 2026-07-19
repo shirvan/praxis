@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewListenerRuleDriver(nil)
+	drv := NewGenericListenerRuleDriver(nil)
 	assert.Equal(t, "ListenerRule", drv.ServiceName())
 }
 
@@ -27,12 +25,6 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, obs.Conditions, spec.Conditions)
 	assert.Equal(t, obs.Actions, spec.Actions)
 	assert.Equal(t, map[string]string{"env": "dev"}, spec.Tags, "praxis: tags should be filtered out")
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestValidateSpec_Valid(t *testing.T) {
@@ -82,14 +74,6 @@ func TestValidateSpec_NoActions(t *testing.T) {
 		Conditions:  []RuleCondition{{Field: "path-pattern", Values: []string{"/api/*"}}},
 	}
 	assert.Error(t, validateSpec(spec))
-}
-
-func TestHasImmutableChange(t *testing.T) {
-	spec := ListenerRuleSpec{ListenerArn: "arn:listener-a"}
-	obs := ObservedState{ListenerArn: "arn:listener-a"}
-	assert.False(t, hasImmutableChange(spec, obs))
-	spec.ListenerArn = "arn:listener-b"
-	assert.True(t, hasImmutableChange(spec, obs))
 }
 
 func TestOutputsFromObserved(t *testing.T) {

@@ -52,10 +52,13 @@ func (r *realRouteTableAPI) CreateRouteTable(ctx context.Context, spec RouteTabl
 		return "", err
 	}
 	tags := []ec2types.Tag{{
-		Key:   aws.String("praxis:managed-key"),
+		Key:   aws.String(routeTableManagedKeyTag),
 		Value: aws.String(spec.ManagedKey),
 	}}
 	for key, value := range spec.Tags {
+		if strings.HasPrefix(key, "praxis:") {
+			continue
+		}
 		tags = append(tags, ec2types.Tag{Key: aws.String(key), Value: aws.String(value)})
 	}
 	out, err := r.client.CreateRouteTable(ctx, &ec2sdk.CreateRouteTableInput{
@@ -261,7 +264,7 @@ func (r *realRouteTableAPI) FindByManagedKey(ctx context.Context, managedKey str
 	}
 	out, err := r.client.DescribeRouteTables(ctx, &ec2sdk.DescribeRouteTablesInput{
 		Filters: []ec2types.Filter{{
-			Name:   aws.String("tag:praxis:managed-key"),
+			Name:   aws.String("tag:" + routeTableManagedKeyTag),
 			Values: []string{managedKey},
 		}},
 	})

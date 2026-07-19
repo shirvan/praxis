@@ -13,7 +13,7 @@ import (
 func TestRouteTableAdapter_BuildKey(t *testing.T) {
 	adapter := NewRouteTableAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"RouteTable",
 		"metadata":{"name":"public-rt"},
 		"spec":{
@@ -33,7 +33,7 @@ func TestRouteTableAdapter_BuildKey(t *testing.T) {
 func TestRouteTableAdapter_DecodeSpecAndNormalizeOutputs(t *testing.T) {
 	adapter := NewRouteTableAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"RouteTable",
 		"metadata":{"name":"public-rt"},
 		"spec":{

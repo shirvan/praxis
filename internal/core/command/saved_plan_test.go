@@ -2,6 +2,7 @@ package command
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -39,6 +40,13 @@ func TestWriteAndReadSavedPlan(t *testing.T) {
 	assert.Equal(t, saved.Plan.DeploymentKey, loaded.Plan.DeploymentKey)
 	assert.Equal(t, saved.Plan.Targets, loaded.Plan.Targets)
 	assert.JSONEq(t, string(saved.Plan.Resources[0].Spec), string(loaded.Plan.Resources[0].Spec))
+}
+
+func TestReadSavedPlanRejectsNonAlphaVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"version":"beta"}`), 0o600))
+	_, err := ReadSavedPlanFile(path)
+	require.ErrorContains(t, err, `unsupported saved plan version "beta"; expected "alpha"`)
 }
 
 func TestVerifySavedPlan_WithSignature(t *testing.T) {

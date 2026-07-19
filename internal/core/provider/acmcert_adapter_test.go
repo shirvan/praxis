@@ -37,7 +37,7 @@ func (m *mockACMAPI) FindByManagedKey(context.Context, string) (string, error)  
 func TestACMCertificateAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewACMCertificateAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ACMCertificate",
 		"metadata":{"name":"api-cert"},
 		"spec":{

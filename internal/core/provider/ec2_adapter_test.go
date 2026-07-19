@@ -13,7 +13,7 @@ import (
 func TestEC2Adapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"EC2Instance",
 		"metadata":{"name":"web-a"},
 		"spec":{
@@ -82,7 +82,7 @@ func TestEC2Adapter_Scope(t *testing.T) {
 func TestEC2Adapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
+		"apiVersion":"praxis.io/alpha","kind":"EC2Instance",
 		"metadata":{"name":"web"},
 		"spec":{"imageId":"ami-0123456789abcdef0","instanceType":"t3.micro","subnetId":"subnet-1"}
 	}`)
@@ -94,7 +94,7 @@ func TestEC2Adapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestEC2Adapter_DecodeSpec_MissingImageId(t *testing.T) {
 	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
+		"apiVersion":"praxis.io/alpha","kind":"EC2Instance",
 		"metadata":{"name":"web"},
 		"spec":{"region":"us-east-1","instanceType":"t3.micro","subnetId":"subnet-1"}
 	}`)
@@ -106,7 +106,7 @@ func TestEC2Adapter_DecodeSpec_MissingImageId(t *testing.T) {
 func TestEC2Adapter_DecodeSpec_MissingSubnetId(t *testing.T) {
 	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
+		"apiVersion":"praxis.io/alpha","kind":"EC2Instance",
 		"metadata":{"name":"web"},
 		"spec":{"region":"us-east-1","imageId":"ami-0123456789abcdef0","instanceType":"t3.micro"}
 	}`)
@@ -118,7 +118,7 @@ func TestEC2Adapter_DecodeSpec_MissingSubnetId(t *testing.T) {
 func TestEC2Adapter_DecodeSpec_SetsNameTag(t *testing.T) {
 	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
+		"apiVersion":"praxis.io/alpha","kind":"EC2Instance",
 		"metadata":{"name":"web-server"},
 		"spec":{"region":"us-east-1","imageId":"ami-0123456789abcdef0","instanceType":"t3.micro","subnetId":"subnet-1"}
 	}`)
@@ -131,7 +131,7 @@ func TestEC2Adapter_DecodeSpec_SetsNameTag(t *testing.T) {
 func TestEC2Adapter_BuildKey_MissingName(t *testing.T) {
 	adapter := NewEC2AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"EC2Instance",
+		"apiVersion":"praxis.io/alpha","kind":"EC2Instance",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1","imageId":"ami-0123456789abcdef0","instanceType":"t3.micro","subnetId":"subnet-1"}
 	}`)

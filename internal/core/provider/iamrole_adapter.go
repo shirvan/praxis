@@ -1,5 +1,5 @@
 // IAMRole provider adapter — descriptor for the GenericAdapter, extended with
-// a PreDelete detach step and a data-source Lookup.
+// a data-source Lookup.
 //
 // Key scope: global (IAM is region-free).
 // Key parts: role name (optionally with path prefix).
@@ -22,7 +22,7 @@ import (
 )
 
 // IAMRoleAdapter is the descriptor-driven adapter for IAMRole. Beyond the core
-// Adapter interface it keeps the PreDelete detach step and a read-only Lookup
+// Adapter interface it keeps a read-only Lookup
 // for data source blocks, which need their own planning API plumbing.
 type IAMRoleAdapter struct {
 	*GenericAdapter[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs, iamrole.ObservedState]
@@ -109,13 +109,13 @@ func iamRoleDescriptor() GenericDescriptor[iamrole.IAMRoleSpec, iamrole.IAMRoleO
 			return map[string]any{"arn": out.Arn, "roleId": out.RoleId, "roleName": out.RoleName}
 		},
 
-		PlanID: func(out iamrole.IAMRoleOutputs) string { return out.RoleName },
+		PlanIdentity: storedPlanIdentity[iamrole.IAMRoleSpec](func(out iamrole.IAMRoleOutputs) string { return out.RoleName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamrole.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs, iamrole.ObservedState] {
 			return iamRoleProbe(iamrole.NewIAMRoleAPI(awsclient.NewIAMClient(cfg)))
 		},
 
-		DiffFields: func(desired iamrole.IAMRoleSpec, observed iamrole.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired iamrole.IAMRoleSpec, observed iamrole.ObservedState, _ iamrole.IAMRoleOutputs) []types.FieldDiff {
 			rawDiffs := iamrole.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -127,8 +127,9 @@ func iamRoleDescriptor() GenericDescriptor[iamrole.IAMRoleSpec, iamrole.IAMRoleO
 }
 
 // iamRoleProbe adapts the driver API to the generic plan probe shape.
-func iamRoleProbe(api iamrole.IAMRoleAPI) PlanProbeFunc[iamrole.ObservedState] {
-	return func(runCtx restate.RunContext, roleName string) (iamrole.ObservedState, bool, error) {
+func iamRoleProbe(api iamrole.IAMRoleAPI) PlanProbeFunc[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs, iamrole.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs]) (iamrole.ObservedState, bool, error) {
+		roleName := input.Identity
 		obs, err := api.DescribeRole(runCtx, roleName)
 		if err != nil {
 			if iamrole.IsNotFound(err) {
@@ -159,14 +160,6 @@ func NewIAMRoleAdapterWithAPI(api iamrole.IAMRoleAPI) *IAMRoleAdapter {
 		GenericAdapter:    NewGenericAdapterWithProbe(iamRoleDescriptor(), iamRoleProbe(api)),
 		staticPlanningAPI: api,
 	}
-}
-
-// PreDelete detaches all policies and instance profiles before the role is deleted.
-func (a *IAMRoleAdapter) PreDelete(ctx restate.Context, key string) error {
-	_, err := restate.WithRequestType[restate.Void, restate.Void](
-		restate.Object[restate.Void](ctx, a.ServiceName(), key, "PreDelete"),
-	).Request(restate.Void{})
-	return err
 }
 
 // Lookup performs a read-only data-source query for an existing IAMRole

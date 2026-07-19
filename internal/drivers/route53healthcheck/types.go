@@ -4,8 +4,6 @@
 // optimistic concurrency for updates.
 package route53healthcheck
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate virtual object service name used to register and address this driver.
 const ServiceName = "Route53HealthCheck"
 
@@ -62,17 +60,4 @@ type ObservedState struct {
 	EnableSNI                    bool              `json:"enableSNI,omitempty"`
 	Regions                      []string          `json:"regions,omitempty"`
 	Tags                         map[string]string `json:"tags,omitempty"`
-}
-
-// HealthCheckState is the full persisted state of this virtual-object, stored via restate.Set.
-type HealthCheckState struct {
-	Desired            HealthCheckSpec      `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            HealthCheckOutputs   `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

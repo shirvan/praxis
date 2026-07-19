@@ -47,7 +47,7 @@ func setupSNSTopicDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
 	snsClient := awsclient.NewSNSClient(awsCfg)
 	skipIfSNSUnavailable(t, snsClient)
 
-	return setupDriverEventingEnv(t, snstopic.NewSNSTopicDriver(authservice.NewAuthClient())), snsClient
+	return setupDriverEventingEnv(t, snstopic.NewGenericSNSTopicDriver(authservice.NewAuthClient())), snsClient
 }
 
 func setupSNSSubDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
@@ -58,7 +58,7 @@ func setupSNSSubDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
 	snsClient := awsclient.NewSNSClient(awsCfg)
 	skipIfSNSUnavailable(t, snsClient)
 
-	return setupDriverEventingEnv(t, snssub.NewSNSSubscriptionDriver(authservice.NewAuthClient())), snsClient
+	return setupDriverEventingEnv(t, snssub.NewGenericSNSSubscriptionDriver(authservice.NewAuthClient())), snsClient
 }
 
 // createTopicDirect creates an SNS topic directly via the SDK (for subscription tests).

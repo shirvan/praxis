@@ -1,10 +1,24 @@
 package snssub
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func baseDesired() SNSSubscriptionSpec {
+	return SNSSubscriptionSpec{
+		TopicArn: "arn:aws:sns:us-east-1:123456789012:alerts",
+		Protocol: "sqs",
+		Endpoint: "arn:aws:sqs:us-east-1:123456789012:alerts",
+	}
+}
+
+func baseObserved() ObservedState {
+	desired := baseDesired()
+	return ObservedState{TopicArn: desired.TopicArn, Protocol: desired.Protocol, Endpoint: desired.Endpoint}
+}
 
 func TestHasDrift_NoDrift(t *testing.T) {
 	desired := SNSSubscriptionSpec{
@@ -24,6 +38,32 @@ func TestHasDrift_NoDrift(t *testing.T) {
 		SubscriptionRoleArn: "arn:aws:iam::123:role/sub-role",
 	}
 	assert.False(t, HasDrift(desired, observed))
+}
+
+func TestHasDrift_ImmutableIdentityChanged(t *testing.T) {
+	desired := baseDesired()
+	observed := baseObserved()
+	observed.TopicArn = "arn:aws:sns:us-east-1:123456789012:other"
+	assert.True(t, HasDrift(desired, observed))
+}
+
+func TestComputeFieldDiffs_ImmutableIdentity(t *testing.T) {
+	desired := baseDesired()
+	observed := baseObserved()
+	observed.TopicArn = "arn:aws:sns:us-east-1:123456789012:other"
+	observed.Protocol = "lambda"
+	observed.Endpoint = "arn:aws:lambda:us-east-1:123456789012:function:alerts"
+
+	diffs := ComputeFieldDiffs(desired, observed)
+	assert.Contains(t, diffs, drivers.FieldDiff{
+		Path: "spec.topicArn (immutable, requires replacement)", OldValue: observed.TopicArn, NewValue: desired.TopicArn,
+	})
+	assert.Contains(t, diffs, drivers.FieldDiff{
+		Path: "spec.protocol (immutable, requires replacement)", OldValue: observed.Protocol, NewValue: desired.Protocol,
+	})
+	assert.Contains(t, diffs, drivers.FieldDiff{
+		Path: "spec.endpoint (immutable, requires replacement)", OldValue: observed.Endpoint, NewValue: desired.Endpoint,
+	})
 }
 
 func TestHasDrift_FilterPolicyChanged(t *testing.T) {

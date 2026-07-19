@@ -86,13 +86,13 @@ func listenerRuleDescriptor() GenericDescriptor[listenerrule.ListenerRuleSpec, l
 			}
 		},
 
-		PlanID: func(out listenerrule.ListenerRuleOutputs) string { return out.RuleArn },
+		PlanIdentity: storedPlanIdentity[listenerrule.ListenerRuleSpec](func(out listenerrule.ListenerRuleOutputs) string { return out.RuleArn }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[listenerrule.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs, listenerrule.ObservedState] {
 			return listenerRuleProbe(listenerrule.NewListenerRuleAPI(awsclient.NewELBv2Client(cfg)))
 		},
 
-		DiffFields: func(desired listenerrule.ListenerRuleSpec, observed listenerrule.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired listenerrule.ListenerRuleSpec, observed listenerrule.ObservedState, _ listenerrule.ListenerRuleOutputs) []types.FieldDiff {
 			rawDiffs := listenerrule.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -104,8 +104,9 @@ func listenerRuleDescriptor() GenericDescriptor[listenerrule.ListenerRuleSpec, l
 }
 
 // listenerRuleProbe adapts the driver API to the generic plan probe shape.
-func listenerRuleProbe(api listenerrule.ListenerRuleAPI) PlanProbeFunc[listenerrule.ObservedState] {
-	return func(runCtx restate.RunContext, ruleArn string) (listenerrule.ObservedState, bool, error) {
+func listenerRuleProbe(api listenerrule.ListenerRuleAPI) PlanProbeFunc[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs, listenerrule.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs]) (listenerrule.ObservedState, bool, error) {
+		ruleArn := input.Identity
 		obs, err := api.DescribeRule(runCtx, ruleArn)
 		if err != nil {
 			if listenerrule.IsNotFound(err) {

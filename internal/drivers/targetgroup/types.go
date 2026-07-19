@@ -6,8 +6,6 @@
 // Elastic Load Balancing v2; the driver state couples both together with status tracking.
 package targetgroup
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object service name used to register the AWS ELBv2 Target Group driver.
 const ServiceName = "TargetGroup"
 
@@ -27,6 +25,7 @@ type TargetGroupSpec struct {
 	Stickiness          *Stickiness       `json:"stickiness,omitempty"`
 	Targets             []Target          `json:"targets,omitempty"`
 	Tags                map[string]string `json:"tags,omitempty"`
+	ManagedKey          string            `json:"managedKey,omitempty"`
 }
 
 // HealthCheck defines the health check parameters for a target group.
@@ -79,20 +78,4 @@ type ObservedState struct {
 	Stickiness          *Stickiness       `json:"stickiness,omitempty"`
 	Targets             []Target          `json:"targets,omitempty"`
 	Tags                map[string]string `json:"tags"`
-}
-
-// TargetGroupState is the single atomic state object persisted under drivers.StateKey
-// in the Restate K/V store. It combines desired spec, observed state,
-// outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type TargetGroupState struct {
-	Desired            TargetGroupSpec      `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            TargetGroupOutputs   `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

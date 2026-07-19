@@ -19,7 +19,7 @@ variables: {
 resources: {
 	// ── SSH Key Pair ────────────────────────────────────
 	keypair: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "KeyPair"
 		metadata: name: "\(variables.name)-\(variables.environment)-bastion-key"
 		spec: {
@@ -34,7 +34,7 @@ resources: {
 
 	// ── Bastion Security Group (SSH inbound only) ───────
 	bastionSg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(variables.name)-\(variables.environment)-bastion-sg"
 		spec: {
@@ -63,7 +63,7 @@ resources: {
 
 	// ── Bastion EC2 Instance ────────────────────────────
 	bastion: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)-bastion"
 		spec: {

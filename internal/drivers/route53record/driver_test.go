@@ -2,6 +2,7 @@ package route53record
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/awserr"
+	"github.com/shirvan/praxis/internal/drivers/drivertest"
 	"github.com/shirvan/praxis/internal/eventing"
 	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
@@ -65,9 +67,13 @@ func (route53RecordDriftRecorderObject) List(ctx restate.ObjectSharedContext, _ 
 type fakeRecordAPI struct {
 	mu sync.Mutex
 
-	records     map[string]ObservedState
-	upsertCalls int
-	deleteCalls int
+	records       map[string]ObservedState
+	upsertCalls   int
+	deleteCalls   int
+	createCount   int
+	updateCount   int
+	describeCalls int
+	upsertErrors  []error
 
 	upsertFunc   func(context.Context, RecordSpec) error
 	describeFunc func(context.Context, RecordIdentity) (ObservedState, error)
@@ -96,7 +102,13 @@ func (f *fakeRecordAPI) UpsertRecord(ctx context.Context, spec RecordSpec) error
 	defer f.mu.Unlock()
 	f.upsertCalls++
 	identity := identityFromSpec(spec)
-	f.records[recordKey(identity)] = ObservedState{
+	key := recordKey(identity)
+	if _, exists := f.records[key]; exists {
+		f.updateCount++
+	} else {
+		f.createCount++
+	}
+	f.records[key] = ObservedState{
 		HostedZoneId:     spec.HostedZoneId,
 		Name:             normalizeRecordName(spec.Name),
 		Type:             spec.Type,
@@ -111,6 +123,11 @@ func (f *fakeRecordAPI) UpsertRecord(ctx context.Context, spec RecordSpec) error
 		MultiValueAnswer: spec.MultiValueAnswer,
 		HealthCheckId:    spec.HealthCheckId,
 	}
+	if len(f.upsertErrors) > 0 {
+		err := f.upsertErrors[0]
+		f.upsertErrors = f.upsertErrors[1:]
+		return err
+	}
 	return nil
 }
 
@@ -120,6 +137,7 @@ func (f *fakeRecordAPI) DescribeRecord(ctx context.Context, identity RecordIdent
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.describeCalls++
 	key := recordKey(identity)
 	obs, ok := f.records[key]
 	if !ok {
@@ -127,6 +145,12 @@ func (f *fakeRecordAPI) DescribeRecord(ctx context.Context, identity RecordIdent
 		return ObservedState{}, awserr.NotFound(fmt.Sprintf("record %s %s not found in hosted zone %s", identity.Name, identity.Type, identity.HostedZoneId))
 	}
 	return obs, nil
+}
+
+func (f *fakeRecordAPI) snapshot() drivertest.ProviderSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return drivertest.ProviderSnapshot{Creates: f.createCount, Reads: f.describeCalls, Updates: f.updateCount, Deletes: f.deleteCalls}
 }
 
 func (f *fakeRecordAPI) DeleteRecord(ctx context.Context, observed ObservedState) error {
@@ -149,7 +173,7 @@ func setupRecordDriver(t *testing.T, api RecordAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewDNSRecordDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) RecordAPI {
+	driver := newGenericDNSRecordDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) RecordAPI {
 		return api
 	})
 	env := restatetest.Start(t,
@@ -198,8 +222,64 @@ func testRecordSpec(hostedZoneId, name, recordType string) RecordSpec {
 }
 
 func TestRecordServiceName(t *testing.T) {
-	drv := NewDNSRecordDriver(nil)
+	drv := NewGenericDNSRecordDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
+}
+
+func TestGenericRecordCoreLifecycle(t *testing.T) {
+	api := newFakeRecordAPI()
+	client := setupRecordDriver(t, api)
+	key := "Z123~conformance.example~A"
+	spec := testRecordSpec("Z123", "conformance.example", "A")
+	drivertest.RunCoreLifecycle(t, drivertest.CoreLifecycleFixture[RecordSpec, RecordOutputs]{
+		Client: client, ServiceName: ServiceName, Key: key, Spec: spec, Snapshot: api.snapshot,
+		AssertInputs: func(t *testing.T, inputs RecordSpec) {
+			assert.Equal(t, spec.Account, inputs.Account)
+			assert.Equal(t, spec.HostedZoneId, inputs.HostedZoneId)
+			assert.Equal(t, spec.Name, inputs.Name)
+			assert.Equal(t, spec.Type, inputs.Type)
+			assert.Equal(t, key, inputs.ManagedKey)
+		},
+	})
+}
+
+func TestGenericRecordObservedImportLifecycle(t *testing.T) {
+	api := newFakeRecordAPI()
+	api.records["Z123|observed.example|A"] = ObservedState{
+		HostedZoneId: "Z123", Name: "observed.example", Type: "A", TTL: 300, ResourceRecords: []string{"1.2.3.4"},
+	}
+	client := setupRecordDriver(t, api)
+	drivertest.RunObservedImportLifecycle(t, drivertest.ObservedImportFixture[RecordOutputs]{
+		Client: client, ServiceName: ServiceName, Key: "Z123~observed.example~A",
+		Ref: types.ImportRef{ResourceID: "Z123/observed.example/A", Account: "test"}, Snapshot: api.snapshot,
+	})
+}
+
+func TestGenericRecordReplaysAmbiguousUpsertWithoutDuplicate(t *testing.T) {
+	api := newFakeRecordAPI()
+	api.upsertErrors = []error{errors.New("ServiceUnavailable: change response lost")}
+	client := setupRecordDriver(t, api)
+	key := "Z123~ambiguous.example~A"
+
+	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "ambiguous.example", "A"))
+	require.NoError(t, err)
+	assert.Len(t, api.records, 1)
+	assert.Equal(t, 1, api.createCount)
+	assert.GreaterOrEqual(t, api.upsertCalls, 2)
+}
+
+func TestGenericRecordRejectsImmutableIdentityChange(t *testing.T) {
+	api := newFakeRecordAPI()
+	client := setupRecordDriver(t, api)
+	key := "Z123~immutable.example~A"
+
+	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "immutable.example", "A"))
+	require.NoError(t, err)
+	changed := testRecordSpec("Z999", "immutable.example", "A")
+	_, err = ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "identity is immutable")
+	assert.Len(t, api.records, 1)
 }
 
 func TestRecordProvision_CreatesRecord(t *testing.T) {
@@ -364,6 +444,8 @@ func TestRecordReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Error, "deleted externally")
+	assert.True(t, result.ReplacementRequired)
+	assert.Equal(t, 1, api.upsertCalls, "reconcile must not recreate an externally deleted record")
 	assert.Equal(t, []string{eventing.DriftEventExternalDelete}, pollRoute53RecordEventTypes(t, client, key, eventing.DriftEventExternalDelete))
 }
 

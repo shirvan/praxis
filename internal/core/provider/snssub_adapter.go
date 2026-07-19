@@ -94,13 +94,13 @@ func snsSubscriptionDescriptor() GenericDescriptor[snssub.SNSSubscriptionSpec, s
 			return result
 		},
 
-		PlanID: func(out snssub.SNSSubscriptionOutputs) string { return out.SubscriptionArn },
+		PlanIdentity: storedPlanIdentity[snssub.SNSSubscriptionSpec](func(out snssub.SNSSubscriptionOutputs) string { return out.SubscriptionArn }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[snssub.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs, snssub.ObservedState] {
 			return snsSubscriptionProbe(snssub.NewSubscriptionAPI(awsclient.NewSNSClient(cfg)))
 		},
 
-		DiffFields: func(desired snssub.SNSSubscriptionSpec, observed snssub.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired snssub.SNSSubscriptionSpec, observed snssub.ObservedState, _ snssub.SNSSubscriptionOutputs) []types.FieldDiff {
 			rawDiffs := snssub.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -112,8 +112,9 @@ func snsSubscriptionDescriptor() GenericDescriptor[snssub.SNSSubscriptionSpec, s
 }
 
 // snsSubscriptionProbe adapts the driver API to the generic plan probe shape.
-func snsSubscriptionProbe(api snssub.SubscriptionAPI) PlanProbeFunc[snssub.ObservedState] {
-	return func(runCtx restate.RunContext, subscriptionArn string) (snssub.ObservedState, bool, error) {
+func snsSubscriptionProbe(api snssub.SubscriptionAPI) PlanProbeFunc[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs, snssub.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs]) (snssub.ObservedState, bool, error) {
+		subscriptionArn := input.Identity
 		obs, err := api.GetSubscriptionAttributes(runCtx, subscriptionArn)
 		if err != nil {
 			if snssub.IsNotFound(err) {

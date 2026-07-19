@@ -8,13 +8,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry describes a single field-level difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift returns true if any mutable field (comment, VPC associations, tags)
 // differs between the desired spec and the observed AWS state.
 func HasDrift(desired HostedZoneSpec, observed ObservedState) bool {
@@ -34,19 +27,19 @@ func HasDrift(desired HostedZoneSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a per-field list of differences between desired and observed state.
 // Reports name and isPrivate as informational immutable diffs.
-func ComputeFieldDiffs(desired HostedZoneSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired HostedZoneSpec, observed ObservedState) []drivers.FieldDiff {
 	desired, _ = normalizeHostedZoneSpec(desired)
 	observed = normalizeObservedState(observed)
 
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
 	if desired.Name != "" && observed.Name != "" && desired.Name != observed.Name {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.name (immutable, ignored)", OldValue: observed.Name, NewValue: desired.Name})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.name (immutable, ignored)", OldValue: observed.Name, NewValue: desired.Name})
 	}
 	if desired.IsPrivate != observed.IsPrivate {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.isPrivate (immutable, ignored)", OldValue: observed.IsPrivate, NewValue: desired.IsPrivate})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.isPrivate (immutable, ignored)", OldValue: observed.IsPrivate, NewValue: desired.IsPrivate})
 	}
 	if normalizeZoneComment(desired.Comment) != normalizeZoneComment(observed.Comment) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.comment", OldValue: observed.Comment, NewValue: desired.Comment})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.comment", OldValue: observed.Comment, NewValue: desired.Comment})
 	}
 	diffs = append(diffs, computeVPCDiffs(desired.VPCs, observed.VPCs)...)
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
@@ -144,8 +137,8 @@ func hostedZoneVPCsMatch(desired, observed []HostedZoneVPC) bool {
 	return true
 }
 
-func computeVPCDiffs(desired, observed []HostedZoneVPC) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeVPCDiffs(desired, observed []HostedZoneVPC) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredSet := make(map[string]HostedZoneVPC, len(desired))
 	for _, vpc := range normalizeHostedZoneVPCs(desired) {
 		desiredSet[hostedZoneVPCKey(vpc)] = vpc
@@ -156,31 +149,31 @@ func computeVPCDiffs(desired, observed []HostedZoneVPC) []FieldDiffEntry {
 	}
 	for key, vpc := range desiredSet {
 		if _, ok := observedSet[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcs[" + key + "]", OldValue: nil, NewValue: vpc})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.vpcs[" + key + "]", OldValue: nil, NewValue: vpc})
 		}
 	}
 	for key, vpc := range observedSet {
 		if _, ok := desiredSet[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcs[" + key + "]", OldValue: vpc, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.vpcs[" + key + "]", OldValue: vpc, NewValue: nil})
 		}
 	}
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredFiltered := drivers.FilterPraxisTags(desired)
 	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

@@ -59,3 +59,11 @@ func TestErrorClassifiers(t *testing.T) {
 	wrapped := errors.New("operation error Secrets Manager: DescribeSecret, ResourceNotFoundException: not found")
 	assert.True(t, IsNotFound(wrapped), "classifier must survive error wrapping via string fallback")
 }
+
+func TestSecretClientRequestToken(t *testing.T) {
+	token := secretClientRequestToken("us-east-1~app/secret", "invocation-1")
+	assert.Len(t, token, 64)
+	assert.Equal(t, token, secretClientRequestToken("us-east-1~app/secret", "invocation-1"))
+	assert.NotEqual(t, token, secretClientRequestToken("us-east-1~app/secret", "invocation-2"))
+	assert.Empty(t, secretClientRequestToken("us-east-1~app/secret", ""))
+}

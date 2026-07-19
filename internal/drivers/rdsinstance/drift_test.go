@@ -78,6 +78,41 @@ func TestHasDrift_PraxisTagsIgnored(t *testing.T) {
 	assert.False(t, HasDrift(spec, obs))
 }
 
+func TestHasDrift_ImmutableIdentityChanged(t *testing.T) {
+	base := RDSInstanceSpec{
+		DBIdentifier: "orders", Engine: "mysql", MasterUsername: "admin",
+		StorageEncrypted: true, KMSKeyId: "kms-old", StorageType: "gp3",
+		BackupRetentionPeriod: 7, VpcSecurityGroupIds: []string{}, Tags: map[string]string{},
+	}
+	observed := ObservedState{
+		DBIdentifier: "orders", Engine: "mysql", MasterUsername: "admin",
+		StorageEncrypted: true, KMSKeyId: "kms-old", StorageType: "gp3",
+		BackupRetentionPeriod: 7, VpcSecurityGroupIds: []string{}, Tags: map[string]string{},
+	}
+
+	tests := map[string]func(*RDSInstanceSpec){
+		"identifier":         func(spec *RDSInstanceSpec) { spec.DBIdentifier = "orders-next" },
+		"engine":             func(spec *RDSInstanceSpec) { spec.Engine = "postgres" },
+		"master username":    func(spec *RDSInstanceSpec) { spec.MasterUsername = "root" },
+		"storage encryption": func(spec *RDSInstanceSpec) { spec.StorageEncrypted = false },
+		"kms key":            func(spec *RDSInstanceSpec) { spec.KMSKeyId = "kms-next" },
+		"cluster membership": func(spec *RDSInstanceSpec) { spec.DBClusterIdentifier = "cluster-next" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			desired := base
+			mutate(&desired)
+			assert.True(t, HasDrift(desired, observed))
+		})
+	}
+}
+
+func TestHasDrift_ProviderDefaultKMSKeyIgnoredWhenUnset(t *testing.T) {
+	spec := RDSInstanceSpec{Engine: "mysql", StorageEncrypted: true, StorageType: "gp3", BackupRetentionPeriod: 7}
+	observed := ObservedState{Engine: "mysql", StorageEncrypted: true, KMSKeyId: "provider-default", StorageType: "gp3", BackupRetentionPeriod: 7}
+	assert.False(t, HasDrift(spec, observed))
+}
+
 func TestHasDrift_MonitoringChanged(t *testing.T) {
 	spec := RDSInstanceSpec{InstanceClass: "db.t3.micro", EngineVersion: "8.0", StorageType: "gp3", BackupRetentionPeriod: 7, MonitoringInterval: 60}
 	obs := ObservedState{InstanceClass: "db.t3.micro", EngineVersion: "8.0", StorageType: "gp3", BackupRetentionPeriod: 7, MonitoringInterval: 0}

@@ -40,7 +40,7 @@ func setupAuroraClusterDriver(t *testing.T) (*ingress.Client, *rdssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
-	driver := auroracluster.NewAuroraClusterDriver(authservice.NewAuthClient())
+	driver := auroracluster.NewGenericAuroraClusterDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, rdsClient

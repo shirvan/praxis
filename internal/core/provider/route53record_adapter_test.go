@@ -13,7 +13,7 @@ import (
 func TestRoute53RecordAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewRoute53RecordAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"Route53Record",
 		"metadata":{"name":"www-record"},
 		"spec":{

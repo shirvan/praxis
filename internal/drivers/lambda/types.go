@@ -3,8 +3,6 @@
 // management including code updates, configuration convergence, and tag sync.
 package lambda
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for the Lambda Function driver.
 const ServiceName = "LambdaFunction"
 
@@ -104,17 +102,4 @@ type ObservedState struct {
 	LastModified     string            `json:"lastModified,omitempty"`
 	LastUpdateStatus string            `json:"lastUpdateStatus,omitempty"`
 	CodeSha256       string            `json:"codeSha256,omitempty"`
-}
-
-// LambdaFunctionState is the full durable state stored in the Restate Virtual Object.
-type LambdaFunctionState struct {
-	Desired            LambdaFunctionSpec    `json:"desired"`
-	Observed           ObservedState         `json:"observed"`
-	Outputs            LambdaFunctionOutputs `json:"outputs"`
-	Status             types.ResourceStatus  `json:"status"`
-	Mode               types.Mode            `json:"mode"`
-	Error              string                `json:"error,omitempty"`
-	Generation         int64                 `json:"generation"`
-	LastReconcile      string                `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                  `json:"reconcileScheduled"`
 }

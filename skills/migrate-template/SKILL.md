@@ -49,7 +49,7 @@ Rules:
    valid; embedding inside a longer string is not.
 4. Parameterized values (Terraform `var.*`, CFN `Parameters`) become a `variables:` block,
    referenced with CUE interpolation: `"\(variables.<name>)"`.
-5. Every resource needs: `apiVersion: "praxis.io/v1"`, `kind`, `metadata.name`, `spec`
+5. Every resource needs: `apiVersion: "praxis.io/alpha"`, `kind`, `metadata.name`, `spec`
    (with `region` where the kind requires it).
 6. Preserve logical resource names from the source where possible.
 7. If a source feature has no Praxis equivalent, add a CUE comment:
@@ -197,7 +197,7 @@ variables: {
 
 resources: {
     myVpc: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "VPC"
         metadata: name: "main-\(variables.env)"
         spec: {
@@ -206,7 +206,7 @@ resources: {
         }
     }
     webSg: {
-        apiVersion: "praxis.io/v1"
+        apiVersion: "praxis.io/alpha"
         kind:       "SecurityGroup"
         metadata: name: "web-\(variables.env)"
         spec: {

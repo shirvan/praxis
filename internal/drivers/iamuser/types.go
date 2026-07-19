@@ -4,8 +4,6 @@
 // with their own credentials, group memberships, inline policies, and managed policy attachments.
 package iamuser
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate virtual object name for IAM user driver instances.
 const ServiceName = "IAMUser"
 
@@ -49,17 +47,4 @@ type ObservedState struct {
 	Groups              []string          `json:"groups,omitempty"`
 	Tags                map[string]string `json:"tags,omitempty"`
 	CreateDate          string            `json:"createDate"`
-}
-
-// IAMUserState is the durable state persisted in Restate's virtual object storage.
-type IAMUserState struct {
-	Desired            IAMUserSpec          `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            IAMUserOutputs       `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

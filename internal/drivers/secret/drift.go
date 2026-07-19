@@ -20,6 +20,9 @@ const sensitivePlaceholder = "(sensitive)"
 // and returns true if any mutable field has diverged. It is called during
 // Reconcile to decide whether drift correction is needed.
 func HasDrift(desired SecretsManagerSecretSpec, observed ObservedState) bool {
+	if desired.Name != observed.Name {
+		return true
+	}
 	// A secret scheduled for deletion is drifted by definition: the desired
 	// state is "exists", and correction (convergeMutableFields) restores it.
 	if observed.ScheduledForDeletion {
@@ -49,27 +52,22 @@ func secretFieldsDrift(desired SecretsManagerSecretSpec, observed ObservedState)
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. The secret value is always masked.
-func ComputeFieldDiffs(desired SecretsManagerSecretSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SecretsManagerSecretSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if desired.Name != observed.Name {
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.name (immutable, requires replacement)", OldValue: observed.Name, NewValue: desired.Name})
+	}
 	if desired.SecretString != observed.SecretString {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.secretString", OldValue: sensitivePlaceholder, NewValue: sensitivePlaceholder})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.secretString", OldValue: sensitivePlaceholder, NewValue: sensitivePlaceholder})
 	}
 	if strings.TrimSpace(desired.Description) != strings.TrimSpace(observed.Description) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if !kmsKeyMatch(desired.KmsKeyID, observed.KmsKeyID) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.kmsKeyId", OldValue: observed.KmsKeyID, NewValue: desired.KmsKeyID})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.kmsKeyId", OldValue: observed.KmsKeyID, NewValue: desired.KmsKeyID})
 	}
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.description").
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 // kmsKeyMatch compares KMS key configuration. A secret created without an
@@ -87,20 +85,20 @@ func kmsKeyMatch(desired, observed string) bool {
 	return false
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

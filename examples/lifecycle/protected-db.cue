@@ -23,7 +23,7 @@ variables: {
 }
 
 resources: database: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "RDSInstance"
 	metadata: name: "\(variables.name)-\(variables.environment)-db"
 	spec: {

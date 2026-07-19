@@ -26,6 +26,7 @@ type EKSClusterAPI interface {
 	CreateCluster(ctx context.Context, spec EKSClusterSpec) (ObservedState, error)
 	DescribeCluster(ctx context.Context, name string) (ObservedState, bool, error)
 	UpdateClusterConfig(ctx context.Context, spec EKSClusterSpec) error
+	UpdateClusterLogging(ctx context.Context, name string, enabled []string) error
 	UpdateClusterVersion(ctx context.Context, name, version string) error
 	DeleteCluster(ctx context.Context, name string) error
 	TagResource(ctx context.Context, arn string, tags map[string]string) error
@@ -100,9 +101,18 @@ func (r *realEKSClusterAPI) UpdateClusterConfig(ctx context.Context, spec EKSClu
 			EndpointPrivateAccess: aws.Bool(spec.EndpointPrivateAccess),
 			PublicAccessCidrs:     spec.PublicAccessCidrs,
 		},
-		Logging: fullLoggingRequest(spec.EnabledLoggingTypes),
 	}
 	_, err := r.client.UpdateClusterConfig(ctx, input)
+	return err
+}
+
+func (r *realEKSClusterAPI) UpdateClusterLogging(ctx context.Context, name string, enabled []string) error {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return err
+	}
+	_, err := r.client.UpdateClusterConfig(ctx, &eks.UpdateClusterConfigInput{
+		Name: aws.String(name), Logging: fullLoggingRequest(enabled),
+	})
 	return err
 }
 

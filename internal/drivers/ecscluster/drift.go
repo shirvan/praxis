@@ -13,18 +13,13 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.containerInsights").
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired ECSCluster spec against the observed state from
 // AWS and returns true if any mutable field has diverged. It is called during
 // Reconcile to decide whether drift correction is needed.
 func HasDrift(desired ECSClusterSpec, observed ObservedState) bool {
+	if desired.Name != observed.Name {
+		return true
+	}
 	if containerInsightsDrift(desired, observed) {
 		return true
 	}
@@ -50,18 +45,21 @@ func capacityProvidersDrift(desired ECSClusterSpec, observed ObservedState) bool
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging.
-func ComputeFieldDiffs(desired ECSClusterSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired ECSClusterSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if desired.Name != observed.Name {
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.name (immutable, requires replacement)", OldValue: observed.Name, NewValue: desired.Name})
+	}
 
 	if containerInsightsDrift(desired, observed) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.containerInsights",
 			OldValue: normalizeContainerInsights(observed.ContainerInsights),
 			NewValue: normalizeContainerInsights(desired.ContainerInsights),
 		})
 	}
 	if capacityProvidersDrift(desired, observed) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.capacityProviders",
 			OldValue: sortedCopy(observed.CapacityProviders),
 			NewValue: sortedCopy(desired.CapacityProviders),
@@ -108,20 +106,20 @@ func sortedCopy(in []string) []string {
 	return out
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

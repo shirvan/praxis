@@ -4,30 +4,43 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// HasDrift returns true if the role name or user-managed tags differ between
-// desired and observed state. Path is immutable and excluded from drift checks.
+// HasDrift includes immutable identity fields so Provision reaches the
+// convergence guard and rejects an impossible in-place change.
 func HasDrift(desired IAMInstanceProfileSpec, observed ObservedState) bool {
+	if desired.InstanceProfileName != observed.InstanceProfileName {
+		return true
+	}
+	if desired.Path != observed.Path {
+		return true
+	}
 	if desired.RoleName != observed.RoleName {
 		return true
 	}
 	return !drivers.TagsMatch(desired.Tags, observed.Tags)
 }
 
-// ComputeFieldDiffs returns a per-field list of differences between desired and observed state.
-// Reports path as an informational immutable diff; checks roleName and tags for actionable drift.
-func ComputeFieldDiffs(desired IAMInstanceProfileSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+// ComputeFieldDiffs returns immutable identity differences plus actionable role
+// and user-managed tag differences.
+func ComputeFieldDiffs(desired IAMInstanceProfileSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if desired.InstanceProfileName != observed.InstanceProfileName {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path:     "spec.instanceProfileName (immutable, requires replacement)",
+			OldValue: observed.InstanceProfileName,
+			NewValue: desired.InstanceProfileName,
+		})
+	}
 
-	if desired.Path != "" && observed.Path != "" && desired.Path != observed.Path {
-		diffs = append(diffs, FieldDiffEntry{
-			Path:     "spec.path (immutable, ignored)",
+	if desired.Path != observed.Path {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path:     "spec.path (immutable, requires replacement)",
 			OldValue: observed.Path,
 			NewValue: desired.Path,
 		})
 	}
 
 	if desired.RoleName != observed.RoleName {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.roleName",
 			OldValue: observed.RoleName,
 			NewValue: desired.RoleName,
@@ -38,27 +51,20 @@ func ComputeFieldDiffs(desired IAMInstanceProfileSpec, observed ObservedState) [
 	return diffs
 }
 
-// FieldDiffEntry describes a single field-level difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	desiredFiltered := drivers.FilterPraxisTags(desired)
 	observedFiltered := drivers.FilterPraxisTags(observed)
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

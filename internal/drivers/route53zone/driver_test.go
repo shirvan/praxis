@@ -2,6 +2,7 @@ package route53zone
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/drivertest"
 	"github.com/shirvan/praxis/internal/eventing"
 	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
@@ -35,17 +37,21 @@ func (zoneDriftRecorder) ReportDrift(ctx restate.Context, req eventing.DriftRepo
 type fakeHostedZoneAPI struct {
 	mu sync.Mutex
 
-	nextID        string
-	zones         map[string]ObservedState
-	nameIndex     map[string]string
-	createCalls   int
-	deleteCalls   int
-	commentCalls  int
-	tagCalls      int
-	assocCalls    int
-	disassocCalls int
+	nextID         string
+	zones          map[string]ObservedState
+	nameIndex      map[string]string
+	createCalls    int
+	createAPICalls int
+	describeCalls  int
+	findCalls      int
+	deleteCalls    int
+	commentCalls   int
+	tagCalls       int
+	assocCalls     int
+	disassocCalls  int
 
 	createFunc   func(context.Context, HostedZoneSpec) (string, error)
+	createErrors []error
 	describeFunc func(context.Context, string) (ObservedState, error)
 	findFunc     func(context.Context, string) (string, error)
 	deleteFunc   func(context.Context, string) error
@@ -65,22 +71,34 @@ func (f *fakeHostedZoneAPI) CreateHostedZone(ctx context.Context, spec HostedZon
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.createAPICalls++
+	if existingID := f.nameIndex[normalizeZoneName(spec.Name)]; existingID != "" {
+		if existing := f.zones[existingID]; existing.CallerReference == spec.ManagedKey {
+			return existingID, nil
+		}
+	}
 	f.createCalls++
 	id := f.nextID
 	if id == "" {
 		id = fmt.Sprintf("Z%d", f.createCalls)
 	}
 	f.zones[id] = ObservedState{
-		HostedZoneId: id,
-		Name:         normalizeZoneName(spec.Name),
-		Comment:      spec.Comment,
-		IsPrivate:    spec.IsPrivate,
-		VPCs:         normalizeHostedZoneVPCs(spec.VPCs),
-		Tags:         copyTags(spec.Tags),
-		NameServers:  []string{"ns-1.example.com", "ns-2.example.com"},
-		RecordCount:  2,
+		HostedZoneId:    id,
+		Name:            normalizeZoneName(spec.Name),
+		CallerReference: spec.ManagedKey,
+		Comment:         spec.Comment,
+		IsPrivate:       spec.IsPrivate,
+		VPCs:            normalizeHostedZoneVPCs(spec.VPCs),
+		Tags:            copyTags(spec.Tags),
+		NameServers:     []string{"ns-1.example.com", "ns-2.example.com"},
+		RecordCount:     2,
 	}
 	f.nameIndex[normalizeZoneName(spec.Name)] = id
+	if len(f.createErrors) > 0 {
+		err := f.createErrors[0]
+		f.createErrors = f.createErrors[1:]
+		return "", err
+	}
 	return id, nil
 }
 
@@ -90,6 +108,7 @@ func (f *fakeHostedZoneAPI) DescribeHostedZone(ctx context.Context, hostedZoneID
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.describeCalls++
 	obs, ok := f.zones[hostedZoneID]
 	if !ok {
 		return ObservedState{}, &mockAPIError{code: "NoSuchHostedZone", message: "not found"}
@@ -103,7 +122,19 @@ func (f *fakeHostedZoneAPI) FindHostedZoneByName(ctx context.Context, name strin
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.findCalls++
 	return f.nameIndex[normalizeZoneName(name)], nil
+}
+
+func (f *fakeHostedZoneAPI) snapshot() drivertest.ProviderSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return drivertest.ProviderSnapshot{
+		Creates: f.createCalls,
+		Reads:   f.describeCalls + f.findCalls,
+		Updates: f.commentCalls + f.tagCalls + f.assocCalls + f.disassocCalls,
+		Deletes: f.deleteCalls,
+	}
 }
 
 func (f *fakeHostedZoneAPI) FindHostedZoneByTags(ctx context.Context, tags map[string]string) (string, error) {
@@ -251,7 +282,7 @@ func setupHostedZoneDriver(t *testing.T, api HostedZoneAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewHostedZoneDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) HostedZoneAPI {
+	driver := newGenericHostedZoneDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) HostedZoneAPI {
 		return api
 	})
 	env := restatetest.Start(t,
@@ -274,8 +305,51 @@ func testZoneSpec(name string, tags map[string]string) HostedZoneSpec {
 }
 
 func TestServiceName(t *testing.T) {
-	drv := NewHostedZoneDriver(nil)
+	drv := NewGenericHostedZoneDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
+}
+
+func TestCoreLifecycleConformance(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	client := setupHostedZoneDriver(t, api)
+	key := "conformance.example"
+	spec := testZoneSpec(key, map[string]string{"suite": "core-lifecycle"})
+
+	drivertest.RunCoreLifecycle(t, drivertest.CoreLifecycleFixture[HostedZoneSpec, HostedZoneOutputs]{
+		Client:      client,
+		ServiceName: ServiceName,
+		Key:         key,
+		Spec:        spec,
+		Snapshot:    api.snapshot,
+		AssertInputs: func(t *testing.T, inputs HostedZoneSpec) {
+			assert.Equal(t, spec.Account, inputs.Account)
+			assert.Equal(t, normalizeZoneName(spec.Name), inputs.Name)
+			assert.Equal(t, spec.Comment, inputs.Comment)
+			assert.Equal(t, spec.Tags, inputs.Tags)
+			assert.Equal(t, key, inputs.ManagedKey)
+		},
+	})
+}
+
+func TestObservedImportConformance(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	api.zones["ZOBSERVED"] = ObservedState{
+		HostedZoneId: "ZOBSERVED",
+		Name:         "observed.example",
+		Comment:      "observed import",
+		Tags:         map[string]string{"suite": "observed-import"},
+		NameServers:  []string{"ns-1.example.com"},
+		RecordCount:  2,
+	}
+	client := setupHostedZoneDriver(t, api)
+
+	drivertest.RunObservedImportLifecycle(t, drivertest.ObservedImportFixture[HostedZoneOutputs]{
+		Client:      client,
+		ServiceName: ServiceName,
+		Key:         "observed.example",
+		Ref:         types.ImportRef{ResourceID: "ZOBSERVED", Account: "test"},
+		Snapshot:    api.snapshot,
+	})
 }
 
 func TestProvision_CreatesPublicZone(t *testing.T) {
@@ -297,6 +371,18 @@ func TestProvision_CreatesPublicZone(t *testing.T) {
 	assert.Equal(t, types.ModeManaged, status.Mode)
 }
 
+func TestGenericHostedZoneInvalidSpecReturnsTerminalError(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	client := setupHostedZoneDriver(t, api)
+
+	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, "invalid-private.example", "Provision").Request(t.Context(), HostedZoneSpec{
+		Account: "test", IsPrivate: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "private hosted zones require at least one VPC association")
+	assert.Zero(t, api.createCalls)
+}
+
 func TestProvision_IdempotentReprovision(t *testing.T) {
 	api := newFakeHostedZoneAPI()
 	client := setupHostedZoneDriver(t, api)
@@ -309,6 +395,66 @@ func TestProvision_IdempotentReprovision(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, out1.HostedZoneId, out2.HostedZoneId)
 	assert.Equal(t, 1, api.createCalls)
+}
+
+func TestGenericHostedZoneRecoversAmbiguousCreateWithCallerReference(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	api.createErrors = []error{errors.New("ServiceUnavailable: create response lost")}
+	client := setupHostedZoneDriver(t, api)
+	key := "ambiguous.example"
+
+	outputs, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	require.NoError(t, err)
+	assert.Equal(t, "Z123456", outputs.HostedZoneId)
+	assert.Equal(t, 1, api.createCalls, "native CallerReference replay must not create a duplicate zone")
+	assert.GreaterOrEqual(t, api.createAPICalls, 2)
+}
+
+func TestGenericHostedZoneRejectsSameNameWithoutExactCallerReference(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	api.zones["ZEXISTING"] = ObservedState{
+		HostedZoneId: "ZEXISTING", Name: "claimed.example", CallerReference: "other-owner", Tags: map[string]string{},
+	}
+	api.nameIndex["claimed.example"] = "ZEXISTING"
+	client := setupHostedZoneDriver(t, api)
+
+	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, "claimed.example", "Provision").Request(t.Context(), testZoneSpec("claimed.example", nil))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "without exact Praxis ownership")
+	assert.Zero(t, api.createCalls)
+}
+
+func TestGenericHostedZoneRejectsImmutablePrivateModeChange(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	client := setupHostedZoneDriver(t, api)
+	key := "immutable.example"
+
+	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	require.NoError(t, err)
+	_, err = ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), HostedZoneSpec{
+		Account: "test", IsPrivate: true, VPCs: []HostedZoneVPC{{VpcId: "vpc-123", VpcRegion: "us-east-1"}},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "isPrivate is immutable")
+}
+
+func TestGenericHostedZoneExternalDeleteRequiresReplacementWithoutCreate(t *testing.T) {
+	api := newFakeHostedZoneAPI()
+	client := setupHostedZoneDriver(t, api)
+	key := "external-delete.example"
+
+	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	require.NoError(t, err)
+	before := api.createCalls
+	api.mu.Lock()
+	delete(api.zones, "Z123456")
+	delete(api.nameIndex, key)
+	api.mu.Unlock()
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.ReplacementRequired)
+	assert.Contains(t, result.Error, "deleted externally")
+	assert.Equal(t, before, api.createCalls)
 }
 
 func TestProvision_TagUpdate(t *testing.T) {

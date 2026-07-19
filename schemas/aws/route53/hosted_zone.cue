@@ -1,7 +1,7 @@
 package route53
 
 #Route53HostedZone: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "Route53HostedZone"
 
 	metadata: {

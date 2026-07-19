@@ -1,9 +1,11 @@
 package lambda
 
 #EventSourceMapping: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "EventSourceMapping"
-	metadata: name: =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
+	metadata: {
+		name: =~"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
+	}
 	spec: {
 		region:                          string
 		functionName:                    string
@@ -24,5 +26,13 @@ package lambda
 		destinationConfig?: onFailure: destinationArn: string
 		scalingConfig?: maximumConcurrency: int & >=2 & <=1000
 		functionResponseTypes?: [...("ReportBatchItemFailures")]
+	}
+	outputs?: {
+		uuid:           string
+		eventSourceArn: string
+		functionArn:    string
+		state:          string
+		lastModified:   string
+		batchSize:      int
 	}
 }

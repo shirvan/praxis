@@ -6,6 +6,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type genericAdapterConformance interface {
+	genericAdapter()
+}
+
+func TestProductionRegistry_AllAdaptersUseGenericAdapter(t *testing.T) {
+	registry := NewRegistry(nil)
+	adapters := registry.All()
+	assert.Len(t, adapters, 51)
+	for kind, adapter := range adapters {
+		_, ok := adapter.(genericAdapterConformance)
+		assert.Truef(t, ok, "%s must be descriptor-backed by GenericAdapter", kind)
+	}
+}
+
 // --- Observer interface conformance ---
 
 func TestS3Adapter_ImplementsObserver(t *testing.T) {
@@ -113,32 +127,6 @@ func TestSGAdapter_ImplementsTimeoutDefaults(t *testing.T) {
 	assert.True(t, ok)
 	timeouts := p.DefaultTimeouts()
 	assert.Equal(t, "5m", timeouts.Create)
-}
-
-// --- PreDeleter interface conformance ---
-
-func TestS3Adapter_ImplementsPreDeleter(t *testing.T) {
-	adapter := NewS3AdapterWithAuth(nil)
-	_, ok := any(adapter).(PreDeleter)
-	assert.True(t, ok, "S3Adapter should implement PreDeleter")
-}
-
-func TestECRRepoAdapter_ImplementsPreDeleter(t *testing.T) {
-	adapter := NewECRRepositoryAdapterWithAuth(nil)
-	_, ok := any(adapter).(PreDeleter)
-	assert.True(t, ok, "ECRRepositoryAdapter should implement PreDeleter")
-}
-
-func TestIAMRoleAdapter_ImplementsPreDeleter(t *testing.T) {
-	adapter := NewIAMRoleAdapterWithAuth(nil)
-	_, ok := any(adapter).(PreDeleter)
-	assert.True(t, ok, "IAMRoleAdapter should implement PreDeleter")
-}
-
-func TestVPCAdapter_DoesNotImplementPreDeleter(t *testing.T) {
-	adapter := NewVPCAdapterWithAuth(nil)
-	_, ok := any(adapter).(PreDeleter)
-	assert.False(t, ok, "VPCAdapter should not implement PreDeleter")
 }
 
 // --- ReadyWaiter interface conformance ---

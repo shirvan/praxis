@@ -1,14 +1,7 @@
-// Package secret implements the Praxis driver for AWS Secrets Manager secrets.
-//
-// This file defines the spec, outputs, observed-state, and reconciliation-state
-// types that flow through the driver lifecycle (Provision → Reconcile → Delete).
-// The spec is the user's desired configuration; the observed state is read from
-// AWS Secrets Manager; the driver state couples both together with status
-// tracking. The secret value is sensitive: it lives in the spec and observed
-// state so value drift is detectable, but it never leaves the driver as output.
+// Package secret implements AWS Secrets Manager provider semantics for the
+// shared Praxis lifecycle kernel. The secret value remains in desired and
+// observed state for drift correction, but never appears in resource outputs.
 package secret
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object service name used to register the AWS Secrets Manager driver.
 const ServiceName = "SecretsManagerSecret"
@@ -61,20 +54,4 @@ type ObservedState struct {
 	// deletion recovery window (DeletedDate set). Such a secret rejects value
 	// reads and writes until restored; Provision restores it before converging.
 	ScheduledForDeletion bool `json:"scheduledForDeletion,omitempty"`
-}
-
-// SecretsManagerSecretState is the single atomic state object persisted under
-// drivers.StateKey in the Restate K/V store. It combines desired spec, observed
-// state, outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type SecretsManagerSecretState struct {
-	Desired            SecretsManagerSecretSpec    `json:"desired"`
-	Observed           ObservedState               `json:"observed"`
-	Outputs            SecretsManagerSecretOutputs `json:"outputs"`
-	Status             types.ResourceStatus        `json:"status"`
-	Mode               types.Mode                  `json:"mode"`
-	Error              string                      `json:"error,omitempty"`
-	Generation         int64                       `json:"generation"`
-	LastReconcile      string                      `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                        `json:"reconcileScheduled"`
 }

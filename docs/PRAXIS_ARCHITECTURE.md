@@ -92,8 +92,8 @@ EC2Instance/us-east-1~web-server
 
 A Virtual Object is a stateful, key-addressable entity with two handler modes:
 
-- **Exclusive handlers** - serialized, single-writer access. Used for mutations (Provision, Delete, Reconcile).
-- **Shared handlers** - concurrent read access. Used for queries (GetStatus, GetOutputs).
+- **Exclusive handlers** - serialized, single-writer access. Used for mutations (Provision, Import, Delete, Reconcile, ClearState).
+- **Shared handlers** - concurrent read access. Used for queries (GetStatus, GetOutputs, GetInputs).
 
 Each Virtual Object has its own key-value store. No external database.
 
@@ -106,7 +106,7 @@ Each Virtual Object has its own key-value store. No external database.
 
 ### The Handler Contract
 
-Every resource driver implements six handlers:
+Every resource driver implements eight required handlers:
 
 ```text
 Exclusive (single-writer):
@@ -114,10 +114,12 @@ Exclusive (single-writer):
   Import(ref)      → outputs     Adopt an existing resource
   Delete()                       Remove the resource
   Reconcile()      → result      Check drift, optionally correct it
+  ClearState()                   Explicitly reset Virtual Object state
 
 Shared (concurrent-read):
   GetStatus()      → status      Current lifecycle status
   GetOutputs()     → outputs     Resource outputs (ARN, ID, etc.)
+  GetInputs()      → spec        Stored desired input for live planning
 ```
 
 Drivers know how to CRUD one resource type. They know nothing about other resources, dependency graphs, or deployments. This separation is what makes the system composable.
@@ -272,10 +274,10 @@ In Praxis, the groupings follow AWS API boundaries:
 
 | Pack | Drivers | Rationale |
 | --- | --- | --- |
-| **Storage** | S3, EBS, RDS, Aurora, SNS, SQS | Data stores, databases, messaging |
+| **Storage** | S3, EBS, DynamoDB, RDS, Aurora, SNS, SQS, SSM | Data stores, databases, messaging, configuration |
 | **Network** | VPC, SG, EIP, IGW, Route 53, ALB, NLB, ACM | Networking resources deploy together |
-| **Compute** | EC2, Lambda, ECR, AMI, KeyPair | Compute lifecycle |
-| **Identity** | IAM Role, Policy, User, Group | Security-sensitive, low churn |
+| **Compute** | EC2, Lambda, ECR, ECS, EKS, AMI, KeyPair | Compute lifecycle |
+| **Identity** | IAM Role, Policy, User, Group, Instance Profile, KMS, Secrets Manager | Security-sensitive, low churn |
 | **Monitoring** | CloudWatch Logs, Alarms, Dashboards | Optional, many deployments skip this |
 
 The runtime doesn't care about grouping. Restate routes by Virtual Object service name, not by which container hosts it. Moving a driver between packs is a deployment-time decision: change which `main.go` binds it, rebuild, redeploy. Zero code changes to the driver itself.
@@ -284,9 +286,9 @@ The runtime doesn't care about grouping. Restate routes by Virtual Object servic
 // Each pack is a main.go that binds related drivers to one Restate server
 rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(vpc.NewVPCDriver(auth), rp)).
-    Bind(restate.Reflect(sg.NewSecurityGroupDriver(auth), rp)).
-    Bind(restate.Reflect(subnet.NewSubnetDriver(auth), rp))
+    Bind(genericbinding.Reflect(vpc.NewGenericVPCDriver(auth), rp)).
+    Bind(genericbinding.Reflect(sg.NewGenericSecurityGroupDriver(auth), rp)).
+    Bind(genericbinding.Reflect(subnet.NewGenericSubnetDriver(auth), rp))
 ```
 
 ### Why This Grouping Works
@@ -385,7 +387,7 @@ graph TD
 
 **Praxis Core** is the coordination layer. It hosts the Command Service (receives CLI commands), Template Engine (CUE evaluation + policy enforcement), Deployment Orchestrator (DAG-scheduled workflows), state management Virtual Objects, and the eventing layer (EventBus, per-deployment DeploymentEventStore, SinkRouter). Runs as a single container.
 
-**Driver Packs** are five containers, each hosting related AWS resource drivers as Virtual Objects. Each driver implements the six-handler contract (Provision, Import, Delete, Reconcile, GetStatus, GetOutputs), stores state in Restate's K/V store, and handles AWS API rate limiting. Drivers have zero knowledge of each other.
+**Driver Packs** are five containers, each hosting related AWS resource drivers as Virtual Objects. Each driver implements the eight-handler contract (Provision, Import, Delete, Reconcile, ClearState, GetStatus, GetOutputs, GetInputs), stores state in Restate's K/V store, and handles AWS API rate limiting. Drivers have zero knowledge of each other.
 
 **Eventing** is a CloudEvents event bus for deployment lifecycle events, hosted inside Praxis Core. It fans out to per-deployment event stores and registered notification sinks (`webhook` HTTP POST or `restate_rpc` service-to-service send). The orchestrator fires events and forgets about them. If a sink is unavailable, deployments keep going.
 
@@ -475,7 +477,7 @@ The pieces that are truly reusable:
 2. DAG-based orchestration with expression hydration
 3. Durable timers for reconciliation loops
 4. Domain-grouped service packs
-5. The six-handler driver contract
+5. The eight-handler driver contract
 6. Lifecycle guards (preventDestroy, ignoreChanges)
 
 The pieces that are Praxis-specific:

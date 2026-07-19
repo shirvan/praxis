@@ -89,13 +89,13 @@ func kmsKeyDescriptor() GenericDescriptor[kmskey.KMSKeySpec, kmskey.KMSKeyOutput
 			return result
 		},
 
-		PlanID: func(out kmskey.KMSKeyOutputs) string { return out.AliasName },
+		PlanIdentity: storedPlanIdentity[kmskey.KMSKeySpec](func(out kmskey.KMSKeyOutputs) string { return out.AliasName }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[kmskey.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[kmskey.KMSKeySpec, kmskey.KMSKeyOutputs, kmskey.ObservedState] {
 			return kmsKeyProbe(kmskey.NewKMSKeyAPI(awsclient.NewKMSClient(cfg)))
 		},
 
-		DiffFields: func(desired kmskey.KMSKeySpec, observed kmskey.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired kmskey.KMSKeySpec, observed kmskey.ObservedState, _ kmskey.KMSKeyOutputs) []types.FieldDiff {
 			rawDiffs := kmskey.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -114,8 +114,9 @@ func aliasShortName(name string) string {
 
 // kmsKeyProbe adapts the driver API to the generic plan probe shape. The plan ID
 // is the full alias ("alias/<name>"), which DescribeKey resolves directly.
-func kmsKeyProbe(api kmskey.KMSKeyAPI) PlanProbeFunc[kmskey.ObservedState] {
-	return func(runCtx restate.RunContext, alias string) (kmskey.ObservedState, bool, error) {
+func kmsKeyProbe(api kmskey.KMSKeyAPI) PlanProbeFunc[kmskey.KMSKeySpec, kmskey.KMSKeyOutputs, kmskey.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[kmskey.KMSKeySpec, kmskey.KMSKeyOutputs]) (kmskey.ObservedState, bool, error) {
+		alias := input.Identity
 		obs, found, err := api.DescribeKey(runCtx, alias)
 		if err != nil {
 			if kmskey.IsNotFound(err) {

@@ -108,12 +108,6 @@ const (
 	EventTypeResourceWaiting     = "dev.praxis.resource.waiting"      // post-provision readiness polling
 	EventTypeResourceWaitTimeout = "dev.praxis.resource.wait.timeout" // readiness polling timed out
 
-	// --- Finalizer event types ---
-
-	EventTypeFinalizerStarted   = "dev.praxis.resource.finalizer.started"   // pre-delete hook running
-	EventTypeFinalizerCompleted = "dev.praxis.resource.finalizer.completed" // pre-delete hook completed
-	EventTypeFinalizerError     = "dev.praxis.resource.finalizer.error"     // finalizer hook failed
-
 	// --- Reconcile event types ---
 
 	EventTypeReconcileTriggered = "dev.praxis.reconcile.triggered" // on-demand reconcile fan-out

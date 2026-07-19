@@ -13,7 +13,7 @@ import (
 func TestEIPAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewEIPAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"ElasticIP",
 		"metadata":{"name":"web-eip"},
 		"spec":{

@@ -1,7 +1,7 @@
 package iam
 
 #IAMGroup: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "IAMGroup"
 
 	metadata: {

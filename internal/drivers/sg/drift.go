@@ -60,6 +60,9 @@ func Normalize(spec SecurityGroupSpec) []NormalizedRule {
 // HasDrift returns true if the desired and observed rule sets differ,
 // or if tags differ.
 func HasDrift(desired SecurityGroupSpec, observed ObservedState) bool {
+	if immutableIdentityError(desired, observed) != nil {
+		return true
+	}
 	desiredRules := Normalize(desired)
 	observedRules := mergeObservedRules(observed)
 
@@ -107,29 +110,29 @@ func ComputeDiff(desired, observed []NormalizedRule) (toAdd, toRemove []Normaliz
 
 // ComputeFieldDiffs returns a human-readable set of differences between the
 // desired security group spec and the current AWS-observed state.
-func ComputeFieldDiffs(desired SecurityGroupSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired SecurityGroupSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.GroupName != observed.GroupName {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.groupName", OldValue: observed.GroupName, NewValue: desired.GroupName})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.groupName", OldValue: observed.GroupName, NewValue: desired.GroupName})
 	}
 	if desired.Description != observed.Description {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if desired.VpcId != observed.VpcId {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcId", OldValue: observed.VpcId, NewValue: desired.VpcId})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.vpcId", OldValue: observed.VpcId, NewValue: desired.VpcId})
 	}
 
 	for key, value := range desired.Tags {
 		if observedValue, ok := observed.Tags[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observed.Tags {
 		if _, ok := desired.Tags[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 
@@ -137,21 +140,13 @@ func ComputeFieldDiffs(desired SecurityGroupSpec, observed ObservedState) []Fiel
 	observedRules := mergeObservedRules(observed)
 	toAdd, toRemove := ComputeDiff(desiredRules, observedRules)
 	for _, rule := range toAdd {
-		diffs = append(diffs, FieldDiffEntry{Path: ruleDiffPath(rule), OldValue: nil, NewValue: rule})
+		diffs = append(diffs, drivers.FieldDiff{Path: ruleDiffPath(rule), OldValue: nil, NewValue: rule})
 	}
 	for _, rule := range toRemove {
-		diffs = append(diffs, FieldDiffEntry{Path: ruleDiffPath(rule), OldValue: rule, NewValue: nil})
+		diffs = append(diffs, drivers.FieldDiff{Path: ruleDiffPath(rule), OldValue: rule, NewValue: nil})
 	}
 
 	return diffs
-}
-
-// FieldDiffEntry is the provider-specific diff unit consumed by the generic
-// plan renderer.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 // ---------------------------------------------------------------------------

@@ -5,12 +5,10 @@ import (
 
 	restate "github.com/restatedev/sdk-go"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewRDSInstanceDriver(nil)
+	drv := NewGenericRDSInstanceDriver(nil)
 	assert.Equal(t, "RDSInstance", drv.ServiceName())
 }
 
@@ -147,11 +145,6 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, int32(3306), out.Port)
 	assert.Equal(t, "mysql", out.Engine)
 	assert.Equal(t, "available", out.Status)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
 }
 
 func TestApplyDefaults(t *testing.T) {

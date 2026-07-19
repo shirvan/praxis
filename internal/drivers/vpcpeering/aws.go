@@ -235,8 +235,7 @@ func (r *realVPCPeeringAPI) FindByManagedKey(ctx context.Context, managedKey str
 		if conn.Status != nil {
 			status = string(conn.Status.Code)
 		}
-		switch status {
-		case "deleted", "rejected", "expired", "failed":
+		if status == "deleted" {
 			continue
 		}
 		if id := aws.ToString(conn.VpcPeeringConnectionId); id != "" {

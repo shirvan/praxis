@@ -65,13 +65,13 @@ func route53HealthCheckDescriptor() GenericDescriptor[route53healthcheck.HealthC
 			return map[string]any{"healthCheckId": out.HealthCheckId}
 		},
 
-		PlanID: func(out route53healthcheck.HealthCheckOutputs) string { return out.HealthCheckId },
+		PlanIdentity: storedPlanIdentity[route53healthcheck.HealthCheckSpec](func(out route53healthcheck.HealthCheckOutputs) string { return out.HealthCheckId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53healthcheck.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs, route53healthcheck.ObservedState] {
 			return route53HealthCheckProbe(route53healthcheck.NewHealthCheckAPI(awsclient.NewRoute53Client(cfg)))
 		},
 
-		DiffFields: func(desired route53healthcheck.HealthCheckSpec, observed route53healthcheck.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired route53healthcheck.HealthCheckSpec, observed route53healthcheck.ObservedState, _ route53healthcheck.HealthCheckOutputs) []types.FieldDiff {
 			rawDiffs := route53healthcheck.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -83,8 +83,9 @@ func route53HealthCheckDescriptor() GenericDescriptor[route53healthcheck.HealthC
 }
 
 // route53HealthCheckProbe adapts the driver API to the generic plan probe shape.
-func route53HealthCheckProbe(api route53healthcheck.HealthCheckAPI) PlanProbeFunc[route53healthcheck.ObservedState] {
-	return func(runCtx restate.RunContext, healthCheckID string) (route53healthcheck.ObservedState, bool, error) {
+func route53HealthCheckProbe(api route53healthcheck.HealthCheckAPI) PlanProbeFunc[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs, route53healthcheck.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs]) (route53healthcheck.ObservedState, bool, error) {
+		healthCheckID := input.Identity
 		obs, err := api.DescribeHealthCheck(runCtx, healthCheckID)
 		if err != nil {
 			if route53healthcheck.IsNotFound(err) {

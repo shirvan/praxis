@@ -9,7 +9,7 @@ import (
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewECRRepositoryDriver(nil)
+	drv := NewGenericECRRepositoryDriver(nil)
 	assert.Equal(t, "ECRRepository", drv.ServiceName())
 }
 

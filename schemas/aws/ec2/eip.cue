@@ -1,7 +1,7 @@
 package ec2
 
 #ElasticIP: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "ElasticIP"
 
 	metadata: {

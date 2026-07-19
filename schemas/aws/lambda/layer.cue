@@ -1,9 +1,11 @@
 package lambda
 
 #LambdaLayer: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "LambdaLayer"
-	metadata: name: =~"^[A-Za-z0-9-_]+$"
+	metadata: {
+		name: =~"^[A-Za-z0-9-_]+$"
+	}
 	spec: {
 		region:       string
 		account?:     string
@@ -24,5 +26,14 @@ package lambda
 			accountIds?: [...string]
 			public?: bool
 		}
+	}
+	outputs?: {
+		layerArn:        string
+		layerVersionArn: string
+		layerName:       string
+		version:         int
+		codeSize:        int
+		codeSha256?:     string
+		createdDate?:    string
 	}
 }

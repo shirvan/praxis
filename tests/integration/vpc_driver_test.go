@@ -54,7 +54,7 @@ func setupVPCDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
 	authClient := authservice.NewAuthClient()
-	driver := vpc.NewVPCDriver(authClient)
+	driver := vpc.NewGenericVPCDriver(authClient)
 	absSchemaDir, err := filepath.Abs("../../schemas")
 	require.NoError(t, err)
 

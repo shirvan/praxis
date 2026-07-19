@@ -3,8 +3,6 @@
 // publishes a new version. Permissions can be synced independently.
 package lambdalayer
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for the Lambda Layer driver.
 const ServiceName = "LambdaLayer"
 
@@ -68,17 +66,5 @@ type ObservedState struct {
 	CodeSha256              string          `json:"codeSha256,omitempty"`
 	CreatedDate             string          `json:"createdDate,omitempty"`
 	Permissions             PermissionsSpec `json:"permissions"`
-}
-
-// LambdaLayerState is the full durable state stored in the Restate Virtual Object.
-type LambdaLayerState struct {
-	Desired            LambdaLayerSpec      `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            LambdaLayerOutputs   `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
+	expectedVersion         int64
 }

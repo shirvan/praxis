@@ -13,7 +13,7 @@ import (
 func TestDashboardAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewDashboardAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"Dashboard",
 		"metadata":{"name":"ops-main"},
 		"spec":{

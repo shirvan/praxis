@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 
 	"github.com/shirvan/praxis/internal/drivers"
 
@@ -41,6 +40,8 @@ type realDBSubnetGroupAPI struct {
 	limiter *ratelimit.Limiter
 }
 
+const managedKeyTag = "praxis:managed-key"
+
 // NewDBSubnetGroupAPI creates a new API backed by the given RDS client.
 // Rate limited to 15 req/s with burst of 8 for the "rds" category.
 func NewDBSubnetGroupAPI(client *rdssdk.Client) DBSubnetGroupAPI {
@@ -56,7 +57,7 @@ func (r *realDBSubnetGroupAPI) CreateDBSubnetGroup(ctx context.Context, spec DBS
 		DBSubnetGroupDescription: aws.String(spec.Description),
 		DBSubnetGroupName:        aws.String(spec.GroupName),
 		SubnetIds:                append([]string(nil), spec.SubnetIds...),
-		Tags:                     toRDSTags(spec.Tags),
+		Tags:                     toRDSCreateTags(spec.Tags, spec.ManagedKey),
 	})
 	if err != nil {
 		return "", err
@@ -110,7 +111,8 @@ func (r *realDBSubnetGroupAPI) DescribeDBSubnetGroup(ctx context.Context, groupN
 		if tagErr != nil {
 			return ObservedState{}, tagErr
 		}
-		observed.Tags = tags
+		observed.ManagedKey = tags[managedKeyTag]
+		observed.Tags = drivers.FilterPraxisTags(tags)
 	}
 	return observed, nil
 }
@@ -139,10 +141,11 @@ func (r *realDBSubnetGroupAPI) DeleteDBSubnetGroup(ctx context.Context, groupNam
 
 // UpdateTags performs diff-based tag updates: removes stale, adds new/changed.
 func (r *realDBSubnetGroupAPI) UpdateTags(ctx context.Context, arn string, tags map[string]string) error {
-	current, err := r.listTags(ctx, arn)
+	allCurrent, err := r.listTags(ctx, arn)
 	if err != nil {
 		return err
 	}
+	current := drivers.FilterPraxisTags(allCurrent)
 	filteredDesired := drivers.FilterPraxisTags(tags)
 	var remove []string
 	for key := range current {
@@ -178,7 +181,8 @@ func (r *realDBSubnetGroupAPI) UpdateTags(ctx context.Context, arn string, tags 
 	return err
 }
 
-// listTags returns all non-praxis tags on the resource.
+// listTags returns all tags so ownership metadata can be checked separately
+// from user-managed drift.
 func (r *realDBSubnetGroupAPI) listTags(ctx context.Context, arn string) (map[string]string, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return nil, err
@@ -190,22 +194,22 @@ func (r *realDBSubnetGroupAPI) listTags(ctx context.Context, arn string) (map[st
 	tags := map[string]string{}
 	for _, tag := range out.TagList {
 		key := aws.ToString(tag.Key)
-		if strings.HasPrefix(key, "praxis:") {
-			continue
-		}
 		tags[key] = aws.ToString(tag.Value)
 	}
 	return tags, nil
 }
 
-// toRDSTags converts a map to sorted RDS tag structs, filtering praxis: tags.
-func toRDSTags(tags map[string]string) []rdstypes.Tag {
+func toRDSCreateTags(tags map[string]string, managedKey string) []rdstypes.Tag {
 	filtered := drivers.FilterPraxisTags(tags)
-	if len(filtered) == 0 {
-		return nil
+	if managedKey != "" {
+		filtered[managedKeyTag] = managedKey
 	}
-	out := make([]rdstypes.Tag, 0, len(filtered))
-	for key, value := range filtered {
+	return toRDSTagsIncludingPraxis(filtered)
+}
+
+func toRDSTagsIncludingPraxis(tags map[string]string) []rdstypes.Tag {
+	out := make([]rdstypes.Tag, 0, len(tags))
+	for key, value := range tags {
 		out = append(out, rdstypes.Tag{Key: aws.String(key), Value: aws.String(value)})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -221,7 +225,12 @@ func IsNotFound(err error) bool {
 
 // IsAlreadyExists returns true if a subnet group with the same name exists.
 func IsAlreadyExists(err error) bool {
-	return awserr.HasCode(err, "DBSubnetGroupAlreadyExistsFault")
+	return awserr.HasCode(err, "DBSubnetGroupAlreadyExistsFault", "DBSubnetGroupAlreadyExists")
+}
+
+// IsQuotaExceeded returns true when the account has no DB subnet-group capacity.
+func IsQuotaExceeded(err error) bool {
+	return awserr.HasCode(err, "DBSubnetGroupQuotaExceededFault", "DBSubnetGroupQuotaExceeded")
 }
 
 // IsInvalidState returns true if the subnet group is in a state preventing the operation.

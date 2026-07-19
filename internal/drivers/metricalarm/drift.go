@@ -18,6 +18,9 @@ import (
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired MetricAlarmSpec, observed ObservedState) bool {
+	if desired.AlarmName != "" && observed.AlarmName != "" && desired.AlarmName != observed.AlarmName {
+		return true
+	}
 	if desired.Namespace != observed.Namespace {
 		return true
 	}
@@ -78,13 +81,15 @@ func HasDrift(desired MetricAlarmSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired MetricAlarmSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired MetricAlarmSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	appendIfDiff := func(path string, oldValue, newValue any, changed bool) {
 		if changed {
-			diffs = append(diffs, FieldDiffEntry{Path: path, OldValue: oldValue, NewValue: newValue})
+			diffs = append(diffs, drivers.FieldDiff{Path: path, OldValue: oldValue, NewValue: newValue})
 		}
 	}
+	appendIfDiff("spec.alarmName (immutable, requires replacement)", observed.AlarmName, desired.AlarmName,
+		desired.AlarmName != "" && desired.AlarmName != observed.AlarmName)
 	appendIfDiff("spec.namespace", observed.Namespace, desired.Namespace, desired.Namespace != observed.Namespace)
 	appendIfDiff("spec.metricName", observed.MetricName, desired.MetricName, desired.MetricName != observed.MetricName)
 	appendIfDiff("spec.dimensions", observed.Dimensions, desired.Dimensions, !dimensionsMatch(desired.Dimensions, observed.Dimensions))
@@ -104,15 +109,6 @@ func ComputeFieldDiffs(desired MetricAlarmSpec, observed ObservedState) []FieldD
 	appendIfDiff("spec.unit", observed.Unit, desired.Unit, desired.Unit != observed.Unit)
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 func dimensionsMatch(a, b map[string]string) bool {
@@ -158,20 +154,20 @@ func sliceEqual(a, b []string) bool {
 	return slices.CompareFunc(aCopy, bCopy, cmp.Compare) == 0
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

@@ -1,10 +1,12 @@
 package rdsinstance
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/aws/smithy-go"
+	restate "github.com/restatedev/sdk-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -69,4 +71,36 @@ func TestIsInvalidParam_False(t *testing.T) {
 
 func TestIsInvalidParam_Nil(t *testing.T) {
 	assert.False(t, IsInvalidParam(nil))
+}
+
+func TestClassifyInstanceMutation(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code restate.Code
+	}{
+		{
+			name: "validation",
+			err:  &mockAPIError{code: "InvalidParameterCombination"},
+			code: 400,
+		},
+		{
+			name: "conflict",
+			err:  &mockAPIError{code: "DBInstanceAlreadyExists"},
+			code: 409,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyInstanceMutation(tt.err)
+			assert.True(t, restate.IsTerminalError(got))
+			assert.Equal(t, tt.code, restate.ErrorCode(got))
+		})
+	}
+
+	terminal := restate.TerminalError(errors.New("already classified"), 422)
+	got := classifyInstanceMutation(terminal)
+	assert.Same(t, terminal, got, "already-terminal error must be returned unchanged")
+	assert.Equal(t, restate.Code(422), restate.ErrorCode(got))
 }

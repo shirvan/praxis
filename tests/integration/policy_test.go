@@ -36,7 +36,7 @@ func TestPolicy_GlobalPolicyBlocksInvalidTemplate(t *testing.T) {
 		Source: `
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "S3Bucket"
 		metadata: { name: "` + bucketName + `" }
 		spec: {
@@ -77,7 +77,7 @@ func TestPolicy_GlobalPolicyBlocksApply(t *testing.T) {
 		Template: `
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "S3Bucket"
 		metadata: { name: "` + bucketName + `" }
 		spec: {
@@ -111,7 +111,7 @@ func TestPolicy_TemplateScopedPolicyAppliesOnlyToTemplateRef(t *testing.T) {
 		Source: `
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "S3Bucket"
 		metadata: { name: "` + bucketName + `" }
 		spec: {
@@ -148,7 +148,7 @@ resources: {
 		Source: `
 resources: {
 	bucket: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind: "S3Bucket"
 		metadata: { name: "` + bucketName + `-inline" }
 		spec: {

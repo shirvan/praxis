@@ -13,20 +13,14 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired NLB spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired NLBSpec, observed ObservedState) bool {
 	desired = applyDefaults(desired)
+	if desired.Name != observed.Name || desired.Scheme != observed.Scheme {
+		return true
+	}
 	if desired.IpAddressType != observed.IpAddressType {
 		return true
 	}
@@ -49,44 +43,47 @@ func HasDrift(desired NLBSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired NLBSpec, observed ObservedState) []FieldDiffEntry {
+func ComputeFieldDiffs(desired NLBSpec, observed ObservedState) []drivers.FieldDiff {
 	desired = applyDefaults(desired)
-	var diffs []FieldDiffEntry
+	var diffs []drivers.FieldDiff
+	if desired.Name != observed.Name {
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.name (immutable, requires replacement)", OldValue: observed.Name, NewValue: desired.Name})
+	}
 
 	if desired.Scheme != observed.Scheme {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.scheme (immutable, requires replacement)", OldValue: observed.Scheme, NewValue: desired.Scheme})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.scheme (immutable, requires replacement)", OldValue: observed.Scheme, NewValue: desired.Scheme})
 	}
 	if desired.IpAddressType != observed.IpAddressType {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.ipAddressType", OldValue: observed.IpAddressType, NewValue: desired.IpAddressType})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.ipAddressType", OldValue: observed.IpAddressType, NewValue: desired.IpAddressType})
 	}
 	desiredSubnets := resolveSubnets(desired)
 	if !sortedStringsEqual(desiredSubnets, observed.Subnets) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.subnets", OldValue: observed.Subnets, NewValue: desiredSubnets})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.subnets", OldValue: observed.Subnets, NewValue: desiredSubnets})
 	}
 	if desired.CrossZoneLoadBalancing != observed.CrossZoneLoadBalancing {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.crossZoneLoadBalancing", OldValue: observed.CrossZoneLoadBalancing, NewValue: desired.CrossZoneLoadBalancing})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.crossZoneLoadBalancing", OldValue: observed.CrossZoneLoadBalancing, NewValue: desired.CrossZoneLoadBalancing})
 	}
 	if desired.DeletionProtection != observed.DeletionProtection {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.deletionProtection", OldValue: observed.DeletionProtection, NewValue: desired.DeletionProtection})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.deletionProtection", OldValue: observed.DeletionProtection, NewValue: desired.DeletionProtection})
 	}
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	fd := drivers.FilterPraxisTags(desired)
 	fo := drivers.FilterPraxisTags(observed)
 	for key, value := range fd {
 		if oldValue, ok := fo[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if oldValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: oldValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: oldValue, NewValue: value})
 		}
 	}
 	for key, value := range fo {
 		if _, ok := fd[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	sort.Slice(diffs, func(i, j int) bool { return diffs[i].Path < diffs[j].Path })

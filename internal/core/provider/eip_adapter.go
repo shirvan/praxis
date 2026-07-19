@@ -95,13 +95,13 @@ func eipDescriptor() GenericDescriptor[eip.ElasticIPSpec, eip.ElasticIPOutputs, 
 			return result
 		},
 
-		PlanID: func(out eip.ElasticIPOutputs) string { return out.AllocationId },
+		PlanIdentity: storedPlanIdentity[eip.ElasticIPSpec](func(out eip.ElasticIPOutputs) string { return out.AllocationId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[eip.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[eip.ElasticIPSpec, eip.ElasticIPOutputs, eip.ObservedState] {
 			return eipProbe(eip.NewEIPAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired eip.ElasticIPSpec, observed eip.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired eip.ElasticIPSpec, observed eip.ObservedState, _ eip.ElasticIPOutputs) []types.FieldDiff {
 			rawDiffs := eip.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -113,8 +113,9 @@ func eipDescriptor() GenericDescriptor[eip.ElasticIPSpec, eip.ElasticIPOutputs, 
 }
 
 // eipProbe adapts the driver API to the generic plan probe shape.
-func eipProbe(api eip.EIPAPI) PlanProbeFunc[eip.ObservedState] {
-	return func(runCtx restate.RunContext, allocationID string) (eip.ObservedState, bool, error) {
+func eipProbe(api eip.EIPAPI) PlanProbeFunc[eip.ElasticIPSpec, eip.ElasticIPOutputs, eip.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[eip.ElasticIPSpec, eip.ElasticIPOutputs]) (eip.ObservedState, bool, error) {
+		allocationID := input.Identity
 		obs, err := api.DescribeAddress(runCtx, allocationID)
 		if err != nil {
 			if eip.IsNotFound(err) {

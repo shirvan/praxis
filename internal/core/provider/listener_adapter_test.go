@@ -11,6 +11,7 @@ import (
 func TestListenerAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewListenerAdapterWithAuth(nil)
 	doc := json.RawMessage(`{
+		"apiVersion": "praxis.io/alpha",
 		"kind": "Listener",
 		"metadata": {"name": "my-https-listener"},
 		"spec": {

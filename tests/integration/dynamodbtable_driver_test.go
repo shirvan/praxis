@@ -44,7 +44,7 @@ func setupDynamoDBTableDriver(t *testing.T) (*ingress.Client, *ddbsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ddbClient := awsclient.NewDynamoDBClient(awsCfg)
-	driver := dynamodbtable.NewDynamoDBTableDriver(authservice.NewAuthClient())
+	driver := dynamodbtable.NewGenericDynamoDBTableDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ddbClient

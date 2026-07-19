@@ -441,7 +441,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					continue
 				}
 
-				invocation, err := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)
+				invocation, err := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec, types.NormalizeLifecyclePolicy(resource.Lifecycle))
 				if err != nil {
 					if err := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, name, resource.Kind, fmt.Sprintf("failed to dispatch driver call: %v", err)); err != nil {
 						return DeploymentResult{}, err
@@ -668,7 +668,7 @@ func (w *DeploymentWorkflow) Run(ctx restate.WorkflowContext, plan DeploymentPla
 					continue
 				}
 
-				reProvInvocation, provErr := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec)
+				reProvInvocation, provErr := adapter.Provision(ctx, resource.Key, plan.Account, decodedSpec, types.NormalizeLifecyclePolicy(resource.Lifecycle))
 				if provErr != nil {
 					if recErr := w.recordApplyFailure(ctx, plan.Key, plan.Workspace, state.Generation, exec, schedule, resourceName, resource.Kind,
 						fmt.Sprintf("auto-replace re-provision dispatch failed: %v", provErr)); recErr != nil {

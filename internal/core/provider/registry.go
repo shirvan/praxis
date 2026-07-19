@@ -78,7 +78,7 @@ type Adapter interface {
 	// Workflows and command handlers already run inside Restate, so they should
 	// use durable service-to-service calls instead of making external HTTP calls
 	// back through ingress.
-	Provision(ctx restate.Context, key string, account string, spec any) (ProvisionInvocation, error)
+	Provision(ctx restate.Context, key string, account string, spec any, lifecycle types.LifecyclePolicy) (ProvisionInvocation, error)
 
 	// Delete submits a typed Delete call from inside a Restate handler and returns
 	// a handle that can be waited on alongside any other Restate futures.
@@ -316,6 +316,9 @@ func decodeResourceDocument(raw json.RawMessage) (resourceDocument, error) {
 	var doc resourceDocument
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return resourceDocument{}, fmt.Errorf("decode resource document: %w", err)
+	}
+	if doc.APIVersion != types.APIVersion {
+		return resourceDocument{}, fmt.Errorf("unsupported resource apiVersion %q; expected %q", doc.APIVersion, types.APIVersion)
 	}
 	if doc.Kind == "" {
 		return resourceDocument{}, fmt.Errorf("resource document kind is required")

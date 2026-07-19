@@ -16,7 +16,7 @@ variables: {
 resources: {
 	// ── Database Volume (high IOPS) ─────────────────────
 	dbVolume: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EBSVolume"
 		metadata: name: "\(variables.name)-\(variables.environment)-db"
 		spec: {
@@ -36,7 +36,7 @@ resources: {
 
 	// ── Application Data Volume ─────────────────────────
 	appVolume: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EBSVolume"
 		metadata: name: "\(variables.name)-\(variables.environment)-appdata"
 		spec: {

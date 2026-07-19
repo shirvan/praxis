@@ -1,6 +1,7 @@
 package iampolicy
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"testing"
 
@@ -48,8 +49,8 @@ func TestComputeFieldDiffs_ImmutableFields(t *testing.T) {
 		ObservedState{Path: "/ops/", Description: "old", PolicyDocument: `{}`, Tags: map[string]string{}},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: "/ops/", NewValue: "/app/"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.description (immutable, ignored)", OldValue: "old", NewValue: "new"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.path (immutable, requires replacement)", OldValue: "/ops/", NewValue: "/app/"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.description (immutable, requires replacement)", OldValue: "old", NewValue: "new"})
 }
 
 func TestComputeFieldDiffs_DocumentAndTags(t *testing.T) {
@@ -64,7 +65,7 @@ func TestComputeFieldDiffs_DocumentAndTags(t *testing.T) {
 		},
 	)
 
-	assert.ElementsMatch(t, []FieldDiffEntry{
+	assert.ElementsMatch(t, []drivers.FieldDiff{
 		{Path: "spec.policyDocument", OldValue: `{"Statement":[{"Action":"s3:PutObject","Effect":"Allow","Resource":"*"}],"Version":"2012-10-17"}`, NewValue: `{"Statement":[{"Action":"s3:GetObject","Effect":"Allow","Resource":"*"}],"Version":"2012-10-17"}`},
 		{Path: "tags.env", OldValue: "dev", NewValue: "prod"},
 		{Path: "tags.team", OldValue: nil, NewValue: "platform"},

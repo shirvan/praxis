@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewKMSKeyDriver(nil)
+	drv := NewGenericKMSKeyDriver(nil)
 	assert.Equal(t, "KMSKey", drv.ServiceName())
 }
 
@@ -84,10 +82,4 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, "arn:aws:kms:us-east-1:123456789012:key/abcd", out.ARN)
 	assert.Equal(t, "abcd", out.KeyID)
 	assert.Equal(t, "alias/prod", out.AliasName)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }

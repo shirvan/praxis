@@ -41,7 +41,7 @@ func setupEIPDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := eip.NewElasticIPDriver(authservice.NewAuthClient())
+	driver := eip.NewGenericElasticIPDriver(authservice.NewAuthClient())
 
 	return setupDriverEventingEnv(t, driver), ec2Client
 }

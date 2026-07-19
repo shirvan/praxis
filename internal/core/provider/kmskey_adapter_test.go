@@ -13,7 +13,7 @@ import (
 func TestKMSKeyAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewKMSKeyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"KMSKey",
 		"metadata":{"name":"app-data"},
 		"spec":{"region":"us-east-1","description":"app data key","enableKeyRotation":true,"tags":{"env":"dev"}}
@@ -38,6 +38,7 @@ func TestKMSKeyAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 func TestKMSKeyAdapter_BuildKey_StripsAliasPrefix(t *testing.T) {
 	adapter := NewKMSKeyAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
+		"apiVersion":"praxis.io/alpha",
 		"kind":"KMSKey",
 		"metadata":{"name":"alias/app-data"},
 		"spec":{"region":"us-east-1"}

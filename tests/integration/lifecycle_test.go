@@ -163,71 +163,71 @@ func setupFullStack(t *testing.T) *lifecycleTestEnv {
 		restate.Reflect(registry.PolicyRegistry{}),
 
 		// ── Storage drivers ──
-		restate.Reflect(drivers3.NewS3BucketDriver(authClient)),
+		restate.Reflect(drivers3.NewGenericS3BucketDriver(authClient)),
 
 		// ── Network drivers ──
-		restate.Reflect(drivervpc.NewVPCDriver(authClient)),
-		restate.Reflect(driversg.NewSecurityGroupDriver(authClient)),
-		restate.Reflect(driversubnet.NewSubnetDriver(authClient)),
-		restate.Reflect(driverigw.NewIGWDriver(authClient)),
-		restate.Reflect(drivernatgw.NewNATGatewayDriver(authClient)),
-		restate.Reflect(drivereip.NewElasticIPDriver(authClient)),
-		restate.Reflect(driverroutetable.NewRouteTableDriver(authClient)),
-		restate.Reflect(drivernacl.NewNetworkACLDriver(authClient)),
-		restate.Reflect(drivervpcpeering.NewVPCPeeringDriver(authClient)),
+		restate.Reflect(drivervpc.NewGenericVPCDriver(authClient)),
+		restate.Reflect(driversg.NewGenericSecurityGroupDriver(authClient)),
+		restate.Reflect(driversubnet.NewGenericSubnetDriver(authClient)),
+		restate.Reflect(driverigw.NewGenericIGWDriver(authClient)),
+		restate.Reflect(drivernatgw.NewGenericNATGatewayDriver(authClient)),
+		restate.Reflect(drivereip.NewGenericElasticIPDriver(authClient)),
+		restate.Reflect(driverroutetable.NewGenericRouteTableDriver(authClient)),
+		restate.Reflect(drivernacl.NewGenericNetworkACLDriver(authClient)),
+		restate.Reflect(drivervpcpeering.NewGenericVPCPeeringDriver(authClient)),
 
 		// ── Compute drivers ──
-		restate.Reflect(driverec2.NewEC2InstanceDriver(authClient)),
-		restate.Reflect(driverkeypair.NewKeyPairDriver(authClient)),
-		restate.Reflect(driverebs.NewEBSVolumeDriver(authClient)),
-		restate.Reflect(driverami.NewAMIDriver(authClient)),
+		restate.Reflect(driverec2.NewGenericEC2InstanceDriver(authClient)),
+		restate.Reflect(driverkeypair.NewGenericKeyPairDriver(authClient)),
+		restate.Reflect(driverebs.NewGenericEBSVolumeDriver(authClient)),
+		restate.Reflect(driverami.NewGenericAMIDriver(authClient)),
 
 		// ── Identity drivers ──
-		restate.Reflect(driveriamrole.NewIAMRoleDriver(authClient)),
-		restate.Reflect(driveriampolicy.NewIAMPolicyDriver(authClient)),
-		restate.Reflect(driveriaminstanceprofile.NewIAMInstanceProfileDriver(authClient)),
-		restate.Reflect(driveriamgroup.NewIAMGroupDriver(authClient)),
-		restate.Reflect(driveriamuser.NewIAMUserDriver(authClient)),
+		restate.Reflect(driveriamrole.NewGenericIAMRoleDriver(authClient)),
+		restate.Reflect(driveriampolicy.NewGenericIAMPolicyDriver(authClient)),
+		restate.Reflect(driveriaminstanceprofile.NewGenericIAMInstanceProfileDriver(authClient)),
+		restate.Reflect(driveriamgroup.NewGenericIAMGroupDriver(authClient)),
+		restate.Reflect(driveriamuser.NewGenericIAMUserDriver(authClient)),
 
 		// ── DNS & TLS drivers ──
-		restate.Reflect(driveracmcert.NewACMCertificateDriver(authClient)),
-		restate.Reflect(driverroute53zone.NewHostedZoneDriver(authClient)),
-		restate.Reflect(driverroute53record.NewDNSRecordDriver(authClient)),
-		restate.Reflect(driverroute53healthcheck.NewHealthCheckDriver(authClient)),
+		restate.Reflect(driveracmcert.NewGenericACMCertificateDriver(authClient)),
+		restate.Reflect(driverroute53zone.NewGenericHostedZoneDriver(authClient)),
+		restate.Reflect(driverroute53record.NewGenericDNSRecordDriver(authClient)),
+		restate.Reflect(driverroute53healthcheck.NewGenericHealthCheckDriver(authClient)),
 
 		// ── Load balancer drivers ──
-		restate.Reflect(driveralb.NewALBDriver(authClient)),
-		restate.Reflect(drivernlb.NewNLBDriver(authClient)),
-		restate.Reflect(drivertargetgroup.NewTargetGroupDriver(authClient)),
-		restate.Reflect(driverlistener.NewListenerDriver(authClient)),
-		restate.Reflect(driverlistenerrule.NewListenerRuleDriver(authClient)),
+		restate.Reflect(driveralb.NewGenericALBDriver(authClient)),
+		restate.Reflect(drivernlb.NewGenericNLBDriver(authClient)),
+		restate.Reflect(drivertargetgroup.NewGenericTargetGroupDriver(authClient)),
+		restate.Reflect(driverlistener.NewGenericListenerDriver(authClient)),
+		restate.Reflect(driverlistenerrule.NewGenericListenerRuleDriver(authClient)),
 
 		// ── Serverless drivers ──
-		restate.Reflect(driverlambda.NewLambdaFunctionDriver(authClient)),
-		restate.Reflect(driverlambdalayer.NewLambdaLayerDriver(authClient)),
-		restate.Reflect(driverlambdaperm.NewLambdaPermissionDriver(authClient)),
-		restate.Reflect(driveresm.NewEventSourceMappingDriver(authClient)),
+		restate.Reflect(driverlambda.NewGenericLambdaFunctionDriver(authClient)),
+		restate.Reflect(driverlambdalayer.NewGenericLambdaLayerDriver(authClient)),
+		restate.Reflect(driverlambdaperm.NewGenericLambdaPermissionDriver(authClient)),
+		restate.Reflect(driveresm.NewGenericEventSourceMappingDriver(authClient)),
 
 		// ── Database drivers ──
-		restate.Reflect(driverrdsinstance.NewRDSInstanceDriver(authClient)),
-		restate.Reflect(driverauroracluster.NewAuroraClusterDriver(authClient)),
-		restate.Reflect(driverdbsubnetgroup.NewDBSubnetGroupDriver(authClient)),
-		restate.Reflect(driverdbparametergroup.NewDBParameterGroupDriver(authClient)),
+		restate.Reflect(driverrdsinstance.NewGenericRDSInstanceDriver(authClient)),
+		restate.Reflect(driverauroracluster.NewGenericAuroraClusterDriver(authClient)),
+		restate.Reflect(driverdbsubnetgroup.NewGenericDBSubnetGroupDriver(authClient)),
+		restate.Reflect(driverdbparametergroup.NewGenericDBParameterGroupDriver(authClient)),
 
 		// ── Container registry drivers ──
-		restate.Reflect(driverecrrepo.NewECRRepositoryDriver(authClient)),
-		restate.Reflect(driverecrpolicy.NewECRLifecyclePolicyDriver(authClient)),
+		restate.Reflect(driverecrrepo.NewGenericECRRepositoryDriver(authClient)),
+		restate.Reflect(driverecrpolicy.NewGenericECRLifecyclePolicyDriver(authClient)),
 
 		// ── Messaging drivers ──
-		restate.Reflect(driversnstopic.NewSNSTopicDriver(authClient)),
-		restate.Reflect(driversnssub.NewSNSSubscriptionDriver(authClient)),
-		restate.Reflect(driversqs.NewSQSQueueDriver(authClient)),
-		restate.Reflect(driversqspolicy.NewSQSQueuePolicyDriver(authClient)),
+		restate.Reflect(driversnstopic.NewGenericSNSTopicDriver(authClient)),
+		restate.Reflect(driversnssub.NewGenericSNSSubscriptionDriver(authClient)),
+		restate.Reflect(driversqs.NewGenericSQSQueueDriver(authClient)),
+		restate.Reflect(driversqspolicy.NewGenericSQSQueuePolicyDriver(authClient)),
 
 		// ── Monitoring drivers ──
-		restate.Reflect(driverloggroup.NewLogGroupDriver(authClient)),
-		restate.Reflect(drivermetricalarm.NewMetricAlarmDriver(authClient)),
-		restate.Reflect(driverdashboard.NewDashboardDriver(authClient)),
+		restate.Reflect(driverloggroup.NewGenericLogGroupDriver(authClient)),
+		restate.Reflect(drivermetricalarm.NewGenericMetricAlarmDriver(authClient)),
+		restate.Reflect(driverdashboard.NewGenericDashboardDriver(authClient)),
 	)
 
 	return &lifecycleTestEnv{

@@ -29,7 +29,7 @@ func setupIAMGroupDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 	awsCfg := motoAWSConfig(t)
 	iamClient := awsclient.NewIAMClient(awsCfg)
 	ensureIAMEnabledForGroupTests(t, iamClient)
-	driver := iamgroup.NewIAMGroupDriver(authservice.NewAuthClient())
+	driver := iamgroup.NewGenericIAMGroupDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, iamClient
@@ -38,15 +38,6 @@ func setupIAMGroupDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 func ensureIAMEnabledForGroupTests(t *testing.T, iamClient *iamsdk.Client) {
 	t.Helper()
 	_, err := iamClient.ListGroups(context.Background(), &iamsdk.ListGroupsInput{MaxItems: aws.Int32(1)})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
-}
-
-func createIAMUserForGroup(t *testing.T, iamClient *iamsdk.Client, userName string) {
-	t.Helper()
-	_, err := iamClient.CreateUser(context.Background(), &iamsdk.CreateUserInput{UserName: aws.String(userName)})
 	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
 		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
 	}
@@ -125,16 +116,11 @@ func TestIAMGroupImport_ExistingGroupDefaultsObserved(t *testing.T) {
 	assert.Equal(t, types.ModeObserved, status.Mode)
 }
 
-func TestIAMGroupDelete_RemovesMembersAndGroup(t *testing.T) {
+func TestIAMGroupDelete_RemovesEmptyGroup(t *testing.T) {
 	client, iamClient := setupIAMGroupDriver(t)
 	groupName := uniqueIAMName(t, "group")
-	userName := uniqueIAMName(t, "user")
-	createIAMUserForGroup(t, iamClient, userName)
 
 	_, err := ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), iamgroup.IAMGroupSpec{Account: integrationAccountName, GroupName: groupName})
-	require.NoError(t, err)
-
-	_, err = iamClient.AddUserToGroup(context.Background(), &iamsdk.AddUserToGroupInput{GroupName: aws.String(groupName), UserName: aws.String(userName)})
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, iamgroup.ServiceName, groupName, "Delete").Request(t.Context(), restate.Void{})

@@ -1,7 +1,7 @@
 package natgw
 
 #NATGateway: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "NATGateway"
 
 	metadata: {

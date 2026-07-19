@@ -115,7 +115,9 @@ Each Virtual Object holds:
 
 ## Handler Contract
 
-Every driver MUST implement these six handlers:
+Every driver MUST implement these eight handlers. Delete preparation is not a
+public driver hook; users must make resources deletable before requesting
+deletion.
 
 ### Exclusive Handlers (Single-Writer)
 
@@ -127,6 +129,7 @@ These run one-at-a-time per object key. While a `Provision` is running for `my-b
 | `Import` | `(ObjectContext, ImportRef) → (Outputs, error)` | Adopt an existing cloud resource. Captures observed state as desired baseline. |
 | `Delete` | `(ObjectContext) → error` | Remove the resource. Fail terminally if unsafe (e.g., non-empty bucket). |
 | `Reconcile` | `(ObjectContext) → (ReconcileResult, error)` | Periodic drift detection. Managed mode: correct drift. Observed mode: report only. |
+| `ClearState` | `(ObjectContext) → error` | Explicitly clear all Virtual Object state after an orphan/reset operation. |
 
 ### Shared Handlers (Concurrent Reads)
 
@@ -136,8 +139,19 @@ These can run concurrently and never block exclusive handlers.
 | --- | --- | --- |
 | `GetStatus` | `(ObjectSharedContext) → (StatusResponse, error)` | Return lifecycle status, mode, generation. |
 | `GetOutputs` | `(ObjectSharedContext) → (Outputs, error)` | Return resource outputs (ARN, endpoint, etc.). |
+| `GetInputs` | `(ObjectSharedContext) → (Spec, error)` | Return the stored desired input used by observe-before-act planning. |
 
-The Restate SDK discovers handlers automatically via reflection (`restate.Reflect`) — there is no Go interface to implement. All drivers are registered with `config.DefaultRetryPolicy()`, which bounds retries to 50 attempts with exponential backoff (100ms → 60s cap) and pauses the invocation on exhaustion.
+The Restate SDK discovers the generic handler set by reflection. Production packs
+must bind drivers through `genericbinding.Reflect`, which enforces the generic
+driver marker before applying `config.DefaultRetryPolicy()`. The retry policy
+bounds retries to 50 attempts with exponential backoff (100ms → 60s cap) and
+stops the invocation on exhaustion.
+
+Generic driver status responses include structured conditions. When late
+initialization adopts provider-selected defaults, the `Initialized` condition
+explains what changed. External deletion returns `replacementRequired`; Core,
+not the isolated driver, decides whether to replay the deployment DAG according
+to `lifecycle.recovery`.
 
 ---
 
@@ -146,20 +160,24 @@ The Restate SDK discovers handlers automatically via reflection (`restate.Reflec
 All driver state is stored as a **single atomic K/V entry** under the key `"state"`. A single `restate.Set()` call writes the entire state struct, ensuring no torn state if the handler crashes between operations.
 
 ```go
-type S3BucketState struct {
-    Desired            S3BucketSpec           `json:"desired"`
-    Observed           ObservedState          `json:"observed"`
-    Outputs            S3BucketOutputs        `json:"outputs"`
-    Status             types.ResourceStatus   `json:"status"`
-    Mode               types.Mode             `json:"mode"`
-    Error              string                 `json:"error,omitempty"`
-    Generation         int64                  `json:"generation"`
-    LastReconcile      string                 `json:"lastReconcile,omitempty"`
-    ReconcileScheduled bool                   `json:"reconcileScheduled"`
+type State[Spec, Outputs, Observed any] struct {
+    Version            string               `json:"version"` // "alpha"
+    Desired            Spec                 `json:"desired"`
+    Observed           Observed             `json:"observed"`
+    Outputs            Outputs              `json:"outputs"`
+    Status             types.ResourceStatus `json:"status"`
+    Mode               types.Mode           `json:"mode"`
+    Error              string               `json:"error,omitempty"`
+    Generation         int64                `json:"generation"`
+    LastReconcile      string               `json:"lastReconcile,omitempty"`
+    ReconcileScheduled bool                 `json:"reconcileScheduled"`
+	Conditions         []types.Condition    `json:"conditions,omitempty"`
 }
 ```
 
-Every driver follows this exact pattern. The concrete types (`S3BucketSpec`, `S3BucketOutputs`, `ObservedState`) vary per driver, but the structure is always the same.
+Generic drivers instantiate this shared envelope with their concrete spec,
+output, and observed types. Persisted state must have the exact current alpha
+version; Praxis does not upgrade older state during alpha.
 
 ---
 
@@ -429,10 +447,12 @@ Each driver follows the same directory structure for its internal package:
 
 ```text
 internal/drivers/<kind>/
-├── types.go       # Spec, Outputs, ObservedState, State structs
+├── types.go       # Spec, Outputs, and ObservedState types
 ├── aws.go         # AWS SDK wrapper behind a testable interface
 ├── drift.go       # Pure-function drift detection
-├── driver.go      # Restate Virtual Object with lifecycle handlers
+├── generic.go     # Resource operations and kernel descriptor
+├── generic_test.go # Shared lifecycle conformance suite
+├── aws_test.go    # Error-classification tests
 └── drift_test.go  # Drift detection tests
 
 schemas/aws/<service>/<kind>.cue  # CUE schema for user-facing spec
@@ -448,10 +468,10 @@ cmd/praxis-<pack>/
 
 | Pack | Binary | Drivers |
 | --- | --- | --- |
-| Storage | `cmd/praxis-storage/` | S3, EBS, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription, SQSQueue, SQSQueuePolicy, SSMParameter |
+| Storage | `cmd/praxis-storage/` | S3, EBS, DynamoDB, RDSInstance, DBSubnetGroup, DBParameterGroup, AuroraCluster, SNSTopic, SNSSubscription, SQSQueue, SQSQueuePolicy, SSMParameter |
 | Network | `cmd/praxis-network/` | SecurityGroup, VPC, ElasticIP, InternetGateway, NetworkACL, RouteTable, Subnet, NATGateway, VPCPeering, Route53HostedZone, DNSRecord, HealthCheck, ALB, NLB, TargetGroup, Listener, ListenerRule, ACMCertificate |
-| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy |
-| Identity | `cmd/praxis-identity/` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile |
+| Compute | `cmd/praxis-compute/` | AMI, KeyPair, EC2, Lambda, LambdaLayer, LambdaPermission, EventSourceMapping, ECRRepository, ECRLifecyclePolicy, ECSCluster, EKSCluster |
+| Identity | `cmd/praxis-identity/` | IAMRole, IAMPolicy, IAMUser, IAMGroup, IAMInstanceProfile, KMSKey, SecretsManagerSecret |
 | Monitoring | `cmd/praxis-monitoring/` | LogGroup, MetricAlarm, Dashboard |
 
 See [Driver Roadmap](DRIVER_ROADMAP.md) for the full roadmap.
@@ -768,9 +788,15 @@ When drift is detected: `DriftFree` status is `False` with reason `DriftDetected
 
 ### Late Initialization
 
-Late initialization merges server-defaulted field values from the observed AWS state into the desired spec after first provision. This prevents false drift on fields that AWS auto-populates (e.g., root volume type defaults to `gp2`).
+Late initialization merges server-defaulted field values from observed provider
+state into the desired spec during each Provision. Running it per Provision
+keeps repeated applies idempotent when the user continues to omit a defaulted
+field.
 
-Pattern: implement a `LateInit<Kind>(spec, observed) (spec, bool)` function. Call it after the first successful Describe, guarded by `state.LateInitDone`. Set `LateInitDone = true` after applying.
+Pattern: declare `LateInitialization` and provide a pure
+`LateInitialize(spec, observed) (spec, bool)` descriptor hook. The kernel calls
+it after observation and publishes an `Initialized` condition describing
+whether provider defaults were adopted.
 
 Drivers with late init: S3 (encryption algorithm), EC2 (root volume type and size), VPC (instance tenancy).
 
@@ -802,14 +828,6 @@ All other resource kinds fall back to the system default of 5 minutes.
 Adapters may implement the `Observer` interface for a fast observe-before-act path. The `Observe` method checks whether the resource exists and is up-to-date without modifying it. If up-to-date, the orchestrator skips provision.
 
 Observers implemented: S3, VPC, SecurityGroup.
-
-### PreDelete / PostDelete
-
-Adapters may implement `PreDeleter` to run cleanup before the driver's Delete handler. Examples:
-
-- **S3**: empties all objects from the bucket before deletion
-- **ECR Repository**: sets `ForceDelete = true` in the driver state so delete removes all images
-- **IAM Role**: detaches managed policies, deletes inline policies, removes instance profile associations
 
 ### WaitReady
 

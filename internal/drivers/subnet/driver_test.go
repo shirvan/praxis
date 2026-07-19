@@ -2,6 +2,7 @@ package subnet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/drivertest"
 	"github.com/shirvan/praxis/internal/eventing"
 	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
@@ -70,6 +72,7 @@ type fakeSubnetAPI struct {
 	managedKeys map[string]string
 
 	createCalls int
+	readCalls   int
 	waitCalls   int
 	modifyCalls int
 	updateCalls int
@@ -84,6 +87,9 @@ type fakeSubnetAPI struct {
 	modifyFunc   func(context.Context, string, bool) error
 	updateFunc   func(context.Context, string, map[string]string) error
 	findFunc     func(context.Context, string) (string, error)
+
+	createAfterApplyErrors []error
+	waitErrors             []error
 }
 
 func newFakeSubnetAPI() *fakeSubnetAPI {
@@ -122,6 +128,11 @@ func (f *fakeSubnetAPI) CreateSubnet(ctx context.Context, spec SubnetSpec) (stri
 	if spec.ManagedKey != "" {
 		f.managedKeys[spec.ManagedKey] = id
 	}
+	if len(f.createAfterApplyErrors) > 0 {
+		err := f.createAfterApplyErrors[0]
+		f.createAfterApplyErrors = f.createAfterApplyErrors[1:]
+		return "", err
+	}
 	return id, nil
 }
 
@@ -131,6 +142,7 @@ func (f *fakeSubnetAPI) DescribeSubnet(ctx context.Context, subnetID string) (Ob
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.readCalls++
 	obs, ok := f.observed[subnetID]
 	if !ok {
 		return ObservedState{}, &mockAPIError{code: "InvalidSubnetID.NotFound", message: "missing"}
@@ -164,10 +176,24 @@ func (f *fakeSubnetAPI) WaitUntilAvailable(ctx context.Context, subnetID string)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.waitCalls++
+	if len(f.waitErrors) > 0 {
+		err := f.waitErrors[0]
+		f.waitErrors = f.waitErrors[1:]
+		return err
+	}
 	obs := f.observed[subnetID]
 	obs.State = "available"
 	f.observed[subnetID] = obs
 	return nil
+}
+
+func (f *fakeSubnetAPI) snapshot() drivertest.ProviderSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return drivertest.ProviderSnapshot{
+		Creates: f.createCalls, Reads: f.readCalls,
+		Updates: f.modifyCalls + f.updateCalls, Deletes: f.deleteCalls,
+	}
 }
 
 func (f *fakeSubnetAPI) ModifyMapPublicIp(ctx context.Context, subnetID string, enabled bool) error {
@@ -264,7 +290,7 @@ func setupSubnetDriver(t *testing.T, api SubnetAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewSubnetDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) SubnetAPI {
+	driver := newGenericSubnetDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) SubnetAPI {
 		return api
 	})
 	env := restatetest.Start(t,
@@ -317,8 +343,67 @@ func testSubnetSpec(key, vpcID string, tags map[string]string) SubnetSpec {
 }
 
 func TestServiceName(t *testing.T) {
-	drv := NewSubnetDriver(nil)
+	drv := NewGenericSubnetDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
+}
+
+func TestGenericSubnetCoreLifecycle(t *testing.T) {
+	api := newFakeSubnetAPI()
+	client := setupSubnetDriver(t, api)
+	key := "vpc-123~generic-subnet"
+	spec := testSubnetSpec(key, "vpc-123", map[string]string{"Name": "generic-subnet", "env": "test"})
+
+	drivertest.RunCoreLifecycle(t, drivertest.CoreLifecycleFixture[SubnetSpec, SubnetOutputs]{
+		Client: client, ServiceName: ServiceName, Key: key, Spec: spec, Snapshot: api.snapshot,
+		AssertInputs: func(t *testing.T, inputs SubnetSpec) {
+			assert.Equal(t, spec, inputs)
+			assert.Equal(t, key, inputs.ManagedKey)
+		},
+	})
+}
+
+func TestGenericSubnetObservedImportLifecycle(t *testing.T) {
+	api := newFakeSubnetAPI()
+	api.observed["subnet-existing"] = ObservedState{
+		SubnetId: "subnet-existing", VpcId: "vpc-123", CidrBlock: "10.0.2.0/24",
+		AvailabilityZone: "us-east-1a", AvailabilityZoneId: "use1-az1", State: "available",
+		OwnerId: "123456789012", AvailableIpCount: 251,
+		Tags: map[string]string{"Name": "existing", "praxis:managed-key": "old-owner"},
+	}
+	client := setupSubnetDriver(t, api)
+
+	drivertest.RunObservedImportLifecycle(t, drivertest.ObservedImportFixture[SubnetOutputs]{
+		Client: client, ServiceName: ServiceName, Key: "us-east-1~subnet-existing",
+		Ref: types.ImportRef{ResourceID: "subnet-existing", Account: "test"}, Snapshot: api.snapshot,
+	})
+}
+
+func TestGenericSubnetRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
+	api := newFakeSubnetAPI()
+	api.createAfterApplyErrors = []error{errors.New("ServiceUnavailable: response lost after CreateSubnet")}
+	client := setupSubnetDriver(t, api)
+	key := "vpc-123~ambiguous"
+
+	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(
+		t.Context(), testSubnetSpec(key, "vpc-123", nil),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "subnet-123", outputs.SubnetId)
+	assert.Equal(t, 1, api.snapshot().Creates, "ambiguous create recovery must not create a duplicate subnet")
+}
+
+func TestGenericSubnetWaiterRetriesWithoutSecondCreate(t *testing.T) {
+	api := newFakeSubnetAPI()
+	api.waitErrors = []error{errors.New("RequestLimitExceeded: transient waiter failure")}
+	client := setupSubnetDriver(t, api)
+	key := "vpc-123~wait-retry"
+
+	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(
+		t.Context(), testSubnetSpec(key, "vpc-123", nil),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 1, api.snapshot().Creates)
+	assert.Equal(t, 2, api.waitCalls, "Restate must retry the waiter without replaying CreateSubnet")
 }
 
 func TestProvision_CreatesNewSubnet(t *testing.T) {
@@ -355,6 +440,19 @@ func TestProvision_MissingCidrBlockFails(t *testing.T) {
 	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cidrBlock is required")
+}
+
+func TestProvision_MissingRegionFails(t *testing.T) {
+	api := newFakeSubnetAPI()
+	client := setupSubnetDriver(t, api)
+	key := "vpc-123~public-a"
+	spec := testSubnetSpec(key, "vpc-123", nil)
+	spec.Region = ""
+
+	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "region is required")
+	assert.Zero(t, api.snapshot().Creates)
 }
 
 func TestProvision_MissingVpcIdFails(t *testing.T) {
@@ -587,5 +685,7 @@ func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Error, "deleted externally")
+	assert.True(t, result.ReplacementRequired)
+	assert.Equal(t, 1, api.createCalls, "reconcile must not recreate an externally deleted subnet")
 	assert.Contains(t, pollSubnetEventTypes(t, client, key, eventing.DriftEventExternalDelete), eventing.DriftEventExternalDelete)
 }

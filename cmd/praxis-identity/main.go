@@ -7,33 +7,21 @@ import (
 	"os/signal"
 	"syscall"
 
-	restate "github.com/restatedev/sdk-go"
 	"github.com/restatedev/sdk-go/server"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/core/config"
-	"github.com/shirvan/praxis/internal/drivers/iamgroup"
-	"github.com/shirvan/praxis/internal/drivers/iaminstanceprofile"
-	"github.com/shirvan/praxis/internal/drivers/iampolicy"
-	"github.com/shirvan/praxis/internal/drivers/iamrole"
-	"github.com/shirvan/praxis/internal/drivers/iamuser"
-	"github.com/shirvan/praxis/internal/drivers/kmskey"
-	"github.com/shirvan/praxis/internal/drivers/secret"
+	identitypack "github.com/shirvan/praxis/internal/driverpack/identity"
 )
 
 func main() {
 	cfg := config.Load()
 	auth := authservice.NewAuthClient()
-	rp := config.DefaultRetryPolicy()
 
-	srv := server.NewRestate().
-		Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth), rp)).
-		Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth), rp)).
-		Bind(restate.Reflect(iamuser.NewIAMUserDriver(auth), rp)).
-		Bind(restate.Reflect(iamgroup.NewIAMGroupDriver(auth), rp)).
-		Bind(restate.Reflect(iaminstanceprofile.NewIAMInstanceProfileDriver(auth), rp)).
-		Bind(restate.Reflect(kmskey.NewKMSKeyDriver(auth), rp)).
-		Bind(restate.Reflect(secret.NewSecretsManagerSecretDriver(auth), rp))
+	srv := server.NewRestate()
+	for _, definition := range identitypack.Definitions(auth) {
+		srv.Bind(definition)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 

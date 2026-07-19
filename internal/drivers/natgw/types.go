@@ -6,13 +6,10 @@
 // (for VPC-to-VPC communication). All configuration except tags is immutable
 // after creation; changing SubnetId or ConnectivityType requires replacement.
 //
-// This driver handles the create→wait→ready lifecycle, failed-state
-// recovery (automatic delete-and-recreate), tag management, and drift
-// detection. Because AWS NAT Gateway creation is asynchronous, the driver
-// includes polling waits with 10-minute timeouts.
+// The shared lifecycle kernel observes asynchronous readiness. A failed
+// gateway remains visible in Error until the user explicitly deletes it and
+// provisions again.
 package natgw
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name used to register this driver.
 const ServiceName = "NATGateway"
@@ -57,17 +54,4 @@ type ObservedState struct {
 	FailureCode        string            `json:"failureCode,omitempty"`
 	FailureMessage     string            `json:"failureMessage,omitempty"`
 	Tags               map[string]string `json:"tags"`
-}
-
-// NATGatewayState is the single atomic state object stored under drivers.StateKey.
-type NATGatewayState struct {
-	Desired            NATGatewaySpec       `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state.
-	Outputs            NATGatewayOutputs    `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status.
-	Mode               types.Mode           `json:"mode"`                    // Managed or Observed.
-	Error              string               `json:"error,omitempty"`         // Error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of last reconcile.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Deduplication flag for reconcile scheduling.
 }

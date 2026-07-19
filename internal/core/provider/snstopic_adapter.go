@@ -101,13 +101,13 @@ func snsTopicDescriptor() GenericDescriptor[snstopic.SNSTopicSpec, snstopic.SNST
 			return result
 		},
 
-		PlanID: func(out snstopic.SNSTopicOutputs) string { return out.TopicArn },
+		PlanIdentity: storedPlanIdentity[snstopic.SNSTopicSpec](func(out snstopic.SNSTopicOutputs) string { return out.TopicArn }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[snstopic.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs, snstopic.ObservedState] {
 			return snsTopicProbe(snstopic.NewTopicAPI(awsclient.NewSNSClient(cfg)))
 		},
 
-		DiffFields: func(desired snstopic.SNSTopicSpec, observed snstopic.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired snstopic.SNSTopicSpec, observed snstopic.ObservedState, _ snstopic.SNSTopicOutputs) []types.FieldDiff {
 			rawDiffs := snstopic.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -119,8 +119,9 @@ func snsTopicDescriptor() GenericDescriptor[snstopic.SNSTopicSpec, snstopic.SNST
 }
 
 // snsTopicProbe adapts the driver API to the generic plan probe shape.
-func snsTopicProbe(api snstopic.TopicAPI) PlanProbeFunc[snstopic.ObservedState] {
-	return func(runCtx restate.RunContext, topicArn string) (snstopic.ObservedState, bool, error) {
+func snsTopicProbe(api snstopic.TopicAPI) PlanProbeFunc[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs, snstopic.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs]) (snstopic.ObservedState, bool, error) {
+		topicArn := input.Identity
 		obs, err := api.GetTopicAttributes(runCtx, topicArn)
 		if err != nil {
 			if snstopic.IsNotFound(err) {

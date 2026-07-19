@@ -41,6 +41,12 @@ func TestHasDrift_NonActiveSkipped(t *testing.T) {
 	assert.False(t, vpcpeering.HasDrift(spec, obs))
 }
 
+func TestHasDrift_PendingAutoAccept(t *testing.T) {
+	spec := vpcpeering.VPCPeeringSpec{AutoAccept: true}
+	obs := vpcpeering.ObservedState{Status: "pending-acceptance"}
+	assert.True(t, vpcpeering.HasDrift(spec, obs))
+}
+
 func TestComputeFieldDiffs_ImmutableVPCs(t *testing.T) {
 	diffs := vpcpeering.ComputeFieldDiffs(
 		vpcpeering.VPCPeeringSpec{RequesterVpcId: "vpc-a", AccepterVpcId: "vpc-b"},

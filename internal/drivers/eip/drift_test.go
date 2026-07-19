@@ -1,6 +1,7 @@
 package eip
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,6 @@ func TestComputeFieldDiffs_Tags(t *testing.T) {
 		ObservedState{Tags: map[string]string{"Name": "web", "owner": "alice"}},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "tags.env", OldValue: nil, NewValue: "prod"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "tags.owner", OldValue: "alice", NewValue: nil})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "tags.env", OldValue: nil, NewValue: "prod"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "tags.owner", OldValue: "alice", NewValue: nil})
 }

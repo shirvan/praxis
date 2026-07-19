@@ -10,8 +10,12 @@ import (
 // true if any mutable field has diverged. Compared fields include: assume role policy document
 // (JSON-normalized), description, max session duration, permissions boundary, inline policies,
 // managed policy ARNs, and user-defined tags (excluding praxis: prefixed tags).
-// Immutable fields like path are NOT compared here—path drift is handled as a terminal error.
+// Path is included so a direct Provision with an immutable change reaches the
+// convergence guard and fails instead of silently accepting an impossible spec.
 func HasDrift(desired IAMRoleSpec, observed ObservedState) bool {
+	if desired.Path != "" && observed.Path != "" && desired.Path != observed.Path {
+		return true
+	}
 	if !policyDocumentsEqual(desired.AssumeRolePolicyDocument, observed.AssumeRolePolicyDocument) {
 		return true
 	}
@@ -36,46 +40,37 @@ func HasDrift(desired IAMRoleSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a detailed list of per-field differences between the desired spec
 // and the observed AWS state. Each entry identifies the field path (e.g., "spec.description"),
 // the old (observed) value, and the new (desired) value. Immutable fields like path are reported
-// with an "(immutable, ignored)" suffix to indicate they cannot be corrected in place.
+// with an "(immutable, requires replacement)" suffix to indicate they cannot be corrected in place.
 // This is used for drift reporting, audit logging, and user-facing diff displays.
-func ComputeFieldDiffs(desired IAMRoleSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired IAMRoleSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.Path != "" && observed.Path != "" && desired.Path != observed.Path {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.path (immutable, ignored)", OldValue: observed.Path, NewValue: desired.Path})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.path (immutable, requires replacement)", OldValue: observed.Path, NewValue: desired.Path})
 	}
 	if !policyDocumentsEqual(desired.AssumeRolePolicyDocument, observed.AssumeRolePolicyDocument) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.assumeRolePolicyDocument",
 			OldValue: normalizePolicyDocument(observed.AssumeRolePolicyDocument),
 			NewValue: normalizePolicyDocument(desired.AssumeRolePolicyDocument),
 		})
 	}
 	if desired.Description != observed.Description {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if desired.MaxSessionDuration != observed.MaxSessionDuration {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.maxSessionDuration", OldValue: observed.MaxSessionDuration, NewValue: desired.MaxSessionDuration})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.maxSessionDuration", OldValue: observed.MaxSessionDuration, NewValue: desired.MaxSessionDuration})
 	}
 	if desired.PermissionsBoundary != observed.PermissionsBoundary {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.permissionsBoundary", OldValue: observed.PermissionsBoundary, NewValue: desired.PermissionsBoundary})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.permissionsBoundary", OldValue: observed.PermissionsBoundary, NewValue: desired.PermissionsBoundary})
 	}
 
 	diffs = append(diffs, computeInlinePolicyDiffs(desired.InlinePolicies, observed.InlinePolicies)...)
 	if !stringSetEqual(desired.ManagedPolicyArns, observed.ManagedPolicyArns) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.managedPolicyArns", OldValue: sortedStrings(observed.ManagedPolicyArns), NewValue: sortedStrings(desired.ManagedPolicyArns)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.managedPolicyArns", OldValue: sortedStrings(observed.ManagedPolicyArns), NewValue: sortedStrings(desired.ManagedPolicyArns)})
 	}
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level difference between desired and observed state.
-// Path is a dot-separated JSON-like path (e.g., "spec.inlinePolicies.MyPolicy").
-// OldValue is the current AWS value; NewValue is the Praxis-desired value.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 // policyDocumentsEqual compares two IAM policy documents by normalizing them to canonical JSON.
@@ -111,39 +106,39 @@ func normalizePolicyMap(in map[string]string) map[string]string {
 	return out
 }
 
-func computeInlinePolicyDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeInlinePolicyDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	nd := normalizePolicyMap(desired)
 	no := normalizePolicyMap(observed)
 	for key, value := range nd {
 		if current, ok := no[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.inlinePolicies." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.inlinePolicies." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.inlinePolicies." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.inlinePolicies." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range no {
 		if _, ok := nd[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.inlinePolicies." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.inlinePolicies." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	filteredDesired := drivers.FilterPraxisTags(desired)
 	filteredObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range filteredDesired {
 		if observedValue, ok := filteredObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range filteredObserved {
 		if _, ok := filteredDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

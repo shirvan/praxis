@@ -218,7 +218,7 @@ func TestComputeFieldDiffs_ImmutableFields(t *testing.T) {
 		paths[d.Path] = true
 	}
 	assert.True(t, paths["spec.cidrBlock (immutable, requires replacement)"])
-	assert.True(t, paths["spec.instanceTenancy (immutable, ignored)"])
+	assert.True(t, paths["spec.instanceTenancy (immutable, requires replacement)"])
 }
 
 func TestComputeFieldDiffs_IgnoresPraxisTags(t *testing.T) {

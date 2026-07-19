@@ -17,6 +17,7 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/eventing"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // resourceEventOwnerStateKey is the Restate state key used by
@@ -122,5 +123,24 @@ func (ResourceEventBridge) ReportDrift(ctx restate.Context, req eventing.DriftRe
 	if buildErr != nil {
 		return buildErr
 	}
-	return EmitCloudEvent(ctx, event)
+	if err := EmitCloudEvent(ctx, event); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.EventType) != eventing.DriftEventExternalDelete {
+		return nil
+	}
+	status, err := restate.Object[types.StatusResponse](
+		ctx, resourceKind, resourceKey, "GetStatus",
+	).Request(restate.Void{})
+	if err != nil {
+		return err
+	}
+	_, err = restate.Object[RecoveryResult](
+		ctx, DeploymentStateServiceName, streamKey, "HandleExternalDelete",
+	).Request(ExternalDeleteRequest{
+		ResourceName: resourceName,
+		Mode:         status.Mode,
+		Error:        req.Error,
+	})
+	return err
 }

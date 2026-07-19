@@ -14,7 +14,7 @@ variables: {
 }
 
 resources: cert: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "ACMCertificate"
 	metadata: name: "\(variables.name)-\(variables.environment)-wildcard"
 	spec: {

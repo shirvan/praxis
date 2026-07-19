@@ -1,9 +1,6 @@
-// Package iaminstanceprofile implements the Restate virtual-object driver for AWS IAM Instance Profiles.
-// It manages the lifecycle of instance profiles including role association (single role only),
-// tags, and an immutable path via the create-or-converge pattern with drift detection.
+// Package iaminstanceprofile implements AWS IAM Instance Profile provider
+// semantics for the shared Praxis lifecycle kernel.
 package iaminstanceprofile
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate virtual object service name used to register and address this driver.
 const ServiceName = "IAMInstanceProfile"
@@ -33,17 +30,4 @@ type ObservedState struct {
 	RoleName            string            `json:"roleName"`
 	Tags                map[string]string `json:"tags"`
 	CreateDate          string            `json:"createDate"`
-}
-
-// IAMInstanceProfileState is the full persisted state of this virtual-object.
-type IAMInstanceProfileState struct {
-	Desired            IAMInstanceProfileSpec    `json:"desired"`
-	Observed           ObservedState             `json:"observed"`
-	Outputs            IAMInstanceProfileOutputs `json:"outputs"`
-	Status             types.ResourceStatus      `json:"status"`
-	Mode               types.Mode                `json:"mode"`
-	Error              string                    `json:"error,omitempty"`
-	Generation         int64                     `json:"generation"`
-	LastReconcile      string                    `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                      `json:"reconcileScheduled"`
 }

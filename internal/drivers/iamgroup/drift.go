@@ -2,6 +2,7 @@ package iamgroup
 
 import (
 	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
 	"net/url"
 	"sort"
 )
@@ -20,24 +21,17 @@ func HasDrift(desired IAMGroupSpec, observed ObservedState) bool {
 
 // ComputeFieldDiffs returns a per-field list of differences between desired and observed state.
 // Used for logging and drift-event reporting.
-func ComputeFieldDiffs(desired IAMGroupSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired IAMGroupSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.Path != observed.Path {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.path", OldValue: observed.Path, NewValue: desired.Path})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.path", OldValue: observed.Path, NewValue: desired.Path})
 	}
 	diffs = append(diffs, computeInlinePolicyDiffs(desired.InlinePolicies, observed.InlinePolicies)...)
 	if !stringSetEqual(desired.ManagedPolicyArns, observed.ManagedPolicyArns) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.managedPolicyArns", OldValue: sortedStrings(observed.ManagedPolicyArns), NewValue: sortedStrings(desired.ManagedPolicyArns)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.managedPolicyArns", OldValue: sortedStrings(observed.ManagedPolicyArns), NewValue: sortedStrings(desired.ManagedPolicyArns)})
 	}
 	return diffs
-}
-
-// FieldDiffEntry describes a single field-level difference between desired and observed state.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 // inlinePoliciesEqual compares two inline-policy maps after normalising each JSON document.
@@ -66,20 +60,20 @@ func normalizePolicyMap(in map[string]string) map[string]string {
 	return out
 }
 
-func computeInlinePolicyDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeInlinePolicyDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	nd := normalizePolicyMap(desired)
 	no := normalizePolicyMap(observed)
 	for key, value := range nd {
 		if current, ok := no[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.inlinePolicies." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.inlinePolicies." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.inlinePolicies." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.inlinePolicies." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range no {
 		if _, ok := nd[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.inlinePolicies." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.inlinePolicies." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

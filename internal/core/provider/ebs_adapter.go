@@ -104,13 +104,13 @@ func ebsDescriptor() GenericDescriptor[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, 
 			return result
 		},
 
-		PlanID: func(out ebs.EBSVolumeOutputs) string { return out.VolumeId },
+		PlanIdentity: storedPlanIdentity[ebs.EBSVolumeSpec](func(out ebs.EBSVolumeOutputs) string { return out.VolumeId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ebs.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, ebs.ObservedState] {
 			return ebsProbe(ebs.NewEBSAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired ebs.EBSVolumeSpec, observed ebs.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ebs.EBSVolumeSpec, observed ebs.ObservedState, _ ebs.EBSVolumeOutputs) []types.FieldDiff {
 			rawDiffs := ebs.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -122,8 +122,9 @@ func ebsDescriptor() GenericDescriptor[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, 
 }
 
 // ebsProbe adapts the driver API to the generic plan probe shape.
-func ebsProbe(api ebs.EBSAPI) PlanProbeFunc[ebs.ObservedState] {
-	return func(runCtx restate.RunContext, volumeID string) (ebs.ObservedState, bool, error) {
+func ebsProbe(api ebs.EBSAPI) PlanProbeFunc[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, ebs.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs]) (ebs.ObservedState, bool, error) {
+		volumeID := input.Identity
 		obs, err := api.DescribeVolume(runCtx, volumeID)
 		if err != nil {
 			if ebs.IsNotFound(err) {

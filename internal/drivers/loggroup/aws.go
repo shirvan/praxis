@@ -251,7 +251,10 @@ func managedTags(tags map[string]string, managedKey string) map[string]string {
 
 func tagDiff(desired, observed map[string]string, managedKey string) (map[string]string, []string) {
 	want := managedTags(drivers.FilterPraxisTags(desired), managedKey)
-	have := managedTags(drivers.FilterPraxisTags(observed), managedKey)
+	have := drivers.FilterPraxisTags(observed)
+	if current, ok := observed["praxis:managed-key"]; ok {
+		have["praxis:managed-key"] = current
+	}
 	toAdd := map[string]string{}
 	for key, value := range want {
 		if current, ok := have[key]; !ok || current != value {

@@ -1,7 +1,7 @@
 package ecs
 
 #ECSCluster: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "ECSCluster"
 
 	metadata: {

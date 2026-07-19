@@ -111,7 +111,7 @@ func TestCrashResume_DeploymentCompletesAfterRestart(t *testing.T) {
 		buckets[i] = fmt.Sprintf("%s-%d", prefix, i)
 		fmt.Fprintf(&tb, `
 	bucket%d: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: { region: "us-east-1" }

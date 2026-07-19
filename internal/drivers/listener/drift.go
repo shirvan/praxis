@@ -13,19 +13,13 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired Listener spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired ListenerSpec, observed ObservedState) bool {
+	if desired.LoadBalancerArn != observed.LoadBalancerArn {
+		return true
+	}
 	if desired.Port != observed.Port {
 		return true
 	}
@@ -55,31 +49,31 @@ func HasDrift(desired ListenerSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired ListenerSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired ListenerSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	if desired.LoadBalancerArn != observed.LoadBalancerArn {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.loadBalancerArn (immutable, requires replacement)", OldValue: observed.LoadBalancerArn, NewValue: desired.LoadBalancerArn})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.loadBalancerArn (immutable, requires replacement)", OldValue: observed.LoadBalancerArn, NewValue: desired.LoadBalancerArn})
 	}
 	if desired.Port != observed.Port {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.port", OldValue: observed.Port, NewValue: desired.Port})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.port", OldValue: observed.Port, NewValue: desired.Port})
 	}
 	if !strings.EqualFold(desired.Protocol, observed.Protocol) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.protocol", OldValue: observed.Protocol, NewValue: desired.Protocol})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.protocol", OldValue: observed.Protocol, NewValue: desired.Protocol})
 	}
 	if requiresSSL(desired.Protocol) || requiresSSL(observed.Protocol) {
 		desiredSSL := effectiveSslPolicy(desired.SslPolicy, desired.Protocol)
 		if desiredSSL != observed.SslPolicy {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.sslPolicy", OldValue: observed.SslPolicy, NewValue: desiredSSL})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.sslPolicy", OldValue: observed.SslPolicy, NewValue: desiredSSL})
 		}
 		if desired.CertificateArn != observed.CertificateArn {
-			diffs = append(diffs, FieldDiffEntry{Path: "spec.certificateArn", OldValue: observed.CertificateArn, NewValue: desired.CertificateArn})
+			diffs = append(diffs, drivers.FieldDiff{Path: "spec.certificateArn", OldValue: observed.CertificateArn, NewValue: desired.CertificateArn})
 		}
 	}
 	if desired.AlpnPolicy != observed.AlpnPolicy {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.alpnPolicy", OldValue: observed.AlpnPolicy, NewValue: desired.AlpnPolicy})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.alpnPolicy", OldValue: observed.AlpnPolicy, NewValue: desired.AlpnPolicy})
 	}
 	if !actionsEqual(desired.DefaultActions, observed.DefaultActions) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.defaultActions", OldValue: observed.DefaultActions, NewValue: desired.DefaultActions})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.defaultActions", OldValue: observed.DefaultActions, NewValue: desired.DefaultActions})
 	}
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
@@ -132,20 +126,20 @@ func fixedResponseEqual(a, b *FixedResponseConfig) bool {
 	return a.StatusCode == b.StatusCode && a.ContentType == b.ContentType && a.MessageBody == b.MessageBody
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	fd := drivers.FilterPraxisTags(desired)
 	fo := drivers.FilterPraxisTags(observed)
 	for key, value := range fd {
 		if oldValue, ok := fo[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if oldValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: oldValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: oldValue, NewValue: value})
 		}
 	}
 	for key, value := range fo {
 		if _, ok := fd[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

@@ -17,7 +17,7 @@ variables: {
 resources: {
 	// ── VPC ─────────────────────────────────────────────
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(variables.name)-\(variables.environment)-vpc"
 		spec: {
@@ -31,7 +31,7 @@ resources: {
 
 	// ── Subnet ──────────────────────────────────────────
 	subnet: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "Subnet"
 		metadata: name: "\(variables.name)-\(variables.environment)-web"
 		spec: {
@@ -46,7 +46,7 @@ resources: {
 
 	// ── Network ACL (strict allow-list) ─────────────────
 	nacl: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "NetworkACL"
 		metadata: name: "\(variables.name)-\(variables.environment)-nacl"
 		spec: {
@@ -71,7 +71,7 @@ resources: {
 
 	// ── Security Group ──────────────────────────────────
 	sg: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(variables.name)-\(variables.environment)-web-sg"
 		spec: {
@@ -89,7 +89,7 @@ resources: {
 
 	// ── EC2 Instance ────────────────────────────────────
 	server: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)-web"
 		spec: {

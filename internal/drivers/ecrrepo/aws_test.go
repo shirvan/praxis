@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
@@ -68,4 +69,15 @@ func TestIsRepositoryPolicyNotFound_MatchesCode(t *testing.T) {
 func TestIsRepositoryPolicyNotFound_False(t *testing.T) {
 	assert.False(t, IsRepositoryPolicyNotFound(errors.New("timeout")))
 	assert.False(t, IsRepositoryPolicyNotFound(&mockAPIError{code: "RepositoryNotFoundException"}))
+}
+
+func TestIsNotFound_Nil(t *testing.T) {
+	assert.False(t, IsNotFound(nil))
+}
+
+func TestAWSTagsDeterministic(t *testing.T) {
+	tags := awsTags(map[string]string{"z": "last", "a": "first", "m": "middle"})
+	assert.Equal(t, []string{"a", "m", "z"}, []string{
+		aws.ToString(tags[0].Key), aws.ToString(tags[1].Key), aws.ToString(tags[2].Key),
+	})
 }

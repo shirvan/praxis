@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -31,10 +32,12 @@ func uniqueTGName(t *testing.T) string {
 	name := strings.ReplaceAll(t.Name(), "/", "-")
 	name = strings.ReplaceAll(name, "_", "-")
 	name = strings.ToLower(name)
-	if len(name) > 24 {
-		name = name[:24]
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
+	maxPrefix := 32 - len(suffix) - 1
+	if len(name) > maxPrefix {
+		name = name[:maxPrefix]
 	}
-	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%100000)
+	return name + "-" + suffix
 }
 
 func setupTargetGroupDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *ec2sdk.Client) {
@@ -45,7 +48,7 @@ func setupTargetGroupDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *e
 	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := targetgroup.NewTargetGroupDriver(authservice.NewAuthClient())
+	driver := targetgroup.NewGenericTargetGroupDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, elbClient, ec2Client

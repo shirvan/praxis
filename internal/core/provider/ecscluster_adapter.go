@@ -85,13 +85,13 @@ func ecsClusterDescriptor() GenericDescriptor[ecscluster.ECSClusterSpec, ecsclus
 			return result
 		},
 
-		PlanID: func(out ecscluster.ECSClusterOutputs) string { return out.Name },
+		PlanIdentity: storedPlanIdentity[ecscluster.ECSClusterSpec](func(out ecscluster.ECSClusterOutputs) string { return out.Name }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecscluster.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecscluster.ECSClusterSpec, ecscluster.ECSClusterOutputs, ecscluster.ObservedState] {
 			return ecsClusterProbe(ecscluster.NewECSClusterAPI(awsclient.NewECSClient(cfg)))
 		},
 
-		DiffFields: func(desired ecscluster.ECSClusterSpec, observed ecscluster.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired ecscluster.ECSClusterSpec, observed ecscluster.ObservedState, _ ecscluster.ECSClusterOutputs) []types.FieldDiff {
 			rawDiffs := ecscluster.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -103,8 +103,9 @@ func ecsClusterDescriptor() GenericDescriptor[ecscluster.ECSClusterSpec, ecsclus
 }
 
 // ecsClusterProbe adapts the driver API to the generic plan probe shape.
-func ecsClusterProbe(api ecscluster.ECSClusterAPI) PlanProbeFunc[ecscluster.ObservedState] {
-	return func(runCtx restate.RunContext, clusterName string) (ecscluster.ObservedState, bool, error) {
+func ecsClusterProbe(api ecscluster.ECSClusterAPI) PlanProbeFunc[ecscluster.ECSClusterSpec, ecscluster.ECSClusterOutputs, ecscluster.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[ecscluster.ECSClusterSpec, ecscluster.ECSClusterOutputs]) (ecscluster.ObservedState, bool, error) {
+		clusterName := input.Identity
 		obs, found, err := api.DescribeCluster(runCtx, clusterName)
 		if err != nil {
 			if ecscluster.IsNotFound(err) {

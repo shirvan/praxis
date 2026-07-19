@@ -58,13 +58,6 @@ func (DeploymentEventStore) Append(ctx restate.ObjectContext, event cloudevents.
 	if meta.ChunkSize <= 0 {
 		meta.ChunkSize = defaultEventChunkSize
 	}
-	if meta.ActiveCount == 0 && meta.NextSequence > 0 {
-		meta.ActiveCount, err = activeEventCountObject(ctx, meta)
-		if err != nil {
-			return SequencedCloudEvent{}, err
-		}
-	}
-
 	chunkIndex := meta.ChunkCount
 	if chunkIndex == 0 {
 		chunkIndex = 1
@@ -184,7 +177,6 @@ func (DeploymentEventStore) GetRange(ctx restate.ObjectSharedContext, req EventR
 }
 
 // Count returns the number of live events in this deployment's store.
-// Uses the cached ActiveCount when available to avoid scanning all chunks.
 func (DeploymentEventStore) Count(ctx restate.ObjectSharedContext) (int64, error) {
 	meta, err := restate.Get[*eventStoreMeta](ctx, "meta")
 	if err != nil {
@@ -193,10 +185,7 @@ func (DeploymentEventStore) Count(ctx restate.ObjectSharedContext) (int64, error
 	if meta == nil {
 		return 0, nil
 	}
-	if meta.ActiveCount > 0 || meta.NextSequence == 0 {
-		return meta.ActiveCount, nil
-	}
-	return activeEventCountShared(ctx, meta)
+	return meta.ActiveCount, nil
 }
 
 // RollbackPlan builds the set of resources eligible for rollback by scanning
@@ -257,12 +246,6 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 	if meta.ChunkSize <= 0 {
 		meta.ChunkSize = defaultEventChunkSize
 	}
-	if meta.ActiveCount == 0 && meta.NextSequence > 0 {
-		meta.ActiveCount, err = activeEventCountObject(ctx, meta)
-		if err != nil {
-			return EventStorePruneResult{}, err
-		}
-	}
 	if req.MaxEvents < 0 {
 		return EventStorePruneResult{}, restate.TerminalError(fmt.Errorf("maxEvents must be >= 0"), 400)
 	}
@@ -322,33 +305,4 @@ func (DeploymentEventStore) Prune(ctx restate.ObjectContext, req EventStorePrune
 		PrunedChunks:    len(prunedChunks),
 		RemainingEvents: remaining,
 	}, nil
-}
-
-// activeEventCountObject counts live events by scanning all chunks.
-// Used when the cached ActiveCount is zero but NextSequence > 0 (e.g. after
-// an upgrade that introduced the ActiveCount field).
-func activeEventCountObject(ctx restate.ObjectContext, meta *eventStoreMeta) (int64, error) {
-	var count int64
-	for index := 1; index <= meta.ChunkCount; index++ {
-		chunk, err := restate.Get[[]SequencedCloudEvent](ctx, eventChunkKey(index))
-		if err != nil {
-			return 0, err
-		}
-		count += int64(len(chunk))
-	}
-	return count, nil
-}
-
-// activeEventCountShared is the read-only variant of activeEventCountObject,
-// used by Count() which runs as a shared handler.
-func activeEventCountShared(ctx restate.ObjectSharedContext, meta *eventStoreMeta) (int64, error) {
-	var count int64
-	for index := 1; index <= meta.ChunkCount; index++ {
-		chunk, err := restate.Get[[]SequencedCloudEvent](ctx, eventChunkKey(index))
-		if err != nil {
-			return 0, err
-		}
-		count += int64(len(chunk))
-	}
-	return count, nil
 }

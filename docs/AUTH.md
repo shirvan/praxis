@@ -294,30 +294,22 @@ Two implementations:
 
 ### Driver Integration Pattern
 
-Every driver receives an `AuthClient` at construction time and calls it in each handler:
+Every driver's typed provider operations receive an `AuthClient` and resolve it
+before provider calls. The shared kernel owns the public handlers:
 
 ```go
-// internal/drivers/ec2/driver.go
-type EC2InstanceDriver struct {
+// internal/drivers/ec2/generic.go
+type kernelOperations struct {
     auth       authservice.AuthClient
     apiFactory func(aws.Config) EC2API
 }
 
-func NewEC2InstanceDriver(auth authservice.AuthClient) *EC2InstanceDriver {
-    return &EC2InstanceDriver{
-        auth: auth,
-        apiFactory: func(cfg aws.Config) EC2API {
-            return NewEC2API(awsclient.NewEC2Client(cfg))
-        },
-    }
-}
-
-func (d *EC2InstanceDriver) apiForAccount(ctx restate.ObjectContext, account string) (EC2API, string, error) {
-    awsCfg, err := d.auth.GetCredentials(ctx, account)
+func (o *kernelOperations) apiForAccount(ctx restate.ObjectContext, account string) (EC2API, string, error) {
+    awsCfg, err := o.auth.GetCredentials(ctx, account)
     if err != nil {
         return nil, "", fmt.Errorf("resolve account %q: %w", account, err)
     }
-    return d.apiFactory(awsCfg), awsCfg.Region, nil
+    return o.apiFactory(awsCfg), awsCfg.Region, nil
 }
 ```
 
@@ -332,8 +324,8 @@ Each driver pack binary creates an `AuthClient` and injects it into all drivers:
 auth := authservice.NewAuthClient()
 rp := config.DefaultRetryPolicy()
 srv := server.NewRestate().
-    Bind(restate.Reflect(iamrole.NewIAMRoleDriver(auth), rp)).
-    Bind(restate.Reflect(iampolicy.NewIAMPolicyDriver(auth), rp)).
+    Bind(genericbinding.Reflect(iamrole.NewGenericIAMRoleDriver(auth), rp)).
+    Bind(genericbinding.Reflect(iampolicy.NewGenericIAMPolicyDriver(auth), rp)).
     // ...
 ```
 

@@ -78,13 +78,13 @@ func route53HostedZoneDescriptor() GenericDescriptor[route53zone.HostedZoneSpec,
 			return map[string]any{"hostedZoneId": out.HostedZoneId, "name": out.Name, "nameServers": out.NameServers, "isPrivate": out.IsPrivate, "recordCount": out.RecordCount}
 		},
 
-		PlanID: func(out route53zone.HostedZoneOutputs) string { return out.HostedZoneId },
+		PlanIdentity: storedPlanIdentity[route53zone.HostedZoneSpec](func(out route53zone.HostedZoneOutputs) string { return out.HostedZoneId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53zone.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs, route53zone.ObservedState] {
 			return route53HostedZoneProbe(route53zone.NewHostedZoneAPI(awsclient.NewRoute53Client(cfg)))
 		},
 
-		DiffFields: func(desired route53zone.HostedZoneSpec, observed route53zone.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired route53zone.HostedZoneSpec, observed route53zone.ObservedState, _ route53zone.HostedZoneOutputs) []types.FieldDiff {
 			rawDiffs := route53zone.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -96,8 +96,9 @@ func route53HostedZoneDescriptor() GenericDescriptor[route53zone.HostedZoneSpec,
 }
 
 // route53HostedZoneProbe adapts the driver API to the generic plan probe shape.
-func route53HostedZoneProbe(api route53zone.HostedZoneAPI) PlanProbeFunc[route53zone.ObservedState] {
-	return func(runCtx restate.RunContext, hostedZoneID string) (route53zone.ObservedState, bool, error) {
+func route53HostedZoneProbe(api route53zone.HostedZoneAPI) PlanProbeFunc[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs, route53zone.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs]) (route53zone.ObservedState, bool, error) {
+		hostedZoneID := input.Identity
 		obs, err := api.DescribeHostedZone(runCtx, hostedZoneID)
 		if err != nil {
 			if route53zone.IsNotFound(err) {

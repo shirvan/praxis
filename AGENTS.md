@@ -16,7 +16,7 @@ This repository is structured for AI agent consumption. Start here.
 
 ```text
 cmd/            7 binary entry points (CLI, core, 5 driver packs)
-internal/       Core logic + 45 resource drivers
+internal/       Core logic + 51 resource drivers
 pkg/types/      Shared types used across packages
 schemas/        CUE schemas for AWS resources, events, notifications
 examples/       Example CUE templates
@@ -43,6 +43,10 @@ skills/         Agent task skills (step-by-step procedures)
   start a Restate testcontainer and need Docker running).
 - Integration tests: `go test -tags integration ./tests/integration/` (needs Docker).
 - Lint/format: `golangci-lint run` and `gofmt` (see `.golangci.yml`).
+- Alpha contracts support exactly one version: `alpha`. Keep explicit version
+  fields, but do not add migrations, backward-compatible reads, aliases, or
+  parallel implementations without explicit owner approval. Breaking old alpha
+  state, plans, and templates is acceptable.
 
 ## Key Files
 

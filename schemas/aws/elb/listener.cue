@@ -1,7 +1,7 @@
 package elb
 
 #Listener: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "Listener"
 
 	metadata: {

@@ -14,7 +14,7 @@ variables: {
 }
 
 resources: bucket: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "S3Bucket"
 	metadata: name: "\(variables.name)-\(variables.environment)-data"
 	spec: {

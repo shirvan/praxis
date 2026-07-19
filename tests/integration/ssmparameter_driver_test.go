@@ -4,11 +4,12 @@ package integration
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ssmsdk "github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -26,12 +27,16 @@ import (
 
 func uniqueParameterName(t *testing.T) string {
 	t.Helper()
+	random := make([]byte, 6)
+	_, err := rand.Read(random)
+	require.NoError(t, err)
+	suffix := hex.EncodeToString(random)
 	name := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
 	name = strings.ReplaceAll(name, "_", "-")
 	if len(name) > 50 {
 		name = name[:50]
 	}
-	return fmt.Sprintf("/praxis/test/%s-%d", name, time.Now().UnixNano()%100000)
+	return fmt.Sprintf("/praxis/test/%s-%s", strings.Trim(name, "-"), suffix)
 }
 
 func setupSSMParameterDriver(t *testing.T) (*ingress.Client, *ssmsdk.Client) {
@@ -40,15 +45,30 @@ func setupSSMParameterDriver(t *testing.T) (*ingress.Client, *ssmsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ssmClient := awsclient.NewSSMClient(awsCfg)
-	driver := ssmparameter.NewSSMParameterDriver(authservice.NewAuthClient())
+	driver := ssmparameter.NewGenericSSMParameterDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ssmClient
 }
 
+func registerSSMParameterCleanup(t *testing.T, ssmClient *ssmsdk.Client, name string) {
+	t.Helper()
+	t.Cleanup(func() {
+		_, err := ssmClient.DeleteParameter(context.Background(), &ssmsdk.DeleteParameterInput{Name: aws.String(name)})
+		if err != nil && !isSSMParameterNotFound(err) {
+			t.Errorf("delete SSM parameter %s during cleanup: %v", name, err)
+		}
+	})
+}
+
+func isSSMParameterNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "ParameterNotFound")
+}
+
 func TestSSMParameterProvision_CreatesParameter(t *testing.T) {
 	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
 	outputs, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
@@ -73,8 +93,9 @@ func TestSSMParameterProvision_CreatesParameter(t *testing.T) {
 }
 
 func TestSSMParameterProvision_Idempotent(t *testing.T) {
-	client, _ := setupSSMParameterDriver(t)
+	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	spec := ssmparameter.SSMParameterSpec{
 		Account:       integrationAccountName,
@@ -101,6 +122,7 @@ func TestSSMParameterProvision_Idempotent(t *testing.T) {
 func TestSSMParameterProvision_UpdatesValue(t *testing.T) {
 	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	spec := ssmparameter.SSMParameterSpec{
 		Account:       integrationAccountName,
@@ -129,6 +151,7 @@ func TestSSMParameterProvision_UpdatesValue(t *testing.T) {
 func TestSSMParameterImport_ExistingParameter(t *testing.T) {
 	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 
 	_, err := ssmClient.PutParameter(context.Background(), &ssmsdk.PutParameterInput{
 		Name:  aws.String(name),
@@ -158,6 +181,7 @@ func TestSSMParameterImport_ExistingParameter(t *testing.T) {
 func TestSSMParameterDelete_RemovesParameter(t *testing.T) {
 	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
 	_, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
@@ -182,6 +206,7 @@ func TestSSMParameterDelete_RemovesParameter(t *testing.T) {
 func TestSSMParameterReconcile_DetectsValueDrift(t *testing.T) {
 	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
 	_, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
@@ -218,6 +243,7 @@ func TestSSMParameterReconcile_DetectsValueDrift(t *testing.T) {
 func TestSSMParameterProvision_SecureString(t *testing.T) {
 	client, ssmClient := setupSSMParameterDriver(t)
 	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
 	outputs, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
@@ -238,4 +264,30 @@ func TestSSMParameterProvision_SecureString(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "super-secret", aws.ToString(got.Parameter.Value))
+}
+
+func TestSSMParameterReconcile_ExternalDeleteRequiresReplacement(t *testing.T) {
+	client, ssmClient := setupSSMParameterDriver(t)
+	name := uniqueParameterName(t)
+	registerSSMParameterCleanup(t, ssmClient, name)
+	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
+	spec := ssmparameter.SSMParameterSpec{
+		Account: integrationAccountName, Region: "us-east-1", ParameterName: name, Value: "desired-value",
+	}
+
+	_, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+		client, ssmparameter.ServiceName, key, "Provision",
+	).Request(t.Context(), spec)
+	require.NoError(t, err)
+	_, err = ssmClient.DeleteParameter(context.Background(), &ssmsdk.DeleteParameterInput{Name: aws.String(name)})
+	require.NoError(t, err)
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](
+		client, ssmparameter.ServiceName, key, "Reconcile",
+	).Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.True(t, result.ReplacementRequired)
+	assert.Contains(t, result.Error, "deleted externally")
+	_, err = ssmClient.GetParameter(context.Background(), &ssmsdk.GetParameterInput{Name: aws.String(name)})
+	require.Error(t, err, "Reconcile must report replacement without recreating the parameter")
 }

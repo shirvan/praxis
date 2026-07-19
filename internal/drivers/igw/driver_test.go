@@ -2,6 +2,7 @@ package igw
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/drivertest"
 	"github.com/shirvan/praxis/internal/eventing"
 	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
@@ -75,14 +77,16 @@ type detachCall struct {
 type fakeIGWAPI struct {
 	mu sync.Mutex
 
-	nextID      string
-	observed    map[string]ObservedState
-	managedKeys map[string]string
-	createCalls int
-	attachCalls []attachCall
-	detachCalls []detachCall
-	updateCalls int
-	deleteCalls int
+	nextID                 string
+	observed               map[string]ObservedState
+	managedKeys            map[string]string
+	createCalls            int
+	readCalls              int
+	attachCalls            []attachCall
+	detachCalls            []detachCall
+	updateCalls            int
+	deleteCalls            int
+	createAfterApplyErrors []error
 
 	createFunc   func(context.Context, IGWSpec) (string, error)
 	describeFunc func(context.Context, string) (ObservedState, error)
@@ -118,6 +122,11 @@ func (f *fakeIGWAPI) CreateInternetGateway(ctx context.Context, spec IGWSpec) (s
 	if spec.ManagedKey != "" {
 		f.managedKeys[spec.ManagedKey] = id
 	}
+	if len(f.createAfterApplyErrors) > 0 {
+		err := f.createAfterApplyErrors[0]
+		f.createAfterApplyErrors = f.createAfterApplyErrors[1:]
+		return "", err
+	}
 	return id, nil
 }
 
@@ -127,6 +136,7 @@ func (f *fakeIGWAPI) DescribeInternetGateway(ctx context.Context, internetGatewa
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.readCalls++
 	obs, ok := f.observed[internetGatewayID]
 	if !ok {
 		return ObservedState{}, &mockAPIError{code: "InvalidInternetGatewayID.NotFound", message: "missing"}
@@ -227,7 +237,18 @@ func (f *fakeIGWAPI) FindByManagedKey(ctx context.Context, managedKey string) (s
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.readCalls++
 	return f.managedKeys[managedKey], nil
+}
+
+func (f *fakeIGWAPI) snapshot() drivertest.ProviderSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return drivertest.ProviderSnapshot{
+		Creates: f.createCalls, Reads: f.readCalls,
+		Updates: len(f.attachCalls) + len(f.detachCalls) + f.updateCalls,
+		Deletes: f.deleteCalls,
+	}
 }
 
 func cloneObserved(obs ObservedState) ObservedState {
@@ -247,7 +268,7 @@ func setupIGWDriver(t *testing.T, api IGWAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewIGWDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) IGWAPI {
+	driver := newGenericIGWDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) IGWAPI {
 		return api
 	})
 	env := restatetest.Start(t,
@@ -298,8 +319,35 @@ func testSpec(key, vpcID string, tags map[string]string) IGWSpec {
 }
 
 func TestServiceName(t *testing.T) {
-	drv := NewIGWDriver(nil)
+	drv := NewGenericIGWDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
+}
+
+func TestGenericIGWCoreLifecycle(t *testing.T) {
+	api := newFakeIGWAPI()
+	client := setupIGWDriver(t, api)
+	key := "us-east-1~shared-core"
+	drivertest.RunCoreLifecycle(t, drivertest.CoreLifecycleFixture[IGWSpec, IGWOutputs]{
+		Client: client, ServiceName: ServiceName, Key: key,
+		Spec: testSpec(key, "vpc-shared", map[string]string{"Name": "shared-core"}), Snapshot: api.snapshot,
+		AssertInputs: func(t *testing.T, inputs IGWSpec) {
+			assert.Equal(t, key, inputs.ManagedKey)
+			assert.Equal(t, map[string]string{"Name": "shared-core"}, inputs.Tags)
+		},
+	})
+}
+
+func TestGenericIGWObservedImportLifecycle(t *testing.T) {
+	api := newFakeIGWAPI()
+	api.observed["igw-existing"] = ObservedState{
+		InternetGatewayId: "igw-existing", AttachedVpcId: "vpc-existing", OwnerId: "123456789012",
+		Tags: map[string]string{"Name": "existing", "praxis:managed-key": "old-owner"},
+	}
+	client := setupIGWDriver(t, api)
+	drivertest.RunObservedImportLifecycle(t, drivertest.ObservedImportFixture[IGWOutputs]{
+		Client: client, ServiceName: ServiceName, Key: "us-east-1~igw-existing",
+		Ref: types.ImportRef{ResourceID: "igw-existing", Account: "test"}, Snapshot: api.snapshot,
+	})
 }
 
 func TestProvision_CreatesAndAttaches(t *testing.T) {
@@ -340,6 +388,20 @@ func TestProvision_ConflictFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already managed by Praxis")
 	assert.Equal(t, 0, api.createCalls)
+}
+
+func TestGenericIGWRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
+	api := newFakeIGWAPI()
+	api.createAfterApplyErrors = []error{errors.New("ServiceUnavailable: response lost after CreateInternetGateway")}
+	client := setupIGWDriver(t, api)
+	key := "us-east-1~ambiguous"
+
+	outputs, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(
+		t.Context(), testSpec(key, "vpc-123", nil),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "igw-123", outputs.InternetGatewayId)
+	assert.Equal(t, 1, api.snapshot().Creates)
 }
 
 func TestProvision_IdempotentReprovision(t *testing.T) {
@@ -418,6 +480,34 @@ func TestImport_ExistingIGW(t *testing.T) {
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
+	assert.Equal(t, types.ModeObserved, status.Mode)
+}
+
+func TestImport_DetachedIGW(t *testing.T) {
+	api := newFakeIGWAPI()
+	api.observed["igw-detached"] = ObservedState{
+		InternetGatewayId: "igw-detached",
+		OwnerId:           "123456789012",
+		Tags:              map[string]string{"Name": "detached-igw"},
+	}
+	client := setupIGWDriver(t, api)
+	key := "us-east-1~igw-detached"
+
+	outputs, err := ingress.Object[types.ImportRef, IGWOutputs](client, ServiceName, key, "Import").Request(
+		t.Context(), types.ImportRef{ResourceID: "igw-detached", Account: "test"},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "igw-detached", outputs.InternetGatewayId)
+	assert.Empty(t, outputs.VpcId)
+	assert.Equal(t, "detached", outputs.State)
+
+	inputs, err := ingress.Object[restate.Void, IGWSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Empty(t, inputs.VpcId)
+
+	status, err := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusReady, status.Status)
 	assert.Equal(t, types.ModeObserved, status.Mode)
 }
 
@@ -536,6 +626,8 @@ func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Error, "deleted externally")
+	assert.True(t, result.ReplacementRequired)
+	assert.Equal(t, 1, api.snapshot().Creates, "Reconcile must not recreate an externally deleted internet gateway")
 	assert.Contains(t, pollIGWEventTypes(t, client, key, eventing.DriftEventExternalDelete), eventing.DriftEventExternalDelete)
 }
 

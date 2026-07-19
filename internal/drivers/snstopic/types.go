@@ -1,12 +1,10 @@
 // Package snstopic implements the Praxis driver for AWS SNS Topic resources.
 //
-// This file defines the spec, outputs, observed-state, and reconciliation-state
-// types that flow through the driver lifecycle (Provision → Reconcile → Delete).
+// This file defines the spec, outputs, and observed-state types that flow
+// through the generic driver lifecycle (Provision → Reconcile → Delete).
 // The spec is the user's desired configuration; the observed state is read from
 // Amazon Simple Notification Service (SNS); the driver state couples both together with status tracking.
 package snstopic
-
-import "github.com/shirvan/praxis/pkg/types"
 
 // ServiceName is the Restate Virtual Object name for SNS topics.
 const ServiceName = "SNSTopic"
@@ -47,17 +45,4 @@ type ObservedState struct {
 	KmsMasterKeyId            string            `json:"kmsMasterKeyId,omitempty"`
 	Owner                     string            `json:"owner"`
 	Tags                      map[string]string `json:"tags"`
-}
-
-// SNSTopicState is the single atomic state object stored under drivers.StateKey.
-type SNSTopicState struct {
-	Desired            SNSTopicSpec         `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            SNSTopicOutputs      `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

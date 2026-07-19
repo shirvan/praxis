@@ -1,7 +1,7 @@
 package elb
 
 #ALB: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "ALB"
 
 	metadata: {

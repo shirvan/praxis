@@ -6,8 +6,6 @@
 // MapPublicIpOnLaunch and tags can be corrected via drift reconciliation.
 package subnet
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name used to register this driver.
 const ServiceName = "Subnet"
 
@@ -39,6 +37,7 @@ type SubnetOutputs struct {
 
 // ObservedState captures the live AWS configuration of a Subnet.
 type ObservedState struct {
+	Region              string            `json:"region"`
 	SubnetId            string            `json:"subnetId"`
 	VpcId               string            `json:"vpcId"`
 	CidrBlock           string            `json:"cidrBlock"`
@@ -49,17 +48,4 @@ type ObservedState struct {
 	OwnerId             string            `json:"ownerId"`
 	AvailableIpCount    int               `json:"availableIpCount"`
 	Tags                map[string]string `json:"tags"`
-}
-
-// SubnetState is the single atomic state object stored under drivers.StateKey.
-type SubnetState struct {
-	Desired            SubnetSpec           `json:"desired"`                 // User-declared target configuration.
-	Observed           ObservedState        `json:"observed"`                // Last-known AWS state.
-	Outputs            SubnetOutputs        `json:"outputs"`                 // Stable identifiers returned to callers.
-	Status             types.ResourceStatus `json:"status"`                  // Lifecycle status.
-	Mode               types.Mode           `json:"mode"`                    // Managed or Observed.
-	Error              string               `json:"error,omitempty"`         // Error message when Status == Error.
-	Generation         int64                `json:"generation"`              // Monotonically increasing counter.
-	LastReconcile      string               `json:"lastReconcile,omitempty"` // RFC 3339 timestamp of last reconcile.
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`      // Deduplication flag for reconcile scheduling.
 }

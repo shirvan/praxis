@@ -62,7 +62,7 @@ func TestValidateKeyPart_Valid(t *testing.T) {
 func TestS3Adapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewS3AdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"S3Bucket",
 		"metadata":{"name":"assets-bucket"},
 		"spec":{
@@ -127,6 +127,13 @@ func TestS3Adapter_DecodeSpec_InvalidJSON(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDecodeResourceDocumentRejectsNonAlphaVersion(t *testing.T) {
+	_, err := decodeResourceDocument(json.RawMessage(`{
+		"apiVersion":"praxis.io/v1","kind":"S3Bucket","spec":{}
+	}`))
+	require.ErrorContains(t, err, `unsupported resource apiVersion "praxis.io/v1"; expected "praxis.io/alpha"`)
+}
+
 // ---------------------------------------------------------------------------
 // SecurityGroup Adapter
 // ---------------------------------------------------------------------------
@@ -134,7 +141,7 @@ func TestS3Adapter_DecodeSpec_InvalidJSON(t *testing.T) {
 func TestSecurityGroupAdapter_BuildKey(t *testing.T) {
 	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SecurityGroup",
 		"metadata":{"name":"web-sg","labels":{"praxis.io/region":"eu-west-1"}},
 		"spec":{
@@ -156,7 +163,7 @@ func TestSecurityGroupAdapter_BuildKey(t *testing.T) {
 func TestSecurityGroupAdapter_BuildKey_NoRegionLabel(t *testing.T) {
 	adapter := NewSecurityGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SecurityGroup",
 		"metadata":{"name":"default-sg"},
 		"spec":{

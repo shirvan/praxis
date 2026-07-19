@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewDBSubnetGroupDriver(nil)
+	drv := NewGenericDBSubnetGroupDriver(nil)
 	assert.Equal(t, "DBSubnetGroup", drv.ServiceName())
 }
 
@@ -73,11 +71,6 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, []string{"subnet-1", "subnet-2"}, out.SubnetIds)
 	assert.Equal(t, []string{"us-east-1a", "us-east-1b"}, out.AvailabilityZones)
 	assert.Equal(t, "Complete", out.Status)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
 }
 
 func TestApplyDefaults(t *testing.T) {

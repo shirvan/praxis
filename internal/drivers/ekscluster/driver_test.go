@@ -56,6 +56,8 @@ func (f *retryEKSAPI) UpdateClusterConfig(_ context.Context, spec EKSClusterSpec
 	return nil
 }
 
+func (f *retryEKSAPI) UpdateClusterLogging(context.Context, string, []string) error { return nil }
+
 func (f *retryEKSAPI) UpdateClusterVersion(context.Context, string, string) error {
 	return nil
 }
@@ -95,7 +97,7 @@ func setupRetryEKSDriver(t *testing.T, api EKSClusterAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewEKSClusterDriverWithFactory(
+	driver := newGenericEKSClusterDriverWithFactory(
 		authservice.NewLocalAuthClient(auth.LoadFromEnv()),
 		func(aws.Config) EKSClusterAPI { return api },
 	)
@@ -103,7 +105,7 @@ func setupRetryEKSDriver(t *testing.T, api EKSClusterAPI) *ingress.Client {
 }
 
 func TestServiceName(t *testing.T) {
-	drv := NewEKSClusterDriver(nil)
+	drv := NewGenericEKSClusterDriver(nil)
 	assert.Equal(t, "EKSCluster", drv.ServiceName())
 }
 
@@ -191,12 +193,6 @@ func TestOutputsFromObserved(t *testing.T) {
 	assert.Equal(t, "1.29", out.Version)
 	assert.Equal(t, "eks.5", out.PlatformVersion)
 	assert.Equal(t, "https://example.eks.amazonaws.com", out.Endpoint)
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestTagDiff_AddsRemovesPreservesManagedKey(t *testing.T) {

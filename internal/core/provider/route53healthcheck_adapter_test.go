@@ -13,7 +13,7 @@ import (
 func TestRoute53HealthCheckAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewRoute53HealthCheckAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"Route53HealthCheck",
 		"metadata":{"name":"api-check"},
 		"spec":{

@@ -13,7 +13,7 @@ import (
 func TestVPCAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"VPC",
 		"metadata":{"name":"main-vpc"},
 		"spec":{
@@ -100,7 +100,7 @@ func TestVPCAdapter_Scope(t *testing.T) {
 func TestVPCAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"VPC",
+		"apiVersion":"praxis.io/alpha","kind":"VPC",
 		"metadata":{"name":"my-vpc"},
 		"spec":{"cidrBlock":"10.0.0.0/16"}
 	}`)
@@ -112,7 +112,7 @@ func TestVPCAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestVPCAdapter_DecodeSpec_MissingCidrBlock(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"VPC",
+		"apiVersion":"praxis.io/alpha","kind":"VPC",
 		"metadata":{"name":"my-vpc"},
 		"spec":{"region":"us-east-1"}
 	}`)
@@ -124,7 +124,7 @@ func TestVPCAdapter_DecodeSpec_MissingCidrBlock(t *testing.T) {
 func TestVPCAdapter_DecodeSpec_MissingName(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"VPC",
+		"apiVersion":"praxis.io/alpha","kind":"VPC",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1","cidrBlock":"10.0.0.0/16"}
 	}`)
@@ -136,7 +136,7 @@ func TestVPCAdapter_DecodeSpec_MissingName(t *testing.T) {
 func TestVPCAdapter_DecodeSpec_SetsNameTag(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"VPC",
+		"apiVersion":"praxis.io/alpha","kind":"VPC",
 		"metadata":{"name":"prod-vpc"},
 		"spec":{"region":"us-east-1","cidrBlock":"10.0.0.0/16"}
 	}`)
@@ -149,7 +149,7 @@ func TestVPCAdapter_DecodeSpec_SetsNameTag(t *testing.T) {
 func TestVPCAdapter_DecodeSpec_DefaultsTenancy(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"VPC",
+		"apiVersion":"praxis.io/alpha","kind":"VPC",
 		"metadata":{"name":"my-vpc"},
 		"spec":{"region":"us-east-1","cidrBlock":"10.0.0.0/16"}
 	}`)
@@ -162,7 +162,7 @@ func TestVPCAdapter_DecodeSpec_DefaultsTenancy(t *testing.T) {
 func TestVPCAdapter_BuildKey_MissingName(t *testing.T) {
 	adapter := NewVPCAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"VPC",
+		"apiVersion":"praxis.io/alpha","kind":"VPC",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1","cidrBlock":"10.0.0.0/16"}
 	}`)

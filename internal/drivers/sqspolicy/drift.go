@@ -10,32 +10,41 @@ package sqspolicy
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/shirvan/praxis/internal/drivers"
 )
-
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
 
 // HasDrift compares the desired SQSQueuePolicy spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
 func HasDrift(desired SQSQueuePolicySpec, observed ObservedState) bool {
+	if queueNameFromURL(observed.QueueUrl) != desired.QueueName {
+		return true
+	}
+	if observedRegion := regionFromQueueARN(observed.QueueArn); observedRegion != "" && observedRegion != desired.Region {
+		return true
+	}
 	return !policiesEqual(desired.Policy, observed.Policy)
 }
 
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired SQSQueuePolicySpec, observed ObservedState) []FieldDiffEntry {
-	if policiesEqual(desired.Policy, observed.Policy) {
-		return nil
+func ComputeFieldDiffs(desired SQSQueuePolicySpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
+	if observedName := queueNameFromURL(observed.QueueUrl); observedName != desired.QueueName {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.queueName (immutable, requires replacement)", OldValue: observedName, NewValue: desired.QueueName,
+		})
 	}
-	return []FieldDiffEntry{{Path: "spec.policy", OldValue: observed.Policy, NewValue: desired.Policy}}
+	if observedRegion := regionFromQueueARN(observed.QueueArn); observedRegion != "" && observedRegion != desired.Region {
+		diffs = append(diffs, drivers.FieldDiff{
+			Path: "spec.region (immutable, requires replacement)", OldValue: observedRegion, NewValue: desired.Region,
+		})
+	}
+	if !policiesEqual(desired.Policy, observed.Policy) {
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.policy", OldValue: observed.Policy, NewValue: desired.Policy})
+	}
+	return diffs
 }
 
 func policiesEqual(a, b string) bool {

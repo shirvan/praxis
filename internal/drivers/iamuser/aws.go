@@ -18,8 +18,9 @@ import (
 	"github.com/shirvan/praxis/internal/infra/ratelimit"
 )
 
-// IAMUserAPI defines the interface for all AWS IAM user operations used by the driver.
-// Includes user CRUD, policy management, group membership, and credential cleanup.
+// IAMUserAPI defines the AWS IAM user operations owned by this resource contract:
+// user CRUD, policy management, group membership, permissions boundaries, and tags.
+// Credentials such as access keys, login profiles, and MFA devices are external.
 type IAMUserAPI interface {
 	CreateUser(ctx context.Context, spec IAMUserSpec) (arn, userID string, err error)
 	DescribeUser(ctx context.Context, userName string) (ObservedState, error)
@@ -34,8 +35,6 @@ type IAMUserAPI interface {
 	AddUserToGroup(ctx context.Context, userName, groupName string) error
 	RemoveUserFromGroup(ctx context.Context, userName, groupName string) error
 	UpdateTags(ctx context.Context, userName string, tags map[string]string) error
-	DeleteLoginProfile(ctx context.Context, userName string) error
-	DeleteAllAccessKeys(ctx context.Context, userName string) error
 }
 
 type realIAMUserAPI struct {
@@ -260,43 +259,6 @@ func (r *realIAMUserAPI) UpdateTags(ctx context.Context, userName string, tags m
 		_, err := r.client.TagUser(ctx, &iamsdk.TagUserInput{UserName: aws.String(userName), Tags: toIAMTags(add)})
 		if err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-// DeleteLoginProfile removes the user's console password. Required before user deletion.
-func (r *realIAMUserAPI) DeleteLoginProfile(ctx context.Context, userName string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	_, err := r.client.DeleteLoginProfile(ctx, &iamsdk.DeleteLoginProfileInput{UserName: aws.String(userName)})
-	return err
-}
-
-// DeleteAllAccessKeys iterates through and deletes all access keys for the user.
-// Required before user deletion since IAM prevents deleting users with active keys.
-func (r *realIAMUserAPI) DeleteAllAccessKeys(ctx context.Context, userName string) error {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return err
-	}
-	paginator := iamsdk.NewListAccessKeysPaginator(r.client, &iamsdk.ListAccessKeysInput{UserName: aws.String(userName)})
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return err
-		}
-		for _, metadata := range page.AccessKeyMetadata {
-			if err := r.limiter.Wait(ctx); err != nil {
-				return err
-			}
-			_, err := r.client.DeleteAccessKey(ctx, &iamsdk.DeleteAccessKeyInput{
-				UserName:    aws.String(userName),
-				AccessKeyId: metadata.AccessKeyId,
-			})
-			if err != nil {
-				return err
-			}
 		}
 	}
 	return nil

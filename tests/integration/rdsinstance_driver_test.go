@@ -40,7 +40,7 @@ func setupRDSInstanceDriver(t *testing.T) (*ingress.Client, *rdssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	rdsClient := awsclient.NewRDSClient(awsCfg)
-	driver := rdsinstance.NewRDSInstanceDriver(authservice.NewAuthClient())
+	driver := rdsinstance.NewGenericRDSInstanceDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, rdsClient

@@ -101,6 +101,19 @@ func TestIsExpiredToken(t *testing.T) {
 	assert.False(t, IsExpiredToken(&mockAPIError{code: "NotFound"}))
 }
 
+func TestIsQuotaExceeded(t *testing.T) {
+	for _, code := range []string{
+		"AddressLimitExceeded", "VpcLimitExceeded", "TooManyLoadBalancers",
+		"DBSubnetGroupQuotaExceededFault", "ParameterLimitExceeded", "SubscriptionLimitExceededException",
+	} {
+		assert.True(t, IsQuotaExceeded(&mockAPIError{code: code}), "expected hard quota for ", code)
+	}
+	assert.False(t, IsQuotaExceeded(&mockAPIError{code: "LimitExceededException"}),
+		"generic LimitExceededException can be a retryable control-plane limit")
+	assert.False(t, IsQuotaExceeded(&mockAPIError{code: "RequestLimitExceeded"}))
+	assert.False(t, IsQuotaExceeded(nil))
+}
+
 func TestWrappedError(t *testing.T) {
 	inner := &mockAPIError{code: "Throttling", message: "slow down"}
 	wrapped := fmt.Errorf("operation failed: %w", inner)

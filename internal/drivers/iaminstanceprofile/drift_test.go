@@ -41,7 +41,18 @@ func TestComputeFieldDiffs_PathImmutable(t *testing.T) {
 	)
 
 	require.Len(t, diffs, 1)
-	assert.Equal(t, "spec.path (immutable, ignored)", diffs[0].Path)
+	assert.Equal(t, "spec.path (immutable, requires replacement)", diffs[0].Path)
+}
+
+func TestHasDrift_ImmutableIdentityChanged(t *testing.T) {
+	desired := IAMInstanceProfileSpec{InstanceProfileName: "desired", Path: "/desired/", RoleName: "role"}
+	observed := ObservedState{InstanceProfileName: "observed", Path: "/observed/", RoleName: "role"}
+
+	assert.True(t, HasDrift(desired, observed))
+	assert.ElementsMatch(t, []drivers.FieldDiff{
+		{Path: "spec.instanceProfileName (immutable, requires replacement)", OldValue: "observed", NewValue: "desired"},
+		{Path: "spec.path (immutable, requires replacement)", OldValue: "/observed/", NewValue: "/desired/"},
+	}, ComputeFieldDiffs(desired, observed))
 }
 
 func TestComputeFieldDiffs_RoleAndTags(t *testing.T) {
@@ -50,7 +61,7 @@ func TestComputeFieldDiffs_RoleAndTags(t *testing.T) {
 		ObservedState{RoleName: "old-role", Tags: map[string]string{"env": "dev", "owner": "alice"}},
 	)
 
-	assert.ElementsMatch(t, []FieldDiffEntry{
+	assert.ElementsMatch(t, []drivers.FieldDiff{
 		{Path: "spec.roleName", OldValue: "old-role", NewValue: "new-role"},
 		{Path: "tags.env", OldValue: "dev", NewValue: "prod"},
 		{Path: "tags.team", OldValue: nil, NewValue: "platform"},

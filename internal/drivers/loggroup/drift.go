@@ -13,10 +13,13 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// HasDrift compares the desired LogGroup spec against the observed
-// state from AWS and returns true if any mutable field has diverged.
-// It is called during Reconcile to decide whether drift correction is needed.
+// HasDrift compares the desired LogGroup spec against the observed state from
+// AWS. Immutable class divergence is included so Converge can reject an
+// in-place class change instead of silently accepting it.
 func HasDrift(desired LogGroupSpec, observed ObservedState) bool {
+	if desired.LogGroupClass != "" && observed.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
+		return true
+	}
 	if !retentionMatch(desired.RetentionInDays, observed.RetentionInDays) {
 		return true
 	}
@@ -32,24 +35,24 @@ func HasDrift(desired LogGroupSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired LogGroupSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired LogGroupSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	if desired.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.logGroupClass (immutable, requires replacement)",
 			OldValue: observed.LogGroupClass,
 			NewValue: desired.LogGroupClass,
 		})
 	}
 	if !retentionMatch(desired.RetentionInDays, observed.RetentionInDays) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.retentionInDays",
 			OldValue: retentionValue(observed.RetentionInDays),
 			NewValue: retentionValue(desired.RetentionInDays),
 		})
 	}
 	if strings.TrimSpace(desired.KmsKeyID) != strings.TrimSpace(observed.KmsKeyID) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.kmsKeyId",
 			OldValue: observed.KmsKeyID,
 			NewValue: desired.KmsKeyID,
@@ -57,15 +60,6 @@ func ComputeFieldDiffs(desired LogGroupSpec, observed ObservedState) []FieldDiff
 	}
 	diffs = append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
 }
 
 func retentionMatch(desired, observed *int32) bool {
@@ -85,20 +79,20 @@ func retentionValue(v *int32) any {
 	return *v
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	cleanDesired := drivers.FilterPraxisTags(desired)
 	cleanObserved := drivers.FilterPraxisTags(observed)
 	for key, value := range cleanDesired {
 		if current, ok := cleanObserved[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if current != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: current, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: current, NewValue: value})
 		}
 	}
 	for key, value := range cleanObserved {
 		if _, ok := cleanDesired[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

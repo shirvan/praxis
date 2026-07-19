@@ -27,7 +27,7 @@ func setupRoute53HealthCheckDriver(t *testing.T) (*ingress.Client, *route53sdk.C
 	awsCfg := motoAWSConfig(t)
 	r53Client := awsclient.NewRoute53Client(awsCfg)
 	ensureRoute53Enabled(t, r53Client)
-	driver := route53healthcheck.NewHealthCheckDriver(authservice.NewAuthClient())
+	driver := route53healthcheck.NewGenericHealthCheckDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, r53Client

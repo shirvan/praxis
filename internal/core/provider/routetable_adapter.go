@@ -90,13 +90,13 @@ func routeTableDescriptor() GenericDescriptor[routetable.RouteTableSpec, routeta
 			}
 		},
 
-		PlanID: func(out routetable.RouteTableOutputs) string { return out.RouteTableId },
+		PlanIdentity: storedPlanIdentity[routetable.RouteTableSpec](func(out routetable.RouteTableOutputs) string { return out.RouteTableId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[routetable.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[routetable.RouteTableSpec, routetable.RouteTableOutputs, routetable.ObservedState] {
 			return routeTableProbe(routetable.NewRouteTableAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired routetable.RouteTableSpec, observed routetable.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired routetable.RouteTableSpec, observed routetable.ObservedState, _ routetable.RouteTableOutputs) []types.FieldDiff {
 			rawDiffs := routetable.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -108,8 +108,9 @@ func routeTableDescriptor() GenericDescriptor[routetable.RouteTableSpec, routeta
 }
 
 // routeTableProbe adapts the driver API to the generic plan probe shape.
-func routeTableProbe(api routetable.RouteTableAPI) PlanProbeFunc[routetable.ObservedState] {
-	return func(runCtx restate.RunContext, routeTableID string) (routetable.ObservedState, bool, error) {
+func routeTableProbe(api routetable.RouteTableAPI) PlanProbeFunc[routetable.RouteTableSpec, routetable.RouteTableOutputs, routetable.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[routetable.RouteTableSpec, routetable.RouteTableOutputs]) (routetable.ObservedState, bool, error) {
+		routeTableID := input.Identity
 		obs, err := api.DescribeRouteTable(runCtx, routeTableID)
 		if err != nil {
 			if routetable.IsNotFound(err) {

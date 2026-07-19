@@ -1,7 +1,7 @@
 package rds
 
 #DBParameterGroup: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "DBParameterGroup"
 
 	metadata: {

@@ -40,7 +40,7 @@ func setupNATGatewayIntegrationDriver(t *testing.T) (*ingress.Client, *ec2sdk.Cl
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := natgw.NewNATGatewayDriver(authservice.NewAuthClient())
+	driver := natgw.NewGenericNATGatewayDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client

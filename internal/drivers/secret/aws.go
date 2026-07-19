@@ -8,6 +8,8 @@ package secret
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"maps"
 	"sort"
 	"strings"
@@ -25,10 +27,10 @@ import (
 // needed to manage a secret. The real implementation calls AWS; tests supply a
 // mock to verify driver logic without network calls.
 type SecretsManagerSecretAPI interface {
-	CreateSecret(ctx context.Context, spec SecretsManagerSecretSpec) (ObservedState, error)
+	CreateSecret(ctx context.Context, spec SecretsManagerSecretSpec, clientRequestToken string) (SecretsManagerSecretOutputs, error)
 	DescribeSecret(ctx context.Context, name string) (ObservedState, bool, error)
 	UpdateSecret(ctx context.Context, name, description, kmsKeyID string) error
-	PutSecretValue(ctx context.Context, name, value string) error
+	PutSecretValue(ctx context.Context, name, value, clientRequestToken string) error
 	DeleteSecret(ctx context.Context, name string, force bool) error
 	RestoreSecret(ctx context.Context, name string) error
 	AddTags(ctx context.Context, name string, tags map[string]string) error
@@ -51,16 +53,19 @@ func NewSecretsManagerSecretAPI(client *secretsmanager.Client) SecretsManagerSec
 }
 
 // CreateSecret creates a new secret from the given spec, stamping the managed
-// tags on create. It returns the freshly observed state so callers avoid an
-// extra round trip.
-func (r *realSecretsManagerSecretAPI) CreateSecret(ctx context.Context, spec SecretsManagerSecretSpec) (ObservedState, error) {
+// tags on create. Observation is deliberately a separate driver operation so
+// one Restate journal entry contains exactly one AWS request.
+func (r *realSecretsManagerSecretAPI) CreateSecret(ctx context.Context, spec SecretsManagerSecretSpec, clientRequestToken string) (SecretsManagerSecretOutputs, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
-		return ObservedState{}, err
+		return SecretsManagerSecretOutputs{}, err
 	}
 	input := &secretsmanager.CreateSecretInput{
 		Name:         aws.String(spec.Name),
 		SecretString: aws.String(spec.SecretString),
 		Tags:         tagList(managedTags(spec.Tags, spec.ManagedKey)),
+	}
+	if clientRequestToken != "" {
+		input.ClientRequestToken = aws.String(clientRequestToken)
 	}
 	if spec.Description != "" {
 		input.Description = aws.String(spec.Description)
@@ -70,20 +75,11 @@ func (r *realSecretsManagerSecretAPI) CreateSecret(ctx context.Context, spec Sec
 	}
 	out, err := r.client.CreateSecret(ctx, input)
 	if err != nil {
-		return ObservedState{}, err
+		return SecretsManagerSecretOutputs{}, err
 	}
-	observed, _, err := r.DescribeSecret(ctx, spec.Name)
-	if err != nil {
-		return ObservedState{}, err
-	}
-	// Prefer the ARN/version from the create response when Describe lags.
-	if observed.ARN == "" {
-		observed.ARN = aws.ToString(out.ARN)
-	}
-	if observed.VersionID == "" {
-		observed.VersionID = aws.ToString(out.VersionId)
-	}
-	return observed, nil
+	return SecretsManagerSecretOutputs{
+		ARN: aws.ToString(out.ARN), Name: spec.Name, VersionID: aws.ToString(out.VersionId),
+	}, nil
 }
 
 // DescribeSecret reads the current state of the secret from AWS. DescribeSecret
@@ -156,14 +152,18 @@ func (r *realSecretsManagerSecretAPI) UpdateSecret(ctx context.Context, name, de
 }
 
 // PutSecretValue stores a new version of the secret value, becoming AWSCURRENT.
-func (r *realSecretsManagerSecretAPI) PutSecretValue(ctx context.Context, name, value string) error {
+func (r *realSecretsManagerSecretAPI) PutSecretValue(ctx context.Context, name, value, clientRequestToken string) error {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return err
 	}
-	_, err := r.client.PutSecretValue(ctx, &secretsmanager.PutSecretValueInput{
+	input := &secretsmanager.PutSecretValueInput{
 		SecretId:     aws.String(name),
 		SecretString: aws.String(value),
-	})
+	}
+	if clientRequestToken != "" {
+		input.ClientRequestToken = aws.String(clientRequestToken)
+	}
+	_, err := r.client.PutSecretValue(ctx, input)
 	return err
 }
 
@@ -297,4 +297,16 @@ func tagDiff(desired, observed map[string]string, managedKey string) (map[string
 	}
 	sort.Strings(toRemove)
 	return toAdd, toRemove
+}
+
+// secretClientRequestToken creates the 64-character token accepted by Secrets
+// Manager from stable resource and Restate invocation identities. Callback
+// retries reuse it; a later Provision or Reconcile invocation receives a new
+// token and may legitimately create a new secret version.
+func secretClientRequestToken(managedKey, invocationID string) string {
+	if strings.TrimSpace(invocationID) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(managedKey + "\x00" + invocationID))
+	return hex.EncodeToString(sum[:])
 }

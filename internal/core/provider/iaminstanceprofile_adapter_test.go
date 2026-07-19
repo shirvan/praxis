@@ -13,7 +13,7 @@ import (
 func TestIAMInstanceProfileAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewIAMInstanceProfileAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"IAMInstanceProfile",
 		"metadata":{"name":"app-profile"},
 		"spec":{

@@ -1,7 +1,7 @@
 package dynamodb
 
 #DynamoDBTable: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "DynamoDBTable"
 
 	metadata: {

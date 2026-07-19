@@ -51,8 +51,8 @@ func HasDrift(desired S3BucketSpec, observed ObservedState) bool {
 //
 // Each FieldDiff shows the path, old value, and new value for a changed field.
 // Returns nil if there is no drift.
-func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	// --- Versioning ---
 	desiredVersioning := "Suspended"
@@ -64,7 +64,7 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 		observedVersioning = "Suspended"
 	}
 	if desiredVersioning != observedVersioning {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.versioning",
 			OldValue: observedVersioning,
 			NewValue: desiredVersioning,
@@ -73,7 +73,7 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 
 	// --- Encryption ---
 	if desired.Encryption.Enabled && observed.EncryptionAlgo != desired.Encryption.Algorithm {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.encryption.algorithm",
 			OldValue: observed.EncryptionAlgo,
 			NewValue: desired.Encryption.Algorithm,
@@ -85,13 +85,13 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 	observedTags := drivers.FilterPraxisTags(observed.Tags)
 	for k, v := range desiredTags {
 		if ov, ok := observedTags[k]; !ok {
-			diffs = append(diffs, FieldDiffEntry{
+			diffs = append(diffs, drivers.FieldDiff{
 				Path:     "tags." + k,
 				OldValue: nil,
 				NewValue: v,
 			})
 		} else if ov != v {
-			diffs = append(diffs, FieldDiffEntry{
+			diffs = append(diffs, drivers.FieldDiff{
 				Path:     "tags." + k,
 				OldValue: ov,
 				NewValue: v,
@@ -101,7 +101,7 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 	// Tags removed
 	for k, v := range observedTags {
 		if _, ok := desiredTags[k]; !ok {
-			diffs = append(diffs, FieldDiffEntry{
+			diffs = append(diffs, drivers.FieldDiff{
 				Path:     "tags." + k,
 				OldValue: v,
 				NewValue: nil,
@@ -110,17 +110,4 @@ func ComputeFieldDiffs(desired S3BucketSpec, observed ObservedState) []FieldDiff
 	}
 
 	return diffs
-}
-
-// FieldDiffEntry represents a single field-level change between desired and observed.
-// Used by the diff/plan engine to produce human-readable plan output.
-type FieldDiffEntry struct {
-	// Path is the dot-separated path to the field (e.g., "spec.versioning").
-	Path string
-
-	// OldValue is the current value (nil for new fields).
-	OldValue any
-
-	// NewValue is the desired value (nil for removed fields).
-	NewValue any
 }

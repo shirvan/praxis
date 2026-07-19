@@ -36,6 +36,7 @@ func TestIsInvalidParam_MatchesAmiNotFound(t *testing.T) {
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidAMIID.Malformed"}))
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidSubnetID.NotFound"}))
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidGroup.NotFound"}))
+	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidIamInstanceProfile.NotFound"}))
 	assert.True(t, IsInvalidParam(&mockAPIError{code: "InvalidParameterValue"}))
 }
 
@@ -76,5 +77,25 @@ func TestBase64Encode_AlreadyEncodedInput(t *testing.T) {
 
 func TestExtractProfileName(t *testing.T) {
 	assert.Equal(t, "MyProfile", extractProfileName("arn:aws:iam::123456789012:instance-profile/MyProfile"))
+	assert.Equal(t, "MyProfile", instanceProfileName(" arn:aws:iam::123456789012:instance-profile/platform/MyProfile "))
 	assert.Equal(t, "plain-name", extractProfileName("plain-name"))
+}
+
+func TestIAMInstanceProfileSpecificationPreservesNameOrARN(t *testing.T) {
+	byName := iamInstanceProfileSpecification(" app-profile ")
+	assert.Equal(t, "app-profile", *byName.Name)
+	assert.Nil(t, byName.Arn)
+
+	byARN := iamInstanceProfileSpecification("arn:aws:iam::123456789012:instance-profile/platform/app-profile")
+	assert.Equal(t, "arn:aws:iam::123456789012:instance-profile/platform/app-profile", *byARN.Arn)
+	assert.Nil(t, byARN.Name)
+}
+
+func TestRunInstancesClientTokenIsStableAndBounded(t *testing.T) {
+	first := runInstancesClientToken("us-east-1~web", "invocation-1")
+	assert.Len(t, first, 64)
+	assert.Equal(t, first, runInstancesClientToken("us-east-1~web", "invocation-1"))
+	assert.NotEqual(t, first, runInstancesClientToken("us-east-1~web", "invocation-2"),
+		"a later replacement must not reuse the original RunInstances token")
+	assert.NotEqual(t, first, runInstancesClientToken("us-east-1~api", "invocation-1"))
 }

@@ -14,7 +14,7 @@ import (
 func TestKeyPairAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewKeyPairAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"KeyPair",
 		"metadata":{"name":"web-key"},
 		"spec":{

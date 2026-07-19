@@ -31,7 +31,7 @@ func taggedBucketTemplate(bucketName, version string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucketA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: {
@@ -47,7 +47,7 @@ func taggedBucketPlusSecondTemplate(bucketA, version, bucketB string) string {
 	return fmt.Sprintf(`
 resources: {
 	bucketA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: {
@@ -56,7 +56,7 @@ resources: {
 		}
 	}
 	bucketB: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: { region: "us-east-1" }
@@ -201,7 +201,7 @@ func TestRollbackTo_RecoversFromFailedDeployment(t *testing.T) {
 	badTemplate := fmt.Sprintf(`
 resources: {
 	bucketA: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "S3Bucket"
 		metadata: { name: %q }
 		spec: {
@@ -210,7 +210,7 @@ resources: {
 		}
 	}
 	badLogs: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "LogGroup"
 		metadata: { name: "/praxis/rollback/injected-failure" }
 		spec: { region: "us-east-1" }

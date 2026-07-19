@@ -1,7 +1,7 @@
 package iam
 
 #IAMInstanceProfile: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "IAMInstanceProfile"
 
 	metadata: {

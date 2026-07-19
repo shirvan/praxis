@@ -13,7 +13,7 @@ import (
 func TestRDSInstanceAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewRDSInstanceAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"RDSInstance",
 		"metadata":{"name":"mydb"},
 		"spec":{

@@ -269,15 +269,6 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 					continue
 				}
 
-				if preDeleter, ok := adapter.(provider.PreDeleter); ok {
-					if err := preDeleter.PreDelete(ctx, resource.Key); err != nil {
-						if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, fmt.Sprintf("pre-delete failed: %v", err), req.Force); err != nil {
-							return DeploymentResult{}, err
-						}
-						continue
-					}
-				}
-
 				deleteTimeout, err := resolveDeleteTimeout(adapter, resource.Lifecycle)
 				if err != nil {
 					if err := w.recordDeleteFailure(ctx, req.DeploymentKey, state.Workspace, state.Generation, exec, name, resource.Kind, err.Error(), req.Force); err != nil {
@@ -357,13 +348,7 @@ func (w *DeploymentDeleteWorkflow) Run(ctx restate.WorkflowContext, req DeleteRe
 			}
 			continue
 		}
-
 		resource := exec.plan[resourceName]
-		if postDeleter, ok := pending.adapter.(provider.PostDeleter); ok {
-			if err := postDeleter.PostDelete(ctx, resource.Key); err != nil {
-				ctx.Log().Warn("post-delete hook failed", "resource", resourceName, "kind", resource.Kind, "error", err.Error())
-			}
-		}
 
 		// Fresh timestamp: loopNow was journaled before a potentially
 		// minutes-long delete wait.

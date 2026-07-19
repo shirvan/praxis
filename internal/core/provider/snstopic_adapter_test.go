@@ -13,7 +13,7 @@ import (
 func TestSNSTopicAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 	adapter := NewSNSTopicAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SNSTopic",
 		"metadata":{"name":"alerts"},
 		"spec":{
@@ -43,7 +43,7 @@ func TestSNSTopicAdapter_BuildKeyAndDecodeSpec(t *testing.T) {
 func TestSNSTopicAdapter_BuildKey_TopicNameFromMetadata(t *testing.T) {
 	adapter := NewSNSTopicAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"SNSTopic",
 		"metadata":{"name":"my-topic"},
 		"spec":{
@@ -108,7 +108,7 @@ func TestSNSTopicAdapter_Scope(t *testing.T) {
 func TestSNSTopicAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 	adapter := NewSNSTopicAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SNSTopic",
+		"apiVersion":"praxis.io/alpha","kind":"SNSTopic",
 		"metadata":{"name":"topic"},
 		"spec":{"topicName":"topic"}
 	}`)
@@ -120,7 +120,7 @@ func TestSNSTopicAdapter_DecodeSpec_MissingRegion(t *testing.T) {
 func TestSNSTopicAdapter_DecodeSpec_MissingName(t *testing.T) {
 	adapter := NewSNSTopicAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1","kind":"SNSTopic",
+		"apiVersion":"praxis.io/alpha","kind":"SNSTopic",
 		"metadata":{"name":""},
 		"spec":{"region":"us-east-1"}
 	}`)

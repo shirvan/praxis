@@ -13,7 +13,7 @@ import (
 func TestLogGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewLogGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"LogGroup",
 		"metadata":{"name":"/aws/lambda/app"},
 		"spec":{

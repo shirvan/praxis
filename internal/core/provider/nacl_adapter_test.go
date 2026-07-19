@@ -13,7 +13,7 @@ import (
 func TestNetworkACLAdapter_BuildKey(t *testing.T) {
 	adapter := NewNetworkACLAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"NetworkACL",
 		"metadata":{"name":"public-nacl"},
 		"spec":{
@@ -34,7 +34,7 @@ func TestNetworkACLAdapter_BuildKey(t *testing.T) {
 func TestNetworkACLAdapter_DecodeSpecAndNormalizeOutputs(t *testing.T) {
 	adapter := NewNetworkACLAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"NetworkACL",
 		"metadata":{"name":"public-nacl"},
 		"spec":{

@@ -6,8 +6,6 @@
 // Elastic Load Balancing v2; the driver state couples both together with status tracking.
 package alb
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object service name used to register the AWS Application Load Balancer (ALB) driver.
 const ServiceName = "ALB"
 
@@ -16,6 +14,7 @@ const ServiceName = "ALB"
 type ALBSpec struct {
 	Account            string            `json:"account,omitempty"`
 	Region             string            `json:"region"`
+	ManagedKey         string            `json:"managedKey,omitempty"`
 	Name               string            `json:"name"`
 	Scheme             string            `json:"scheme"`
 	IpAddressType      string            `json:"ipAddressType"`
@@ -56,6 +55,7 @@ type ALBOutputs struct {
 // as read from Elastic Load Balancing v2. It is compared against the spec
 // during drift detection.
 type ObservedState struct {
+	Region             string            `json:"region,omitempty"`
 	LoadBalancerArn    string            `json:"loadBalancerArn"`
 	DnsName            string            `json:"dnsName"`
 	HostedZoneId       string            `json:"hostedZoneId"`
@@ -70,20 +70,4 @@ type ObservedState struct {
 	IdleTimeout        int               `json:"idleTimeout"`
 	Tags               map[string]string `json:"tags"`
 	State              string            `json:"state"`
-}
-
-// ALBState is the single atomic state object persisted under drivers.StateKey
-// in the Restate K/V store. It combines desired spec, observed state,
-// outputs, lifecycle status, mode (managed/observed), error message,
-// generation counter, and reconciliation scheduling metadata.
-type ALBState struct {
-	Desired            ALBSpec              `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            ALBOutputs           `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

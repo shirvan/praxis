@@ -76,13 +76,13 @@ func iamPolicyDescriptor() GenericDescriptor[iampolicy.IAMPolicySpec, iampolicy.
 			return map[string]any{"arn": out.Arn, "policyId": out.PolicyId, "policyName": out.PolicyName}
 		},
 
-		PlanID: func(out iampolicy.IAMPolicyOutputs) string { return out.Arn },
+		PlanIdentity: storedPlanIdentity[iampolicy.IAMPolicySpec](func(out iampolicy.IAMPolicyOutputs) string { return out.Arn }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iampolicy.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs, iampolicy.ObservedState] {
 			return iamPolicyProbe(iampolicy.NewIAMPolicyAPI(awsclient.NewIAMClient(cfg)))
 		},
 
-		DiffFields: func(desired iampolicy.IAMPolicySpec, observed iampolicy.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired iampolicy.IAMPolicySpec, observed iampolicy.ObservedState, _ iampolicy.IAMPolicyOutputs) []types.FieldDiff {
 			rawDiffs := iampolicy.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -95,8 +95,9 @@ func iamPolicyDescriptor() GenericDescriptor[iampolicy.IAMPolicySpec, iampolicy.
 
 // iamPolicyProbe adapts the driver API to the generic plan probe shape. The
 // plan ID is the policy ARN recorded in outputs at provision time.
-func iamPolicyProbe(api iampolicy.IAMPolicyAPI) PlanProbeFunc[iampolicy.ObservedState] {
-	return func(runCtx restate.RunContext, policyArn string) (iampolicy.ObservedState, bool, error) {
+func iamPolicyProbe(api iampolicy.IAMPolicyAPI) PlanProbeFunc[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs, iampolicy.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs]) (iampolicy.ObservedState, bool, error) {
+		policyArn := input.Identity
 		obs, err := api.DescribePolicy(runCtx, policyArn)
 		if err != nil {
 			if iampolicy.IsNotFound(err) {

@@ -87,13 +87,13 @@ func secretsManagerSecretDescriptor() GenericDescriptor[secret.SecretsManagerSec
 			return result
 		},
 
-		PlanID: func(out secret.SecretsManagerSecretOutputs) string { return out.Name },
+		PlanIdentity: storedPlanIdentity[secret.SecretsManagerSecretSpec](func(out secret.SecretsManagerSecretOutputs) string { return out.Name }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[secret.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[secret.SecretsManagerSecretSpec, secret.SecretsManagerSecretOutputs, secret.ObservedState] {
 			return secretsManagerSecretProbe(secret.NewSecretsManagerSecretAPI(awsclient.NewSecretsManagerClient(cfg)))
 		},
 
-		DiffFields: func(desired secret.SecretsManagerSecretSpec, observed secret.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired secret.SecretsManagerSecretSpec, observed secret.ObservedState, _ secret.SecretsManagerSecretOutputs) []types.FieldDiff {
 			rawDiffs := secret.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -106,8 +106,9 @@ func secretsManagerSecretDescriptor() GenericDescriptor[secret.SecretsManagerSec
 }
 
 // secretsManagerSecretProbe adapts the driver API to the generic plan probe shape.
-func secretsManagerSecretProbe(api secret.SecretsManagerSecretAPI) PlanProbeFunc[secret.ObservedState] {
-	return func(runCtx restate.RunContext, name string) (secret.ObservedState, bool, error) {
+func secretsManagerSecretProbe(api secret.SecretsManagerSecretAPI) PlanProbeFunc[secret.SecretsManagerSecretSpec, secret.SecretsManagerSecretOutputs, secret.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[secret.SecretsManagerSecretSpec, secret.SecretsManagerSecretOutputs]) (secret.ObservedState, bool, error) {
+		name := input.Identity
 		obs, found, err := api.DescribeSecret(runCtx, name)
 		if err != nil {
 			if secret.IsNotFound(err) {

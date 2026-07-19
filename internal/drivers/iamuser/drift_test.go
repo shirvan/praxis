@@ -1,6 +1,7 @@
 package iamuser
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,11 +88,11 @@ func TestComputeFieldDiffs_AllMutableFields(t *testing.T) {
 		},
 	)
 
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.path", OldValue: "/ops/", NewValue: "/app/"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.permissionsBoundary", OldValue: "old-boundary", NewValue: "new-boundary"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.managedPolicyArns", OldValue: []string{"a"}, NewValue: []string{"a", "b"}})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.groups", OldValue: []string{"dev"}, NewValue: []string{"dev", "ops"}})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "tags.env", OldValue: "dev", NewValue: "prod"})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "tags.owner", OldValue: "alice", NewValue: nil})
-	assert.Contains(t, diffs, FieldDiffEntry{Path: "spec.inlinePolicies.inline", OldValue: `{"Statement":[{"Action":"s3:PutObject"}],"Version":"2012-10-17"}`, NewValue: `{"Statement":[{"Action":"s3:GetObject"}],"Version":"2012-10-17"}`})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.path", OldValue: "/ops/", NewValue: "/app/"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.permissionsBoundary", OldValue: "old-boundary", NewValue: "new-boundary"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.managedPolicyArns", OldValue: []string{"a"}, NewValue: []string{"a", "b"}})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.groups", OldValue: []string{"dev"}, NewValue: []string{"dev", "ops"}})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "tags.env", OldValue: "dev", NewValue: "prod"})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "tags.owner", OldValue: "alice", NewValue: nil})
+	assert.Contains(t, diffs, drivers.FieldDiff{Path: "spec.inlinePolicies.inline", OldValue: `{"Statement":[{"Action":"s3:PutObject"}],"Version":"2012-10-17"}`, NewValue: `{"Statement":[{"Action":"s3:GetObject"}],"Version":"2012-10-17"}`})
 }

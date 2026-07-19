@@ -13,7 +13,7 @@ import (
 func TestAuroraClusterAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewAuroraClusterAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"AuroraCluster",
 		"metadata":{"name":"my-cluster"},
 		"spec":{

@@ -40,7 +40,7 @@ func setupLambdaLayerDriver(t *testing.T) (*ingress.Client, *lambdasdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	lambdaClient := awsclient.NewLambdaClient(awsCfg)
-	driver := lambdalayer.NewLambdaLayerDriver(authservice.NewAuthClient())
+	driver := lambdalayer.NewGenericLambdaLayerDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, lambdaClient

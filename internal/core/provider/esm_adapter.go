@@ -76,13 +76,13 @@ func esmDescriptor() GenericDescriptor[esm.EventSourceMappingSpec, esm.EventSour
 			}
 		},
 
-		PlanID: func(out esm.EventSourceMappingOutputs) string { return out.UUID },
+		PlanIdentity: storedPlanIdentity[esm.EventSourceMappingSpec](func(out esm.EventSourceMappingOutputs) string { return out.UUID }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[esm.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs, esm.ObservedState] {
 			return esmProbe(esm.NewESMAPI(awsclient.NewLambdaClient(cfg)))
 		},
 
-		DiffFields: func(desired esm.EventSourceMappingSpec, observed esm.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired esm.EventSourceMappingSpec, observed esm.ObservedState, _ esm.EventSourceMappingOutputs) []types.FieldDiff {
 			rawDiffs := esm.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -94,8 +94,9 @@ func esmDescriptor() GenericDescriptor[esm.EventSourceMappingSpec, esm.EventSour
 }
 
 // esmProbe adapts the driver API to the generic plan probe shape.
-func esmProbe(api esm.ESMAPI) PlanProbeFunc[esm.ObservedState] {
-	return func(runCtx restate.RunContext, uuid string) (esm.ObservedState, bool, error) {
+func esmProbe(api esm.ESMAPI) PlanProbeFunc[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs, esm.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs]) (esm.ObservedState, bool, error) {
+		uuid := input.Identity
 		obs, err := api.GetEventSourceMapping(runCtx, uuid)
 		if err != nil {
 			if esm.IsNotFound(err) {

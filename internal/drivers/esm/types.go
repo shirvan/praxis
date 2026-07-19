@@ -3,8 +3,6 @@
 // functions and control batching, filtering, retry, and scaling behavior.
 package esm
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for the Event Source Mapping driver.
 const ServiceName = "EventSourceMapping"
 
@@ -86,17 +84,4 @@ type ObservedState struct {
 	ScalingConfig                  *ScalingSpec        `json:"scalingConfig,omitempty"`
 	FunctionResponseTypes          []string            `json:"functionResponseTypes,omitempty"`
 	LastModified                   string              `json:"lastModified"`
-}
-
-// EventSourceMappingState is the full durable state stored in the Restate Virtual Object.
-type EventSourceMappingState struct {
-	Desired            EventSourceMappingSpec    `json:"desired"`
-	Observed           ObservedState             `json:"observed"`
-	Outputs            EventSourceMappingOutputs `json:"outputs"`
-	Status             types.ResourceStatus      `json:"status"`
-	Mode               types.Mode                `json:"mode"`
-	Error              string                    `json:"error,omitempty"`
-	Generation         int64                     `json:"generation"`
-	LastReconcile      string                    `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                      `json:"reconcileScheduled"`
 }

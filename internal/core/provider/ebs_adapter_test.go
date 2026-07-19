@@ -13,7 +13,7 @@ import (
 func TestEBSAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewEBSAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"EBSVolume",
 		"metadata":{"name":"data-vol"},
 		"spec":{

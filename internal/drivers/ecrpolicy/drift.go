@@ -7,14 +7,7 @@
 // Immutable fields (those that require resource replacement) are annotated.
 package ecrpolicy
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
+import "github.com/shirvan/praxis/internal/drivers"
 
 // HasDrift compares the desired ECRLifecyclePolicy spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
@@ -26,13 +19,16 @@ func HasDrift(desired ECRLifecyclePolicySpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired ECRLifecyclePolicySpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired ECRLifecyclePolicySpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 	if desired.RepositoryName != observed.RepositoryName {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.repositoryName (immutable, ignored)", OldValue: observed.RepositoryName, NewValue: desired.RepositoryName})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.repositoryName (immutable, requires replacement)", OldValue: observed.RepositoryName, NewValue: desired.RepositoryName})
+	}
+	if observedRegion := regionFromRepositoryARN(observed.RepositoryArn); observedRegion != "" && observedRegion != desired.Region {
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.region (immutable, requires replacement)", OldValue: observedRegion, NewValue: desired.Region})
 	}
 	if normalizePolicy(desired.LifecyclePolicyText) != normalizePolicy(observed.LifecyclePolicyText) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.lifecyclePolicyText", OldValue: observed.LifecyclePolicyText, NewValue: desired.LifecyclePolicyText})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.lifecyclePolicyText", OldValue: observed.LifecyclePolicyText, NewValue: desired.LifecyclePolicyText})
 	}
 	return diffs
 }

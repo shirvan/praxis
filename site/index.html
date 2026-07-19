@@ -275,7 +275,7 @@
       <pre><code><span class="c-comment"># Declare a bucket in a CUE template
 # (typed, validated, with defaults)</span>
 resources: archive: {
-    <span class="c-key">apiVersion</span>: <span class="c-str">"praxis.io/v1"</span>
+    <span class="c-key">apiVersion</span>: <span class="c-str">"praxis.io/alpha"</span>
     <span class="c-key">kind</span>:       <span class="c-str">"S3Bucket"</span>
     metadata: <span class="c-key">name</span>: <span class="c-str">"orders-archive"</span>
     spec: {
@@ -520,7 +520,7 @@ variables: {
 }
 
 resources: assets: {
-    <span class="c-key">apiVersion</span>: <span class="c-str">"praxis.io/v1"</span>
+    <span class="c-key">apiVersion</span>: <span class="c-str">"praxis.io/alpha"</span>
     <span class="c-key">kind</span>:       <span class="c-str">"S3Bucket"</span>
     metadata: <span class="c-key">name</span>:
         <span class="c-str">"\(variables.name)-\(variables.environment)-assets"</span>

@@ -818,7 +818,14 @@ func parseLifecycle(raw json.RawMessage) (*types.LifecyclePolicy, error) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("decode lifecycle: %w", err)
 	}
-	return doc.Lifecycle, nil
+	if doc.Lifecycle == nil {
+		return nil, nil
+	}
+	normalized := types.NormalizeLifecyclePolicy(doc.Lifecycle)
+	if err := types.ValidateLifecyclePolicy(normalized); err != nil {
+		return nil, err
+	}
+	return &normalized, nil
 }
 
 // cloneStringMap creates a shallow copy of a string-to-string map.

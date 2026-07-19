@@ -1,7 +1,7 @@
 package ebs
 
 #EBSVolume: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "EBSVolume"
 
 	metadata: {

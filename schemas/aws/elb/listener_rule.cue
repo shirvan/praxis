@@ -1,7 +1,7 @@
 package elb
 
 #ListenerRule: {
-	apiVersion: "praxis.io/v1"
+	apiVersion: "praxis.io/alpha"
 	kind:       "ListenerRule"
 
 	metadata: {

@@ -11,15 +11,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field-level difference between the desired
-// spec and the observed state. Path uses dot notation (e.g. "spec.name");
-// immutable fields are annotated with "(immutable, requires replacement)".
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift compares the desired ACMCertificate spec against the observed
 // state from AWS and returns true if any mutable field has diverged.
 // It is called during Reconcile to decide whether drift correction is needed.
@@ -33,35 +24,35 @@ func HasDrift(desired ACMCertificateSpec, observed ObservedState) bool {
 // ComputeFieldDiffs produces a structured list of individual field changes
 // between the desired spec and observed state. Used for plan output, CLI
 // display, and audit logging. Immutable field changes are clearly annotated.
-func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []FieldDiffEntry {
-	diffs := make([]FieldDiffEntry, 0, 8)
+func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []drivers.FieldDiff {
+	diffs := make([]drivers.FieldDiff, 0, 8)
 
 	// Immutable fields — these cannot be updated in-place and require replacement.
 	normDesired := applyDefaults(desired)
 	normObserved := normalizeObservedState(observed)
 	if normObserved.DomainName != "" && normDesired.DomainName != normObserved.DomainName {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.domainName (immutable, requires replacement)",
 			OldValue: normObserved.DomainName,
 			NewValue: normDesired.DomainName,
 		})
 	}
 	if normObserved.DomainName != "" && !EquivalentSANs(normDesired.DomainName, normDesired.SubjectAlternativeNames, normObserved.DomainName, normObserved.SubjectAlternativeNames) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.subjectAlternativeNames (immutable, requires replacement)",
 			OldValue: normObserved.SubjectAlternativeNames,
 			NewValue: normDesired.SubjectAlternativeNames,
 		})
 	}
 	if normObserved.ValidationMethod != "" && normDesired.ValidationMethod != "" && normDesired.ValidationMethod != normObserved.ValidationMethod {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.validationMethod (immutable, requires replacement)",
 			OldValue: normObserved.ValidationMethod,
 			NewValue: normDesired.ValidationMethod,
 		})
 	}
 	if normObserved.KeyAlgorithm != "" && normDesired.KeyAlgorithm != "" && normDesired.KeyAlgorithm != normObserved.KeyAlgorithm {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "spec.keyAlgorithm (immutable, requires replacement)",
 			OldValue: normObserved.KeyAlgorithm,
 			NewValue: normDesired.KeyAlgorithm,
@@ -70,7 +61,7 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 
 	// Mutable fields.
 	if normalizeTransparencyPreference(desired.Options) != normalizeTransparencyPreference(&observed.Options) {
-		diffs = append(diffs, FieldDiffEntry{
+		diffs = append(diffs, drivers.FieldDiff{
 			Path:     "options.certificateTransparencyLoggingPreference",
 			OldValue: normalizeTransparencyPreference(&observed.Options),
 			NewValue: normalizeTransparencyPreference(desired.Options),
@@ -79,20 +70,20 @@ func ComputeFieldDiffs(desired ACMCertificateSpec, observed ObservedState) []Fie
 	return append(diffs, computeTagDiffs(desired.Tags, observed.Tags)...)
 }
 
-func computeTagDiffs(desired, observed map[string]string) []FieldDiffEntry {
+func computeTagDiffs(desired, observed map[string]string) []drivers.FieldDiff {
 	desiredFiltered := drivers.FilterPraxisTags(desired)
 	observedFiltered := drivers.FilterPraxisTags(observed)
-	diffs := make([]FieldDiffEntry, 0, len(desiredFiltered)+len(observedFiltered))
+	diffs := make([]drivers.FieldDiff, 0, len(desiredFiltered)+len(observedFiltered))
 	for key, value := range desiredFiltered {
 		if observedValue, ok := observedFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: nil, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: nil, NewValue: value})
 		} else if observedValue != value {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: observedValue, NewValue: value})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: observedValue, NewValue: value})
 		}
 	}
 	for key, value := range observedFiltered {
 		if _, ok := desiredFiltered[key]; !ok {
-			diffs = append(diffs, FieldDiffEntry{Path: "tags." + key, OldValue: value, NewValue: nil})
+			diffs = append(diffs, drivers.FieldDiff{Path: "tags." + key, OldValue: value, NewValue: nil})
 		}
 	}
 	return diffs

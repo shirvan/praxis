@@ -92,13 +92,13 @@ func vpcDescriptor() GenericDescriptor[vpc.VPCSpec, vpc.VPCOutputs, vpc.Observed
 
 		NormalizeOutputs: normalizeVPCOutputs,
 
-		PlanID: func(out vpc.VPCOutputs) string { return out.VpcId },
+		PlanIdentity: storedPlanIdentity[vpc.VPCSpec](func(out vpc.VPCOutputs) string { return out.VpcId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpc.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState] {
 			return vpcProbe(vpc.NewVPCAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired vpc.VPCSpec, observed vpc.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired vpc.VPCSpec, observed vpc.ObservedState, _ vpc.VPCOutputs) []types.FieldDiff {
 			rawDiffs := vpc.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -130,8 +130,9 @@ func normalizeVPCOutputs(out vpc.VPCOutputs) map[string]any {
 }
 
 // vpcProbe adapts the driver API to the generic plan probe shape.
-func vpcProbe(api vpc.VPCAPI) PlanProbeFunc[vpc.ObservedState] {
-	return func(runCtx restate.RunContext, vpcID string) (vpc.ObservedState, bool, error) {
+func vpcProbe(api vpc.VPCAPI) PlanProbeFunc[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[vpc.VPCSpec, vpc.VPCOutputs]) (vpc.ObservedState, bool, error) {
+		vpcID := input.Identity
 		obs, err := api.DescribeVpc(runCtx, vpcID)
 		if err != nil {
 			if vpc.IsNotFound(err) {

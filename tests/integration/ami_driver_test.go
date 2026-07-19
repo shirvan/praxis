@@ -39,7 +39,7 @@ func setupAMIDriver(t *testing.T) (*ingress.Client, *ec2sdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ec2Client := awsclient.NewEC2Client(awsCfg)
-	driver := ami.NewAMIDriver(authservice.NewAuthClient())
+	driver := ami.NewGenericAMIDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, ec2Client

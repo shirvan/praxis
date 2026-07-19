@@ -11,13 +11,6 @@ import (
 	"github.com/shirvan/praxis/internal/drivers"
 )
 
-// FieldDiffEntry represents a single field difference with JSON path and old/new values.
-type FieldDiffEntry struct {
-	Path     string
-	OldValue any
-	NewValue any
-}
-
 // HasDrift returns true if any correctable field differs. Immutable fields
 // (architectures, packageType, functionName) and code artifact diffs are
 // excluded: drift correction only updates configuration and tags, so
@@ -42,59 +35,59 @@ func isCorrectablePath(path string) bool {
 // Covers: role, description, runtime, handler, memorySize, timeout, environment,
 // layers, vpcConfig, deadLetterConfig, tracingConfig, ephemeralStorage, tags,
 // code.imageUri, and immutable info diffs for architectures, packageType, functionName.
-func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []FieldDiffEntry {
-	var diffs []FieldDiffEntry
+func ComputeFieldDiffs(desired LambdaFunctionSpec, observed ObservedState) []drivers.FieldDiff {
+	var diffs []drivers.FieldDiff
 
 	if desired.Role != observed.Role {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.role", OldValue: observed.Role, NewValue: desired.Role})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.role", OldValue: observed.Role, NewValue: desired.Role})
 	}
 	if desired.Description != observed.Description {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.description", OldValue: observed.Description, NewValue: desired.Description})
 	}
 	if desired.Runtime != "" && desired.Runtime != observed.Runtime {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.runtime", OldValue: observed.Runtime, NewValue: desired.Runtime})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.runtime", OldValue: observed.Runtime, NewValue: desired.Runtime})
 	}
 	if desired.Handler != observed.Handler {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.handler", OldValue: observed.Handler, NewValue: desired.Handler})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.handler", OldValue: observed.Handler, NewValue: desired.Handler})
 	}
 	if desired.MemorySize != observed.MemorySize {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.memorySize", OldValue: observed.MemorySize, NewValue: desired.MemorySize})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.memorySize", OldValue: observed.MemorySize, NewValue: desired.MemorySize})
 	}
 	if desired.Timeout != observed.Timeout {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.timeout", OldValue: observed.Timeout, NewValue: desired.Timeout})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.timeout", OldValue: observed.Timeout, NewValue: desired.Timeout})
 	}
 	if !mapsEqual(desired.Environment, observed.Environment) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.environment", OldValue: observed.Environment, NewValue: desired.Environment})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.environment", OldValue: observed.Environment, NewValue: desired.Environment})
 	}
 	if !slices.Equal(desired.Layers, observed.Layers) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.layers", OldValue: observed.Layers, NewValue: desired.Layers})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.layers", OldValue: observed.Layers, NewValue: desired.Layers})
 	}
 	if !vpcConfigEqual(desired.VPCConfig, observed.VpcConfig) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.vpcConfig", OldValue: observed.VpcConfig, NewValue: desired.VPCConfig})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.vpcConfig", OldValue: observed.VpcConfig, NewValue: desired.VPCConfig})
 	}
 	if deadLetterTarget(desired.DeadLetterConfig) != observed.DeadLetterTarget {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.deadLetterConfig.targetArn", OldValue: observed.DeadLetterTarget, NewValue: deadLetterTarget(desired.DeadLetterConfig)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.deadLetterConfig.targetArn", OldValue: observed.DeadLetterTarget, NewValue: deadLetterTarget(desired.DeadLetterConfig)})
 	}
 	if tracingMode(desired.TracingConfig) != normalizeTracingMode(observed.TracingMode) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tracingConfig.mode", OldValue: normalizeTracingMode(observed.TracingMode), NewValue: tracingMode(desired.TracingConfig)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.tracingConfig.mode", OldValue: normalizeTracingMode(observed.TracingMode), NewValue: tracingMode(desired.TracingConfig)})
 	}
 	if !slices.Equal(normalizeArchitectures(desired.Architectures), normalizeArchitectures(observed.Architectures)) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.architectures (immutable, ignored)", OldValue: observed.Architectures, NewValue: desired.Architectures})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.architectures (immutable, ignored)", OldValue: observed.Architectures, NewValue: desired.Architectures})
 	}
 	if ephemeralSize(desired.EphemeralStorage) != normalizeEphemeralSize(observed.EphemeralSize) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.ephemeralStorage.size", OldValue: normalizeEphemeralSize(observed.EphemeralSize), NewValue: ephemeralSize(desired.EphemeralStorage)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.ephemeralStorage.size", OldValue: normalizeEphemeralSize(observed.EphemeralSize), NewValue: ephemeralSize(desired.EphemeralStorage)})
 	}
 	if !tagsEqual(desired.Tags, observed.Tags) {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.tags", OldValue: drivers.FilterPraxisTags(observed.Tags), NewValue: drivers.FilterPraxisTags(desired.Tags)})
 	}
 	if desired.PackageType != "" && desired.PackageType != observed.PackageType {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.packageType (immutable, ignored)", OldValue: observed.PackageType, NewValue: desired.PackageType})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.packageType (immutable, ignored)", OldValue: observed.PackageType, NewValue: desired.PackageType})
 	}
 	if desired.FunctionName != "" && desired.FunctionName != observed.FunctionName {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.functionName (immutable, ignored)", OldValue: observed.FunctionName, NewValue: desired.FunctionName})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.functionName (immutable, ignored)", OldValue: observed.FunctionName, NewValue: desired.FunctionName})
 	}
 	if desired.Code.ImageURI != "" && desired.Code.ImageURI != observed.ImageURI {
-		diffs = append(diffs, FieldDiffEntry{Path: "spec.code.imageUri", OldValue: observed.ImageURI, NewValue: desired.Code.ImageURI})
+		diffs = append(diffs, drivers.FieldDiff{Path: "spec.code.imageUri", OldValue: observed.ImageURI, NewValue: desired.Code.ImageURI})
 	}
 
 	return diffs

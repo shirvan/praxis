@@ -7,8 +7,6 @@
 // the CreateDBInstance and ModifyDBInstance calls based on DBClusterIdentifier.
 package rdsinstance
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for RDS instances.
 // This is the user-facing API surface (e.g., curl .../RDSInstance/key/Provision).
 const ServiceName = "RDSInstance"
@@ -22,7 +20,8 @@ type RDSInstanceSpec struct {
 	Account string `json:"account,omitempty"`
 
 	// Region is the AWS region for the instance.
-	Region string `json:"region"`
+	Region     string `json:"region"`
+	ManagedKey string `json:"managedKey,omitempty"`
 
 	// DBIdentifier is the unique RDS instance identifier. Immutable after creation.
 	DBIdentifier string `json:"dbIdentifier"`
@@ -126,6 +125,7 @@ type RDSInstanceOutputs struct {
 // ObservedState captures the actual AWS-side configuration of an RDS instance
 // as returned by rds:DescribeDBInstances. Used for drift comparison.
 type ObservedState struct {
+	Region                     string            `json:"region,omitempty"`
 	DBIdentifier               string            `json:"dbIdentifier"`
 	DbiResourceId              string            `json:"dbiResourceId"`
 	ARN                        string            `json:"arn"`
@@ -157,18 +157,4 @@ type ObservedState struct {
 	Port                       int32             `json:"port"`
 	Status                     string            `json:"status"`
 	Tags                       map[string]string `json:"tags"`
-}
-
-// RDSInstanceState is the single atomic state object stored under drivers.StateKey.
-// All fields are written together in one restate.Set() call.
-type RDSInstanceState struct {
-	Desired            RDSInstanceSpec      `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            RDSInstanceOutputs   `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
 }

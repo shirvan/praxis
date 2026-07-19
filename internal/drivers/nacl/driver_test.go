@@ -2,6 +2,7 @@ package nacl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/restatedev/sdk-go/ingress"
 	"github.com/shirvan/praxis/internal/core/auth"
 	"github.com/shirvan/praxis/internal/core/authservice"
+	"github.com/shirvan/praxis/internal/drivers/drivertest"
 	"github.com/shirvan/praxis/internal/eventing"
 	restatetest "github.com/shirvan/praxis/internal/restatetest"
 
@@ -87,6 +89,7 @@ type fakeNetworkACLAPI struct {
 	createCalls       int
 	deleteCalls       int
 	updateCalls       int
+	describeCalls     int
 	createEntryCalls  []ruleCall
 	replaceEntryCalls []ruleCall
 	deleteEntryCalls  []deleteRuleCall
@@ -95,6 +98,7 @@ type fakeNetworkACLAPI struct {
 	managedKeys       map[string]string
 
 	createFunc             func(context.Context, NetworkACLSpec) (string, error)
+	createErrors           []error
 	describeFunc           func(context.Context, string) (ObservedState, error)
 	deleteFunc             func(context.Context, string) error
 	createEntryFunc        func(context.Context, string, NetworkACLRule, bool) error
@@ -123,6 +127,7 @@ func (f *fakeNetworkACLAPI) CreateNetworkACL(ctx context.Context, spec NetworkAC
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.createCalls++
+	f.ensureDefaultACLLocked(spec.VpcId)
 	id := f.nextID
 	if id == "" {
 		id = fmt.Sprintf("acl-%d", f.createCalls)
@@ -133,7 +138,22 @@ func (f *fakeNetworkACLAPI) CreateNetworkACL(ctx context.Context, spec NetworkAC
 	if spec.ManagedKey != "" {
 		f.managedKeys[spec.ManagedKey] = id
 	}
+	if len(f.createErrors) > 0 {
+		err := f.createErrors[0]
+		f.createErrors = f.createErrors[1:]
+		return "", err
+	}
 	return id, nil
+}
+
+func (f *fakeNetworkACLAPI) snapshot() drivertest.ProviderSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return drivertest.ProviderSnapshot{
+		Creates: f.createCalls, Reads: f.describeCalls,
+		Updates: f.updateCalls + len(f.createEntryCalls) + len(f.replaceEntryCalls) + len(f.deleteEntryCalls) + len(f.replaceAssocCalls),
+		Deletes: f.deleteCalls,
+	}
 }
 
 func (f *fakeNetworkACLAPI) DescribeNetworkACL(ctx context.Context, networkAclId string) (ObservedState, error) {
@@ -142,6 +162,7 @@ func (f *fakeNetworkACLAPI) DescribeNetworkACL(ctx context.Context, networkAclId
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.describeCalls++
 	obs, ok := f.observed[networkAclId]
 	if !ok {
 		return ObservedState{}, &mockAPIError{code: "InvalidNetworkAclID.NotFound", message: "missing"}
@@ -340,7 +361,7 @@ func (f *fakeNetworkACLAPI) FindAssociationIdForSubnet(ctx context.Context, subn
 			}
 		}
 	}
-	return "", fmt.Errorf("no network ACL association found for subnet %s", subnetId)
+	return "", &mockAPIError{code: "InvalidAssociationID.NotFound", message: fmt.Sprintf("no network ACL association found for subnet %s", subnetId)}
 }
 
 func (f *fakeNetworkACLAPI) FindDefaultNetworkACL(ctx context.Context, vpcId string) (string, error) {
@@ -354,12 +375,25 @@ func (f *fakeNetworkACLAPI) FindDefaultNetworkACL(ctx context.Context, vpcId str
 			return id, nil
 		}
 	}
-	return "", fmt.Errorf("default network ACL not found for VPC %s", vpcId)
+	return "", &mockAPIError{code: "InvalidNetworkAclID.NotFound", message: fmt.Sprintf("default network ACL not found for VPC %s", vpcId)}
 }
 
 func (f *fakeNetworkACLAPI) seedDefaultACL(vpcID string, subnetIDs ...string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.seedDefaultACLLocked(vpcID, subnetIDs...)
+}
+
+func (f *fakeNetworkACLAPI) ensureDefaultACLLocked(vpcID string) {
+	for _, observed := range f.observed {
+		if observed.VpcId == vpcID && observed.IsDefault {
+			return
+		}
+	}
+	f.seedDefaultACLLocked(vpcID)
+}
+
+func (f *fakeNetworkACLAPI) seedDefaultACLLocked(vpcID string, subnetIDs ...string) string {
 	id := fmt.Sprintf("acl-default-%s", vpcID)
 	associations := make([]NetworkACLAssociation, 0, len(subnetIDs))
 	for _, subnetID := range subnetIDs {
@@ -401,7 +435,7 @@ func setupNetworkACLDriver(t *testing.T, api NetworkACLAPI) *ingress.Client {
 	t.Setenv("PRAXIS_ACCOUNT_ACCESS_KEY_ID", "test")
 	t.Setenv("PRAXIS_ACCOUNT_SECRET_ACCESS_KEY", "test")
 
-	driver := NewNetworkACLDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) NetworkACLAPI {
+	driver := newGenericNetworkACLDriverWithFactory(authservice.NewLocalAuthClient(auth.LoadFromEnv()), func(cfg aws.Config) NetworkACLAPI {
 		return api
 	})
 	env := restatetest.Start(t,
@@ -455,8 +489,33 @@ func testNetworkACLSpec(key, vpcID string) NetworkACLSpec {
 }
 
 func TestServiceName(t *testing.T) {
-	drv := NewNetworkACLDriver(nil)
+	drv := NewGenericNetworkACLDriver(nil)
 	assert.Equal(t, ServiceName, drv.ServiceName())
+}
+
+func TestGenericNetworkACLCoreLifecycle(t *testing.T) {
+	api := newFakeNetworkACLAPI()
+	client := setupNetworkACLDriver(t, api)
+	key := "vpc-123~conformance"
+	spec := testNetworkACLSpec(key, "vpc-123")
+	drivertest.RunCoreLifecycle(t, drivertest.CoreLifecycleFixture[NetworkACLSpec, NetworkACLOutputs]{
+		Client: client, ServiceName: ServiceName, Key: key, Spec: spec, Snapshot: api.snapshot,
+		AssertInputs: func(t *testing.T, inputs NetworkACLSpec) {
+			assert.Equal(t, spec.Account, inputs.Account)
+			assert.Equal(t, spec.VpcId, inputs.VpcId)
+			assert.Equal(t, key, inputs.ManagedKey)
+		},
+	})
+}
+
+func TestGenericNetworkACLObservedImportLifecycle(t *testing.T) {
+	api := newFakeNetworkACLAPI()
+	api.observed["acl-observed"] = ObservedState{NetworkAclId: "acl-observed", VpcId: "vpc-123", Tags: map[string]string{"suite": "observed-import"}}
+	client := setupNetworkACLDriver(t, api)
+	drivertest.RunObservedImportLifecycle(t, drivertest.ObservedImportFixture[NetworkACLOutputs]{
+		Client: client, ServiceName: ServiceName, Key: "us-east-1~acl-observed",
+		Ref: types.ImportRef{ResourceID: "acl-observed", Account: "test"}, Snapshot: api.snapshot,
+	})
 }
 
 func TestProvision_CreatesNetworkACL(t *testing.T) {
@@ -513,6 +572,28 @@ func TestProvision_ConflictFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already managed by Praxis")
 	assert.Equal(t, 0, api.createCalls)
+}
+
+func TestGenericNetworkACLRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
+	api := newFakeNetworkACLAPI()
+	api.createErrors = []error{errors.New("ServiceUnavailable: create response lost")}
+	client := setupNetworkACLDriver(t, api)
+	key := "vpc-123~ambiguous"
+	outputs, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	require.NoError(t, err)
+	assert.Equal(t, "acl-123", outputs.NetworkAclId)
+	assert.Equal(t, 1, api.createCalls)
+}
+
+func TestGenericNetworkACLRejectsImmutableVPCChange(t *testing.T) {
+	api := newFakeNetworkACLAPI()
+	client := setupNetworkACLDriver(t, api)
+	key := "vpc-123~immutable"
+	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	require.NoError(t, err)
+	_, err = ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-999"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "vpcId is immutable")
 }
 
 func TestProvision_AssociationAddedAndRemoved(t *testing.T) {
@@ -602,6 +683,28 @@ func TestDelete_DisassociatesAndDeletes(t *testing.T) {
 	assert.Equal(t, 1, api.deleteCalls)
 	_, ok := api.observed["acl-123"]
 	assert.False(t, ok)
+}
+
+func TestDelete_MissingDefaultACLReturnsBoundedTerminalError(t *testing.T) {
+	api := newFakeNetworkACLAPI()
+	defaultID := api.seedDefaultACL("vpc-123", "subnet-a")
+	client := setupNetworkACLDriver(t, api)
+	key := "vpc-123~missing-default"
+	spec := testNetworkACLSpec(key, "vpc-123")
+	spec.SubnetAssociations = []string{"subnet-a"}
+
+	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	require.NoError(t, err)
+	api.mu.Lock()
+	delete(api.observed, defaultID)
+	api.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(ctx, restate.Void{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default network ACL not found")
+	assert.NotErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestDelete_DefaultNetworkACLBlocked(t *testing.T) {
@@ -741,6 +844,8 @@ func TestReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Error, "deleted externally")
+	assert.True(t, result.ReplacementRequired)
+	assert.Equal(t, 1, api.createCalls)
 	assert.Equal(t, []string{eventing.DriftEventExternalDelete}, pollNetworkACLEventTypes(t, client, key, eventing.DriftEventExternalDelete))
 }
 
@@ -770,9 +875,4 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, []string{"subnet-a"}, spec.SubnetAssociations)
 	assert.Equal(t, "public", spec.Tags["Name"])
 	assert.NotContains(t, spec.Tags, "praxis:managed-key")
-}
-
-func TestDefaultNetworkACLImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultNetworkACLImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultNetworkACLImportMode(types.ModeManaged))
 }

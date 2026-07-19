@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -32,7 +33,6 @@ type QueueAPI interface {
 	DeleteQueue(ctx context.Context, queueURL string) error
 	UpdateTags(ctx context.Context, queueURL string, tags map[string]string) error
 	GetTags(ctx context.Context, queueURL string) (map[string]string, error)
-	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
 }
 
 type realQueueAPI struct {
@@ -88,8 +88,9 @@ func (r *realQueueAPI) CreateQueue(ctx context.Context, spec SQSQueueSpec) (stri
 	}
 
 	input := &sqssdk.CreateQueueInput{QueueName: aws.String(spec.QueueName), Attributes: attrs}
-	if len(spec.Tags) > 0 {
-		input.Tags = spec.Tags
+	createTags := managedTags(spec.Tags, spec.ManagedKey)
+	if len(createTags) > 0 {
+		input.Tags = createTags
 	}
 
 	out, err := r.client.CreateQueue(ctx, input)
@@ -197,6 +198,7 @@ func (r *realQueueAPI) UpdateTags(ctx context.Context, queueURL string, tags map
 			removeKeys = append(removeKeys, key)
 		}
 	}
+	sort.Strings(removeKeys)
 
 	if len(removeKeys) > 0 {
 		if err := r.limiter.Wait(ctx); err != nil {
@@ -232,34 +234,6 @@ func (r *realQueueAPI) GetTags(ctx context.Context, queueURL string) (map[string
 		return map[string]string{}, nil
 	}
 	return out.Tags, nil
-}
-
-// FindByManagedKey searches for the AWS SQS Queue using alternative identifiers.
-func (r *realQueueAPI) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
-	var nextToken *string
-	for {
-		if err := r.limiter.Wait(ctx); err != nil {
-			return "", err
-		}
-		out, err := r.client.ListQueues(ctx, &sqssdk.ListQueuesInput{NextToken: nextToken})
-		if err != nil {
-			return "", err
-		}
-		for _, queueURL := range out.QueueUrls {
-			tags, tagErr := r.GetTags(ctx, queueURL)
-			if tagErr != nil {
-				continue
-			}
-			if tags["praxis:managed-key"] == managedKey {
-				return queueURL, nil
-			}
-		}
-		if out.NextToken == nil {
-			break
-		}
-		nextToken = out.NextToken
-	}
-	return "", nil
 }
 
 func extractQueueName(queueURL string) string {

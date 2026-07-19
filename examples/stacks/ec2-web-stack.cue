@@ -29,7 +29,7 @@ variables: {
 resources: {
 	// VPC — created first; downstream resources reference its outputs.
 	vpc: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "VPC"
 		metadata: name: "\(variables.name)-\(variables.environment)-vpc"
 		spec: {
@@ -46,7 +46,7 @@ resources: {
 
 	// Security group — depends on vpc via output expression.
 	webSG: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "SecurityGroup"
 		metadata: name: "\(variables.name)-\(variables.environment)-sg"
 		spec: {
@@ -77,7 +77,7 @@ resources: {
 	// EC2 instance — depends on webSG via output expression.
 	// The orchestrator builds DAG edges: vpc → webSG → server.
 	server: {
-		apiVersion: "praxis.io/v1"
+		apiVersion: "praxis.io/alpha"
 		kind:       "EC2Instance"
 		metadata: name: "\(variables.name)-\(variables.environment)"
 		spec: {

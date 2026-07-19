@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewEC2InstanceDriver(nil)
+	drv := NewGenericEC2InstanceDriver(nil)
 	assert.Equal(t, "EC2Instance", drv.ServiceName())
 }
 
@@ -35,9 +33,4 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, obs.Monitoring, spec.Monitoring)
 	assert.Equal(t, map[string]string{"Name": "web"}, spec.Tags)
 	assert.Nil(t, spec.RootVolume)
-}
-
-func TestDefaultEC2ImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultEC2ImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultEC2ImportMode(types.ModeManaged))
 }

@@ -1,7 +1,5 @@
 package eip
 
-import "github.com/shirvan/praxis/pkg/types"
-
 // ServiceName is the Restate Virtual Object name for Elastic IP allocations.
 const ServiceName = "ElasticIP"
 
@@ -34,17 +32,6 @@ type ObservedState struct {
 	AssociationId      string            `json:"associationId,omitempty"`
 	InstanceId         string            `json:"instanceId,omitempty"`
 	Tags               map[string]string `json:"tags"`
-}
-
-// ElasticIPState is the single atomic state object stored for each object key.
-type ElasticIPState struct {
-	Desired            ElasticIPSpec        `json:"desired"`
-	Observed           ObservedState        `json:"observed"`
-	Outputs            ElasticIPOutputs     `json:"outputs"`
-	Status             types.ResourceStatus `json:"status"`
-	Mode               types.Mode           `json:"mode"`
-	Error              string               `json:"error,omitempty"`
-	Generation         int64                `json:"generation"`
-	LastReconcile      string               `json:"lastReconcile,omitempty"`
-	ReconcileScheduled bool                 `json:"reconcileScheduled"`
+	Region             string            `json:"region,omitempty"`
+	AccountId          string            `json:"accountId,omitempty"`
 }

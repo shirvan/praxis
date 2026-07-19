@@ -30,7 +30,7 @@ func setupIAMRoleDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	iamClient := awsclient.NewIAMClient(awsCfg)
-	driver := iamrole.NewIAMRoleDriver(authservice.NewAuthClient())
+	driver := iamrole.NewGenericIAMRoleDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, iamClient
@@ -135,6 +135,66 @@ func TestIAMRoleDelete_RemovesRole(t *testing.T) {
 	_, err = iamClient.GetRole(context.Background(), &iamsdk.GetRoleInput{RoleName: aws.String(roleName)})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "NoSuchEntity")
+}
+
+func TestIAMRoleDelete_ExternalInstanceProfileMustBeDetached(t *testing.T) {
+	client, iamClient := setupIAMRoleDriver(t)
+	roleName := uniqueIAMName(t, "role")
+	profileName := uniqueIAMName(t, "profile")
+
+	_, err := ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), iamrole.IAMRoleSpec{
+		Account:                  integrationAccountName,
+		RoleName:                 roleName,
+		AssumeRolePolicyDocument: assumeRolePolicyDoc,
+		MaxSessionDuration:       3600,
+	})
+	require.NoError(t, err)
+
+	_, err = iamClient.CreateInstanceProfile(context.Background(), &iamsdk.CreateInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+	})
+	require.NoError(t, err)
+	_, err = iamClient.AddRoleToInstanceProfile(context.Background(), &iamsdk.AddRoleToInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+		RoleName:            aws.String(roleName),
+	})
+	require.NoError(t, err)
+
+	_, err = ingress.Object[restate.Void, restate.Void](client, iamrole.ServiceName, roleName, "Delete").Request(t.Context(), restate.Void{})
+	require.Error(t, err, "AWS must reject deletion while an external instance profile still references the role")
+	assert.Contains(t, err.Error(), "409")
+	assert.Contains(t, err.Error(), "DeleteConflict")
+
+	roleOut, err := iamClient.GetRole(context.Background(), &iamsdk.GetRoleInput{RoleName: aws.String(roleName)})
+	require.NoError(t, err)
+	assert.Equal(t, roleName, aws.ToString(roleOut.Role.RoleName))
+	profileOut, err := iamClient.GetInstanceProfile(context.Background(), &iamsdk.GetInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+	})
+	require.NoError(t, err)
+	require.Len(t, profileOut.InstanceProfile.Roles, 1)
+	assert.Equal(t, roleName, aws.ToString(profileOut.InstanceProfile.Roles[0].RoleName))
+
+	_, err = iamClient.RemoveRoleFromInstanceProfile(context.Background(), &iamsdk.RemoveRoleFromInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+		RoleName:            aws.String(roleName),
+	})
+	require.NoError(t, err)
+	_, err = ingress.Object[restate.Void, restate.Void](client, iamrole.ServiceName, roleName, "Delete").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+
+	_, err = iamClient.GetRole(context.Background(), &iamsdk.GetRoleInput{RoleName: aws.String(roleName)})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NoSuchEntity")
+	profileOut, err = iamClient.GetInstanceProfile(context.Background(), &iamsdk.GetInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, profileOut.InstanceProfile.Roles)
+	_, err = iamClient.DeleteInstanceProfile(context.Background(), &iamsdk.DeleteInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+	})
+	require.NoError(t, err)
 }
 
 func TestIAMRoleReconcile_DetectsDrift(t *testing.T) {

@@ -1,6 +1,7 @@
 package ssmparameter
 
 import (
+	"github.com/shirvan/praxis/internal/drivers"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,17 @@ func TestHasDrift_ValueChanged(t *testing.T) {
 	observed := observedInSync()
 	observed.Value = "db-old.internal"
 	assert.True(t, HasDrift(desiredSpec(), observed))
+}
+
+func TestHasDrift_NameChangedRequiresReplacement(t *testing.T) {
+	desired := desiredSpec()
+	observed := observedInSync()
+	observed.ParameterName = "/praxis/different"
+
+	assert.True(t, HasDrift(desired, observed))
+	assert.Contains(t, ComputeFieldDiffs(desired, observed), drivers.FieldDiff{
+		Path: "spec.parameterName (immutable, requires replacement)", OldValue: "/praxis/different", NewValue: desired.ParameterName,
+	})
 }
 
 func TestHasDrift_TagChanged(t *testing.T) {

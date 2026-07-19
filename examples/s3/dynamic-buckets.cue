@@ -32,7 +32,7 @@ resources: {
 	// Generate one bucket per entry in the list
 	for _, suffix in variables.buckets {
 		"bucket-\(suffix)": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "S3Bucket"
 			metadata: name: "\(_naming.prefix)-\(suffix)"
 			spec: {
@@ -53,7 +53,7 @@ resources: {
 	// Conditional resource — only created when enableLogging is true
 	if variables.enableLogging {
 		"log-aggregator": {
-			apiVersion: "praxis.io/v1"
+			apiVersion: "praxis.io/alpha"
 			kind:       "S3Bucket"
 			metadata: name: "\(_naming.prefix)-logs"
 			spec: {

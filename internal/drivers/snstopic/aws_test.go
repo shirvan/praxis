@@ -67,6 +67,12 @@ func TestIsAuthError_Unrelated(t *testing.T) {
 	assert.False(t, isAuthError(errors.New("timeout")))
 }
 
+func TestIsConflict(t *testing.T) {
+	assert.True(t, IsConflict(&mockAPIError{code: "ConcurrentAccessException", message: "busy"}))
+	assert.True(t, IsConflict(errors.New("StaleTagException: tag changed concurrently")))
+	assert.False(t, IsConflict(errors.New("ServiceUnavailable: retry me")))
+}
+
 func TestExtractTopicName_ValidARN(t *testing.T) {
 	assert.Equal(t, "my-topic", extractTopicName("arn:aws:sns:us-east-1:123456789012:my-topic"))
 }

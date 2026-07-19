@@ -31,7 +31,7 @@ func setupRoute53RecordDriver(t *testing.T) (*ingress.Client, *route53sdk.Client
 	awsCfg := motoAWSConfig(t)
 	r53Client := awsclient.NewRoute53Client(awsCfg)
 	ensureRoute53Enabled(t, r53Client)
-	driver := route53record.NewDNSRecordDriver(authservice.NewAuthClient())
+	driver := route53record.NewGenericDNSRecordDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, r53Client

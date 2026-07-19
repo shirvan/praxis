@@ -90,13 +90,13 @@ func naclDescriptor() GenericDescriptor[nacl.NetworkACLSpec, nacl.NetworkACLOutp
 			}
 		},
 
-		PlanID: func(out nacl.NetworkACLOutputs) string { return out.NetworkAclId },
+		PlanIdentity: storedPlanIdentity[nacl.NetworkACLSpec](func(out nacl.NetworkACLOutputs) string { return out.NetworkAclId }),
 
-		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[nacl.ObservedState] {
+		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[nacl.NetworkACLSpec, nacl.NetworkACLOutputs, nacl.ObservedState] {
 			return naclProbe(nacl.NewNetworkACLAPI(awsclient.NewEC2Client(cfg)))
 		},
 
-		DiffFields: func(desired nacl.NetworkACLSpec, observed nacl.ObservedState) []types.FieldDiff {
+		DiffFields: func(desired nacl.NetworkACLSpec, observed nacl.ObservedState, _ nacl.NetworkACLOutputs) []types.FieldDiff {
 			rawDiffs := nacl.ComputeFieldDiffs(desired, observed)
 			fields := make([]types.FieldDiff, 0, len(rawDiffs))
 			for _, diff := range rawDiffs {
@@ -108,8 +108,9 @@ func naclDescriptor() GenericDescriptor[nacl.NetworkACLSpec, nacl.NetworkACLOutp
 }
 
 // naclProbe adapts the driver API to the generic plan probe shape.
-func naclProbe(api nacl.NetworkACLAPI) PlanProbeFunc[nacl.ObservedState] {
-	return func(runCtx restate.RunContext, networkACLID string) (nacl.ObservedState, bool, error) {
+func naclProbe(api nacl.NetworkACLAPI) PlanProbeFunc[nacl.NetworkACLSpec, nacl.NetworkACLOutputs, nacl.ObservedState] {
+	return func(runCtx restate.RunContext, input PlanProbeInput[nacl.NetworkACLSpec, nacl.NetworkACLOutputs]) (nacl.ObservedState, bool, error) {
+		networkACLID := input.Identity
 		obs, err := api.DescribeNetworkACL(runCtx, networkACLID)
 		if err != nil {
 			if nacl.IsNotFound(err) {

@@ -54,7 +54,7 @@ func setupPermissionDriver(t *testing.T) (*ingress.Client, *lambdasdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	lambdaClient := awsclient.NewLambdaClient(awsCfg)
-	driver := lambdaperm.NewLambdaPermissionDriver(authservice.NewAuthClient())
+	driver := lambdaperm.NewGenericLambdaPermissionDriver(authservice.NewAuthClient())
 
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, lambdaClient

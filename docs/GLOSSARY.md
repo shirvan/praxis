@@ -30,7 +30,7 @@
 
 **Drift** — Difference between desired state (spec) and observed state (what exists in AWS). Detected during reconciliation. Managed resources get drift corrected; observed resources only report. See [DRIVERS.md](DRIVERS.md).
 
-**Driver** — A Restate Virtual Object managing one AWS resource type's full lifecycle. Implements 6 handlers: Provision, Import, Delete, Reconcile, GetStatus, GetOutputs. See [DRIVERS.md](DRIVERS.md).
+**Driver** — A Restate Virtual Object managing one AWS resource type's full lifecycle. Implements 8 required handlers: Provision, Import, Delete, Reconcile, ClearState, GetStatus, GetOutputs, and GetInputs. See [DRIVERS.md](DRIVERS.md).
 
 **Driver Pack** — Group of related drivers deployed as one container/binary. Five packs: `praxis-storage`, `praxis-network`, `praxis-compute`, `praxis-identity`, `praxis-monitoring`. See [CODEBASE.md](CODEBASE.md).
 

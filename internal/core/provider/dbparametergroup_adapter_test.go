@@ -13,7 +13,7 @@ import (
 func TestDBParameterGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	adapter := NewDBParameterGroupAdapterWithAuth(nil)
 	raw := json.RawMessage(`{
-		"apiVersion":"praxis.io/v1",
+		"apiVersion":"praxis.io/alpha",
 		"kind":"DBParameterGroup",
 		"metadata":{"name":"my-param-group"},
 		"spec":{

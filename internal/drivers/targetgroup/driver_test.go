@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 func TestServiceName(t *testing.T) {
-	drv := NewTargetGroupDriver(nil)
+	drv := NewGenericTargetGroupDriver(nil)
 	assert.Equal(t, "TargetGroup", drv.ServiceName())
 }
 
@@ -40,12 +38,6 @@ func TestSpecFromObserved(t *testing.T) {
 	assert.Equal(t, obs.Stickiness, spec.Stickiness)
 	assert.Equal(t, obs.Targets, spec.Targets)
 	assert.Equal(t, map[string]string{"env": "dev"}, spec.Tags, "praxis: tags should be filtered out")
-}
-
-func TestDefaultImportMode(t *testing.T) {
-	assert.Equal(t, types.ModeObserved, defaultImportMode(""))
-	assert.Equal(t, types.ModeManaged, defaultImportMode(types.ModeManaged))
-	assert.Equal(t, types.ModeObserved, defaultImportMode(types.ModeObserved))
 }
 
 func TestApplyDefaults(t *testing.T) {
