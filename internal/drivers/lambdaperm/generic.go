@@ -55,6 +55,7 @@ func newGenericLambdaPermissionDriverWithFactory(auth authservice.AuthClient, fa
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

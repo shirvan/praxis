@@ -167,10 +167,10 @@ func TestGenericAuroraClusterPasswordChangeIsProvisionOnly(t *testing.T) {
 	client := setupCluster(t, api)
 	key := "us-east-1~password"
 	spec := clusterSpec("password", "old-secret")
-	_, err := ingress.Object[AuroraClusterSpec, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.MasterUserPassword = "new-secret"
-	_, err = ingress.Object[AuroraClusterSpec, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"new-secret"}, api.passwords())
 	api.force("password", func(o *ObservedState) { o.EngineVersion = "8.1" })
@@ -184,11 +184,11 @@ func TestGenericAuroraClusterImmutableOnlyChangeKeepsPriorAcceptedInputs(t *test
 	client := setupCluster(t, api)
 	key := "us-east-1~immutable"
 	accepted := clusterSpec("immutable", "secret")
-	_, err := ingress.Object[AuroraClusterSpec, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), accepted)
+	_, err := ingress.Object[types.ProvisionRequest, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, accepted))
 	require.NoError(t, err)
 	changed := accepted
 	changed.Engine = "aurora-postgresql"
-	_, err = ingress.Object[AuroraClusterSpec, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, AuroraClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "409")
 	stored, err := ingress.Object[restate.Void, AuroraClusterSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})

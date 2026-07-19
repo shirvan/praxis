@@ -57,14 +57,14 @@ func TestIAMPolicyProvision_CreatesPolicy(t *testing.T) {
 	client, iamClient := setupIAMPolicyDriver(t)
 	name := uniquePolicyName(t)
 
-	outputs, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), iampolicy.IAMPolicySpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, iampolicy.IAMPolicySpec{
 		Account:        integrationAccountName,
 		PolicyName:     name,
 		Path:           "/app/",
 		PolicyDocument: allowAllS3PolicyDoc(),
 		Description:    "integration test policy",
 		Tags:           map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.PolicyName)
 	assert.Contains(t, outputs.Arn, name)
@@ -85,11 +85,11 @@ func TestIAMPolicyProvision_IdempotentAndUpdatesDocument(t *testing.T) {
 		Tags:           map[string]string{"env": "test"},
 	}
 
-	first, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), spec)
+	first, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.PolicyDocument = denyAllS3PolicyDoc()
-	second, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), spec)
+	second, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, first.Arn, second.Arn)
 
@@ -122,7 +122,7 @@ func TestIAMPolicyDelete_RemovesPolicy(t *testing.T) {
 	client, iamClient := setupIAMPolicyDriver(t)
 	name := uniquePolicyName(t)
 
-	outputs, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), iampolicy.IAMPolicySpec{Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc()})
+	outputs, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, iampolicy.IAMPolicySpec{Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc()}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, iampolicy.ServiceName, name, "Delete").Request(t.Context(), restate.Void{})
@@ -137,9 +137,9 @@ func TestIAMPolicyDelete_LeavesExternalRoleAttachmentUntouched(t *testing.T) {
 	name := uniquePolicyName(t)
 	roleName := name + "-role"
 
-	outputs, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), iampolicy.IAMPolicySpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, iampolicy.IAMPolicySpec{
 		Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc(),
-	})
+	}))
 	require.NoError(t, err)
 	assumeRoleDocument := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}`
 	_, err = iamClient.CreateRole(context.Background(), &iamsdk.CreateRoleInput{
@@ -172,7 +172,7 @@ func TestIAMPolicyReconcile_DetectsAndFixesDrift(t *testing.T) {
 	client, iamClient := setupIAMPolicyDriver(t)
 	name := uniquePolicyName(t)
 
-	outputs, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), iampolicy.IAMPolicySpec{Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc()})
+	outputs, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, iampolicy.IAMPolicySpec{Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc()}))
 	require.NoError(t, err)
 
 	doc := denyAllS3PolicyDoc()
@@ -195,7 +195,7 @@ func TestIAMPolicyGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupIAMPolicyDriver(t)
 	name := uniquePolicyName(t)
 
-	_, err := ingress.Object[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), iampolicy.IAMPolicySpec{Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc()})
+	_, err := ingress.Object[types.ProvisionRequest, iampolicy.IAMPolicyOutputs](client, iampolicy.ServiceName, name, "Provision").Request(t.Context(), provisionRequest(t, iampolicy.IAMPolicySpec{Account: integrationAccountName, PolicyName: name, PolicyDocument: allowAllS3PolicyDoc()}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, iampolicy.ServiceName, name, "GetStatus").Request(t.Context(), restate.Void{})

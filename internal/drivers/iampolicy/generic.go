@@ -64,7 +64,8 @@ func newGenericIAMPolicyDriverWithFactory(auth authservice.AuthClient, factory f
 			}
 			return outputs
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

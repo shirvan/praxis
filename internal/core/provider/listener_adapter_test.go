@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/shirvan/praxis/internal/drivers/listener"
 )
 
 func TestListenerAdapter_DecodeSpecAndBuildKey(t *testing.T) {
@@ -29,6 +31,17 @@ func TestListenerAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	key, err := adapter.BuildKey(doc)
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~my-https-listener", key)
+}
+
+func TestListenerAdapter_NormalizeOutputs(t *testing.T) {
+	adapter := NewListenerAdapterWithAuth(nil)
+	outputs, err := adapter.NormalizeOutputs(listener.ListenerOutputs{
+		ListenerArn: "arn:listener", Port: 443, Protocol: "HTTPS",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"listenerArn": "arn:listener", "port": 443, "protocol": "HTTPS",
+	}, outputs)
 }
 
 func TestExtractRegionFromLBArn(t *testing.T) {

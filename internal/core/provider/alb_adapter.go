@@ -11,7 +11,6 @@ import (
 
 	"github.com/shirvan/praxis/internal/core/authservice"
 	"github.com/shirvan/praxis/internal/drivers/alb"
-	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
@@ -87,12 +86,7 @@ func albDescriptor() GenericDescriptor[alb.ALBSpec, alb.ALBOutputs, alb.Observed
 			return albProbe(alb.NewALBAPI(awsclient.NewELBv2Client(cfg)))
 		},
 		DiffFields: func(desired alb.ALBSpec, observed alb.ObservedState, _ alb.ALBOutputs) []types.FieldDiff {
-			raw := alb.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(raw))
-			for _, diff := range raw {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return alb.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }
@@ -104,10 +98,7 @@ func albProbe(api alb.ALBAPI) PlanProbeFunc[alb.ALBSpec, alb.ALBOutputs, alb.Obs
 			if alb.IsNotFound(err) {
 				return alb.ObservedState{}, false, nil
 			}
-			if awserr.IsThrottled(err) {
-				return alb.ObservedState{}, false, err
-			}
-			return alb.ObservedState{}, false, restate.TerminalError(err, 500)
+			return alb.ObservedState{}, false, err
 		}
 		return observed, true, nil
 	}

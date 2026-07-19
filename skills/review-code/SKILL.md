@@ -56,7 +56,7 @@ return fmt.Errorf("failed: %w", err)
 |-----------|-------|
 | File layout | `generic.go`, `aws.go`, `drift.go`, `types.go`, plus focused tests |
 | Adapter file | `{resource}_adapter.go` under `internal/core/provider/` |
-| Key scope | `{deployment}/{resource}` |
+| Key scope | Adapter-declared global, regional, or custom canonical key |
 | Handler contract | Exactly 8 required handlers; no extra public lifecycle hooks |
 | Lifecycle implementation | Shared `kernel.Driver`; resource packages supply only typed operations and capabilities |
 | Production binding | `genericbinding.Reflect` only |

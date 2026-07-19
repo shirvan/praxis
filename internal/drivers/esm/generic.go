@@ -34,7 +34,7 @@ func newGenericEventSourceMappingDriverWithFactory(auth authservice.AuthClient, 
 		Prepare: func(ctx restate.ObjectContext, spec EventSourceMappingSpec) (EventSourceMappingSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
 			if err != nil {
-				return EventSourceMappingSpec{}, restate.TerminalError(err, 400)
+				return EventSourceMappingSpec{}, drivers.ClassifyCredentialError(err)
 			}
 			spec = applyDefaults(spec)
 			if spec.Region == "" {
@@ -58,7 +58,8 @@ func newGenericEventSourceMappingDriverWithFactory(auth authservice.AuthClient, 
 		OutputsFromObserved: func(observed ObservedState, _ EventSourceMappingOutputs) EventSourceMappingOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 		CheckReadiness: func(observed ObservedState) kernel.ReadinessResult {
 			switch observed.State {
 			case "Enabled", "Disabled", "Deleted", "":
@@ -75,7 +76,7 @@ func newGenericEventSourceMappingDriverWithFactory(auth authservice.AuthClient, 
 func (o *genericOperations) Observe(ctx restate.ObjectContext, desired EventSourceMappingSpec, outputs EventSourceMappingOutputs) (kernel.Observation[ObservedState], error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return kernel.Observation[ObservedState]{}, restate.TerminalError(err, 400)
+		return kernel.Observation[ObservedState]{}, drivers.ClassifyCredentialError(err)
 	}
 	if outputs.UUID != "" {
 		return observeMapping(ctx, api, outputs.UUID)
@@ -94,7 +95,7 @@ func (o *genericOperations) Observe(ctx restate.ObjectContext, desired EventSour
 func (o *genericOperations) Create(ctx restate.ObjectContext, desired EventSourceMappingSpec) (kernel.CreateResult[EventSourceMappingOutputs], error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return kernel.CreateResult[EventSourceMappingOutputs]{}, restate.TerminalError(err, 400)
+		return kernel.CreateResult[EventSourceMappingOutputs]{}, drivers.ClassifyCredentialError(err)
 	}
 	outputs, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (EventSourceMappingOutputs, error) {
 		uuid, findErr := api.FindEventSourceMapping(rc, desired.FunctionName, desired.EventSourceArn)
@@ -124,7 +125,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EventSou
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return restate.TerminalError(err, 400)
+		return drivers.ClassifyCredentialError(err)
 	}
 	if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.UpdateEventSourceMapping(rc, observed.UUID, desired)
@@ -140,7 +141,7 @@ func (o *genericOperations) Delete(ctx restate.ObjectContext, desired EventSourc
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return restate.TerminalError(err, 400)
+		return drivers.ClassifyCredentialError(err)
 	}
 	if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		e := api.DeleteEventSourceMapping(rc, outputs.UUID)
@@ -163,7 +164,7 @@ func (o *genericOperations) Delete(ctx restate.ObjectContext, desired EventSourc
 func (o *genericOperations) Import(ctx restate.ObjectContext, ref types.ImportRef) (kernel.Observation[ObservedState], error) {
 	api, _, err := o.apiForAccount(ctx, ref.Account)
 	if err != nil {
-		return kernel.Observation[ObservedState]{}, restate.TerminalError(err, 400)
+		return kernel.Observation[ObservedState]{}, drivers.ClassifyCredentialError(err)
 	}
 	return observeMapping(ctx, api, ref.ResourceID)
 }

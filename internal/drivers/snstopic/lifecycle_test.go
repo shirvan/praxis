@@ -211,7 +211,7 @@ func setupTopicDriver(t *testing.T, api TopicAPI) *ingress.Client {
 
 func provisionTopic(t *testing.T, client *ingress.Client, key string, spec SNSTopicSpec) SNSTopicOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[SNSTopicSpec, SNSTopicOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SNSTopicOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }
@@ -397,7 +397,7 @@ func TestGenericSNSTopicRecoversPartialCreateOnNextProvision(t *testing.T) {
 		Tags: map[string]string{"env": "prod"},
 	}
 
-	_, err := ingress.Object[SNSTopicSpec, SNSTopicOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SNSTopicOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	api.mu.Lock()
 	assert.Equal(t, 1, api.createCalls)
@@ -422,7 +422,7 @@ func TestGenericSNSTopicRejectsImmutableFIFOChange(t *testing.T) {
 	provisionTopic(t, client, key, spec)
 
 	spec.FifoTopic = false
-	_, err := ingress.Object[SNSTopicSpec, SNSTopicOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SNSTopicOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fifoTopic is immutable")
 }

@@ -228,7 +228,7 @@ func setupSubscriptionDriver(t *testing.T, api SubscriptionAPI) *ingress.Client 
 
 func provisionSubscription(t *testing.T, client *ingress.Client, key string, spec SNSSubscriptionSpec) SNSSubscriptionOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[SNSSubscriptionSpec, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }
@@ -444,11 +444,11 @@ func TestGenericSNSSubscriptionRecoversPartialCreateWithoutSecondSubscription(t 
 	spec := subscriptionBaseSpec()
 	spec.FilterPolicy = `{"event":["order"]}`
 	key := "partial-subscription"
-	_, err := ingress.Object[SNSSubscriptionSpec, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 
-	_, err = ingress.Object[SNSSubscriptionSpec, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	api.mu.Lock()
@@ -526,7 +526,7 @@ func TestGenericSNSSubscriptionRejectsImmutableIdentityChanges(t *testing.T) {
 			before := api.snapshot()
 			tt.mutate(&spec)
 
-			_, err := ingress.Object[SNSSubscriptionSpec, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+			_, err := ingress.Object[types.ProvisionRequest, SNSSubscriptionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantError)
 			assert.Contains(t, err.Error(), "409")

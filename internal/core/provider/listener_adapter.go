@@ -94,12 +94,7 @@ func listenerDescriptor() GenericDescriptor[listener.ListenerSpec, listener.List
 		},
 
 		DiffFields: func(desired listener.ListenerSpec, observed listener.ObservedState, _ listener.ListenerOutputs) []types.FieldDiff {
-			rawDiffs := listener.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return listener.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

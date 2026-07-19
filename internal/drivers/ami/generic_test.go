@@ -183,7 +183,7 @@ func TestGenericAMICoreAndImport(t *testing.T) {
 	api.seed(s)
 	c = setupGenericAMI(t, api)
 	drivertest.RunObservedImportLifecycle(t, drivertest.ObservedImportFixture[AMIOutputs]{Client: c, ServiceName: ServiceName, Key: "us-east-1~import", Ref: types.ImportRef{ResourceID: "ami-1", Account: "test"}, Snapshot: api.snapshot})
-	_, err := ingress.Object[AMISpec, AMIOutputs](c, ServiceName, "us-east-1~import", "Provision").Request(t.Context(), genericAMISpec())
+	_, err := ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, "us-east-1~import", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericAMISpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 }
@@ -192,19 +192,19 @@ func TestGenericAMIOpaqueImmutableDriftAndExternalDelete(t *testing.T) {
 	c := setupGenericAMI(t, api)
 	key := "us-east-1~ami"
 	s := genericAMISpec()
-	_, err := ingress.Object[AMISpec, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), s)
+	_, err := ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.NoError(t, err)
 	s.Description = "v2"
-	_, err = ingress.Object[AMISpec, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), s)
+	_, err = ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.NoError(t, err)
 	assert.Greater(t, api.snapshot().Updates, 0)
 	s.Source.FromSnapshot.SnapshotId = "snap-2"
-	_, err = ingress.Object[AMISpec, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), s)
+	_, err = ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 	api = &statefulAMIAPI{}
 	c = setupGenericAMI(t, api)
-	_, err = ingress.Object[AMISpec, AMIOutputs](c, ServiceName, "us-east-1~gone", "Provision").Request(t.Context(), genericAMISpec())
+	_, err = ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, "us-east-1~gone", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericAMISpec()))
 	require.NoError(t, err)
 	api.remove()
 	r, err := ingress.Object[restate.Void, types.ReconcileResult](c, ServiceName, "us-east-1~gone", "Reconcile").Request(t.Context(), restate.Void{})
@@ -217,7 +217,7 @@ func TestGenericAMIReadinessPendingAndFailed(t *testing.T) {
 	api := &statefulAMIAPI{createState: "pending"}
 	c := setupGenericAMI(t, api)
 	key := "us-east-1~pending"
-	_, err := ingress.Object[AMISpec, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), genericAMISpec())
+	_, err := ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericAMISpec()))
 	require.NoError(t, err)
 	status, err := ingress.Object[restate.Void, types.StatusResponse](c, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -231,6 +231,6 @@ func TestGenericAMIReadinessPendingAndFailed(t *testing.T) {
 
 	api = &statefulAMIAPI{createState: "failed"}
 	c = setupGenericAMI(t, api)
-	_, err = ingress.Object[AMISpec, AMIOutputs](c, ServiceName, "us-east-1~failed", "Provision").Request(t.Context(), genericAMISpec())
+	_, err = ingress.Object[types.ProvisionRequest, AMIOutputs](c, ServiceName, "us-east-1~failed", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericAMISpec()))
 	require.Error(t, err)
 }

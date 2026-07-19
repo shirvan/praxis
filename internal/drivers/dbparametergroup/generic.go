@@ -56,7 +56,8 @@ func newGenericDBParameterGroupDriverWithFactory(auth authservice.AuthClient, fa
 		OutputsFromObserved: func(observed ObservedState, _ DBParameterGroupOutputs) DBParameterGroupOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

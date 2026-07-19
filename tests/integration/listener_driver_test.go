@@ -126,9 +126,9 @@ func TestListenerProvision(t *testing.T) {
 	lbArn, tgArn := listenerPrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueListenerName(t))
 
-	outputs, err := ingress.Object[listener.ListenerSpec, listener.ListenerOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, listener.ListenerOutputs](
 		client, "Listener", key, "Provision",
-	).Request(t.Context(), listener.ListenerSpec{
+	).Request(t.Context(), provisionRequest(t, listener.ListenerSpec{
 		Account:         integrationAccountName,
 		LoadBalancerArn: lbArn,
 		Port:            80,
@@ -138,7 +138,7 @@ func TestListenerProvision(t *testing.T) {
 			TargetGroupArn: tgArn,
 		}},
 		Tags: map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.ListenerArn)
 	assert.Equal(t, 80, outputs.Port)
@@ -156,9 +156,9 @@ func TestListenerDelete(t *testing.T) {
 	lbArn, tgArn := listenerPrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueListenerName(t))
 
-	out, err := ingress.Object[listener.ListenerSpec, listener.ListenerOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, listener.ListenerOutputs](
 		client, "Listener", key, "Provision",
-	).Request(t.Context(), listener.ListenerSpec{
+	).Request(t.Context(), provisionRequest(t, listener.ListenerSpec{
 		Account:         integrationAccountName,
 		LoadBalancerArn: lbArn,
 		Port:            80,
@@ -167,7 +167,7 @@ func TestListenerDelete(t *testing.T) {
 			Type:           "forward",
 			TargetGroupArn: tgArn,
 		}},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -186,9 +186,9 @@ func TestListenerReconcile_DetectsTagDrift(t *testing.T) {
 	lbArn, tgArn := listenerPrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueListenerName(t))
 
-	outputs, err := ingress.Object[listener.ListenerSpec, listener.ListenerOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, listener.ListenerOutputs](
 		client, "Listener", key, "Provision",
-	).Request(t.Context(), listener.ListenerSpec{
+	).Request(t.Context(), provisionRequest(t, listener.ListenerSpec{
 		Account:         integrationAccountName,
 		LoadBalancerArn: lbArn,
 		Port:            80,
@@ -198,7 +198,7 @@ func TestListenerReconcile_DetectsTagDrift(t *testing.T) {
 			TargetGroupArn: tgArn,
 		}},
 		Tags: map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.ListenerArn)
 
@@ -230,9 +230,9 @@ func TestListenerGetStatus(t *testing.T) {
 	lbArn, tgArn := listenerPrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueListenerName(t))
 
-	_, err := ingress.Object[listener.ListenerSpec, listener.ListenerOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, listener.ListenerOutputs](
 		client, "Listener", key, "Provision",
-	).Request(t.Context(), listener.ListenerSpec{
+	).Request(t.Context(), provisionRequest(t, listener.ListenerSpec{
 		Account:         integrationAccountName,
 		LoadBalancerArn: lbArn,
 		Port:            80,
@@ -241,7 +241,7 @@ func TestListenerGetStatus(t *testing.T) {
 			Type:           "forward",
 			TargetGroupArn: tgArn,
 		}},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

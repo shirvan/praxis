@@ -66,6 +66,7 @@ func newGenericALBDriverWithFactory(auth authservice.AuthClient, factory func(aw
 			return spec
 		},
 		OutputsFromObserved: func(observed ObservedState, _ ALBOutputs) ALBOutputs { return outputsFromObserved(observed) },
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

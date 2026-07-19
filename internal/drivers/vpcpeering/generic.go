@@ -66,7 +66,8 @@ func newGenericVPCPeeringDriverWithFactory(auth authservice.AuthClient, factory 
 			}
 			return out
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 		CheckReadiness: func(observed ObservedState) kernel.ReadinessResult {
 			switch strings.ToLower(strings.TrimSpace(observed.Status)) {
 			case "active":

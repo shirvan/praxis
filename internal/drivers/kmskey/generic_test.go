@@ -174,7 +174,7 @@ func TestGenericKMSRejectsImmutableIdentityAndRetainsInputs(t *testing.T) {
 	client := setupGenericKMS(t, api)
 	key := "us-east-1~immutable-kms"
 	spec := KMSKeySpec{Account: "test", Region: "us-east-1", Name: "immutable-kms"}
-	_, err := ingress.Object[KMSKeySpec, KMSKeyOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, KMSKeyOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, KMSKeySpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestGenericKMSRejectsImmutableIdentityAndRetainsInputs(t *testing.T) {
 	for _, tt := range tests {
 		changed := accepted
 		tt.mutate(&changed)
-		_, err = ingress.Object[KMSKeySpec, KMSKeyOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+		_, err = ingress.Object[types.ProvisionRequest, KMSKeyOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tt.field+" is immutable")
 		retained, getErr := ingress.Object[restate.Void, KMSKeySpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})

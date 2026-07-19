@@ -84,9 +84,9 @@ func TestTargetGroupProvision(t *testing.T) {
 	vpcId := tgDefaultVpcId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), targetgroup.TargetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, targetgroup.TargetGroupSpec{
 		Account:  integrationAccountName,
 		Region:   "us-east-1",
 		Name:     name,
@@ -104,7 +104,7 @@ func TestTargetGroupProvision(t *testing.T) {
 		},
 		DeregistrationDelay: 60,
 		Tags:                map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.TargetGroupArn)
 	assert.Equal(t, name, outputs.TargetGroupName)
@@ -133,15 +133,15 @@ func TestTargetGroupProvisionIdempotent(t *testing.T) {
 		Tags:     map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotEmpty(t, out1.TargetGroupArn)
 
-	out2, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.TargetGroupArn, out2.TargetGroupArn, "re-provision should reuse same target group")
 }
@@ -203,16 +203,16 @@ func TestTargetGroupUpdateHealthCheck(t *testing.T) {
 		},
 		Tags: map[string]string{"Name": name},
 	}
-	out, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.HealthCheck.Path = "/ready"
 	spec.HealthCheck.Interval = 15
-	_, err = ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	desc, err := elbClient.DescribeTargetGroups(context.Background(), &elbv2sdk.DescribeTargetGroupsInput{
@@ -229,9 +229,9 @@ func TestTargetGroupDelete(t *testing.T) {
 	vpcId := tgDefaultVpcId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), targetgroup.TargetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, targetgroup.TargetGroupSpec{
 		Account:  integrationAccountName,
 		Region:   "us-east-1",
 		Name:     name,
@@ -239,7 +239,7 @@ func TestTargetGroupDelete(t *testing.T) {
 		Port:     8080,
 		VpcId:    vpcId,
 		Tags:     map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -296,16 +296,16 @@ func TestTargetGroupProvision_ImmutableConflict(t *testing.T) {
 		Tags:     map[string]string{"Name": name},
 	}
 
-	_, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Re-provision the same key with a changed immutable field (Port)
 	spec.Port = 9090
-	_, err = ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 }
@@ -316,9 +316,9 @@ func TestTargetGroupReconcile_DetectsDeregistrationDelayDrift(t *testing.T) {
 	vpcId := tgDefaultVpcId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), targetgroup.TargetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, targetgroup.TargetGroupSpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		Name:                name,
@@ -327,7 +327,7 @@ func TestTargetGroupReconcile_DetectsDeregistrationDelayDrift(t *testing.T) {
 		VpcId:               vpcId,
 		DeregistrationDelay: 60,
 		Tags:                map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.TargetGroupArn)
 
@@ -378,9 +378,9 @@ func TestTargetGroupGetStatus(t *testing.T) {
 	vpcId := tgDefaultVpcId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, targetgroup.TargetGroupOutputs](
 		client, "TargetGroup", key, "Provision",
-	).Request(t.Context(), targetgroup.TargetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, targetgroup.TargetGroupSpec{
 		Account:  integrationAccountName,
 		Region:   "us-east-1",
 		Name:     name,
@@ -388,7 +388,7 @@ func TestTargetGroupGetStatus(t *testing.T) {
 		Port:     8080,
 		VpcId:    vpcId,
 		Tags:     map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

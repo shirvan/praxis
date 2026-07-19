@@ -94,12 +94,7 @@ func secretsManagerSecretDescriptor() GenericDescriptor[secret.SecretsManagerSec
 		},
 
 		DiffFields: func(desired secret.SecretsManagerSecretSpec, observed secret.ObservedState, _ secret.SecretsManagerSecretOutputs) []types.FieldDiff {
-			rawDiffs := secret.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return secret.ComputeFieldDiffs(desired, observed)
 		},
 		SensitiveFields: []string{"spec.secretString"},
 	}

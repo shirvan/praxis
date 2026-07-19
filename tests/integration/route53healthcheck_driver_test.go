@@ -37,9 +37,9 @@ func TestRoute53HealthCheckProvision_CreatesHTTPCheck(t *testing.T) {
 	client, r53Client := setupRoute53HealthCheckDriver(t)
 	key := "integ-http-check"
 
-	outputs, err := ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53healthcheck.HealthCheckOutputs](
 		client, route53healthcheck.ServiceName, key, "Provision",
-	).Request(t.Context(), route53healthcheck.HealthCheckSpec{
+	).Request(t.Context(), provisionRequest(t, route53healthcheck.HealthCheckSpec{
 		Account:          integrationAccountName,
 		Type:             "HTTP",
 		FQDN:             "example.com",
@@ -48,7 +48,7 @@ func TestRoute53HealthCheckProvision_CreatesHTTPCheck(t *testing.T) {
 		RequestInterval:  30,
 		FailureThreshold: 3,
 		Tags:             map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.HealthCheckId)
 
@@ -73,15 +73,15 @@ func TestRoute53HealthCheckProvision_UpdatesPort(t *testing.T) {
 		Tags:             map[string]string{},
 	}
 
-	outputs, err := ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53healthcheck.HealthCheckOutputs](
 		client, route53healthcheck.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Port = 8080
-	_, err = ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, route53healthcheck.HealthCheckOutputs](
 		client, route53healthcheck.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	desc, err := r53Client.GetHealthCheck(context.Background(), &route53sdk.GetHealthCheckInput{
@@ -95,9 +95,9 @@ func TestRoute53HealthCheckDelete_RemovesCheck(t *testing.T) {
 	client, r53Client := setupRoute53HealthCheckDriver(t)
 	key := "integ-delete-check"
 
-	outputs, err := ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53healthcheck.HealthCheckOutputs](
 		client, route53healthcheck.ServiceName, key, "Provision",
-	).Request(t.Context(), route53healthcheck.HealthCheckSpec{
+	).Request(t.Context(), provisionRequest(t, route53healthcheck.HealthCheckSpec{
 		Account:          integrationAccountName,
 		Type:             "HTTP",
 		FQDN:             "example.com",
@@ -106,7 +106,7 @@ func TestRoute53HealthCheckDelete_RemovesCheck(t *testing.T) {
 		RequestInterval:  30,
 		FailureThreshold: 3,
 		Tags:             map[string]string{},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -124,9 +124,9 @@ func TestRoute53HealthCheckReconcile_DetectsFailureThresholdDrift(t *testing.T) 
 	client, r53Client := setupRoute53HealthCheckDriver(t)
 	key := "integ-failure-threshold-drift"
 
-	outputs, err := ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53healthcheck.HealthCheckOutputs](
 		client, route53healthcheck.ServiceName, key, "Provision",
-	).Request(t.Context(), route53healthcheck.HealthCheckSpec{
+	).Request(t.Context(), provisionRequest(t, route53healthcheck.HealthCheckSpec{
 		Account:          integrationAccountName,
 		Type:             "HTTP",
 		FQDN:             "example.com",
@@ -135,7 +135,7 @@ func TestRoute53HealthCheckReconcile_DetectsFailureThresholdDrift(t *testing.T) 
 		RequestInterval:  30,
 		FailureThreshold: 3,
 		Tags:             map[string]string{},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.HealthCheckId)
 
@@ -174,9 +174,9 @@ func TestRoute53HealthCheckGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupRoute53HealthCheckDriver(t)
 	key := "integ-status-check"
 
-	_, err := ingress.Object[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, route53healthcheck.HealthCheckOutputs](
 		client, route53healthcheck.ServiceName, key, "Provision",
-	).Request(t.Context(), route53healthcheck.HealthCheckSpec{
+	).Request(t.Context(), provisionRequest(t, route53healthcheck.HealthCheckSpec{
 		Account:          integrationAccountName,
 		Type:             "HTTP",
 		FQDN:             "example.com",
@@ -185,7 +185,7 @@ func TestRoute53HealthCheckGetStatus_ReturnsReady(t *testing.T) {
 		RequestInterval:  30,
 		FailureThreshold: 3,
 		Tags:             map[string]string{},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

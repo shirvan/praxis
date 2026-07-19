@@ -97,12 +97,7 @@ func naclDescriptor() GenericDescriptor[nacl.NetworkACLSpec, nacl.NetworkACLOutp
 		},
 
 		DiffFields: func(desired nacl.NetworkACLSpec, observed nacl.ObservedState, _ nacl.NetworkACLOutputs) []types.FieldDiff {
-			rawDiffs := nacl.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return nacl.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

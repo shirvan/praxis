@@ -49,13 +49,13 @@ func TestIAMGroupProvision_CreatesGroup(t *testing.T) {
 	groupName := uniqueIAMName(t, "group")
 	policyArn := createManagedPolicy(t, iamClient, uniqueIAMName(t, "policy"))
 
-	outputs, err := ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), iamgroup.IAMGroupSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), provisionRequest(t, iamgroup.IAMGroupSpec{
 		Account:           integrationAccountName,
 		Path:              "/app/",
 		GroupName:         groupName,
 		InlinePolicies:    map[string]string{"inline-access": allowAllS3PolicyDoc()},
 		ManagedPolicyArns: []string{policyArn},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, groupName, outputs.GroupName)
 	assert.NotEmpty(t, outputs.GroupId)
@@ -80,11 +80,11 @@ func TestIAMGroupProvision_UpdatesPath(t *testing.T) {
 	groupName := uniqueIAMName(t, "group")
 
 	spec := iamgroup.IAMGroupSpec{Account: integrationAccountName, Path: "/", GroupName: groupName}
-	_, err := ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Path = "/app/"
-	_, err = ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	groupOut, err := iamClient.GetGroup(context.Background(), &iamsdk.GetGroupInput{GroupName: aws.String(groupName)})
@@ -120,7 +120,7 @@ func TestIAMGroupDelete_RemovesEmptyGroup(t *testing.T) {
 	client, iamClient := setupIAMGroupDriver(t)
 	groupName := uniqueIAMName(t, "group")
 
-	_, err := ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), iamgroup.IAMGroupSpec{Account: integrationAccountName, GroupName: groupName})
+	_, err := ingress.Object[types.ProvisionRequest, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), provisionRequest(t, iamgroup.IAMGroupSpec{Account: integrationAccountName, GroupName: groupName}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, iamgroup.ServiceName, groupName, "Delete").Request(t.Context(), restate.Void{})
@@ -135,11 +135,11 @@ func TestIAMGroupReconcile_DetectsInlinePolicyDrift(t *testing.T) {
 	client, iamClient := setupIAMGroupDriver(t)
 	groupName := uniqueIAMName(t, "group")
 
-	_, err := ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), iamgroup.IAMGroupSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), provisionRequest(t, iamgroup.IAMGroupSpec{
 		Account:        integrationAccountName,
 		GroupName:      groupName,
 		InlinePolicies: map[string]string{"inline-access": allowAllS3PolicyDoc()},
-	})
+	}))
 	require.NoError(t, err)
 
 	deny := denyAllS3PolicyDoc()
@@ -161,7 +161,7 @@ func TestIAMGroupGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupIAMGroupDriver(t)
 	groupName := uniqueIAMName(t, "group")
 
-	_, err := ingress.Object[iamgroup.IAMGroupSpec, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), iamgroup.IAMGroupSpec{Account: integrationAccountName, GroupName: groupName})
+	_, err := ingress.Object[types.ProvisionRequest, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Provision").Request(t.Context(), provisionRequest(t, iamgroup.IAMGroupSpec{Account: integrationAccountName, GroupName: groupName}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, iamgroup.ServiceName, groupName, "GetStatus").Request(t.Context(), restate.Void{})

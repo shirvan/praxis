@@ -53,6 +53,7 @@ func newGenericSNSSubscriptionDriverWithFactory(auth authservice.AuthClient, fac
 			return specFromObserved(observed, ref)
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 		CheckReadiness: func(observed ObservedState) kernel.ReadinessResult {
 			if observed.PendingConfirmation {

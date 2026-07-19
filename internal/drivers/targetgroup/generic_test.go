@@ -179,7 +179,7 @@ func TestGenericTGUnownedCollision(t *testing.T) {
 	delete(o.Tags, "praxis:managed-key")
 	api.seed(o)
 	c := setupTG(t, api)
-	_, err := ingress.Object[TargetGroupSpec, TargetGroupOutputs](c, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), tgSpec("collision"))
+	_, err := ingress.Object[types.ProvisionRequest, TargetGroupOutputs](c, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, tgSpec("collision")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "without exact Praxis ownership")
 }
@@ -203,7 +203,7 @@ func TestGenericTGImmutableAndExternalDelete(t *testing.T) {
 	key := "us-east-1~fixed"
 	provisionTG(t, c, key, s)
 	s.Port = 81
-	_, err := ingress.Object[TargetGroupSpec, TargetGroupOutputs](c, ServiceName, key, "Provision").Request(t.Context(), s)
+	_, err := ingress.Object[types.ProvisionRequest, TargetGroupOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 	api = newStatefulTGAPI()
@@ -220,7 +220,7 @@ func TestGenericTGImmutableAndExternalDelete(t *testing.T) {
 }
 func provisionTG(t *testing.T, c *ingress.Client, key string, s TargetGroupSpec) TargetGroupOutputs {
 	t.Helper()
-	o, err := ingress.Object[TargetGroupSpec, TargetGroupOutputs](c, ServiceName, key, "Provision").Request(t.Context(), s)
+	o, err := ingress.Object[types.ProvisionRequest, TargetGroupOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.NoError(t, err)
 	return o
 }

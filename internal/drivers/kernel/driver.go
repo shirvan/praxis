@@ -503,7 +503,7 @@ func (d *Driver[S, O, Obs]) Reconcile(ctx restate.ObjectContext) (types.Reconcil
 	if pendingReadiness && readiness.Phase == ReadinessReady {
 		markReady(&state, now)
 	}
-	drift, driftErr := hasDriftIgnoring(d.descriptor.HasDrift, state.Desired, observation.Value, state.IgnoreChanges)
+	drift, driftErr := actionableDrift(d.descriptor, state.Desired, observation.Value, state.IgnoreChanges)
 	if driftErr != nil {
 		setCondition(&state, types.ConditionHealthy, types.ConditionUnknown, types.ReasonRetrying, driftErr.Error(), now)
 		restate.Set(ctx, drivers.StateKey, state)

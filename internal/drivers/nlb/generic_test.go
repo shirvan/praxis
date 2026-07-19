@@ -184,7 +184,7 @@ func TestGenericNLBRejectsUnownedCollision(t *testing.T) {
 	delete(observed.Tags, managedKeyTag)
 	api.seed(observed)
 	client := setupGenericNLB(t, api)
-	_, err := ingress.Object[NLBSpec, NLBOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), genericNLBSpec("collision"))
+	_, err := ingress.Object[types.ProvisionRequest, NLBOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericNLBSpec("collision")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "without exact Praxis ownership")
 }
@@ -209,7 +209,7 @@ func TestGenericNLBImmutableAndExternalDelete(t *testing.T) {
 	key := "us-east-1~fixed"
 	provisionNLB(t, client, key, spec)
 	spec.Scheme = "internal"
-	_, err := ingress.Object[NLBSpec, NLBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NLBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 	api = newStatefulNLBAPI()
@@ -226,7 +226,7 @@ func TestGenericNLBImmutableAndExternalDelete(t *testing.T) {
 }
 func provisionNLB(t *testing.T, client *ingress.Client, key string, spec NLBSpec) NLBOutputs {
 	t.Helper()
-	out, err := ingress.Object[NLBSpec, NLBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out, err := ingress.Object[types.ProvisionRequest, NLBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return out
 }

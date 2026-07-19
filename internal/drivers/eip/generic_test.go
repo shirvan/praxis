@@ -244,14 +244,14 @@ func TestGenericElasticIPRejectsImmutableRegionAndRetainsInputs(t *testing.T) {
 	api := &statefulEIPAPI{}
 	client := setupGenericEIP(t, api)
 	key := "us-east-1~immutable-eip"
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEIPSpec())
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, ElasticIPSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 
 	changed := accepted
 	changed.Region = "us-west-2"
-	_, err = ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "region is immutable")
 	retained, err := ingress.Object[restate.Void, ElasticIPSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -271,9 +271,9 @@ func TestGenericElasticIPObservedImportLifecycle(t *testing.T) {
 func TestGenericElasticIPRecoversAmbiguousAllocationWithoutDuplicate(t *testing.T) {
 	api := &statefulEIPAPI{allocateErrors: []error{errors.New("ServiceUnavailable: allocation response lost")}}
 	client := setupGenericEIP(t, api)
-	outputs, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](
 		client, ServiceName, "us-east-1~ambiguous", "Provision",
-	).Request(t.Context(), managedEIPSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "eipalloc-created", outputs.AllocationId)
 	state := api.current()
@@ -288,7 +288,7 @@ func TestGenericElasticIPAdoptsExactManagedKeyRecovery(t *testing.T) {
 	client := setupGenericEIP(t, api)
 	spec := managedEIPSpec()
 	spec.Tags = map[string]string{"Name": "recovered", "env": "managed"}
-	outputs, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "eipalloc-recovered", outputs.AllocationId)
 	state := api.current()
@@ -302,7 +302,7 @@ func TestGenericElasticIPRejectsInexactOwnershipRecovery(t *testing.T) {
 	api := existingEIP("eipalloc-existing", "different-owner")
 	api.findIDOverride = "eipalloc-existing"
 	client := setupGenericEIP(t, api)
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEIPSpec())
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "without exact Praxis ownership tag")
 	assert.Zero(t, api.current().Creates)
@@ -311,9 +311,9 @@ func TestGenericElasticIPRejectsInexactOwnershipRecovery(t *testing.T) {
 func TestGenericElasticIPFindRetriesBeforeAllocation(t *testing.T) {
 	api := &statefulEIPAPI{findErrors: []error{errors.New("RequestLimitExceeded: transient lookup failure")}}
 	client := setupGenericEIP(t, api)
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](
 		client, ServiceName, "us-east-1~find-retry", "Provision",
-	).Request(t.Context(), managedEIPSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	state := api.current()
 	assert.GreaterOrEqual(t, state.FindCalls, 2)
@@ -324,7 +324,7 @@ func TestGenericElasticIPDeleteRetriesTransientRelease(t *testing.T) {
 	api := &statefulEIPAPI{releaseErrors: []error{errors.New("RequestLimitExceeded: transient release failure")}}
 	client := setupGenericEIP(t, api)
 	key := "us-east-1~delete-retry"
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEIPSpec())
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -335,7 +335,7 @@ func TestGenericElasticIPDeleteRejectsAssociatedAddress(t *testing.T) {
 	api := &statefulEIPAPI{}
 	client := setupGenericEIP(t, api)
 	key := "us-east-1~associated"
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEIPSpec())
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.observed.AssociationId = "eipassoc-123"
@@ -351,7 +351,7 @@ func TestGenericElasticIPManagedReconcileCorrectsTags(t *testing.T) {
 	api := &statefulEIPAPI{}
 	client := setupGenericEIP(t, api)
 	key := "us-east-1~drift"
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEIPSpec())
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.observed.Tags = map[string]string{"Name": "drift", "stale": "remove", managedKeyTag: key}
@@ -367,7 +367,7 @@ func TestGenericElasticIPExternalDeleteRequiresReplacementWithoutCreate(t *testi
 	api := &statefulEIPAPI{}
 	client := setupGenericEIP(t, api)
 	key := "us-east-1~external-delete"
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEIPSpec())
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEIPSpec()))
 	require.NoError(t, err)
 	before := api.current()
 	api.removeExternally()
@@ -387,7 +387,7 @@ func TestGenericElasticIPFiltersUserOwnershipTag(t *testing.T) {
 	key := "us-east-1~authoritative"
 	spec := managedEIPSpec()
 	spec.Tags[managedKeyTag] = "user-supplied"
-	_, err := ingress.Object[ElasticIPSpec, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ElasticIPOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, key, api.current().Observed.Tags[managedKeyTag])
 	inputs, err := ingress.Object[restate.Void, ElasticIPSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})

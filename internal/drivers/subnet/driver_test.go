@@ -384,8 +384,8 @@ func TestGenericSubnetRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~ambiguous"
 
-	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(
-		t.Context(), testSubnetSpec(key, "vpc-123", nil),
+	outputs, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(
+		t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", nil)),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "subnet-123", outputs.SubnetId)
@@ -398,8 +398,8 @@ func TestGenericSubnetWaiterRetriesWithoutSecondCreate(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~wait-retry"
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(
-		t.Context(), testSubnetSpec(key, "vpc-123", nil),
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(
+		t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", nil)),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -411,7 +411,7 @@ func TestProvision_CreatesNewSubnet(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~public-a"
 
-	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", map[string]string{"Name": "public-a", "env": "dev"}))
+	outputs, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", map[string]string{"Name": "public-a", "env": "dev"})))
 	require.NoError(t, err)
 	assert.Equal(t, "subnet-123", outputs.SubnetId)
 	assert.Equal(t, "vpc-123", outputs.VpcId)
@@ -437,7 +437,7 @@ func TestProvision_MissingCidrBlockFails(t *testing.T) {
 	spec := testSubnetSpec(key, "vpc-123", nil)
 	spec.CidrBlock = ""
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cidrBlock is required")
 }
@@ -449,7 +449,7 @@ func TestProvision_MissingRegionFails(t *testing.T) {
 	spec := testSubnetSpec(key, "vpc-123", nil)
 	spec.Region = ""
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "region is required")
 	assert.Zero(t, api.snapshot().Creates)
@@ -462,7 +462,7 @@ func TestProvision_MissingVpcIdFails(t *testing.T) {
 	spec := testSubnetSpec(key, "vpc-123", nil)
 	spec.VpcId = ""
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpcId is required")
 }
@@ -474,7 +474,7 @@ func TestProvision_MissingAvailabilityZoneFails(t *testing.T) {
 	spec := testSubnetSpec(key, "vpc-123", nil)
 	spec.AvailabilityZone = ""
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "availabilityZone is required")
 }
@@ -487,7 +487,7 @@ func TestProvision_CidrConflictFails(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~public-a"
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", nil)))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "InvalidSubnet.Conflict")
 }
@@ -498,7 +498,7 @@ func TestProvision_ConflictTaggedSubnetFails(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~public-a"
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", nil)))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already managed by Praxis")
 	assert.Equal(t, 0, api.createCalls)
@@ -510,9 +510,9 @@ func TestProvision_IdempotentReprovision(t *testing.T) {
 	key := "vpc-123~public-a"
 	spec := testSubnetSpec(key, "vpc-123", nil)
 
-	out1, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.SubnetId, out2.SubnetId)
 	assert.Equal(t, 1, api.createCalls)
@@ -525,7 +525,7 @@ func TestProvision_MapPublicIpOnCreate(t *testing.T) {
 	spec := testSubnetSpec(key, "vpc-123", nil)
 	spec.MapPublicIpOnLaunch = true
 
-	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.True(t, outputs.MapPublicIpOnLaunch)
 	assert.Equal(t, 1, api.modifyCalls)
@@ -537,10 +537,10 @@ func TestProvision_TagUpdate(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~public-a"
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", map[string]string{"Name": "public-a", "env": "dev"}))
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", map[string]string{"Name": "public-a", "env": "dev"})))
 	require.NoError(t, err)
 
-	_, err = ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", map[string]string{"Name": "public-a", "env": "prod"}))
+	_, err = ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", map[string]string{"Name": "public-a", "env": "prod"})))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.updateCalls)
 	assert.Equal(t, "prod", api.observed["subnet-123"].Tags["env"])
@@ -600,7 +600,7 @@ func TestDelete_DependencyViolationFails(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~public-a"
 
-	_, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	api.deleteFunc = func(ctx context.Context, subnetID string) error {
@@ -619,7 +619,7 @@ func TestReconcile_DetectsMapPublicIpDrift(t *testing.T) {
 	spec := testSubnetSpec(key, "vpc-123", nil)
 	spec.MapPublicIpOnLaunch = true
 
-	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -675,7 +675,7 @@ func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	client := setupSubnetDriver(t, api)
 	key := "vpc-123~public-a"
 
-	outputs, err := ingress.Object[SubnetSpec, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSubnetSpec(key, "vpc-123", nil))
+	outputs, err := ingress.Object[types.ProvisionRequest, SubnetOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSubnetSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	api.mu.Lock()

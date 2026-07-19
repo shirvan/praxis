@@ -64,9 +64,9 @@ func TestEC2Provision_CreatesInstance(t *testing.T) {
 	subnetId := getDefaultSubnetId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), ec2.EC2InstanceSpec{
+	).Request(t.Context(), provisionRequest(t, ec2.EC2InstanceSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		ImageId:      "ami-0123456789abcdef0",
@@ -75,7 +75,7 @@ func TestEC2Provision_CreatesInstance(t *testing.T) {
 		Monitoring:   false,
 		ManagedKey:   key,
 		Tags:         map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.InstanceId)
 	assert.Equal(t, subnetId, outputs.SubnetId)
@@ -169,15 +169,15 @@ func TestEC2Provision_Idempotent(t *testing.T) {
 		Tags:         map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotEmpty(t, out1.InstanceId)
 
-	out2, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.InstanceId, out2.InstanceId, "re-provision should reuse same instance")
 }
@@ -197,17 +197,17 @@ func TestEC2Provision_ConvergesIAMInstanceProfileAttachment(t *testing.T) {
 		ManagedKey: key, Tags: map[string]string{"Name": name},
 	}
 
-	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assertEC2InstanceProfile(t, ec2Client, outputs.InstanceId, profileA)
 
 	spec.IamInstanceProfile = profileB
-	_, err = ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assertEC2InstanceProfile(t, ec2Client, outputs.InstanceId, profileB)
 
 	spec.IamInstanceProfile = ""
-	_, err = ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](client, ec2.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assertEC2InstanceProfile(t, ec2Client, outputs.InstanceId, "")
 }
@@ -249,9 +249,9 @@ func TestEC2Delete_TerminatesInstance(t *testing.T) {
 	subnetId := getDefaultSubnetId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), ec2.EC2InstanceSpec{
+	).Request(t.Context(), provisionRequest(t, ec2.EC2InstanceSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		ImageId:      "ami-0123456789abcdef0",
@@ -259,7 +259,7 @@ func TestEC2Delete_TerminatesInstance(t *testing.T) {
 		SubnetId:     subnetId,
 		ManagedKey:   key,
 		Tags:         map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -283,9 +283,9 @@ func TestEC2GetStatus_ReturnsReady(t *testing.T) {
 	subnetId := getDefaultSubnetId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), ec2.EC2InstanceSpec{
+	).Request(t.Context(), provisionRequest(t, ec2.EC2InstanceSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		ImageId:      "ami-0123456789abcdef0",
@@ -293,7 +293,7 @@ func TestEC2GetStatus_ReturnsReady(t *testing.T) {
 		SubnetId:     subnetId,
 		ManagedKey:   key,
 		Tags:         map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](
@@ -313,9 +313,9 @@ func TestEC2Reconcile_EmitsDriftEvents(t *testing.T) {
 	streamKey := "dep-ec2-drift-" + name
 	registerDriftEventOwner(t, client, key, streamKey, name, ec2.ServiceName)
 
-	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), ec2.EC2InstanceSpec{
+	).Request(t.Context(), provisionRequest(t, ec2.EC2InstanceSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		ImageId:      "ami-0123456789abcdef0",
@@ -324,7 +324,7 @@ func TestEC2Reconcile_EmitsDriftEvents(t *testing.T) {
 		Monitoring:   false,
 		ManagedKey:   key,
 		Tags:         map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{
@@ -376,9 +376,9 @@ func TestEC2Reconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	).Request(t.Context(), orchestrator.StatusUpdate{Status: types.DeploymentComplete, UpdatedAt: time.Now().UTC()})
 	require.NoError(t, err)
 
-	outputs, err := ingress.Object[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ec2.EC2InstanceOutputs](
 		client, "EC2Instance", key, "Provision",
-	).Request(t.Context(), ec2.EC2InstanceSpec{
+	).Request(t.Context(), provisionRequest(t, ec2.EC2InstanceSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		ImageId:      "ami-0123456789abcdef0",
@@ -386,7 +386,7 @@ func TestEC2Reconcile_EmitsExternalDeleteEvent(t *testing.T) {
 		SubnetId:     subnetId,
 		ManagedKey:   key,
 		Tags:         map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.TerminateInstances(context.Background(), &ec2sdk.TerminateInstancesInput{InstanceIds: []string{outputs.InstanceId}})

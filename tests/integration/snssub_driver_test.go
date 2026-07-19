@@ -27,15 +27,15 @@ func TestSNSSubscription_Provision(t *testing.T) {
 	queueArn := createSQSQueueARNDirect(t, queueName)
 	key := fmt.Sprintf("us-east-1~%s~sqs~%s", topicName, queueName)
 
-	outputs, err := ingress.Object[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snssub.SNSSubscriptionOutputs](
 		client, snssub.ServiceName, key, "Provision",
-	).Request(t.Context(), snssub.SNSSubscriptionSpec{
+	).Request(t.Context(), provisionRequest(t, snssub.SNSSubscriptionSpec{
 		Account:  integrationAccountName,
 		Region:   "us-east-1",
 		TopicArn: topicArn,
 		Protocol: "sqs",
 		Endpoint: queueArn,
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.SubscriptionArn)
 	assert.Equal(t, topicArn, outputs.TopicArn)
@@ -94,15 +94,15 @@ func TestSNSSubscription_Delete(t *testing.T) {
 	queueArn := createSQSQueueARNDirect(t, queueName)
 	key := fmt.Sprintf("us-east-1~%s~sqs~%s", topicName, queueName)
 
-	outputs, err := ingress.Object[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snssub.SNSSubscriptionOutputs](
 		client, snssub.ServiceName, key, "Provision",
-	).Request(t.Context(), snssub.SNSSubscriptionSpec{
+	).Request(t.Context(), provisionRequest(t, snssub.SNSSubscriptionSpec{
 		Account:  integrationAccountName,
 		Region:   "us-east-1",
 		TopicArn: topicArn,
 		Protocol: "sqs",
 		Endpoint: queueArn,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -125,16 +125,16 @@ func TestSNSSubscription_Reconcile_DetectsRawMessageDeliveryDrift(t *testing.T) 
 	queueArn := createSQSQueueARNDirect(t, queueName)
 	key := fmt.Sprintf("us-east-1~%s~sqs~%s", topicName, queueName)
 
-	outputs, err := ingress.Object[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snssub.SNSSubscriptionOutputs](
 		client, snssub.ServiceName, key, "Provision",
-	).Request(t.Context(), snssub.SNSSubscriptionSpec{
+	).Request(t.Context(), provisionRequest(t, snssub.SNSSubscriptionSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		TopicArn:           topicArn,
 		Protocol:           "sqs",
 		Endpoint:           queueArn,
 		RawMessageDelivery: false,
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.SubscriptionArn)
 
@@ -178,15 +178,15 @@ func TestSNSSubscription_GetStatus(t *testing.T) {
 	queueArn := createSQSQueueARNDirect(t, queueName)
 	key := fmt.Sprintf("us-east-1~%s~sqs~%s", topicName, queueName)
 
-	_, err := ingress.Object[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, snssub.SNSSubscriptionOutputs](
 		client, snssub.ServiceName, key, "Provision",
-	).Request(t.Context(), snssub.SNSSubscriptionSpec{
+	).Request(t.Context(), provisionRequest(t, snssub.SNSSubscriptionSpec{
 		Account:  integrationAccountName,
 		Region:   "us-east-1",
 		TopicArn: topicArn,
 		Protocol: "sqs",
 		Endpoint: queueArn,
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

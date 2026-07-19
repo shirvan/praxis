@@ -52,6 +52,7 @@ func newGenericVPCDriverWithFactory(auth authservice.AuthClient, factory func(aw
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 		LateInitialize:      LateInitVPC,
 	})

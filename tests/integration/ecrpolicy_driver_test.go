@@ -70,14 +70,14 @@ func TestECRLifecyclePolicy_Provision(t *testing.T) {
 	createRepoForPolicy(t, ecrClient, repoName)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	outputs, err := ingress.Object[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ecrpolicy.ECRLifecyclePolicyOutputs](
 		client, ecrpolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrpolicy.ECRLifecyclePolicySpec{
+	).Request(t.Context(), provisionRequest(t, ecrpolicy.ECRLifecyclePolicySpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		RepositoryName:      repoName,
 		LifecyclePolicyText: testLifecyclePolicyText,
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, repoName, outputs.RepositoryName)
 
@@ -101,14 +101,14 @@ func TestECRLifecyclePolicy_Provision_Idempotent(t *testing.T) {
 		LifecyclePolicyText: testLifecyclePolicyText,
 	}
 
-	out1, err := ingress.Object[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, ecrpolicy.ECRLifecyclePolicyOutputs](
 		client, ecrpolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, ecrpolicy.ECRLifecyclePolicyOutputs](
 		client, ecrpolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.RepositoryName, out2.RepositoryName)
@@ -151,14 +151,14 @@ func TestECRLifecyclePolicy_Delete(t *testing.T) {
 	createRepoForPolicy(t, ecrClient, repoName)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	_, err := ingress.Object[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ecrpolicy.ECRLifecyclePolicyOutputs](
 		client, ecrpolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrpolicy.ECRLifecyclePolicySpec{
+	).Request(t.Context(), provisionRequest(t, ecrpolicy.ECRLifecyclePolicySpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		RepositoryName:      repoName,
 		LifecyclePolicyText: testLifecyclePolicyText,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -179,14 +179,14 @@ func TestECRLifecyclePolicy_Reconcile_DetectsPolicyDrift(t *testing.T) {
 	createRepoForPolicy(t, ecrClient, repoName)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	_, err := ingress.Object[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ecrpolicy.ECRLifecyclePolicyOutputs](
 		client, ecrpolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrpolicy.ECRLifecyclePolicySpec{
+	).Request(t.Context(), provisionRequest(t, ecrpolicy.ECRLifecyclePolicySpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		RepositoryName:      repoName,
 		LifecyclePolicyText: testLifecyclePolicyText,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: change policy text directly via ECR API
@@ -211,14 +211,14 @@ func TestECRLifecyclePolicy_GetStatus(t *testing.T) {
 	createRepoForPolicy(t, ecrClient, repoName)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	_, err := ingress.Object[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ecrpolicy.ECRLifecyclePolicyOutputs](
 		client, ecrpolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrpolicy.ECRLifecyclePolicySpec{
+	).Request(t.Context(), provisionRequest(t, ecrpolicy.ECRLifecyclePolicySpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		RepositoryName:      repoName,
 		LifecyclePolicyText: testLifecyclePolicyText,
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

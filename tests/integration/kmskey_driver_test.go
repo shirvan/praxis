@@ -64,9 +64,9 @@ func baseKMSKeySpec(name string) kmskey.KMSKeySpec {
 
 func provisionKMSKey(t *testing.T, client *ingress.Client, key string, spec kmskey.KMSKeySpec) kmskey.KMSKeyOutputs {
 	t.Helper()
-	out, err := ingress.Object[kmskey.KMSKeySpec, kmskey.KMSKeyOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, kmskey.KMSKeyOutputs](
 		client, kmskey.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	return out
 }

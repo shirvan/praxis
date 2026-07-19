@@ -63,7 +63,8 @@ func newGenericLambdaFunctionDriverWithFactory(auth authservice.AuthClient, fact
 		OutputsFromObserved: func(observed ObservedState, _ LambdaFunctionOutputs) LambdaFunctionOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 		CheckReadiness: func(observed ObservedState) kernel.ReadinessResult {
 			if observed.State == "Failed" || observed.LastUpdateStatus == "Failed" {
 				return kernel.ReadinessResult{Phase: kernel.ReadinessFailed, Message: "Lambda function entered a failed state"}

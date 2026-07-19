@@ -79,14 +79,14 @@ func TestNACLProvision_CreatesNetworkACL(t *testing.T) {
 	name := uniqueNACLName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		VpcId:        vpcID,
 		IngressRules: []nacl.NetworkACLRule{{RuleNumber: 100, Protocol: "tcp", RuleAction: "allow", CidrBlock: "0.0.0.0/0", FromPort: 80, ToPort: 80}},
 		EgressRules:  []nacl.NetworkACLRule{{RuleNumber: 100, Protocol: "-1", RuleAction: "allow", CidrBlock: "0.0.0.0/0"}},
 		Tags:         map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.NetworkAclId)
 
@@ -103,13 +103,13 @@ func TestNACLProvision_WithAssociation(t *testing.T) {
 	name := uniqueNACLName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		VpcId:              vpcID,
 		SubnetAssociations: []string{subnetID},
 		Tags:               map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	require.Len(t, outputs.Associations, 1)
 	assert.Equal(t, subnetID, outputs.Associations[0].SubnetId)
@@ -137,13 +137,13 @@ func TestNACLDelete_DisassociatesAndDeletes(t *testing.T) {
 	name := uniqueNACLName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		VpcId:              vpcID,
 		SubnetAssociations: []string{subnetID},
 		Tags:               map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, nacl.ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -172,13 +172,13 @@ func TestNACLReconcile_RuleDrift(t *testing.T) {
 	name := uniqueNACLName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		VpcId:        vpcID,
 		IngressRules: []nacl.NetworkACLRule{{RuleNumber: 100, Protocol: "tcp", RuleAction: "allow", CidrBlock: "0.0.0.0/0", FromPort: 80, ToPort: 80}},
 		Tags:         map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.CreateNetworkAclEntry(context.Background(), &ec2sdk.CreateNetworkAclEntryInput{
@@ -221,11 +221,11 @@ func TestNACLProvision_Idempotent(t *testing.T) {
 		Tags:         map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotEmpty(t, out1.NetworkAclId)
 
-	out2, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.NetworkAclId, out2.NetworkAclId, "re-provision should reuse same NACL")
 }
@@ -237,7 +237,7 @@ func TestNACLProvision_RuleConvergence(t *testing.T) {
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
 	// Initial provision with two ingress rules
-	out1, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	out1, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account: integrationAccountName,
 		Region:  "us-east-1",
 		VpcId:   vpcID,
@@ -246,11 +246,11 @@ func TestNACLProvision_RuleConvergence(t *testing.T) {
 			{RuleNumber: 200, Protocol: "tcp", RuleAction: "allow", CidrBlock: "0.0.0.0/0", FromPort: 22, ToPort: 22},
 		},
 		Tags: map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Re-provision: remove rule 200, add rule 300, change rule 100's port
-	_, err = ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	_, err = ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account: integrationAccountName,
 		Region:  "us-east-1",
 		VpcId:   vpcID,
@@ -259,7 +259,7 @@ func TestNACLProvision_RuleConvergence(t *testing.T) {
 			{RuleNumber: 300, Protocol: "tcp", RuleAction: "allow", CidrBlock: "10.0.0.0/8", FromPort: 8080, ToPort: 8080},
 		},
 		Tags: map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Verify via AWS SDK
@@ -331,13 +331,13 @@ func TestNACLReconcile_AssociationDrift(t *testing.T) {
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
 	// Provision with subnet association
-	outputs, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		VpcId:              vpcID,
 		SubnetAssociations: []string{subnetID},
 		Tags:               map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	require.Len(t, outputs.Associations, 1)
 
@@ -375,12 +375,12 @@ func TestNACLGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueNACLName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	_, err := ingress.Object[nacl.NetworkACLSpec, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), nacl.NetworkACLSpec{
+	_, err := ingress.Object[types.ProvisionRequest, nacl.NetworkACLOutputs](client, nacl.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, nacl.NetworkACLSpec{
 		Account: integrationAccountName,
 		Region:  "us-east-1",
 		VpcId:   vpcID,
 		Tags:    map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, nacl.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})

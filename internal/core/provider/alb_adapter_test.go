@@ -35,3 +35,16 @@ func TestALBAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~my-alb", key)
 }
+
+func TestALBAdapter_NormalizeOutputs(t *testing.T) {
+	adapter := NewALBAdapterWithAuth(nil)
+	outputs, err := adapter.NormalizeOutputs(alb.ALBOutputs{
+		LoadBalancerArn: "arn:alb", DnsName: "alb.example.com", HostedZoneId: "zone-1",
+		VpcId: "vpc-1", CanonicalHostedZoneId: "canonical-zone-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"loadBalancerArn": "arn:alb", "dnsName": "alb.example.com", "hostedZoneId": "zone-1",
+		"vpcId": "vpc-1", "canonicalHostedZoneId": "canonical-zone-1",
+	}, outputs)
+}

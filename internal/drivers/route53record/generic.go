@@ -60,7 +60,8 @@ func newGenericDNSRecordDriverWithFactory(auth authservice.AuthClient, factory f
 		OutputsFromObserved: func(observed ObservedState, _ RecordOutputs) RecordOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

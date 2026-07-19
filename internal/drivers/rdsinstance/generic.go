@@ -62,7 +62,8 @@ func newGenericRDSInstanceDriverWithFactory(auth authservice.AuthClient, factory
 		OutputsFromObserved: func(observed ObservedState, _ RDSInstanceOutputs) RDSInstanceOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

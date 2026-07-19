@@ -99,14 +99,7 @@ func (s *PraxisCommandService) Plan(ctx restate.Context, req PlanRequest) (PlanR
 // This implements the lifecycle.ignoreChanges feature that lets operators
 // exclude externally-managed fields from drift detection.
 func filterIgnoredFields(fields []types.FieldDiff, ignoreChanges []string) []types.FieldDiff {
-	filtered := make([]types.FieldDiff, 0, len(fields))
-	for _, fd := range fields {
-		if isIgnoredPath(fd.Path, ignoreChanges) {
-			continue
-		}
-		filtered = append(filtered, fd)
-	}
-	return filtered
+	return types.FilterIgnoredFieldDiffs(fields, ignoreChanges)
 }
 
 // isIgnoredPath returns true if the given path matches any ignore pattern.
@@ -115,10 +108,7 @@ func filterIgnoredFields(fields []types.FieldDiff, ignoreChanges []string) []typ
 // "tagsExtra".
 func isIgnoredPath(path string, patterns []string) bool {
 	for _, pattern := range patterns {
-		if path == pattern {
-			return true
-		}
-		if strings.HasPrefix(path, pattern+".") {
+		if types.FieldPathMatches(path, pattern) {
 			return true
 		}
 	}

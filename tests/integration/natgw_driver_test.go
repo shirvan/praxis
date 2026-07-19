@@ -133,7 +133,7 @@ func TestNATGWProvision_CreatesPublicNATGW(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	_, subnetID, allocationID := createNATGatewayFixture(t, ec2Client, true)
 
-	outputs, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), natgw.NATGatewaySpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, natgw.NATGatewaySpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		SubnetId:         subnetID,
@@ -141,7 +141,7 @@ func TestNATGWProvision_CreatesPublicNATGW(t *testing.T) {
 		AllocationId:     allocationID,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.NatGatewayId)
 	assert.Equal(t, allocationID, outputs.AllocationId)
@@ -158,14 +158,14 @@ func TestNATGWProvision_CreatesPrivateNATGW(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	_, subnetID, _ := createNATGatewayFixture(t, ec2Client, false)
 
-	outputs, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), natgw.NATGatewaySpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, natgw.NATGatewaySpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		SubnetId:         subnetID,
 		ConnectivityType: "private",
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.NatGatewayId)
 	assert.Equal(t, "private", outputs.ConnectivityType)
@@ -188,9 +188,9 @@ func TestNATGWProvision_Idempotent(t *testing.T) {
 		Tags:             map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.NatGatewayId, out2.NatGatewayId)
 }
@@ -217,7 +217,7 @@ func TestNATGWDelete_DeletesAndWaits(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	_, subnetID, allocationID := createNATGatewayFixture(t, ec2Client, true)
 
-	outputs, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), natgw.NATGatewaySpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, natgw.NATGatewaySpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		SubnetId:         subnetID,
@@ -225,7 +225,7 @@ func TestNATGWDelete_DeletesAndWaits(t *testing.T) {
 		AllocationId:     allocationID,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, "NATGateway", key, "Delete").Request(t.Context(), restate.Void{})
@@ -243,7 +243,7 @@ func TestNATGWReconcile_TagDrift(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	_, subnetID, allocationID := createNATGatewayFixture(t, ec2Client, true)
 
-	outputs, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), natgw.NATGatewaySpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, natgw.NATGatewaySpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		SubnetId:         subnetID,
@@ -251,7 +251,7 @@ func TestNATGWReconcile_TagDrift(t *testing.T) {
 		AllocationId:     allocationID,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{Resources: []string{outputs.NatGatewayId}, Tags: []ec2types.Tag{{Key: aws.String("env")}}})
@@ -274,7 +274,7 @@ func TestNATGWGetStatus_ReturnsReady(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	_, subnetID, allocationID := createNATGatewayFixture(t, ec2Client, true)
 
-	_, err := ingress.Object[natgw.NATGatewaySpec, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), natgw.NATGatewaySpec{
+	_, err := ingress.Object[types.ProvisionRequest, natgw.NATGatewayOutputs](client, "NATGateway", key, "Provision").Request(t.Context(), provisionRequest(t, natgw.NATGatewaySpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		SubnetId:         subnetID,
@@ -282,7 +282,7 @@ func TestNATGWGetStatus_ReturnsReady(t *testing.T) {
 		AllocationId:     allocationID,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, "NATGateway", key, "GetStatus").Request(t.Context(), restate.Void{})

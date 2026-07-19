@@ -10,10 +10,8 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
-	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/lambdalayer"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
-	"github.com/shirvan/praxis/pkg/types"
 )
 
 type LambdaLayerAdapter = GenericAdapter[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState]
@@ -82,14 +80,7 @@ func lambdaLayerDescriptor() GenericDescriptor[lambdalayer.LambdaLayerSpec, lamb
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState] {
 			return lambdaLayerProbe(lambdalayer.NewLayerAPI(awsclient.NewLambdaClient(cfg)))
 		},
-		DiffFields: func(desired lambdalayer.LambdaLayerSpec, observed lambdalayer.ObservedState, outputs lambdalayer.LambdaLayerOutputs) []types.FieldDiff {
-			raw := lambdalayer.ComputeFieldDiffs(desired, observed, outputs)
-			fields := make([]types.FieldDiff, 0, len(raw))
-			for _, diff := range raw {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
-		},
+		DiffFields: lambdalayer.ComputeFieldDiffs,
 	}
 }
 
@@ -100,10 +91,7 @@ func lambdaLayerProbe(api lambdalayer.LayerAPI) PlanProbeFunc[lambdalayer.Lambda
 			if lambdalayer.IsNotFound(err) {
 				return lambdalayer.ObservedState{}, false, nil
 			}
-			if awserr.IsThrottled(err) {
-				return lambdalayer.ObservedState{}, false, err
-			}
-			return lambdalayer.ObservedState{}, false, restate.TerminalError(err, 500)
+			return lambdalayer.ObservedState{}, false, err
 		}
 		return observed, true, nil
 	}

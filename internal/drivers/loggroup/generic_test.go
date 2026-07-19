@@ -253,7 +253,7 @@ func TestGenericLogGroupReconcileCorrectsRetentionKMSAndTagsIndependently(t *tes
 	spec := managedLogGroupSpec()
 	key := managedLogGroupKey
 
-	_, err := ingress.Object[LogGroupSpec, LogGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, LogGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.setDrift(90, "kms-drifted", map[string]string{
 		"env": "dev", "obsolete": "remove-me", "praxis:managed-key": key,
@@ -285,11 +285,11 @@ func TestGenericLogGroupRejectsImmutableClassChange(t *testing.T) {
 	}}
 	client := setupGenericLogGroup(t, api)
 
-	_, err := ingress.Object[LogGroupSpec, LogGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, LogGroupOutputs](
 		client, ServiceName, managedLogGroupKey, "Provision",
-	).Request(t.Context(), LogGroupSpec{
+	).Request(t.Context(), drivertest.ProvisionRequest(t, LogGroupSpec{
 		Account: "test", Region: "us-east-1", LogGroupName: "/praxis/generic", LogGroupClass: "STANDARD",
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 	assert.Zero(t, api.snapshot().Updates)
@@ -301,9 +301,9 @@ func TestGenericLogGroupRetriesTransientCreateInsideDurableCallback(t *testing.T
 	}}}
 	client := setupGenericLogGroup(t, api)
 
-	outputs, err := ingress.Object[LogGroupSpec, LogGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, LogGroupOutputs](
 		client, ServiceName, managedLogGroupKey, "Provision",
-	).Request(t.Context(), managedLogGroupSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedLogGroupSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "/praxis/generic", outputs.LogGroupName)
 	assert.Equal(t, 2, api.snapshot().Creates)
@@ -313,9 +313,9 @@ func TestGenericLogGroupInvalidCreateIsTerminal(t *testing.T) {
 	api := &statefulLogGroupAPI{createErrors: []error{errors.New("InvalidParameterException: bad log group")}}
 	client := setupGenericLogGroup(t, api)
 
-	_, err := ingress.Object[LogGroupSpec, LogGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, LogGroupOutputs](
 		client, ServiceName, managedLogGroupKey, "Provision",
-	).Request(t.Context(), managedLogGroupSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedLogGroupSpec()))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "terminal validation errors must not be retried")
 }
@@ -324,9 +324,9 @@ func TestGenericLogGroupDeleteTreatsProviderNotFoundAsSuccess(t *testing.T) {
 	api := &statefulLogGroupAPI{}
 	client := setupGenericLogGroup(t, api)
 
-	_, err := ingress.Object[LogGroupSpec, LogGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, LogGroupOutputs](
 		client, ServiceName, managedLogGroupKey, "Provision",
-	).Request(t.Context(), managedLogGroupSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedLogGroupSpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.exists = false

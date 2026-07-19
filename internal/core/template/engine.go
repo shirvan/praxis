@@ -49,42 +49,37 @@ type Engine struct {
 	schemaDir string
 	ctx       *cue.Context
 
-	// lifecycleExt is a pre-compiled CUE value that permits an optional
-	// lifecycle block on every resource schema. It is unified with each
-	// schema definition before resource validation so that templates can
-	// declare lifecycle rules without modifying individual schema files.
+	// lifecycleExt is the pre-compiled constraint for the contents of an
+	// optional lifecycle block. It is validated independently before the block
+	// is stripped for provider-schema unification.
 	lifecycleExt cue.Value
 }
 
-// lifecycleCUE defines the optional lifecycle block accepted on all resource types.
-// This CUE fragment is compiled once at Engine construction and unified with
-// each resource during validation so that lifecycle directives (preventDestroy,
-// ignoreChanges) are always permitted regardless of the provider schema.
+// lifecycleCUE defines the lifecycle-block contents accepted on all resource
+// types. It is compiled once and validated independently of provider schemas.
 const lifecycleCUE = `{
-	lifecycle?: {
-		reconcile?: *"auto" | "observe"
-		preventDestroy?: bool
-		ignoreChanges?: [...string]
-		retry?: {
-			maxRetries?: int & >=0
-			baseDelay?: string
-			maxDelay?: string
-		}
-		timeouts?: {
-			create?: string
-			update?: string
-			delete?: string
-		}
-		deletionPolicy?: *"Delete" | "Orphan"
-		wait?: {
-			enabled?: bool
-			pollInterval?: string
-			maxWait?: string
-		}
-		recovery?: {
-			mode?: *"Automatic" | "Manual"
-			timeout?: string
-		}
+	reconcile?: "auto" | "observe"
+	preventDestroy?: bool
+	ignoreChanges?: [...string]
+	retry?: {
+		maxRetries?: int & >=0
+		baseDelay?: string
+		maxDelay?: string
+	}
+	timeouts?: {
+		create?: string
+		update?: string
+		delete?: string
+	}
+	deletionPolicy?: *"Delete" | "Orphan"
+	wait?: {
+		enabled?: bool
+		pollInterval?: string
+		maxWait?: string
+	}
+	recovery?: {
+		mode?: *"Automatic" | "Manual"
+		timeout?: string
 	}
 }`
 
@@ -434,7 +429,7 @@ func (e *Engine) evaluateResources(val cue.Value, schemaVal *cue.Value, schemaSk
 		var lifecycleJSON json.RawMessage
 		lifecycleVal := resVal.LookupPath(cue.ParsePath("lifecycle"))
 		if lifecycleVal.Exists() {
-			if err := e.lifecycleExt.LookupPath(cue.ParsePath("lifecycle")).Unify(lifecycleVal).Validate(); err != nil {
+			if err := e.lifecycleExt.Unify(lifecycleVal).Validate(cue.Concrete(true)); err != nil {
 				errs = append(errs, TemplateError{
 					Kind:    ErrCUEValidation,
 					Path:    fmt.Sprintf("resources.%s.lifecycle", name),

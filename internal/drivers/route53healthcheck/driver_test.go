@@ -297,7 +297,7 @@ func TestGenericHealthCheckRecoversAmbiguousCreateWithCallerReference(t *testing
 	client := setupHealthCheckDriver(t, api)
 	key := "ambiguous-health-check"
 
-	outputs, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(nil))
+	outputs, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(nil)))
 	require.NoError(t, err)
 	assert.Equal(t, "hc-123", outputs.HealthCheckId)
 	assert.Equal(t, 1, api.createCalls)
@@ -309,11 +309,11 @@ func TestGenericHealthCheckRejectsImmutableIdentityChange(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "immutable-health-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(nil))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(nil)))
 	require.NoError(t, err)
 	changed := testHTTPSpec(nil)
 	changed.RequestInterval = 10
-	_, err = ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "requestInterval is immutable")
 	assert.Equal(t, 1, api.createCalls)
@@ -324,14 +324,14 @@ func TestGenericHealthCheckRefreshesVersionOnOptimisticConflict(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "version-race-health-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(nil))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(nil)))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.updateErrors = []error{&mockAPIError{code: "HealthCheckVersionMismatch", message: "concurrent update"}}
 	api.mu.Unlock()
 	changed := testHTTPSpec(nil)
 	changed.Port = 8080
-	_, err = ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, api.updateCalls, 2)
 	assert.Equal(t, int32(8080), api.checks["hc-123"].Port)
@@ -342,7 +342,7 @@ func TestGenericHealthCheckExternalDeleteRequiresReplacementWithoutCreate(t *tes
 	client := setupHealthCheckDriver(t, api)
 	key := "external-delete-health-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(nil))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(nil)))
 	require.NoError(t, err)
 	api.mu.Lock()
 	delete(api.checks, "hc-123")
@@ -359,7 +359,7 @@ func TestHealthCheckProvision_Creates(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "web-http-check"
 
-	outputs, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(map[string]string{"env": "dev"}))
+	outputs, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(map[string]string{"env": "dev"})))
 	require.NoError(t, err)
 	assert.Equal(t, "hc-123", outputs.HealthCheckId)
 	assert.Equal(t, 1, api.createCalls)
@@ -376,9 +376,9 @@ func TestHealthCheckProvision_Idempotent(t *testing.T) {
 	key := "web-http-check"
 	spec := testHTTPSpec(map[string]string{"env": "dev"})
 
-	out1, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.HealthCheckId, out2.HealthCheckId)
 	assert.Equal(t, 1, api.createCalls)
@@ -389,7 +389,7 @@ func TestHealthCheckProvision_MissingTypeFails(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "bad-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), HealthCheckSpec{Account: "test"})
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, HealthCheckSpec{Account: "test"}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "type is required")
 }
@@ -399,10 +399,10 @@ func TestHealthCheckProvision_TagUpdate(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "web-http-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(map[string]string{"env": "dev"}))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(map[string]string{"env": "dev"})))
 	require.NoError(t, err)
 
-	_, err = ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(map[string]string{"env": "prod"}))
+	_, err = ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(map[string]string{"env": "prod"})))
 	require.NoError(t, err)
 	assert.Equal(t, "prod", api.checks["hc-123"].Tags["env"])
 }
@@ -436,7 +436,7 @@ func TestHealthCheckDelete_Deletes(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "web-http-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(nil))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(nil)))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -467,7 +467,7 @@ func TestHealthCheckReconcile_PortDriftCorrected(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "web-http-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(map[string]string{}))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(map[string]string{})))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -510,7 +510,7 @@ func TestHealthCheckGetOutputs_ReturnsCurrentState(t *testing.T) {
 	client := setupHealthCheckDriver(t, api)
 	key := "web-http-check"
 
-	_, err := ingress.Object[HealthCheckSpec, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testHTTPSpec(nil))
+	_, err := ingress.Object[types.ProvisionRequest, HealthCheckOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testHTTPSpec(nil)))
 	require.NoError(t, err)
 
 	outputs, err := ingress.Object[restate.Void, HealthCheckOutputs](client, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})

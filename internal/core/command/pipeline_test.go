@@ -206,6 +206,17 @@ func TestFilterIgnoredFields_ExactMatch(t *testing.T) {
 	assert.Equal(t, "spec.versioning", filtered[0].Path)
 }
 
+func TestFilterIgnoredFields_SpecPrefixIsPresentationOnly(t *testing.T) {
+	fields := []types.FieldDiff{
+		{Path: "spec.versioning", OldValue: false, NewValue: true},
+		{Path: "spec.encryption.algorithm", OldValue: "AES256", NewValue: "aws:kms"},
+		{Path: "tags.env", OldValue: "dev", NewValue: "prod"},
+	}
+	filtered := filterIgnoredFields(fields, []string{"versioning", "encryption.algorithm"})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "tags.env", filtered[0].Path)
+}
+
 func TestFilterIgnoredFields_PrefixMatch(t *testing.T) {
 	fields := []types.FieldDiff{
 		{Path: "tags.lastModified", OldValue: "old", NewValue: "new"},

@@ -214,7 +214,7 @@ func TestGenericVPCPeeringObservedImportLifecycle(t *testing.T) {
 func TestGenericVPCPeeringAutoAcceptConvergesWhilePending(t *testing.T) {
 	api := newStatefulPeeringAPI()
 	client := setupGenericPeering(t, api)
-	outputs, err := ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, "us-east-1~auto-peer", "Provision").Request(t.Context(), managedPeeringSpec(true))
+	outputs, err := ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, "us-east-1~auto-peer", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPeeringSpec(true)))
 	require.NoError(t, err)
 	assert.Equal(t, "active", outputs.Status)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -225,7 +225,7 @@ func TestGenericVPCPeeringManualAcceptanceStaysPending(t *testing.T) {
 	api := newStatefulPeeringAPI()
 	client := setupGenericPeering(t, api)
 	key := "us-east-1~manual-peer"
-	outputs, err := ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedPeeringSpec(false))
+	outputs, err := ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPeeringSpec(false)))
 	require.NoError(t, err)
 	assert.Equal(t, "pending-acceptance", outputs.Status)
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
@@ -240,7 +240,7 @@ func TestGenericVPCPeeringTerminalStateBecomesError(t *testing.T) {
 	api := newStatefulPeeringAPI()
 	api.createStatus = "rejected"
 	client := setupGenericPeering(t, api)
-	_, err := ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, "us-east-1~rejected-peer", "Provision").Request(t.Context(), managedPeeringSpec(false))
+	_, err := ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, "us-east-1~rejected-peer", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPeeringSpec(false)))
 	require.Error(t, err)
 	status, statusErr := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, "us-east-1~rejected-peer", "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, statusErr)
@@ -251,7 +251,7 @@ func TestGenericVPCPeeringRecoversAmbiguousCreate(t *testing.T) {
 	api := newStatefulPeeringAPI()
 	api.createErrors = []error{errors.New("create response lost")}
 	client := setupGenericPeering(t, api)
-	outputs, err := ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, "us-east-1~ambiguous-peer", "Provision").Request(t.Context(), managedPeeringSpec(true))
+	outputs, err := ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, "us-east-1~ambiguous-peer", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPeeringSpec(true)))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.VpcPeeringConnectionId)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -262,10 +262,10 @@ func TestGenericVPCPeeringRejectsImmutableVPC(t *testing.T) {
 	client := setupGenericPeering(t, api)
 	key := "us-east-1~immutable-peer"
 	spec := managedPeeringSpec(true)
-	_, err := ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.RequesterVpcId = "vpc-other"
-	_, err = ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "requesterVpcId is immutable")
 	stored, storedErr := ingress.Object[restate.Void, VPCPeeringSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -298,7 +298,7 @@ func TestGenericVPCPeeringExternalDeleteRequiresExplicitProvision(t *testing.T) 
 	api := newStatefulPeeringAPI()
 	client := setupGenericPeering(t, api)
 	key := "us-east-1~external-peer"
-	outputs, err := ingress.Object[VPCPeeringSpec, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedPeeringSpec(true))
+	outputs, err := ingress.Object[types.ProvisionRequest, VPCPeeringOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPeeringSpec(true)))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.remove(outputs.VpcPeeringConnectionId)

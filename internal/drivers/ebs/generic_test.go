@@ -200,7 +200,7 @@ func TestGenericEBSObservedImportLifecycle(t *testing.T) {
 func TestGenericEBSRecoversAmbiguousCreate(t *testing.T) {
 	api := &statefulEBSAPI{createErrors: []error{errors.New("request timeout")}}
 	client := setupGenericEBS(t, api)
-	_, err := ingress.Object[EBSVolumeSpec, EBSVolumeOutputs](client, ServiceName, "us-east-1~generic-ebs", "Provision").Request(t.Context(), managedEBSSpec())
+	_, err := ingress.Object[types.ProvisionRequest, EBSVolumeOutputs](client, ServiceName, "us-east-1~generic-ebs", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEBSSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 }
@@ -210,10 +210,10 @@ func TestGenericEBSRejectsImmutableAZ(t *testing.T) {
 	client := setupGenericEBS(t, api)
 	key := "us-east-1~generic-ebs"
 	spec := managedEBSSpec()
-	_, err := ingress.Object[EBSVolumeSpec, EBSVolumeOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, EBSVolumeOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.AvailabilityZone = "us-east-1b"
-	_, err = ingress.Object[EBSVolumeSpec, EBSVolumeOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, EBSVolumeOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "availabilityZone is immutable")
 }
@@ -222,7 +222,7 @@ func TestGenericEBSExternalDeleteRequiresReplacement(t *testing.T) {
 	api := &statefulEBSAPI{}
 	client := setupGenericEBS(t, api)
 	key := "us-east-1~generic-ebs"
-	_, err := ingress.Object[EBSVolumeSpec, EBSVolumeOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEBSSpec())
+	_, err := ingress.Object[types.ProvisionRequest, EBSVolumeOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEBSSpec()))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.removeExternally()

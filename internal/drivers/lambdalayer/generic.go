@@ -31,7 +31,7 @@ func newGenericLambdaLayerDriverWithFactory(auth authservice.AuthClient, factory
 		Prepare: func(ctx restate.ObjectContext, spec LambdaLayerSpec) (LambdaLayerSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
 			if err != nil {
-				return LambdaLayerSpec{}, restate.TerminalError(err, 400)
+				return LambdaLayerSpec{}, drivers.ClassifyCredentialError(err)
 			}
 			spec = applyDefaults(spec)
 			if spec.Region == "" {
@@ -55,6 +55,9 @@ func newGenericLambdaLayerDriverWithFactory(auth authservice.AuthClient, factory
 		OutputsFromObserved: func(observed ObservedState, _ LambdaLayerOutputs) LambdaLayerOutputs {
 			return outputsFromObserved(observed)
 		},
+		FieldDiffs: func(desired LambdaLayerSpec, observed ObservedState) []types.FieldDiff {
+			return ComputeFieldDiffs(desired, observed, LambdaLayerOutputs{Version: observed.expectedVersion})
+		},
 		HasDrift: func(desired LambdaLayerSpec, observed ObservedState) bool {
 			return HasDrift(desired, observed, LambdaLayerOutputs{Version: observed.expectedVersion})
 		},
@@ -67,7 +70,7 @@ func (o *genericOperations) Observe(ctx restate.ObjectContext, desired LambdaLay
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return kernel.Observation[ObservedState]{}, restate.TerminalError(err, 400)
+		return kernel.Observation[ObservedState]{}, drivers.ClassifyCredentialError(err)
 	}
 	result, err := observeLayer(ctx, api, name)
 	if result.Exists {
@@ -78,7 +81,7 @@ func (o *genericOperations) Observe(ctx restate.ObjectContext, desired LambdaLay
 func (o *genericOperations) Create(ctx restate.ObjectContext, desired LambdaLayerSpec) (kernel.CreateResult[LambdaLayerOutputs], error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return kernel.CreateResult[LambdaLayerOutputs]{}, restate.TerminalError(err, 400)
+		return kernel.CreateResult[LambdaLayerOutputs]{}, drivers.ClassifyCredentialError(err)
 	}
 	outputs, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) { return api.PublishLayerVersion(rc, desired) }, classifyLayerMutation)
 	return kernel.CreateResult[LambdaLayerOutputs]{SeedOutputs: outputs}, err
@@ -92,7 +95,7 @@ func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, p
 	}
 	api, _, err := o.apiForAccount(ctx, next.Account)
 	if err != nil {
-		return restate.TerminalError(err, 400)
+		return drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) { return api.PublishLayerVersion(rc, next) }, classifyLayerMutation)
 	return err
@@ -104,7 +107,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaLa
 	if observed.expectedVersion != 0 && observed.Version != observed.expectedVersion {
 		api, _, err := o.apiForAccount(ctx, desired.Account)
 		if err != nil {
-			return restate.TerminalError(err, 400)
+			return drivers.ClassifyCredentialError(err)
 		}
 		published, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) {
 			return api.PublishLayerVersion(rc, desired)
@@ -123,7 +126,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaLa
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return restate.TerminalError(err, 400)
+		return drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (PermissionsSpec, error) {
 		return api.SyncLayerVersionPermissions(rc, desired.LayerName, observed.Version, desiredPerms)
@@ -140,7 +143,7 @@ func (o *genericOperations) Delete(ctx restate.ObjectContext, desired LambdaLaye
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return restate.TerminalError(err, 400)
+		return drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		versions, e := api.ListLayerVersions(rc, name)
@@ -162,7 +165,7 @@ func (o *genericOperations) Delete(ctx restate.ObjectContext, desired LambdaLaye
 func (o *genericOperations) Import(ctx restate.ObjectContext, ref types.ImportRef) (kernel.Observation[ObservedState], error) {
 	api, _, err := o.apiForAccount(ctx, ref.Account)
 	if err != nil {
-		return kernel.Observation[ObservedState]{}, restate.TerminalError(err, 400)
+		return kernel.Observation[ObservedState]{}, drivers.ClassifyCredentialError(err)
 	}
 	return observeLayer(ctx, api, ref.ResourceID)
 }

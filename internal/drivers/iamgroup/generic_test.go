@@ -190,14 +190,14 @@ func TestGenericIAMGroupRejectsImmutableNameAndRetainsInputs(t *testing.T) {
 	api := &statefulIAMGroupAPI{}
 	client := setupGenericIAMGroup(t, api)
 	key := "immutable-group"
-	_, err := ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedGroupSpec(key))
+	_, err := ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedGroupSpec(key)))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, IAMGroupSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 
 	changed := accepted
 	changed.GroupName = "different-group"
-	_, err = ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "groupName is immutable")
 	retained, err := ingress.Object[restate.Void, IAMGroupSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -220,7 +220,7 @@ func TestGenericIAMGroupReconcileConvergesEveryCompositeComponent(t *testing.T) 
 	client := setupGenericIAMGroup(t, api)
 	spec := managedGroupSpec("drift-group")
 
-	_, err := ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	beforeDrift := api.snapshot()
 	api.forceCompositeDrift()
@@ -240,13 +240,13 @@ func TestGenericIAMGroupRecoversPartialCreateWithoutSecondGroup(t *testing.T) {
 	client := setupGenericIAMGroup(t, api)
 	spec := managedGroupSpec("partial-group")
 
-	_, err := ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, spec.GroupName, api.group().GroupName, "group creation must survive a later composite-step failure")
 	assert.Equal(t, types.StatusError, getGroupStatus(t, client, spec.GroupName).Status)
 
-	_, err = ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "recovery must observe and finish the existing group")
 	assertGroupMatchesSpec(t, spec, api.group())
@@ -256,11 +256,11 @@ func TestGenericIAMGroupConvergesPathChange(t *testing.T) {
 	api := &statefulIAMGroupAPI{}
 	client := setupGenericIAMGroup(t, api)
 	spec := managedGroupSpec("path-group")
-	_, err := ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Path = "/other/"
-	_, err = ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "/other/", api.group().Path)
 }
@@ -269,7 +269,7 @@ func TestGenericIAMGroupDeleteDoesNotRemoveExternalMemberships(t *testing.T) {
 	api := &statefulIAMGroupAPI{}
 	client := setupGenericIAMGroup(t, api)
 	spec := managedGroupSpec("member-group")
-	_, err := ingress.Object[IAMGroupSpec, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMGroupOutputs](client, ServiceName, spec.GroupName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.members = []string{"external-user"}

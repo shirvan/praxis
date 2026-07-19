@@ -48,7 +48,8 @@ func newGenericTargetGroupDriverWithFactory(auth authservice.AuthClient, factory
 			spec.Account = ref.Account
 			return spec
 		},
-		OutputsFromObserved: func(obs ObservedState, _ TargetGroupOutputs) TargetGroupOutputs { return outputsFromObserved(obs) }, HasDrift: HasDrift,
+		OutputsFromObserved: func(obs ObservedState, _ TargetGroupOutputs) TargetGroupOutputs { return outputsFromObserved(obs) }, FieldDiffs: ComputeFieldDiffs,
+		HasDrift: HasDrift,
 	})
 }
 func (o *genericOperations) Observe(ctx restate.ObjectContext, d TargetGroupSpec, out TargetGroupOutputs) (kernel.Observation[ObservedState], error) {

@@ -41,7 +41,8 @@ func newGenericListenerDriverWithFactory(auth authservice.AuthClient, f func(aws
 		s := specFromObserved(obs)
 		s.Account = ref.Account
 		return s
-	}, OutputsFromObserved: func(o ObservedState, _ ListenerOutputs) ListenerOutputs { return outputsFromObserved(o) }, HasDrift: HasDrift})
+	}, OutputsFromObserved: func(o ObservedState, _ ListenerOutputs) ListenerOutputs { return outputsFromObserved(o) }, FieldDiffs: ComputeFieldDiffs,
+		HasDrift: HasDrift})
 }
 func (o *genericOperations) Observe(ctx restate.ObjectContext, d ListenerSpec, out ListenerOutputs) (kernel.Observation[ObservedState], error) {
 	api, _, e := o.apiForAccount(ctx, d.Account)

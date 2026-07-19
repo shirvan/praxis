@@ -43,14 +43,14 @@ func TestSQSQueuePolicyProvision_SetsPolicy(t *testing.T) {
 	queueArn := attrs.Attributes[string(sqstypes.QueueAttributeNameQueueArn)]
 
 	key := fmt.Sprintf("us-east-1~%s", queueName)
-	outputs, err := ingress.Object[sqspolicy.SQSQueuePolicySpec, sqspolicy.SQSQueuePolicyOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sqspolicy.SQSQueuePolicyOutputs](
 		client, sqspolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), sqspolicy.SQSQueuePolicySpec{
+	).Request(t.Context(), provisionRequest(t, sqspolicy.SQSQueuePolicySpec{
 		Account:   integrationAccountName,
 		Region:    "us-east-1",
 		QueueName: queueName,
 		Policy:    testQueuePolicy(queueArn),
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, queueName, outputs.QueueName)
 	assert.Equal(t, aws.ToString(created.QueueUrl), outputs.QueueUrl)
@@ -125,14 +125,14 @@ func TestSQSQueuePolicyDelete_RemovesPolicy(t *testing.T) {
 	queueArn := attrs.Attributes[string(sqstypes.QueueAttributeNameQueueArn)]
 
 	key := fmt.Sprintf("us-east-1~%s", queueName)
-	_, err = ingress.Object[sqspolicy.SQSQueuePolicySpec, sqspolicy.SQSQueuePolicyOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, sqspolicy.SQSQueuePolicyOutputs](
 		client, sqspolicy.ServiceName, key, "Provision",
-	).Request(t.Context(), sqspolicy.SQSQueuePolicySpec{
+	).Request(t.Context(), provisionRequest(t, sqspolicy.SQSQueuePolicySpec{
 		Account:   integrationAccountName,
 		Region:    "us-east-1",
 		QueueName: queueName,
 		Policy:    testQueuePolicy(queueArn),
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](

@@ -53,6 +53,19 @@ type ObservedImportFixture[Outputs any] struct {
 	Snapshot    func() ProviderSnapshot
 }
 
+// ProvisionRequest encodes a typed spec in the single alpha Provision
+// envelope used by every driver. Tests use this helper so they exercise the
+// production wire contract without repeating JSON plumbing.
+func ProvisionRequest(t testing.TB, spec any) types.ProvisionRequest {
+	t.Helper()
+	encoded, err := json.Marshal(spec)
+	require.NoError(t, err)
+	return types.ProvisionRequest{
+		Spec:      encoded,
+		Lifecycle: types.NormalizeLifecyclePolicy(nil),
+	}
+}
+
 // RunCoreLifecycle exercises invariants shared by every managed resource:
 // create-or-converge idempotency, readable atomic state, retained deletion
 // tombstones, double-delete idempotency, and no reconciliation after deletion.

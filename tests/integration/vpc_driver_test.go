@@ -125,9 +125,9 @@ func TestVPCProvision_CreatesVPC(t *testing.T) {
 	cidr := uniqueCidr()
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		CidrBlock:          cidr,
@@ -136,7 +136,7 @@ func TestVPCProvision_CreatesVPC(t *testing.T) {
 		InstanceTenancy:    "default",
 		ManagedKey:         key,
 		Tags:               map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.VpcId)
 	assert.Equal(t, cidr, outputs.CidrBlock)
@@ -169,15 +169,15 @@ func TestVPCProvision_Idempotent(t *testing.T) {
 		Tags:               map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotEmpty(t, out1.VpcId)
 
-	out2, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.VpcId, out2.VpcId, "re-provision should reuse same VPC")
 }
@@ -241,16 +241,16 @@ func TestVPCDelete_RemovesVPC(t *testing.T) {
 	cidr := uniqueCidr()
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		CidrBlock:        cidr,
 		EnableDnsSupport: true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -271,16 +271,16 @@ func TestVPCGetStatus_ReturnsReady(t *testing.T) {
 	cidr := uniqueCidr()
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		CidrBlock:        cidr,
 		EnableDnsSupport: true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](
@@ -301,9 +301,9 @@ func TestVPCReconcile_DetectsDrift(t *testing.T) {
 	registerVPCEventOwner(t, client, key, streamKey, name)
 
 	// Provision with DNS hostnames enabled
-	outputs, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		CidrBlock:          cidr,
@@ -311,7 +311,7 @@ func TestVPCReconcile_DetectsDrift(t *testing.T) {
 		EnableDnsSupport:   true,
 		ManagedKey:         key,
 		Tags:               map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: disable DNS hostnames directly via EC2 API
@@ -351,9 +351,9 @@ func TestVPCReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	streamKey := "dep-vpc-external-delete-" + name
 	registerVPCEventOwner(t, client, key, streamKey, name)
 
-	outputs, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		CidrBlock:          cidr,
@@ -361,7 +361,7 @@ func TestVPCReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 		EnableDnsSupport:   true,
 		ManagedKey:         key,
 		Tags:               map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteVpc(context.Background(), &ec2sdk.DeleteVpcInput{VpcId: aws.String(outputs.VpcId)})
@@ -392,15 +392,15 @@ func TestVPCProvision_MissingCidrBlock(t *testing.T) {
 	name := uniqueVpcName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		CidrBlock:        "",
 		EnableDnsSupport: true,
 		ManagedKey:       key,
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cidrBlock")
 }
@@ -410,16 +410,16 @@ func TestVPCProvision_InvalidDnsCombination(t *testing.T) {
 	name := uniqueVpcName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[vpc.VPCSpec, vpc.VPCOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, vpc.VPCOutputs](
 		client, "VPC", key, "Provision",
-	).Request(t.Context(), vpc.VPCSpec{
+	).Request(t.Context(), provisionRequest(t, vpc.VPCSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		CidrBlock:          uniqueCidr(),
 		EnableDnsHostnames: true,
 		EnableDnsSupport:   false,
 		ManagedKey:         key,
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "enableDnsHostnames requires enableDnsSupport")
 }

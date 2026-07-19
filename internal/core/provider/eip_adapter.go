@@ -102,12 +102,7 @@ func eipDescriptor() GenericDescriptor[eip.ElasticIPSpec, eip.ElasticIPOutputs, 
 		},
 
 		DiffFields: func(desired eip.ElasticIPSpec, observed eip.ObservedState, _ eip.ElasticIPOutputs) []types.FieldDiff {
-			rawDiffs := eip.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return eip.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

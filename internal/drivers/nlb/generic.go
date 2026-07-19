@@ -66,6 +66,7 @@ func newGenericNLBDriverWithFactory(auth authservice.AuthClient, factory func(aw
 			return spec
 		},
 		OutputsFromObserved: func(observed ObservedState, _ NLBOutputs) NLBOutputs { return outputsFromObserved(observed) },
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

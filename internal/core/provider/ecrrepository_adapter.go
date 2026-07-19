@@ -91,12 +91,7 @@ func ecrRepositoryDescriptor() GenericDescriptor[ecrrepo.ECRRepositorySpec, ecrr
 		},
 
 		DiffFields: func(desired ecrrepo.ECRRepositorySpec, observed ecrrepo.ObservedState, _ ecrrepo.ECRRepositoryOutputs) []types.FieldDiff {
-			rawDiffs := ecrrepo.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ecrrepo.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

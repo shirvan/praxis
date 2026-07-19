@@ -65,7 +65,8 @@ func newGenericEKSClusterDriverWithFactory(auth authservice.AuthClient, factory 
 		OutputsFromObserved: func(observed ObservedState, _ EKSClusterOutputs) EKSClusterOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 		CheckReadiness: func(observed ObservedState) kernel.ReadinessResult {
 			switch strings.ToUpper(strings.TrimSpace(observed.Status)) {
 			case "ACTIVE":

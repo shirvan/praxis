@@ -102,12 +102,7 @@ func subnetDescriptor() GenericDescriptor[subnet.SubnetSpec, subnet.SubnetOutput
 		},
 
 		DiffFields: func(desired subnet.SubnetSpec, observed subnet.ObservedState, _ subnet.SubnetOutputs) []types.FieldDiff {
-			rawDiffs := subnet.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return subnet.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

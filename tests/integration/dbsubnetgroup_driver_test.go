@@ -71,16 +71,16 @@ func TestDBSubnetGroupProvision_Creates(t *testing.T) {
 	subnetIds := getDefaultSubnetIds(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, dbsubnetgroup.DBSubnetGroupOutputs](
 		client, "DBSubnetGroup", key, "Provision",
-	).Request(t.Context(), dbsubnetgroup.DBSubnetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbsubnetgroup.DBSubnetGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
 		Description: "Integration test subnet group",
 		SubnetIds:   subnetIds[:2],
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.GroupName)
 	assert.NotEmpty(t, outputs.ARN)
@@ -108,14 +108,14 @@ func TestDBSubnetGroupProvision_Idempotent(t *testing.T) {
 		Tags:        map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, dbsubnetgroup.DBSubnetGroupOutputs](
 		client, "DBSubnetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, dbsubnetgroup.DBSubnetGroupOutputs](
 		client, "DBSubnetGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.ARN, out2.ARN, "re-provision should return same ARN")
 }
@@ -155,16 +155,16 @@ func TestDBSubnetGroupDelete_Removes(t *testing.T) {
 	subnetIds := getDefaultSubnetIds(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, dbsubnetgroup.DBSubnetGroupOutputs](
 		client, "DBSubnetGroup", key, "Provision",
-	).Request(t.Context(), dbsubnetgroup.DBSubnetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbsubnetgroup.DBSubnetGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
 		Description: "To be deleted",
 		SubnetIds:   subnetIds[:2],
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -189,16 +189,16 @@ func TestDBSubnetGroupReconcile_DetectsTagDrift(t *testing.T) {
 	subnetIds := getDefaultSubnetIds(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, dbsubnetgroup.DBSubnetGroupOutputs](
 		client, "DBSubnetGroup", key, "Provision",
-	).Request(t.Context(), dbsubnetgroup.DBSubnetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbsubnetgroup.DBSubnetGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
 		Description: "Integration test subnet group",
 		SubnetIds:   subnetIds[:2],
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.ARN)
 
@@ -239,16 +239,16 @@ func TestDBSubnetGroupGetStatus_ReturnsReady(t *testing.T) {
 	subnetIds := getDefaultSubnetIds(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, dbsubnetgroup.DBSubnetGroupOutputs](
 		client, "DBSubnetGroup", key, "Provision",
-	).Request(t.Context(), dbsubnetgroup.DBSubnetGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbsubnetgroup.DBSubnetGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
 		Description: "Status check",
 		SubnetIds:   subnetIds[:2],
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

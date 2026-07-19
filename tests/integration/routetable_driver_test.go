@@ -74,14 +74,14 @@ func TestRouteTableProvision_CreatesWithRoutes(t *testing.T) {
 	name := uniqueRouteTableName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, routetable.RouteTableSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.RouteTableId)
 
@@ -104,14 +104,14 @@ func TestRouteTableProvision_WithSubnetAssociation(t *testing.T) {
 	name := uniqueRouteTableName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, routetable.RouteTableSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		VpcId:        vpcID,
 		ManagedKey:   key,
 		Associations: []routetable.Association{{SubnetId: subnetID}},
 		Tags:         map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	require.Len(t, outputs.Associations, 1)
 	assert.Equal(t, subnetID, outputs.Associations[0].SubnetId)
@@ -138,14 +138,14 @@ func TestRouteTableDelete_Removes(t *testing.T) {
 	name := uniqueRouteTableName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, routetable.RouteTableSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.RouteTableId)
 
@@ -167,14 +167,14 @@ func TestRouteTableGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueRouteTableName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	_, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, routetable.RouteTableSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, routetable.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
@@ -191,14 +191,14 @@ func TestRouteTableReconcile_NoDrift(t *testing.T) {
 	name := uniqueRouteTableName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	_, err := ingress.Object[routetable.RouteTableSpec, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), routetable.RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, routetable.RouteTableOutputs](client, routetable.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, routetable.RouteTableSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Routes:     []routetable.Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: igwID}},
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, routetable.ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})

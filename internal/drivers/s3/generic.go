@@ -55,6 +55,7 @@ func NewGenericS3BucketDriverWithFactory(auth authservice.AuthClient, factory fu
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 		LateInitialize:      LateInitS3Bucket,
 	})

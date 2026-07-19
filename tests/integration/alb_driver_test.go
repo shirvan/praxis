@@ -86,9 +86,9 @@ func TestALBProvision(t *testing.T) {
 	sgId := albDefaultSgId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, alb.ALBOutputs](
 		client, "ALB", key, "Provision",
-	).Request(t.Context(), alb.ALBSpec{
+	).Request(t.Context(), provisionRequest(t, alb.ALBSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		Name:           name,
@@ -98,7 +98,7 @@ func TestALBProvision(t *testing.T) {
 		SecurityGroups: []string{sgId},
 		IdleTimeout:    60,
 		Tags:           map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.LoadBalancerArn)
 	assert.NotEmpty(t, outputs.DnsName)
@@ -130,14 +130,14 @@ func TestALBProvisionIdempotent(t *testing.T) {
 		Tags:           map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, alb.ALBOutputs](
 		client, "ALB", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, alb.ALBOutputs](
 		client, "ALB", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.LoadBalancerArn, out2.LoadBalancerArn)
 }
@@ -149,9 +149,9 @@ func TestALBDelete(t *testing.T) {
 	sgId := albDefaultSgId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, alb.ALBOutputs](
 		client, "ALB", key, "Provision",
-	).Request(t.Context(), alb.ALBSpec{
+	).Request(t.Context(), provisionRequest(t, alb.ALBSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		Name:           name,
@@ -161,7 +161,7 @@ func TestALBDelete(t *testing.T) {
 		SecurityGroups: []string{sgId},
 		IdleTimeout:    60,
 		Tags:           map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -199,9 +199,9 @@ func TestALBReconcile_DetectsTagDrift(t *testing.T) {
 	sgId := albDefaultSgId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, alb.ALBOutputs](
 		client, "ALB", key, "Provision",
-	).Request(t.Context(), alb.ALBSpec{
+	).Request(t.Context(), provisionRequest(t, alb.ALBSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		Name:           name,
@@ -211,7 +211,7 @@ func TestALBReconcile_DetectsTagDrift(t *testing.T) {
 		SecurityGroups: []string{sgId},
 		IdleTimeout:    60,
 		Tags:           map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally overwrite a tag value to introduce drift.
@@ -244,9 +244,9 @@ func TestALBGetStatus(t *testing.T) {
 	sgId := albDefaultSgId(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[alb.ALBSpec, alb.ALBOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, alb.ALBOutputs](
 		client, "ALB", key, "Provision",
-	).Request(t.Context(), alb.ALBSpec{
+	).Request(t.Context(), provisionRequest(t, alb.ALBSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		Name:           name,
@@ -256,7 +256,7 @@ func TestALBGetStatus(t *testing.T) {
 		SecurityGroups: []string{sgId},
 		IdleTimeout:    60,
 		Tags:           map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

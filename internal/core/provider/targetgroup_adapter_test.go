@@ -36,3 +36,14 @@ func TestTargetGroupAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~api-tg", key)
 }
+
+func TestTargetGroupAdapter_NormalizeOutputs(t *testing.T) {
+	adapter := NewTargetGroupAdapterWithAuth(nil)
+	outputs, err := adapter.NormalizeOutputs(targetgroup.TargetGroupOutputs{
+		TargetGroupArn: "arn:target-group", TargetGroupName: "api",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"targetGroupArn": "arn:target-group", "targetGroupName": "api",
+	}, outputs)
+}

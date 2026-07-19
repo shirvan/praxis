@@ -233,7 +233,7 @@ func TestGenericECRRepositoryConvergesMutableConfigurationPolicyAndTags(t *testi
 	client := setupGenericECRRepository(t, api)
 	spec := managedRepositorySpec("drift-repository")
 	key := "us-east-1~drift-repository"
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -259,10 +259,10 @@ func TestGenericECRRepositoryRemovesOwnedPolicyWhenOmitted(t *testing.T) {
 	client := setupGenericECRRepository(t, api)
 	spec := managedRepositorySpec("policy-removal")
 	key := "us-east-1~policy-removal"
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.RepositoryPolicy = ""
-	_, err = ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Empty(t, api.repository().RepositoryPolicy)
 }
@@ -273,10 +273,10 @@ func TestGenericECRRepositoryRejectsImmutableIdentityAndEncryption(t *testing.T)
 		client := setupGenericECRRepository(t, api)
 		spec := managedRepositorySpec("original-repository")
 		key := "us-east-1~original-repository"
-		_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+		_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 		require.NoError(t, err)
 		spec.RepositoryName = "different-repository"
-		_, err = ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+		_, err = ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "repositoryName is immutable")
 		assert.Equal(t, 1, api.snapshot().Creates)
@@ -287,10 +287,10 @@ func TestGenericECRRepositoryRejectsImmutableIdentityAndEncryption(t *testing.T)
 		client := setupGenericECRRepository(t, api)
 		spec := managedRepositorySpec("encrypted-repository")
 		key := "us-east-1~encrypted-repository"
-		_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+		_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 		require.NoError(t, err)
 		spec.EncryptionConfiguration = &EncryptionConfiguration{EncryptionType: "KMS", KmsKey: "arn:aws:kms:us-east-1:123456789012:key/example"}
-		_, err = ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+		_, err = ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "encryptionConfiguration is immutable")
 		assert.Equal(t, 1, api.snapshot().Creates)
@@ -302,12 +302,12 @@ func TestGenericECRRepositoryRecoversPartialCreateWithoutSecondRepository(t *tes
 	client := setupGenericECRRepository(t, api)
 	spec := managedRepositorySpec("partial-repository")
 	key := "us-east-1~partial-repository"
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.True(t, api.testState().Exists)
 
-	_, err = ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, normalizeJSON(spec.RepositoryPolicy), normalizeJSON(api.repository().RepositoryPolicy))
@@ -318,7 +318,7 @@ func TestGenericECRRepositoryRecoversAmbiguousCreateResponse(t *testing.T) {
 	client := setupGenericECRRepository(t, api)
 	spec := managedRepositorySpec("ambiguous-repository")
 	key := "us-east-1~ambiguous-repository"
-	outputs, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, spec.RepositoryName, outputs.RepositoryName)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -332,7 +332,7 @@ func TestGenericECRRepositoryRetriesTransientObservation(t *testing.T) {
 		readErrors: []error{errors.New("ServiceUnavailable: transient describe failure")},
 	}
 	client := setupGenericECRRepository(t, api)
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, "us-east-1~read-retry", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, "us-east-1~read-retry", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Zero(t, api.snapshot().Creates)
 	assert.GreaterOrEqual(t, api.snapshot().Reads, 2)
@@ -343,7 +343,7 @@ func TestGenericECRRepositoryExternalDeleteRequiresReplacementWithoutCreate(t *t
 	client := setupGenericECRRepository(t, api)
 	spec := managedRepositorySpec("deleted-repository")
 	key := "us-east-1~deleted-repository"
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	creates := api.snapshot().Creates
 	api.removeExternally()
@@ -360,7 +360,7 @@ func TestGenericECRRepositoryDeleteDoesNotRemoveImagesImplicitly(t *testing.T) {
 	client := setupGenericECRRepository(t, api)
 	spec := managedRepositorySpec("non-empty-repository")
 	key := "us-east-1~non-empty-repository"
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -378,7 +378,7 @@ func TestGenericECRRepositoryForceDeleteIsExplicit(t *testing.T) {
 	spec := managedRepositorySpec("forced-repository")
 	spec.ForceDelete = true
 	key := "us-east-1~forced-repository"
-	_, err := ingress.Object[ECRRepositorySpec, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRRepositoryOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)

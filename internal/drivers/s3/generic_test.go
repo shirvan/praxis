@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"sync"
@@ -94,6 +95,12 @@ func (f *statefulS3API) snapshot() drivertest.ProviderSnapshot {
 	}
 }
 
+func (f *statefulS3API) setEncryption(algorithm string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.observed.EncryptionAlgo = algorithm
+}
+
 func setupGenericS3(t *testing.T, api S3API) *ingress.Client {
 	t.Helper()
 	t.Setenv("PRAXIS_ACCOUNT_NAME", "test")
@@ -106,6 +113,14 @@ func setupGenericS3(t *testing.T, api S3API) *ingress.Client {
 		func(aws.Config) S3API { return api },
 	)
 	return restatetest.Start(t, restate.Reflect(driver)).Ingress()
+}
+
+func provisionS3(t *testing.T, client *ingress.Client, key string, spec S3BucketSpec, lifecycle types.LifecyclePolicy) (S3BucketOutputs, error) {
+	t.Helper()
+	encoded, err := json.Marshal(spec)
+	require.NoError(t, err)
+	request := types.ProvisionRequest{Spec: encoded, Lifecycle: lifecycle}
+	return ingress.Object[types.ProvisionRequest, S3BucketOutputs](client, ServiceName, key, "Provision").Request(t.Context(), request)
 }
 
 func TestGenericS3CoreLifecycleAndLateInitialization(t *testing.T) {
@@ -142,7 +157,7 @@ func TestGenericS3RejectsImmutableIdentityAndRetainsInputs(t *testing.T) {
 	client := setupGenericS3(t, api)
 	key := "immutable-bucket"
 	spec := S3BucketSpec{Account: "test", BucketName: key, Region: "us-east-1", Tags: map[string]string{}}
-	_, err := ingress.Object[S3BucketSpec, S3BucketOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := provisionS3(t, client, key, spec, types.LifecyclePolicy{Reconcile: types.ReconcileModeAuto})
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, S3BucketSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -157,13 +172,37 @@ func TestGenericS3RejectsImmutableIdentityAndRetainsInputs(t *testing.T) {
 	for _, tt := range tests {
 		changed := accepted
 		tt.mutate(&changed)
-		_, err = ingress.Object[S3BucketSpec, S3BucketOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+		_, err = provisionS3(t, client, key, changed, types.LifecyclePolicy{Reconcile: types.ReconcileModeAuto})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tt.field+" is immutable")
 		retained, getErr := ingress.Object[restate.Void, S3BucketSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 		require.NoError(t, getErr)
 		assert.Equal(t, accepted, retained)
 	}
+}
+
+func TestGenericS3IgnoreChangesUsesSemanticEncryptionDiff(t *testing.T) {
+	api := &statefulS3API{}
+	client := setupGenericS3(t, api)
+	key := "ignored-encryption"
+	spec := S3BucketSpec{
+		Account: "test", BucketName: key, Region: "us-east-1",
+		Encryption: EncryptionSpec{Enabled: true, Algorithm: "aws:kms"},
+		Tags:       map[string]string{},
+	}
+	lifecycle := types.LifecyclePolicy{
+		Reconcile: types.ReconcileModeAuto, IgnoreChanges: []string{"encryption.algorithm"},
+	}
+	_, err := provisionS3(t, client, key, spec, lifecycle)
+	require.NoError(t, err)
+	api.setEncryption("AES256")
+	before := api.snapshot()
+
+	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, key, "Reconcile").Request(t.Context(), restate.Void{})
+	require.NoError(t, err)
+	assert.False(t, result.Drift)
+	assert.False(t, result.Correcting)
+	assert.Equal(t, before.Updates, api.snapshot().Updates, "ignored mismatched-shape field must not be corrected")
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

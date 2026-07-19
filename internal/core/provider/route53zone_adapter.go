@@ -85,12 +85,7 @@ func route53HostedZoneDescriptor() GenericDescriptor[route53zone.HostedZoneSpec,
 		},
 
 		DiffFields: func(desired route53zone.HostedZoneSpec, observed route53zone.ObservedState, _ route53zone.HostedZoneOutputs) []types.FieldDiff {
-			rawDiffs := route53zone.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return route53zone.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

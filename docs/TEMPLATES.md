@@ -506,6 +506,7 @@ resources: {
         spec: { ... }
 
         lifecycle: {
+			reconcile:      "auto"                 // or "observe"
             preventDestroy: true                   // block deletion
             ignoreChanges: ["masterUserPassword"]  // ignore drift in these fields
         }
@@ -515,11 +516,12 @@ resources: {
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `reconcile` | `"auto" \| "observe"` | `"auto"` | `auto` detects and corrects actionable drift. `observe` reports drift without provider writes and keeps an otherwise healthy resource ready. |
 | `preventDestroy` | `bool` | `false` | If `true`, the orchestrator refuses to delete this resource. Also blocks `--replace` and `--allow-replace`. Use `praxis delete --force` to override. |
 | `ignoreChanges` | `[...string]` | `[]` | Dot-separated spec field paths to ignore during plan diff and reconciliation. |
-| `orphanPolicy` | `string` | `"delete"` | What to do when a resource is removed from the template: `"delete"` (default) destroys it, `"orphan"` detaches it from management without deletion. |
-| `maxRetries` | `int` | (deployment default) | Maximum number of retry attempts for this resource before marking it as failed. Set to `0` to disable retries. |
+| `retry` | `object` | (deployment default) | Retry overrides: `maxRetries`, `baseDelay`, and `maxDelay`. |
 | `timeouts` | `object` | (adapter defaults) | Per-operation timeout overrides. See Timeouts below. |
+| `deletionPolicy` | `"Delete" \| "Orphan"` | `"Delete"` | `Delete` destroys a removed resource; `Orphan` removes Praxis management state while leaving the provider resource running. |
 | `wait` | `object` | `{enabled: true}` | Post-provision readiness polling configuration. See Wait below. |
 | `recovery` | `object` | `{mode: "Automatic"}` | Reconciliation recovery policy. Automatic replays the deployment DAG; Manual waits for an explicit apply. |
 
@@ -555,8 +557,9 @@ lifecycle: {
 
 #### Recovery
 
-Choose whether Core automatically replays the deployment DAG when a managed
-resource was deleted externally or waits for an explicit apply:
+For resources using `reconcile: "auto"`, choose whether Core automatically
+replays the deployment DAG after external deletion or waits for an explicit
+apply:
 
 ```cue
 lifecycle: {
@@ -570,9 +573,21 @@ lifecycle: {
 Observed resources always use manual recovery. Automatic recovery uses the
 same Restate-backed handler retries and operation timeouts as a normal apply.
 
-Lifecycle rules are validated during CUE template evaluation (independently from driver schemas), parsed during pipeline build, and threaded through the deployment state. The orchestrator and plan diff engine enforce them.
+Lifecycle rules are validated during CUE template evaluation, parsed during
+pipeline build, sent to the driver with the typed spec, and persisted in generic
+driver state. The plan engine and periodic reconciler therefore apply the same
+policy.
 
-**Field path matching:** `ignoreChanges` supports exact matches and prefix matching. Specifying `"tags"` ignores all `tags.*` fields. Specifying `"tags.env"` ignores only that specific tag.
+**Field path matching:** `ignoreChanges` paths are relative to `spec`; do not
+write a `spec.` prefix. Exact and prefix matching are supported. `"versioning"`
+matches a reported `spec.versioning` difference, `"encryption"` matches every
+field below encryption, and `"tags.env"` matches only that tag. Ignored fields
+are omitted from plans and never corrected by periodic reconciliation.
+
+`reconcile: "observe"` is different from `ignoreChanges`: observe disables all
+periodic provider writes for the resource while continuing to report drift.
+The resource remains `Ready` with `DriftFree=False`. An explicit apply still
+provisions the declared settings.
 
 **Conditional rules:** Use CUE expressions to set rules dynamically:
 

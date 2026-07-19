@@ -96,12 +96,7 @@ func kmsKeyDescriptor() GenericDescriptor[kmskey.KMSKeySpec, kmskey.KMSKeyOutput
 		},
 
 		DiffFields: func(desired kmskey.KMSKeySpec, observed kmskey.ObservedState, _ kmskey.KMSKeyOutputs) []types.FieldDiff {
-			rawDiffs := kmskey.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return kmskey.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

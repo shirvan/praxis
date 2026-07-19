@@ -63,7 +63,8 @@ func newGenericKeyPairDriverWithFactory(auth authservice.AuthClient, factory fun
 		OutputsFromObserved: func(observed ObservedState, _ KeyPairOutputs) KeyPairOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

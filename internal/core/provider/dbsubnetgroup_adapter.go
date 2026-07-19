@@ -91,12 +91,7 @@ func dbSubnetGroupDescriptor() GenericDescriptor[dbsubnetgroup.DBSubnetGroupSpec
 		},
 
 		DiffFields: func(desired dbsubnetgroup.DBSubnetGroupSpec, observed dbsubnetgroup.ObservedState, _ dbsubnetgroup.DBSubnetGroupOutputs) []types.FieldDiff {
-			rawDiffs := dbsubnetgroup.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return dbsubnetgroup.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

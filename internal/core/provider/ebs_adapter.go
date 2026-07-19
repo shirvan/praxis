@@ -111,12 +111,7 @@ func ebsDescriptor() GenericDescriptor[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, 
 		},
 
 		DiffFields: func(desired ebs.EBSVolumeSpec, observed ebs.ObservedState, _ ebs.EBSVolumeOutputs) []types.FieldDiff {
-			rawDiffs := ebs.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ebs.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

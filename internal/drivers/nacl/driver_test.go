@@ -523,7 +523,7 @@ func TestProvision_CreatesNetworkACL(t *testing.T) {
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~public"
 
-	outputs, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	outputs, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
 	assert.Equal(t, "acl-123", outputs.NetworkAclId)
 	assert.Equal(t, "vpc-123", outputs.VpcId)
@@ -543,7 +543,7 @@ func TestProvision_MissingVpcIdFails(t *testing.T) {
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~public"
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), NetworkACLSpec{Account: "test", Region: "us-east-1", ManagedKey: key})
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, NetworkACLSpec{Account: "test", Region: "us-east-1", ManagedKey: key}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpcId is required")
 }
@@ -558,7 +558,7 @@ func TestProvision_DuplicateRuleNumberFails(t *testing.T) {
 		{RuleNumber: 100, Protocol: "tcp", RuleAction: "allow", CidrBlock: "10.0.0.0/8", FromPort: 443, ToPort: 443},
 	}
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate ruleNumber 100")
 }
@@ -568,7 +568,7 @@ func TestProvision_ConflictFails(t *testing.T) {
 	api.managedKeys["vpc-123~public"] = "acl-existing"
 	client := setupNetworkACLDriver(t, api)
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, "vpc-123~public", "Provision").Request(t.Context(), testNetworkACLSpec("vpc-123~public", "vpc-123"))
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, "vpc-123~public", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec("vpc-123~public", "vpc-123")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already managed by Praxis")
 	assert.Equal(t, 0, api.createCalls)
@@ -579,7 +579,7 @@ func TestGenericNetworkACLRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) 
 	api.createErrors = []error{errors.New("ServiceUnavailable: create response lost")}
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~ambiguous"
-	outputs, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	outputs, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
 	assert.Equal(t, "acl-123", outputs.NetworkAclId)
 	assert.Equal(t, 1, api.createCalls)
@@ -589,9 +589,9 @@ func TestGenericNetworkACLRejectsImmutableVPCChange(t *testing.T) {
 	api := newFakeNetworkACLAPI()
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~immutable"
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
-	_, err = ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-999"))
+	_, err = ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-999")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpcId is immutable")
 }
@@ -604,13 +604,13 @@ func TestProvision_AssociationAddedAndRemoved(t *testing.T) {
 	spec := testNetworkACLSpec(key, "vpc-123")
 	spec.SubnetAssociations = []string{"subnet-a"}
 
-	outputs, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Len(t, outputs.Associations, 1)
 	assert.Equal(t, "subnet-a", outputs.Associations[0].SubnetId)
 
 	spec.SubnetAssociations = nil
-	outputs, err = ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err = ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Empty(t, outputs.Associations)
 
@@ -626,12 +626,12 @@ func TestProvision_TagAndRuleUpdate(t *testing.T) {
 	key := "vpc-123~public"
 	spec := testNetworkACLSpec(key, "vpc-123")
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Tags["env"] = "prod"
 	spec.IngressRules = []NetworkACLRule{{RuleNumber: 100, Protocol: "tcp", RuleAction: "allow", CidrBlock: "0.0.0.0/0", FromPort: 443, ToPort: 443}}
-	outputs, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "prod", api.observed[outputs.NetworkAclId].Tags["env"])
 	assert.Len(t, api.replaceEntryCalls, 1)
@@ -675,7 +675,7 @@ func TestDelete_DisassociatesAndDeletes(t *testing.T) {
 	spec := testNetworkACLSpec(key, "vpc-123")
 	spec.SubnetAssociations = []string{"subnet-a"}
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -693,7 +693,7 @@ func TestDelete_MissingDefaultACLReturnsBoundedTerminalError(t *testing.T) {
 	spec := testNetworkACLSpec(key, "vpc-123")
 	spec.SubnetAssociations = []string{"subnet-a"}
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	delete(api.observed, defaultID)
@@ -740,7 +740,7 @@ func TestReconcile_DetectsRuleDrift(t *testing.T) {
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~public"
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -765,7 +765,7 @@ func TestReconcile_DetectsAssociationDrift(t *testing.T) {
 	spec := testNetworkACLSpec(key, "vpc-123")
 	spec.SubnetAssociations = []string{"subnet-a"}
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -789,7 +789,7 @@ func TestReconcile_DetectsTagDrift(t *testing.T) {
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~public"
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -834,7 +834,7 @@ func TestReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~public"
 
-	_, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	_, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -854,7 +854,7 @@ func TestGetOutputs_ReturnsOutputs(t *testing.T) {
 	client := setupNetworkACLDriver(t, api)
 	key := "vpc-123~public"
 
-	provided, err := ingress.Object[NetworkACLSpec, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testNetworkACLSpec(key, "vpc-123"))
+	provided, err := ingress.Object[types.ProvisionRequest, NetworkACLOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testNetworkACLSpec(key, "vpc-123")))
 	require.NoError(t, err)
 
 	outputs, err := ingress.Object[restate.Void, NetworkACLOutputs](client, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})

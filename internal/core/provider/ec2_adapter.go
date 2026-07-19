@@ -114,12 +114,7 @@ func ec2Descriptor() GenericDescriptor[ec2.EC2InstanceSpec, ec2.EC2InstanceOutpu
 		},
 
 		DiffFields: func(desired ec2.EC2InstanceSpec, observed ec2.ObservedState, _ ec2.EC2InstanceOutputs) []types.FieldDiff {
-			rawDiffs := ec2.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ec2.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

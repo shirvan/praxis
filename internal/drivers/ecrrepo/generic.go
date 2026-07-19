@@ -58,7 +58,8 @@ func newGenericECRRepositoryDriverWithFactory(auth authservice.AuthClient, facto
 		OutputsFromObserved: func(observed ObservedState, _ ECRRepositoryOutputs) ECRRepositoryOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

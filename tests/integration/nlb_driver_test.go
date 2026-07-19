@@ -73,9 +73,9 @@ func TestNLBProvision(t *testing.T) {
 	subnets := nlbSubnets(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[nlb.NLBSpec, nlb.NLBOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, nlb.NLBOutputs](
 		client, "NLB", key, "Provision",
-	).Request(t.Context(), nlb.NLBSpec{
+	).Request(t.Context(), provisionRequest(t, nlb.NLBSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		Name:          name,
@@ -83,7 +83,7 @@ func TestNLBProvision(t *testing.T) {
 		IpAddressType: "ipv4",
 		Subnets:       subnets,
 		Tags:          map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.LoadBalancerArn)
 	assert.NotEmpty(t, outputs.DnsName)
@@ -112,14 +112,14 @@ func TestNLBProvisionIdempotent(t *testing.T) {
 		Tags:          map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[nlb.NLBSpec, nlb.NLBOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, nlb.NLBOutputs](
 		client, "NLB", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[nlb.NLBSpec, nlb.NLBOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, nlb.NLBOutputs](
 		client, "NLB", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.LoadBalancerArn, out2.LoadBalancerArn)
 }
@@ -130,9 +130,9 @@ func TestNLBDelete(t *testing.T) {
 	subnets := nlbSubnets(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[nlb.NLBSpec, nlb.NLBOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, nlb.NLBOutputs](
 		client, "NLB", key, "Provision",
-	).Request(t.Context(), nlb.NLBSpec{
+	).Request(t.Context(), provisionRequest(t, nlb.NLBSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		Name:          name,
@@ -140,7 +140,7 @@ func TestNLBDelete(t *testing.T) {
 		IpAddressType: "ipv4",
 		Subnets:       subnets,
 		Tags:          map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -160,9 +160,9 @@ func TestNLBReconcile_DetectsTagDrift(t *testing.T) {
 	subnets := nlbSubnets(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[nlb.NLBSpec, nlb.NLBOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, nlb.NLBOutputs](
 		client, "NLB", key, "Provision",
-	).Request(t.Context(), nlb.NLBSpec{
+	).Request(t.Context(), provisionRequest(t, nlb.NLBSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		Name:          name,
@@ -170,7 +170,7 @@ func TestNLBReconcile_DetectsTagDrift(t *testing.T) {
 		IpAddressType: "ipv4",
 		Subnets:       subnets,
 		Tags:          map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally overwrite a tag value to introduce drift.
@@ -202,9 +202,9 @@ func TestNLBGetStatus(t *testing.T) {
 	subnets := nlbSubnets(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[nlb.NLBSpec, nlb.NLBOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, nlb.NLBOutputs](
 		client, "NLB", key, "Provision",
-	).Request(t.Context(), nlb.NLBSpec{
+	).Request(t.Context(), provisionRequest(t, nlb.NLBSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		Name:          name,
@@ -212,7 +212,7 @@ func TestNLBGetStatus(t *testing.T) {
 		IpAddressType: "ipv4",
 		Subnets:       subnets,
 		Tags:          map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

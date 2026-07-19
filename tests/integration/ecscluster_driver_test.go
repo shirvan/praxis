@@ -65,9 +65,9 @@ func baseECSClusterSpec(name string) ecscluster.ECSClusterSpec {
 
 func provisionECSCluster(t *testing.T, client *ingress.Client, key string, spec ecscluster.ECSClusterSpec) ecscluster.ECSClusterOutputs {
 	t.Helper()
-	out, err := ingress.Object[ecscluster.ECSClusterSpec, ecscluster.ECSClusterOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, ecscluster.ECSClusterOutputs](
 		client, ecscluster.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	return out
 }

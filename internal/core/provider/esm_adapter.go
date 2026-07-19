@@ -83,12 +83,7 @@ func esmDescriptor() GenericDescriptor[esm.EventSourceMappingSpec, esm.EventSour
 		},
 
 		DiffFields: func(desired esm.EventSourceMappingSpec, observed esm.ObservedState, _ esm.EventSourceMappingOutputs) []types.FieldDiff {
-			rawDiffs := esm.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return esm.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

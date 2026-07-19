@@ -231,6 +231,16 @@ func testDescriptor(ops *fakeOperations) kernel.Descriptor[testSpec, testOutputs
 		HasDrift: func(desired testSpec, observed testObserved) bool {
 			return desired.Name != observed.Name || desired.Value != observed.Value
 		},
+		FieldDiffs: func(desired testSpec, observed testObserved) []types.FieldDiff {
+			var diffs []types.FieldDiff
+			if desired.Name != observed.Name {
+				diffs = append(diffs, types.FieldDiff{Path: "spec.name", OldValue: observed.Name, NewValue: desired.Name})
+			}
+			if desired.Value != observed.Value {
+				diffs = append(diffs, types.FieldDiff{Path: "spec.value", OldValue: observed.Value, NewValue: desired.Value})
+			}
+			return diffs
+		},
 	}
 }
 
@@ -616,6 +626,7 @@ func TestDescriptorValidationRejectsImplicitOrIncompleteDefinitions(t *testing.T
 		}, want: "explicitly declared"},
 		{name: "operations", mutate: func(d *kernel.Descriptor[testSpec, testOutputs, testObserved]) { d.Operations = nil }, want: "operations"},
 		{name: "mapping", mutate: func(d *kernel.Descriptor[testSpec, testOutputs, testObserved]) { d.HasDrift = nil }, want: "lifecycle functions"},
+		{name: "field diffs", mutate: func(d *kernel.Descriptor[testSpec, testOutputs, testObserved]) { d.FieldDiffs = nil }, want: "lifecycle functions"},
 		{name: "late-init hook", mutate: func(d *kernel.Descriptor[testSpec, testOutputs, testObserved]) {
 			d.Capabilities.LateInitialization = true
 		}, want: "LateInitialize"},

@@ -99,12 +99,7 @@ func lambdaPermissionDescriptor() GenericDescriptor[lambdaperm.LambdaPermissionS
 		},
 
 		DiffFields: func(desired lambdaperm.LambdaPermissionSpec, observed lambdaperm.ObservedState, _ lambdaperm.LambdaPermissionOutputs) []types.FieldDiff {
-			rawDiffs := lambdaperm.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return lambdaperm.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

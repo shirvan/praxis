@@ -57,7 +57,8 @@ func newGenericAuroraClusterDriverWithFactory(auth authservice.AuthClient, facto
 		},
 		OutputsFromObserved: func(observed ObservedState, _ AuroraClusterOutputs) AuroraClusterOutputs {
 			return outputsFromObserved(observed)
-		}, HasDrift: HasDrift,
+		}, FieldDiffs: ComputeFieldDiffs,
+		HasDrift: HasDrift,
 	})
 }
 

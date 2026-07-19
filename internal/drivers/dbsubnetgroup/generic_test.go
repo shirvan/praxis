@@ -183,9 +183,9 @@ func TestGenericDBSubnetGroupObservedImportLifecycle(t *testing.T) {
 func TestGenericDBSubnetGroupRecoversAmbiguousCreate(t *testing.T) {
 	api := &statefulSubnetGroupAPI{createErrors: []error{errors.New("request timeout")}}
 	client := setupGenericDBSubnetGroup(t, api)
-	_, err := ingress.Object[DBSubnetGroupSpec, DBSubnetGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, DBSubnetGroupOutputs](
 		client, ServiceName, "us-east-1~generic-subnet-group", "Provision",
-	).Request(t.Context(), managedSubnetGroupSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedSubnetGroupSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 }
@@ -197,9 +197,9 @@ func TestGenericDBSubnetGroupRejectsNameCollisionWithoutOwnership(t *testing.T) 
 		SubnetIds: spec.SubnetIds, Tags: spec.Tags,
 	}}
 	client := setupGenericDBSubnetGroup(t, api)
-	_, err := ingress.Object[DBSubnetGroupSpec, DBSubnetGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, DBSubnetGroupOutputs](
 		client, ServiceName, "us-east-1~generic-subnet-group", "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exact Praxis ownership")
 	assert.Zero(t, api.snapshot().Creates)
@@ -210,11 +210,11 @@ func TestGenericDBSubnetGroupRejectsImmutableNameChange(t *testing.T) {
 	client := setupGenericDBSubnetGroup(t, api)
 	key := "us-east-1~generic-subnet-group"
 	spec := managedSubnetGroupSpec()
-	_, err := ingress.Object[DBSubnetGroupSpec, DBSubnetGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, DBSubnetGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	before := api.snapshot()
 	spec.GroupName = "replacement-name"
-	_, err = ingress.Object[DBSubnetGroupSpec, DBSubnetGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, DBSubnetGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "groupName is immutable")
 	assert.Equal(t, before.Creates, api.snapshot().Creates)
@@ -224,7 +224,7 @@ func TestGenericDBSubnetGroupExternalDeleteRequiresReplacement(t *testing.T) {
 	api := &statefulSubnetGroupAPI{}
 	client := setupGenericDBSubnetGroup(t, api)
 	key := "us-east-1~generic-subnet-group"
-	_, err := ingress.Object[DBSubnetGroupSpec, DBSubnetGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedSubnetGroupSpec())
+	_, err := ingress.Object[types.ProvisionRequest, DBSubnetGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedSubnetGroupSpec()))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.removeExternally()

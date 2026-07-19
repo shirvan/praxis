@@ -56,7 +56,8 @@ func newGenericECSClusterDriverWithFactory(auth authservice.AuthClient, factory 
 		OutputsFromObserved: func(observed ObservedState, _ ECSClusterOutputs) ECSClusterOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

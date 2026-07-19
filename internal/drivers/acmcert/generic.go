@@ -64,7 +64,8 @@ func newGenericACMCertificateDriverWithFactory(auth authservice.AuthClient, fact
 			}
 			return outputs
 		},
-		HasDrift: hasAnyDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   hasAnyDrift,
 	})
 }
 

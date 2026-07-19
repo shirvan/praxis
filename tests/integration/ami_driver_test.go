@@ -72,7 +72,7 @@ func TestAMIProvision_CopyImage(t *testing.T) {
 	name := uniqueAMIName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[ami.AMISpec, ami.AMIOutputs](client, "AMI", key, "Provision").Request(t.Context(), ami.AMISpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, ami.AMIOutputs](client, "AMI", key, "Provision").Request(t.Context(), provisionRequest(t, ami.AMISpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		Name:        name,
@@ -82,7 +82,7 @@ func TestAMIProvision_CopyImage(t *testing.T) {
 		}},
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	if err != nil {
 		t.Skipf("Moto AMI provision support unavailable: %v", err)
 	}

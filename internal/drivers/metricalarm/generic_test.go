@@ -215,7 +215,7 @@ func TestGenericMetricAlarmReconcileConvergesConfigurationActionsAndTags(t *test
 	client := setupGenericMetricAlarm(t, api)
 	spec := managedAlarmSpec("drift-alarm")
 	key := "us-east-1~drift-alarm"
-	_, err := ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.injectDrift()
@@ -234,11 +234,11 @@ func TestGenericMetricAlarmRejectsImmutableNameChange(t *testing.T) {
 	client := setupGenericMetricAlarm(t, api)
 	spec := managedAlarmSpec("original-alarm")
 	key := "us-east-1~original-alarm"
-	_, err := ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	before := api.snapshot()
 	spec.AlarmName = "different-alarm"
-	_, err = ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "alarmName is immutable")
 	assert.Equal(t, before.Updates, api.snapshot().Updates)
@@ -249,12 +249,12 @@ func TestGenericMetricAlarmRecoversPartialCreateWithoutSecondAlarm(t *testing.T)
 	client := setupGenericMetricAlarm(t, api)
 	spec := managedAlarmSpec("partial-alarm")
 	key := "us-east-1~partial-alarm"
-	_, err := ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, spec.AlarmName, api.alarm().AlarmName)
 
-	_, err = ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assertAlarmMatchesSpec(t, spec, api.alarm(), key)
@@ -265,7 +265,7 @@ func TestGenericMetricAlarmRetriesAmbiguousPutByName(t *testing.T) {
 	client := setupGenericMetricAlarm(t, api)
 	spec := managedAlarmSpec("response-loss-alarm")
 	key := "us-east-1~response-loss-alarm"
-	outputs, err := ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.AlarmArn)
 	snapshot := api.snapshot()
@@ -280,9 +280,9 @@ func TestGenericMetricAlarmRetriesTransientTagObservation(t *testing.T) {
 		tagReadErrors: []error{errors.New("ServiceUnavailable: tag read failed transiently")},
 	}
 	client := setupGenericMetricAlarm(t, api)
-	_, err := ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](
 		client, ServiceName, "us-east-1~tag-read-retry", "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Zero(t, api.snapshot().Creates)
 	assert.GreaterOrEqual(t, api.snapshot().Reads, 2, "the entire durable observation must retry")
@@ -293,7 +293,7 @@ func TestGenericMetricAlarmExternalDeleteIsVisibilityOnly(t *testing.T) {
 	client := setupGenericMetricAlarm(t, api)
 	spec := managedAlarmSpec("deleted-alarm")
 	key := "us-east-1~deleted-alarm"
-	_, err := ingress.Object[MetricAlarmSpec, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, MetricAlarmOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	creates := api.snapshot().Creates
 	api.removeExternally()

@@ -51,12 +51,12 @@ func TestEIPProvision_AllocatesAddress(t *testing.T) {
 	name := uniqueEIPName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, eip.ElasticIPSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.AllocationId)
 	assert.NotEmpty(t, outputs.PublicIp)
@@ -79,9 +79,9 @@ func TestEIPProvision_Idempotent(t *testing.T) {
 		Tags:       map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.AllocationId, out2.AllocationId)
 }
@@ -120,12 +120,12 @@ func TestEIPDelete_ReleasesAddress(t *testing.T) {
 	name := uniqueEIPName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
+	out, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, eip.ElasticIPSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, "ElasticIP", key, "Delete").Request(t.Context(), restate.Void{})
@@ -142,12 +142,12 @@ func TestEIPReconcile_DetectsAndFixesTagDrift(t *testing.T) {
 	streamKey := "dep-eip-drift-" + name
 	registerDriftEventOwner(t, client, key, streamKey, name, eip.ServiceName)
 
-	out, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
+	out, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, eip.ElasticIPSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{
@@ -176,12 +176,12 @@ func TestEIPReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	streamKey := "dep-eip-external-delete-" + name
 	registerDriftEventOwner(t, client, key, streamKey, name, eip.ServiceName)
 
-	out, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
+	out, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, eip.ElasticIPSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.ReleaseAddress(context.Background(), &ec2sdk.ReleaseAddressInput{AllocationId: aws.String(out.AllocationId)})
@@ -198,12 +198,12 @@ func TestEIPGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueEIPName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[eip.ElasticIPSpec, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), eip.ElasticIPSpec{
+	_, err := ingress.Object[types.ProvisionRequest, eip.ElasticIPOutputs](client, "ElasticIP", key, "Provision").Request(t.Context(), provisionRequest(t, eip.ElasticIPSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, "ElasticIP", key, "GetStatus").Request(t.Context(), restate.Void{})

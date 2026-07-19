@@ -68,9 +68,9 @@ func baseDynamoDBTableSpec(name string) dynamodbtable.DynamoDBTableSpec {
 
 func provisionDynamoDBTable(t *testing.T, client *ingress.Client, key string, spec dynamodbtable.DynamoDBTableSpec) dynamodbtable.DynamoDBTableOutputs {
 	t.Helper()
-	out, err := ingress.Object[dynamodbtable.DynamoDBTableSpec, dynamodbtable.DynamoDBTableOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, dynamodbtable.DynamoDBTableOutputs](
 		client, dynamodbtable.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	return out
 }

@@ -63,7 +63,8 @@ func newGenericHealthCheckDriverWithFactory(auth authservice.AuthClient, factory
 			}
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

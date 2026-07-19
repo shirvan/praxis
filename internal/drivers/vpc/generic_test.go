@@ -283,7 +283,7 @@ func TestGenericVPCObservedImportLifecycle(t *testing.T) {
 func TestGenericVPCRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
 	api := &statefulVPCAPI{createAfterApplyError: []error{errors.New("ServiceUnavailable: response lost after CreateVpc")}}
 	client := setupGenericVPC(t, api)
-	outputs, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, "us-east-1~ambiguous", "Provision").Request(t.Context(), managedVPCSpec())
+	outputs, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, "us-east-1~ambiguous", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedVPCSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "vpc-created", outputs.VpcId)
 	state := api.current()
@@ -294,7 +294,7 @@ func TestGenericVPCRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
 func TestGenericVPCWaiterRetriesWithoutSecondCreate(t *testing.T) {
 	api := &statefulVPCAPI{waitErrors: []error{errors.New("RequestLimitExceeded: transient waiter failure")}}
 	client := setupGenericVPC(t, api)
-	_, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, "us-east-1~wait", "Provision").Request(t.Context(), managedVPCSpec())
+	_, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, "us-east-1~wait", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedVPCSpec()))
 	require.NoError(t, err)
 	state := api.current()
 	assert.Equal(t, 1, state.CreateCalls)
@@ -308,13 +308,13 @@ func TestGenericVPCPreservesDNSDependencyOrdering(t *testing.T) {
 	spec := managedVPCSpec()
 	spec.EnableDnsHostnames = false
 	spec.EnableDnsSupport = false
-	_, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	before := len(api.current().Operations)
 	spec.EnableDnsSupport = true
 	spec.EnableDnsHostnames = true
-	_, err = ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	enabled := api.current().Operations[before:]
 	assert.Equal(t, []string{"support:true", "hostnames:true"}, enabled)
@@ -322,7 +322,7 @@ func TestGenericVPCPreservesDNSDependencyOrdering(t *testing.T) {
 	before = len(api.current().Operations)
 	spec.EnableDnsHostnames = false
 	spec.EnableDnsSupport = false
-	_, err = ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	disabled := api.current().Operations[before:]
 	assert.Equal(t, []string{"hostnames:false", "support:false"}, disabled)
@@ -333,7 +333,7 @@ func TestGenericVPCManagedReconcileCorrectsDNSAndTags(t *testing.T) {
 	client := setupGenericVPC(t, api)
 	key := "us-east-1~drift"
 	spec := managedVPCSpec()
-	_, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.observed.EnableDnsHostnames = false
@@ -356,7 +356,7 @@ func TestGenericVPCRejectsImmutableFieldsAndRetainsInputs(t *testing.T) {
 	client := setupGenericVPC(t, api)
 	key := "us-east-1~immutable"
 	spec := managedVPCSpec()
-	_, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, VPCSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -371,7 +371,7 @@ func TestGenericVPCRejectsImmutableFieldsAndRetainsInputs(t *testing.T) {
 	for _, tt := range tests {
 		changed := accepted
 		tt.mutate(&changed)
-		_, err = ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+		_, err = ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tt.field+" is immutable")
 		retained, getErr := ingress.Object[restate.Void, VPCSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -384,7 +384,7 @@ func TestGenericVPCOwnershipConflictIsRejected(t *testing.T) {
 	key := "us-east-1~conflict"
 	api := existingVPC("vpc-conflict", key)
 	client := setupGenericVPC(t, api)
-	_, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedVPCSpec())
+	_, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedVPCSpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already managed by Praxis")
 	assert.Zero(t, api.snapshot().Creates)
@@ -425,7 +425,7 @@ func TestGenericVPCExternalDeleteRequiresReplacementWithoutCreate(t *testing.T) 
 	api := &statefulVPCAPI{}
 	client := setupGenericVPC(t, api)
 	key := "us-east-1~external-delete"
-	_, err := ingress.Object[VPCSpec, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedVPCSpec())
+	_, err := ingress.Object[types.ProvisionRequest, VPCOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedVPCSpec()))
 	require.NoError(t, err)
 	creates := api.snapshot().Creates
 	api.removeExternally()

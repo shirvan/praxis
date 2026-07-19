@@ -158,21 +158,21 @@ func TestGenericLambdaOpaqueChangeImmutableAndExternalDelete(t *testing.T) {
 	client := setupGenericLambda(t, api)
 	key := "us-east-1~change"
 	spec := genericLambdaSpec()
-	_, err := ingress.Object[LambdaFunctionSpec, LambdaFunctionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, LambdaFunctionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	before := api.snapshot().Updates
 	spec.Code.ZipFile = "Yg=="
-	_, err = ingress.Object[LambdaFunctionSpec, LambdaFunctionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, LambdaFunctionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Greater(t, api.snapshot().Updates, before)
 	spec.PackageType = "Image"
 	spec.Code = CodeSpec{ImageURI: "repo:v1"}
-	_, err = ingress.Object[LambdaFunctionSpec, LambdaFunctionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, LambdaFunctionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 	api = &statefulLambdaAPI{}
 	client = setupGenericLambda(t, api)
-	_, err = ingress.Object[LambdaFunctionSpec, LambdaFunctionOutputs](client, ServiceName, "us-east-1~gone", "Provision").Request(t.Context(), genericLambdaSpec())
+	_, err = ingress.Object[types.ProvisionRequest, LambdaFunctionOutputs](client, ServiceName, "us-east-1~gone", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericLambdaSpec()))
 	require.NoError(t, err)
 	api.remove()
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, ServiceName, "us-east-1~gone", "Reconcile").Request(t.Context(), restate.Void{})
@@ -185,7 +185,7 @@ func TestGenericLambdaReadinessPendingAndFailed(t *testing.T) {
 	api := &statefulLambdaAPI{createState: "Pending"}
 	c := setupGenericLambda(t, api)
 	key := "us-east-1~pending"
-	_, err := ingress.Object[LambdaFunctionSpec, LambdaFunctionOutputs](c, ServiceName, key, "Provision").Request(t.Context(), genericLambdaSpec())
+	_, err := ingress.Object[types.ProvisionRequest, LambdaFunctionOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericLambdaSpec()))
 	require.NoError(t, err)
 	status, err := ingress.Object[restate.Void, types.StatusResponse](c, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -199,6 +199,6 @@ func TestGenericLambdaReadinessPendingAndFailed(t *testing.T) {
 
 	api = &statefulLambdaAPI{createState: "Failed"}
 	c = setupGenericLambda(t, api)
-	_, err = ingress.Object[LambdaFunctionSpec, LambdaFunctionOutputs](c, ServiceName, "us-east-1~failed", "Provision").Request(t.Context(), genericLambdaSpec())
+	_, err = ingress.Object[types.ProvisionRequest, LambdaFunctionOutputs](c, ServiceName, "us-east-1~failed", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericLambdaSpec()))
 	require.Error(t, err)
 }

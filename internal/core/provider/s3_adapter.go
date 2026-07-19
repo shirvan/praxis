@@ -100,12 +100,7 @@ func s3Descriptor() GenericDescriptor[s3.S3BucketSpec, s3.S3BucketOutputs, s3.Ob
 		},
 
 		DiffFields: func(desired s3.S3BucketSpec, observed s3.ObservedState, _ s3.S3BucketOutputs) []types.FieldDiff {
-			rawDiffs := s3.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return s3.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

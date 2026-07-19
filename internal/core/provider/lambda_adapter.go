@@ -109,12 +109,7 @@ func lambdaDescriptor() GenericDescriptor[lambda.LambdaFunctionSpec, lambda.Lamb
 		},
 
 		DiffFields: func(desired lambda.LambdaFunctionSpec, observed lambda.ObservedState, _ lambda.LambdaFunctionOutputs) []types.FieldDiff {
-			rawDiffs := lambda.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return lambda.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

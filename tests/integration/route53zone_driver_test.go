@@ -54,13 +54,13 @@ func TestRoute53ZoneProvision_CreatesZone(t *testing.T) {
 	client, r53Client := setupRoute53ZoneDriver(t)
 	zoneName := uniqueZoneName(t)
 
-	outputs, err := ingress.Object[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53zone.HostedZoneOutputs](
 		client, route53zone.ServiceName, zoneName, "Provision",
-	).Request(t.Context(), route53zone.HostedZoneSpec{
+	).Request(t.Context(), provisionRequest(t, route53zone.HostedZoneSpec{
 		Account: integrationAccountName,
 		Comment: "integration test zone",
 		Tags:    map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.HostedZoneId)
 	assert.Equal(t, zoneName, outputs.Name)
@@ -81,14 +81,14 @@ func TestRoute53ZoneProvision_Idempotent(t *testing.T) {
 		Tags:    map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, route53zone.HostedZoneOutputs](
 		client, route53zone.ServiceName, zoneName, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, route53zone.HostedZoneOutputs](
 		client, route53zone.ServiceName, zoneName, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.HostedZoneId, out2.HostedZoneId)
 }
@@ -127,12 +127,12 @@ func TestRoute53ZoneDelete_RemovesZone(t *testing.T) {
 	client, r53Client := setupRoute53ZoneDriver(t)
 	zoneName := uniqueZoneName(t)
 
-	outputs, err := ingress.Object[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53zone.HostedZoneOutputs](
 		client, route53zone.ServiceName, zoneName, "Provision",
-	).Request(t.Context(), route53zone.HostedZoneSpec{
+	).Request(t.Context(), provisionRequest(t, route53zone.HostedZoneSpec{
 		Account: integrationAccountName,
 		Tags:    map[string]string{},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -148,13 +148,13 @@ func TestRoute53ZoneReconcile_DetectsCommentDrift(t *testing.T) {
 	client, r53Client := setupRoute53ZoneDriver(t)
 	zoneName := uniqueZoneName(t)
 
-	outputs, err := ingress.Object[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53zone.HostedZoneOutputs](
 		client, route53zone.ServiceName, zoneName, "Provision",
-	).Request(t.Context(), route53zone.HostedZoneSpec{
+	).Request(t.Context(), provisionRequest(t, route53zone.HostedZoneSpec{
 		Account: integrationAccountName,
 		Comment: "original comment",
 		Tags:    map[string]string{},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: change comment directly
@@ -181,12 +181,12 @@ func TestRoute53ZoneGetStatus_ReturnsReady(t *testing.T) {
 	client, _ := setupRoute53ZoneDriver(t)
 	zoneName := uniqueZoneName(t)
 
-	_, err := ingress.Object[route53zone.HostedZoneSpec, route53zone.HostedZoneOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, route53zone.HostedZoneOutputs](
 		client, route53zone.ServiceName, zoneName, "Provision",
-	).Request(t.Context(), route53zone.HostedZoneSpec{
+	).Request(t.Context(), provisionRequest(t, route53zone.HostedZoneSpec{
 		Account: integrationAccountName,
 		Tags:    map[string]string{},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

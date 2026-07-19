@@ -110,12 +110,7 @@ func rdsInstanceDescriptor() GenericDescriptor[rdsinstance.RDSInstanceSpec, rdsi
 		},
 
 		DiffFields: func(desired rdsinstance.RDSInstanceSpec, observed rdsinstance.ObservedState, _ rdsinstance.RDSInstanceOutputs) []types.FieldDiff {
-			rawDiffs := rdsinstance.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return rdsinstance.ComputeFieldDiffs(desired, observed)
 		},
 		SensitiveFields: []string{"spec.masterUserPassword"},
 	}

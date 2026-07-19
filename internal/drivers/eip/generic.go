@@ -69,6 +69,7 @@ func newGenericElasticIPDriverWithFactories(
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

@@ -95,12 +95,7 @@ func metricAlarmDescriptor() GenericDescriptor[metricalarm.MetricAlarmSpec, metr
 		},
 
 		DiffFields: func(desired metricalarm.MetricAlarmSpec, observed metricalarm.ObservedState, _ metricalarm.MetricAlarmOutputs) []types.FieldDiff {
-			rawDiffs := metricalarm.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return metricalarm.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

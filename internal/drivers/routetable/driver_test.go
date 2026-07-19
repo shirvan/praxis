@@ -330,14 +330,14 @@ func TestProvision_CreatesNewRouteTable(t *testing.T) {
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~public-rt"
 
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Region:       "us-east-1",
 		VpcId:        "vpc-123",
 		Routes:       []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}},
 		Associations: []Association{{SubnetId: "subnet-123"}},
 		Tags:         map[string]string{"Name": "public-rt"},
 		ManagedKey:   key,
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, "rtb-123", outputs.RouteTableId)
 	assert.Equal(t, []string{"subnet-123"}, api.associateCalls)
@@ -348,11 +348,11 @@ func TestProvision_CreatesNewRouteTable(t *testing.T) {
 func TestProvision_RouteWithMultipleTargetsFails(t *testing.T) {
 	api := newFakeRouteTableAPI()
 	client := setupRouteTableDriver(t, api)
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, "vpc-123~public-rt", "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, "vpc-123~public-rt", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Region: "us-east-1",
 		VpcId:  "vpc-123",
 		Routes: []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123", NatGatewayId: "nat-123"}},
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exactly one target")
 	assert.Contains(t, err.Error(), "400")
@@ -364,22 +364,22 @@ func TestProvision_ReplaceRouteTarget(t *testing.T) {
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~public-rt"
 
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Region:     "us-east-1",
 		VpcId:      "vpc-123",
 		ManagedKey: key,
 		Routes:     []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}},
 		Tags:       map[string]string{"Name": "public-rt"},
-	})
+	}))
 	require.NoError(t, err)
 
-	_, err = ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	_, err = ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Region:     "us-east-1",
 		VpcId:      "vpc-123",
 		ManagedKey: key,
 		Routes:     []Route{{DestinationCidrBlock: "0.0.0.0/0", NatGatewayId: "nat-123"}},
 		Tags:       map[string]string{"Name": "public-rt"},
-	})
+	}))
 	require.NoError(t, err)
 	require.Len(t, api.replaceRouteCalls, 1)
 	assert.Equal(t, "nat-123", api.replaceRouteCalls[0].NatGatewayId)
@@ -395,11 +395,11 @@ func TestGenericRouteTableAdoptsExactManagedKeyAndConverges(t *testing.T) {
 	api.managedKeys[key] = "rtb-existing"
 	client := setupRouteTableDriver(t, api)
 
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-123",
 		Routes: []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}},
 		Tags:   map[string]string{"env": "prod"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, "rtb-existing", outputs.RouteTableId)
 	assert.Zero(t, api.snapshot().Creates)
@@ -419,9 +419,9 @@ func TestGenericRouteTableRejectsImmutableVPCChange(t *testing.T) {
 	api.managedKeys[key] = "rtb-existing"
 	client := setupRouteTableDriver(t, api)
 
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-new",
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpcId is immutable")
 	assert.Contains(t, err.Error(), "409")
@@ -434,7 +434,7 @@ func TestGenericRouteTableRejectsDifferentManagedOwner(t *testing.T) {
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~ownership"
 	spec := RouteTableSpec{Account: "test", Region: "us-east-1", VpcId: "vpc-123"}
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	observed := api.observed[outputs.RouteTableId]
@@ -443,7 +443,7 @@ func TestGenericRouteTableRejectsDifferentManagedOwner(t *testing.T) {
 	api.mu.Unlock()
 	before := api.snapshot()
 
-	_, err = ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "different-owner")
 	assert.Contains(t, err.Error(), "409")
@@ -463,9 +463,9 @@ func TestGenericRouteTableAmbiguousManagedOwnershipIsTerminal(t *testing.T) {
 	api.findError = errors.New("ownership corruption: 2 route tables claim managed-key")
 	client := setupRouteTableDriver(t, api)
 
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, "vpc-123~ambiguous", "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, "vpc-123~ambiguous", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-123",
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ownership corruption")
 	assert.Contains(t, err.Error(), "409")
@@ -478,9 +478,9 @@ func TestGenericRouteTableAmbiguousCreateResponseAdoptsWithoutDuplicate(t *testi
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~ambiguous-create"
 
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-123", Tags: map[string]string{"env": "prod"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, "rtb-123", outputs.RouteTableId)
 	assert.Equal(t, 1, api.snapshot().Creates, "the retry must adopt the atomically tagged table instead of creating another")
@@ -491,10 +491,10 @@ func TestGenericRouteTableCallerCannotOverrideManagedKeyTag(t *testing.T) {
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~authoritative-key"
 
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-123",
 		Tags: map[string]string{routeTableManagedKeyTag: "spoofed", "env": "prod"},
-	})
+	}))
 	require.NoError(t, err)
 	api.mu.Lock()
 	defer api.mu.Unlock()
@@ -506,11 +506,11 @@ func TestDelete_MainRouteTableBlocked(t *testing.T) {
 	api := newFakeRouteTableAPI()
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~public-rt"
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Region:     "us-east-1",
 		VpcId:      "vpc-123",
 		ManagedKey: key,
-	})
+	}))
 	require.NoError(t, err)
 	api.mu.Lock()
 	obs := api.observed[outputs.RouteTableId]
@@ -527,11 +527,11 @@ func TestGenericRouteTableDeleteCleansOwnedRoutesAndAssociations(t *testing.T) {
 	api := newFakeRouteTableAPI()
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~delete-cleanup"
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-123",
 		Routes:       []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}},
 		Associations: []Association{{SubnetId: "subnet-123"}},
-	})
+	}))
 	require.NoError(t, err)
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -546,9 +546,9 @@ func TestGenericRouteTableDeleteDependencyConflictPreservesProviderTable(t *test
 	api := newFakeRouteTableAPI()
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~dependency-conflict"
-	outputs, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account: "test", Region: "us-east-1", VpcId: "vpc-123",
-	})
+	}))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.deleteError = &mockAPIError{code: "DependencyViolation", message: "resource is still referenced"}
@@ -580,14 +580,14 @@ func TestReconcile_RouteDriftCorrected_EmitsEvents(t *testing.T) {
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~public-rt"
 
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account:    "test",
 		Region:     "us-east-1",
 		VpcId:      "vpc-123",
 		ManagedKey: key,
 		Routes:     []Route{{DestinationCidrBlock: "0.0.0.0/0", GatewayId: "igw-123"}},
 		Tags:       map[string]string{"Name": "public-rt"},
-	})
+	}))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -631,13 +631,13 @@ func TestReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
 	client := setupRouteTableDriver(t, api)
 	key := "vpc-123~public-rt"
 
-	_, err := ingress.Object[RouteTableSpec, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RouteTableSpec{
+	_, err := ingress.Object[types.ProvisionRequest, RouteTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RouteTableSpec{
 		Account:    "test",
 		Region:     "us-east-1",
 		VpcId:      "vpc-123",
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": "public-rt"},
-	})
+	}))
 	require.NoError(t, err)
 
 	api.mu.Lock()

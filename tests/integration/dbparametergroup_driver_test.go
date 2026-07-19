@@ -52,9 +52,9 @@ func TestDBParameterGroupProvision_CreatesDB(t *testing.T) {
 	name := uniqueParamGroupName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), dbparametergroup.DBParameterGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbparametergroup.DBParameterGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
@@ -62,7 +62,7 @@ func TestDBParameterGroupProvision_CreatesDB(t *testing.T) {
 		Family:      "mysql8.0",
 		Description: "Integration test DB parameter group",
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.GroupName)
 	assert.NotEmpty(t, outputs.ARN)
@@ -81,9 +81,9 @@ func TestDBParameterGroupProvision_CreatesCluster(t *testing.T) {
 	name := uniqueParamGroupName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), dbparametergroup.DBParameterGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbparametergroup.DBParameterGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
@@ -91,7 +91,7 @@ func TestDBParameterGroupProvision_CreatesCluster(t *testing.T) {
 		Family:      "aurora-mysql8.0",
 		Description: "Integration test cluster parameter group",
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.GroupName)
 	assert.Equal(t, "cluster", outputs.Type)
@@ -119,14 +119,14 @@ func TestDBParameterGroupProvision_Idempotent(t *testing.T) {
 		Tags:        map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.ARN, out2.ARN)
 }
@@ -165,16 +165,16 @@ func TestDBParameterGroupDelete_Removes(t *testing.T) {
 	name := uniqueParamGroupName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), dbparametergroup.DBParameterGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbparametergroup.DBParameterGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
 		Type:        "db",
 		Family:      "mysql8.0",
 		Description: "To be deleted",
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -197,9 +197,9 @@ func TestDBParameterGroupReconcile_DetectsTagDrift(t *testing.T) {
 	name := uniqueParamGroupName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), dbparametergroup.DBParameterGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbparametergroup.DBParameterGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
@@ -207,7 +207,7 @@ func TestDBParameterGroupReconcile_DetectsTagDrift(t *testing.T) {
 		Family:      "mysql8.0",
 		Description: "Tag drift test",
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.ARN)
 
@@ -257,16 +257,16 @@ func TestDBParameterGroupGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueParamGroupName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, dbparametergroup.DBParameterGroupOutputs](
 		client, "DBParameterGroup", key, "Provision",
-	).Request(t.Context(), dbparametergroup.DBParameterGroupSpec{
+	).Request(t.Context(), provisionRequest(t, dbparametergroup.DBParameterGroupSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		GroupName:   name,
 		Type:        "db",
 		Family:      "mysql8.0",
 		Description: "Status check",
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

@@ -101,12 +101,7 @@ func auroraClusterDescriptor() GenericDescriptor[auroracluster.AuroraClusterSpec
 		},
 
 		DiffFields: func(desired auroracluster.AuroraClusterSpec, observed auroracluster.ObservedState, _ auroracluster.AuroraClusterOutputs) []types.FieldDiff {
-			rawDiffs := auroracluster.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return auroracluster.ComputeFieldDiffs(desired, observed)
 		},
 		SensitiveFields: []string{"spec.masterUserPassword"},
 	}

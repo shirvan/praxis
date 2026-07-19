@@ -69,9 +69,9 @@ func TestMetricAlarmProvision_CreatesAlarm(t *testing.T) {
 	name := uniqueAlarmName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultAlarmSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultAlarmSpec(name)))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.AlarmName)
 	assert.NotEmpty(t, outputs.AlarmArn)
@@ -91,14 +91,14 @@ func TestMetricAlarmProvision_Idempotent(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	spec := defaultAlarmSpec(name)
 
-	out1, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.AlarmArn, out2.AlarmArn)
@@ -115,9 +115,9 @@ func TestMetricAlarmProvision_UpdatesDimensionsActionsAndTags(t *testing.T) {
 		"arn:aws:sns:us-east-1:123456789012:z-action",
 		"arn:aws:sns:us-east-1:123456789012:a-action",
 	}
-	_, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Dimensions = map[string]string{"InstanceId": "i-updated", "AutoScalingGroupName": "api"}
@@ -125,9 +125,9 @@ func TestMetricAlarmProvision_UpdatesDimensionsActionsAndTags(t *testing.T) {
 	spec.OKActions = []string{"arn:aws:sns:us-east-1:123456789012:ok"}
 	spec.Threshold = 90
 	spec.Tags = map[string]string{"env": "prod", "team": "platform"}
-	_, err = ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	described, err := cwClient.DescribeAlarms(context.Background(), &cwsdk.DescribeAlarmsInput{AlarmNames: []string{name}})
@@ -195,9 +195,9 @@ func TestMetricAlarmDelete_RemovesAlarm(t *testing.T) {
 	name := uniqueAlarmName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultAlarmSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultAlarmSpec(name)))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -217,9 +217,9 @@ func TestMetricAlarmReconcile_DetectsThresholdDrift(t *testing.T) {
 	name := uniqueAlarmName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultAlarmSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultAlarmSpec(name)))
 	require.NoError(t, err)
 
 	// Externally change threshold to introduce drift
@@ -247,9 +247,9 @@ func TestMetricAlarmReconcile_ExternalDeleteRequiresReplacement(t *testing.T) {
 	client, cwClient := setupMetricAlarmDriver(t)
 	name := uniqueAlarmName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
-	_, err := ingress.Object[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, metricalarm.MetricAlarmOutputs](
 		client, metricalarm.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultAlarmSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultAlarmSpec(name)))
 	require.NoError(t, err)
 	_, err = cwClient.DeleteAlarms(context.Background(), &cwsdk.DeleteAlarmsInput{AlarmNames: []string{name}})
 	require.NoError(t, err)

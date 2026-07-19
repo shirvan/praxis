@@ -71,16 +71,16 @@ func TestSSMParameterProvision_CreatesParameter(t *testing.T) {
 	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
-	outputs, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), ssmparameter.SSMParameterSpec{
+	).Request(t.Context(), provisionRequest(t, ssmparameter.SSMParameterSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		ParameterName: name,
 		Value:         "db.internal",
 		Description:   "integration test parameter",
 		Tags:          map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.ParameterName)
 	assert.Equal(t, "String", outputs.Type)
@@ -105,14 +105,14 @@ func TestSSMParameterProvision_Idempotent(t *testing.T) {
 		Tags:          map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.ARN, out2.ARN)
@@ -131,15 +131,15 @@ func TestSSMParameterProvision_UpdatesValue(t *testing.T) {
 		Value:         "v1",
 	}
 
-	out1, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Value = "v2"
-	out2, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Greater(t, out2.Version, out1.Version, "overwrite should bump the parameter version")
 
@@ -184,14 +184,14 @@ func TestSSMParameterDelete_RemovesParameter(t *testing.T) {
 	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
-	_, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), ssmparameter.SSMParameterSpec{
+	).Request(t.Context(), provisionRequest(t, ssmparameter.SSMParameterSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		ParameterName: name,
 		Value:         "to-be-deleted",
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -209,14 +209,14 @@ func TestSSMParameterReconcile_DetectsValueDrift(t *testing.T) {
 	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
-	_, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), ssmparameter.SSMParameterSpec{
+	).Request(t.Context(), provisionRequest(t, ssmparameter.SSMParameterSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		ParameterName: name,
 		Value:         "desired-value",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally change the value to introduce drift
@@ -246,15 +246,15 @@ func TestSSMParameterProvision_SecureString(t *testing.T) {
 	registerSSMParameterCleanup(t, ssmClient, name)
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 
-	outputs, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), ssmparameter.SSMParameterSpec{
+	).Request(t.Context(), provisionRequest(t, ssmparameter.SSMParameterSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		ParameterName: name,
 		Type:          "SecureString",
 		Value:         "super-secret",
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, "SecureString", outputs.Type)
 
@@ -275,9 +275,9 @@ func TestSSMParameterReconcile_ExternalDeleteRequiresReplacement(t *testing.T) {
 		Account: integrationAccountName, Region: "us-east-1", ParameterName: name, Value: "desired-value",
 	}
 
-	_, err := ingress.Object[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ssmparameter.SSMParameterOutputs](
 		client, ssmparameter.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	_, err = ssmClient.DeleteParameter(context.Background(), &ssmsdk.DeleteParameterInput{Name: aws.String(name)})
 	require.NoError(t, err)

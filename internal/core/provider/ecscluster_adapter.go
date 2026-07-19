@@ -92,12 +92,7 @@ func ecsClusterDescriptor() GenericDescriptor[ecscluster.ECSClusterSpec, ecsclus
 		},
 
 		DiffFields: func(desired ecscluster.ECSClusterSpec, observed ecscluster.ObservedState, _ ecscluster.ECSClusterOutputs) []types.FieldDiff {
-			rawDiffs := ecscluster.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ecscluster.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

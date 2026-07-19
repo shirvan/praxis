@@ -57,7 +57,8 @@ func newGenericIGWDriverWithFactory(auth authservice.AuthClient, factory func(aw
 		OutputsFromObserved: func(observed ObservedState, _ IGWOutputs) IGWOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

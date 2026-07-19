@@ -56,7 +56,8 @@ func newGenericDBSubnetGroupDriverWithFactory(auth authservice.AuthClient, facto
 		OutputsFromObserved: func(observed ObservedState, _ DBSubnetGroupOutputs) DBSubnetGroupOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

@@ -105,9 +105,9 @@ func TestESMProvision_CreatesSQSMapping(t *testing.T) {
 		BatchSize:      aws.Int32(10),
 	}
 
-	outputs, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, esm.EventSourceMappingOutputs](
 		client, esm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.UUID)
 	assert.Equal(t, queueArn, outputs.EventSourceArn)
@@ -142,14 +142,14 @@ func TestESMProvision_Idempotent(t *testing.T) {
 		BatchSize:      aws.Int32(5),
 	}
 
-	out1, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, esm.EventSourceMappingOutputs](
 		client, esm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, esm.EventSourceMappingOutputs](
 		client, esm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.UUID, out2.UUID)
 }
@@ -174,9 +174,9 @@ func TestESMDelete_RemovesMapping(t *testing.T) {
 		BatchSize:      aws.Int32(10),
 	}
 
-	outputs, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, esm.EventSourceMappingOutputs](
 		client, esm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -202,16 +202,16 @@ func TestESMReconcile_DetectsBatchSizeDrift(t *testing.T) {
 	encodedSource := base64.RawURLEncoding.EncodeToString([]byte(queueArn))
 	key := fmt.Sprintf("us-east-1~%s~%s", funcName, encodedSource)
 
-	outputs, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, esm.EventSourceMappingOutputs](
 		client, esm.ServiceName, key, "Provision",
-	).Request(t.Context(), esm.EventSourceMappingSpec{
+	).Request(t.Context(), provisionRequest(t, esm.EventSourceMappingSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		FunctionName:   funcName,
 		EventSourceArn: queueArn,
 		Enabled:        true,
 		BatchSize:      aws.Int32(10),
-	})
+	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, outputs.UUID)
 
@@ -232,19 +232,19 @@ func TestESMReconcile_DetectsBatchSizeDrift(t *testing.T) {
 		t.Skip("Moto does not apply UpdateEventSourceMapping BatchSize")
 	}
 
-	// The ESM driver is detect-only: drift is reported but not auto-corrected.
+	// Automatic reconciliation restores the declared batch size.
 	result, err := ingress.Object[restate.Void, types.ReconcileResult](
 		client, esm.ServiceName, key, "Reconcile",
 	).Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.True(t, result.Drift, "drift should be detected")
-	assert.False(t, result.Correcting, "ESM driver is detect-only; no correction is performed")
+	assert.True(t, result.Correcting)
 
 	desc, err = lambdaClient.GetEventSourceMapping(context.Background(), &lambdasdk.GetEventSourceMappingInput{
 		UUID: aws.String(outputs.UUID),
 	})
 	require.NoError(t, err)
-	assert.Equal(t, int32(25), aws.ToInt32(desc.BatchSize), "detect-only driver should leave the external value in place")
+	assert.Equal(t, int32(10), aws.ToInt32(desc.BatchSize), "automatic reconciliation should restore the declared value")
 }
 
 func TestESMGetStatus_ReturnsReady(t *testing.T) {
@@ -267,9 +267,9 @@ func TestESMGetStatus_ReturnsReady(t *testing.T) {
 		BatchSize:      aws.Int32(10),
 	}
 
-	_, err := ingress.Object[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, esm.EventSourceMappingOutputs](
 		client, esm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

@@ -890,6 +890,7 @@ resources: {
 		kind: "S3Bucket"
 		metadata: name: "test-bucket"
 		lifecycle: {
+			reconcile: "observe"
 			preventDestroy: true
 			ignoreChanges: ["tags.lastModified"]
 			recovery: {
@@ -912,6 +913,7 @@ resources: {
 
 	lc, ok := parsed["lifecycle"].(map[string]any)
 	require.True(t, ok, "lifecycle block should be present in rendered output")
+	assert.Equal(t, "observe", lc["reconcile"])
 	assert.Equal(t, true, lc["preventDestroy"])
 
 	ignoreChanges, ok := lc["ignoreChanges"].([]any)
@@ -921,6 +923,23 @@ resources: {
 	require.True(t, ok)
 	assert.Equal(t, "Manual", recovery["mode"])
 	assert.Equal(t, "15m", recovery["timeout"])
+}
+
+func TestEngine_EvaluateBytes_RejectsInvalidLifecycleReconcileMode(t *testing.T) {
+	absSchemaDir, err := filepath.Abs(filepath.Join("..", "..", "..", "schemas", "aws"))
+	require.NoError(t, err)
+	eng := NewEngine(absSchemaDir)
+
+	_, err = eng.EvaluateBytes([]byte(`
+resources: bucket: {
+	kind: "S3Bucket"
+	metadata: name: "test-bucket"
+	lifecycle: reconcile: "sometimes"
+	spec: region: "us-east-1"
+}
+`), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reconcile")
 }
 
 func TestEngine_EvaluateBytes_LifecycleBlockOptional(t *testing.T) {

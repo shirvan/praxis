@@ -95,12 +95,7 @@ func igwDescriptor() GenericDescriptor[igw.IGWSpec, igw.IGWOutputs, igw.Observed
 		},
 
 		DiffFields: func(desired igw.IGWSpec, observed igw.ObservedState, _ igw.IGWOutputs) []types.FieldDiff {
-			rawDiffs := igw.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return igw.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

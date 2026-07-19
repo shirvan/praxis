@@ -2,6 +2,7 @@ package ekscluster
 
 import (
 	"context"
+	"github.com/shirvan/praxis/internal/drivers/drivertest"
 	"maps"
 	"sync"
 	"testing"
@@ -234,9 +235,9 @@ func TestProvision_RetriesResourceInUseDuringMutableUpdate(t *testing.T) {
 	}}
 	client := setupRetryEKSDriver(t, api)
 
-	outputs, err := ingress.Object[EKSClusterSpec, EKSClusterOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, EKSClusterOutputs](
 		client, ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "prod", outputs.Name)
 	assert.Equal(t, "ACTIVE", outputs.Status)

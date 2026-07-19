@@ -10,7 +10,6 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
-	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/sg"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -67,12 +66,7 @@ func securityGroupDescriptor() GenericDescriptor[sg.SecurityGroupSpec, sg.Securi
 			return securityGroupProbe(sg.NewSGAPI(awsclient.NewEC2Client(cfg)))
 		},
 		DiffFields: func(desired sg.SecurityGroupSpec, observed sg.ObservedState, _ sg.SecurityGroupOutputs) []types.FieldDiff {
-			raw := sg.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(raw))
-			for _, diff := range raw {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return sg.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }
@@ -84,10 +78,7 @@ func securityGroupProbe(api sg.SGAPI) PlanProbeFunc[sg.SecurityGroupSpec, sg.Sec
 			if sg.IsNotFound(err) {
 				return sg.ObservedState{}, false, nil
 			}
-			if awserr.IsThrottled(err) {
-				return sg.ObservedState{}, false, err
-			}
-			return sg.ObservedState{}, false, restate.TerminalError(err, 500)
+			return sg.ObservedState{}, false, err
 		}
 		return observed, true, nil
 	}

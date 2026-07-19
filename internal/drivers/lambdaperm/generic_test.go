@@ -245,7 +245,7 @@ func TestGenericLambdaPermissionRejectsDifferentSameIdentity(t *testing.T) {
 	api.seed(existing)
 	client := setupGenericPermission(t, api)
 
-	_, err := ingress.Object[LambdaPermissionSpec, LambdaPermissionOutputs](client, ServiceName, "us-east-1~processor~collision", "Provision").Request(t.Context(), managedPermissionSpec("collision"))
+	_, err := ingress.Object[types.ProvisionRequest, LambdaPermissionOutputs](client, ServiceName, "us-east-1~processor~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPermissionSpec("collision")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
 	assert.Equal(t, "events.amazonaws.com", api.clonePermissions()[permissionKey("processor", "collision")].Principal)
@@ -285,7 +285,7 @@ func TestGenericLambdaPermissionRejectsImmutableIdentityChanges(t *testing.T) {
 			key := "us-east-1~processor~" + spec.StatementId
 			provisionPermission(t, client, key, spec)
 			test.mutate(&spec)
-			_, err := ingress.Object[LambdaPermissionSpec, LambdaPermissionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+			_, err := ingress.Object[types.ProvisionRequest, LambdaPermissionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.want)
 			assert.Len(t, api.clonePermissions(), 1)
@@ -337,7 +337,7 @@ func TestPermissionHelpers(t *testing.T) {
 
 func provisionPermission(t *testing.T, client *ingress.Client, key string, spec LambdaPermissionSpec) LambdaPermissionOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[LambdaPermissionSpec, LambdaPermissionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, LambdaPermissionOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }

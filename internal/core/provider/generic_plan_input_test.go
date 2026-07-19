@@ -2,8 +2,11 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/aws/smithy-go"
+	restate "github.com/restatedev/sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,6 +17,72 @@ import (
 	"github.com/shirvan/praxis/internal/drivers/sg"
 	"github.com/shirvan/praxis/internal/drivers/targetgroup"
 )
+
+type probeErrorCall func(error) error
+
+func migratedProbeErrorCalls() map[string]probeErrorCall {
+	return map[string]probeErrorCall{
+		"ALB": func(probeErr error) error {
+			_, _, err := albProbe(&errorALBAPI{err: probeErr})(nil, PlanProbeInput[alb.ALBSpec, alb.ALBOutputs]{Identity: "web"})
+			return err
+		},
+		"NLB": func(probeErr error) error {
+			_, _, err := nlbProbe(&errorNLBAPI{err: probeErr})(nil, PlanProbeInput[nlb.NLBSpec, nlb.NLBOutputs]{Identity: "edge"})
+			return err
+		},
+		"TargetGroup": func(probeErr error) error {
+			_, _, err := targetGroupProbe(&errorTargetGroupAPI{err: probeErr})(nil, PlanProbeInput[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs]{Identity: "api"})
+			return err
+		},
+		"DBParameterGroup": func(probeErr error) error {
+			_, _, err := dbParameterGroupProbe(&errorParameterGroupAPI{err: probeErr})(nil, PlanProbeInput[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs]{Identity: "params"})
+			return err
+		},
+		"LambdaLayer": func(probeErr error) error {
+			_, _, err := lambdaLayerProbe(&errorLayerAPI{err: probeErr})(nil, PlanProbeInput[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs]{Identity: "utilities"})
+			return err
+		},
+		"SecurityGroup": func(probeErr error) error {
+			_, _, err := securityGroupProbe(&errorSecurityGroupAPI{err: probeErr})(nil, PlanProbeInput[sg.SecurityGroupSpec, sg.SecurityGroupOutputs]{Identity: "web", Desired: sg.SecurityGroupSpec{VpcId: "vpc-1"}})
+			return err
+		},
+	}
+}
+
+func TestMigratedPlanProbesPreserveRetryableErrors(t *testing.T) {
+	for name, call := range migratedProbeErrorCalls() {
+		t.Run(name, func(t *testing.T) {
+			transportErr := errors.New("connection reset by peer")
+			got := call(transportErr)
+			assert.ErrorIs(t, got, transportErr)
+			assert.False(t, restate.IsTerminalError(got))
+		})
+	}
+}
+
+func TestMigratedPlanProbeErrorsAreClassifiedAtGenericBoundary(t *testing.T) {
+	boundaryCases := []struct {
+		name   string
+		code   string
+		status uint16
+	}{
+		{name: "access denied", code: "AccessDeniedException", status: 403},
+		{name: "validation", code: "ValidationException", status: 400},
+	}
+	for probeName, call := range migratedProbeErrorCalls() {
+		for _, boundaryCase := range boundaryCases {
+			t.Run(probeName+"/"+boundaryCase.name, func(t *testing.T) {
+				providerErr := &smithy.GenericAPIError{Code: boundaryCase.code, Message: "test"}
+				raw := call(providerErr)
+				require.False(t, restate.IsTerminalError(raw), "the resource probe must not own shared classification")
+
+				classified := classifyPlanProbeError(raw)
+				require.True(t, restate.IsTerminalError(classified))
+				assert.Equal(t, boundaryCase.status, uint16(restate.ErrorCode(classified)))
+			})
+		}
+	}
+}
 
 func TestFallbackPlanIdentities(t *testing.T) {
 	tests := []struct {
@@ -138,4 +207,58 @@ func (a *capturingParameterGroupAPI) DeleteParameterGroup(context.Context, strin
 
 func (a *capturingParameterGroupAPI) UpdateTags(context.Context, string, map[string]string) error {
 	return nil
+}
+
+type errorALBAPI struct {
+	alb.ALBAPI
+	err error
+}
+
+func (a *errorALBAPI) DescribeALB(context.Context, string) (alb.ObservedState, error) {
+	return alb.ObservedState{}, a.err
+}
+
+type errorNLBAPI struct {
+	nlb.NLBAPI
+	err error
+}
+
+func (a *errorNLBAPI) DescribeNLB(context.Context, string) (nlb.ObservedState, error) {
+	return nlb.ObservedState{}, a.err
+}
+
+type errorTargetGroupAPI struct {
+	targetgroup.TargetGroupAPI
+	err error
+}
+
+func (a *errorTargetGroupAPI) DescribeTargetGroup(context.Context, string) (targetgroup.ObservedState, error) {
+	return targetgroup.ObservedState{}, a.err
+}
+
+type errorParameterGroupAPI struct {
+	dbparametergroup.DBParameterGroupAPI
+	err error
+}
+
+func (a *errorParameterGroupAPI) DescribeParameterGroup(context.Context, string, string) (dbparametergroup.ObservedState, error) {
+	return dbparametergroup.ObservedState{}, a.err
+}
+
+type errorLayerAPI struct {
+	lambdalayer.LayerAPI
+	err error
+}
+
+func (a *errorLayerAPI) GetLatestLayerVersion(context.Context, string) (lambdalayer.ObservedState, error) {
+	return lambdalayer.ObservedState{}, a.err
+}
+
+type errorSecurityGroupAPI struct {
+	sg.SGAPI
+	err error
+}
+
+func (a *errorSecurityGroupAPI) FindSecurityGroup(context.Context, string, string) (sg.ObservedState, error) {
+	return sg.ObservedState{}, a.err
 }

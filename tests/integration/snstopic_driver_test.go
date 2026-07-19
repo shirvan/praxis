@@ -24,15 +24,15 @@ func TestSNSTopic_Provision(t *testing.T) {
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
 
-	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), snstopic.SNSTopicSpec{
+	).Request(t.Context(), provisionRequest(t, snstopic.SNSTopicSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		TopicName:   topicName,
 		DisplayName: "Test Topic",
 		Tags:        map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, topicName, outputs.TopicName)
 	assert.NotEmpty(t, outputs.TopicArn)
@@ -57,14 +57,14 @@ func TestSNSTopic_Provision_Idempotent(t *testing.T) {
 		DisplayName: "Test Topic",
 	}
 
-	out1, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.TopicArn, out2.TopicArn)
@@ -79,9 +79,9 @@ func TestSNSTopic_ProvisionFIFOAndRejectsImmutableTypeChange(t *testing.T) {
 		Account: integrationAccountName, Region: "us-east-1", TopicName: topicName,
 		FifoTopic: true, ContentBasedDeduplication: true,
 	}
-	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	attributes, err := snsClient.GetTopicAttributes(context.Background(), &snssdk.GetTopicAttributesInput{
@@ -93,9 +93,9 @@ func TestSNSTopic_ProvisionFIFOAndRejectsImmutableTypeChange(t *testing.T) {
 
 	spec.FifoTopic = false
 	spec.ContentBasedDeduplication = false
-	_, err = ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fifoTopic is immutable")
 }
@@ -135,13 +135,13 @@ func TestSNSTopic_Delete(t *testing.T) {
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
 
-	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), snstopic.SNSTopicSpec{
+	).Request(t.Context(), provisionRequest(t, snstopic.SNSTopicSpec{
 		Account:   integrationAccountName,
 		Region:    "us-east-1",
 		TopicName: topicName,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -160,11 +160,11 @@ func TestSNSTopic_DeleteRejectsExistingSubscription(t *testing.T) {
 	client, snsClient := setupSNSTopicDriver(t)
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
-	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), snstopic.SNSTopicSpec{
+	).Request(t.Context(), provisionRequest(t, snstopic.SNSTopicSpec{
 		Account: integrationAccountName, Region: "us-east-1", TopicName: topicName,
-	})
+	}))
 	require.NoError(t, err)
 
 	queueSuffix := topicName
@@ -224,14 +224,14 @@ func TestSNSTopic_Reconcile_DetectsDisplayNameDrift(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", topicName)
 
 	// Provision with DisplayName
-	outputs, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), snstopic.SNSTopicSpec{
+	).Request(t.Context(), provisionRequest(t, snstopic.SNSTopicSpec{
 		Account:     integrationAccountName,
 		Region:      "us-east-1",
 		TopicName:   topicName,
 		DisplayName: "Original Name",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: change display name directly via SNS API
@@ -263,13 +263,13 @@ func TestSNSTopic_GetStatus(t *testing.T) {
 	topicName := uniqueTopicName(t)
 	key := fmt.Sprintf("us-east-1~%s", topicName)
 
-	_, err := ingress.Object[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, snstopic.SNSTopicOutputs](
 		client, snstopic.ServiceName, key, "Provision",
-	).Request(t.Context(), snstopic.SNSTopicSpec{
+	).Request(t.Context(), provisionRequest(t, snstopic.SNSTopicSpec{
 		Account:   integrationAccountName,
 		Region:    "us-east-1",
 		TopicName: topicName,
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

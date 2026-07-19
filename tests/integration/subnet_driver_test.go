@@ -84,7 +84,7 @@ func TestSubnetProvision_CreatesRealSubnet(t *testing.T) {
 	name := uniqueSubnetName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), subnet.SubnetSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, subnet.SubnetSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		VpcId:            vpcID,
@@ -92,7 +92,7 @@ func TestSubnetProvision_CreatesRealSubnet(t *testing.T) {
 		AvailabilityZone: az,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.SubnetId)
 	assert.Equal(t, vpcID, outputs.VpcId)
@@ -122,9 +122,9 @@ func TestSubnetProvision_Idempotent(t *testing.T) {
 		Tags:             map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.SubnetId, out2.SubnetId)
 }
@@ -137,7 +137,7 @@ func TestSubnetProvision_WithPublicIP(t *testing.T) {
 	name := uniqueSubnetName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), subnet.SubnetSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, subnet.SubnetSpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		VpcId:               vpcID,
@@ -146,7 +146,7 @@ func TestSubnetProvision_WithPublicIP(t *testing.T) {
 		MapPublicIpOnLaunch: true,
 		ManagedKey:          key,
 		Tags:                map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 	assert.True(t, outputs.MapPublicIpOnLaunch)
 
@@ -193,7 +193,7 @@ func TestSubnetDelete_DeletesSubnet(t *testing.T) {
 	name := uniqueSubnetName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), subnet.SubnetSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, subnet.SubnetSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		VpcId:            vpcID,
@@ -201,7 +201,7 @@ func TestSubnetDelete_DeletesSubnet(t *testing.T) {
 		AvailabilityZone: az,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, subnet.ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -219,7 +219,7 @@ func TestSubnetReconcile_DetectsTagDrift(t *testing.T) {
 	name := uniqueSubnetName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), subnet.SubnetSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, subnet.SubnetSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		VpcId:            vpcID,
@@ -227,7 +227,7 @@ func TestSubnetReconcile_DetectsTagDrift(t *testing.T) {
 		AvailabilityZone: az,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "desired"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.CreateTags(context.Background(), &ec2sdk.CreateTagsInput{
@@ -259,7 +259,7 @@ func TestSubnetReconcile_DetectsMapPublicIpDrift(t *testing.T) {
 	name := uniqueSubnetName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	outputs, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), subnet.SubnetSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, subnet.SubnetSpec{
 		Account:             integrationAccountName,
 		Region:              "us-east-1",
 		VpcId:               vpcID,
@@ -268,7 +268,7 @@ func TestSubnetReconcile_DetectsMapPublicIpDrift(t *testing.T) {
 		MapPublicIpOnLaunch: true,
 		ManagedKey:          key,
 		Tags:                map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.ModifySubnetAttribute(context.Background(), &ec2sdk.ModifySubnetAttributeInput{
@@ -298,7 +298,7 @@ func TestSubnetGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueSubnetName(t)
 	key := fmt.Sprintf("%s~%s", vpcID, name)
 
-	_, err := ingress.Object[subnet.SubnetSpec, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), subnet.SubnetSpec{
+	_, err := ingress.Object[types.ProvisionRequest, subnet.SubnetOutputs](client, subnet.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, subnet.SubnetSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		VpcId:            vpcID,
@@ -306,7 +306,7 @@ func TestSubnetGetStatus_ReturnsReady(t *testing.T) {
 		AvailabilityZone: az,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, subnet.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
