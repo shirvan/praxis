@@ -33,7 +33,7 @@ func newGenericECSClusterDriverWithFactory(auth authservice.AuthClient, factory 
 	return kernel.MustNew(kernel.Descriptor[ECSClusterSpec, ECSClusterOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec ECSClusterSpec) (ECSClusterSpec, error) {
@@ -116,29 +116,29 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired ECSCluster
 	return kernel.CreateResult[ECSClusterOutputs]{SeedOutputs: outputsFromObserved(observed)}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECSClusterSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECSClusterSpec, observed ObservedState, currentOutputs ECSClusterOutputs) (ECSClusterOutputs, error) {
 	if desired.Name != observed.Name {
-		return restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision the ECS cluster to change it from %s to %s", observed.Name, desired.Name), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision the ECS cluster to change it from %s to %s", observed.Name, desired.Name), 409)
 	}
 	if owner := strings.TrimSpace(observed.Tags["praxis:managed-key"]); owner != "" && owner != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf("ECS cluster %s is owned by Praxis object %q, not %q", observed.Name, owner, desired.ManagedKey), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("ECS cluster %s is owned by Praxis object %q, not %q", observed.Name, owner, desired.ManagedKey), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if containerInsightsDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateCluster(rc, observed.Name, normalizeContainerInsights(desired.ContainerInsights))
 		}, classifyECSMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if capacityProvidersDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.PutCapacityProviders(rc, observed.Name, desired.CapacityProviders)
 		}, classifyECSMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	toAdd, toRemove := tagDiff(desired.Tags, observed.Tags, desired.ManagedKey)
@@ -146,7 +146,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECSClust
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UntagResource(rc, observed.ARN, toRemove)
 		}, classifyECSMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if len(toAdd) > 0 {
@@ -154,7 +154,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ECSClust
 			return restate.Void{}, api.TagResource(rc, observed.ARN, toAdd)
 		}, classifyECSMutation)
 	}
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired ECSClusterSpec, outputs ECSClusterOutputs) error {

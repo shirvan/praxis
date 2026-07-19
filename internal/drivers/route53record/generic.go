@@ -34,7 +34,6 @@ func newGenericDNSRecordDriverWithFactory(auth authservice.AuthClient, factory f
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec RecordSpec) (RecordSpec, error) {
@@ -94,18 +93,18 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired RecordSpec
 	return kernel.CreateResult[RecordOutputs]{SeedOutputs: outputsFromSpec(desired)}, nil
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RecordSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RecordSpec, observed ObservedState, currentOutputs RecordOutputs) (RecordOutputs, error) {
 	if err := validateRecordIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.UpsertRecord(rc, desired)
 	}, classifyRecordMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired RecordSpec, outputs RecordOutputs) error {

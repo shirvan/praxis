@@ -31,7 +31,7 @@ func newGenericAuroraClusterDriverWithFactory(auth authservice.AuthClient, facto
 	}
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[AuroraClusterSpec, AuroraClusterOutputs, ObservedState]{
-		ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true}, Operations: ops,
+		ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true}, Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec AuroraClusterSpec) (AuroraClusterSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
 			if err != nil {
@@ -113,13 +113,13 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired AuroraClus
 	}, classifyClusterMutation)
 	return kernel.CreateResult[AuroraClusterOutputs]{SeedOutputs: AuroraClusterOutputs{ClusterIdentifier: desired.ClusterIdentifier, ARN: arn}}, err
 }
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AuroraClusterSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AuroraClusterSpec, observed ObservedState, currentOutputs AuroraClusterOutputs) (AuroraClusterOutputs, error) {
 	if err := validateExisting(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if HasDrift(desired, observed) {
 		visible := desired
@@ -127,12 +127,12 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AuroraCl
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyDBCluster(rc, visible, true)
 		}, classifyClusterMutation); err != nil {
-			return fmt.Errorf("modify Aurora cluster: %w", err)
+			return currentOutputs, fmt.Errorf("modify Aurora cluster: %w", err)
 		}
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.WaitUntilAvailable(rc, desired.ClusterIdentifier)
 		}, classifyClusterMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
@@ -140,28 +140,28 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired AuroraCl
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		}, classifyClusterMutation)
 	}
-	return err
+	return currentOutputs, err
 }
-func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previousDesired, nextDesired AuroraClusterSpec, observed ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previousDesired, nextDesired AuroraClusterSpec, observed ObservedState, currentOutputs AuroraClusterOutputs) (AuroraClusterOutputs, error) {
 	if err := validateExisting(nextDesired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if nextDesired.MasterUserPassword == "" || nextDesired.MasterUserPassword == previousDesired.MasterUserPassword {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, nextDesired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.ModifyDBCluster(rc, nextDesired, true)
 	}, classifyClusterMutation); err != nil {
-		return fmt.Errorf("rotate Aurora cluster master password: %w", err)
+		return currentOutputs, fmt.Errorf("rotate Aurora cluster master password: %w", err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.WaitUntilAvailable(rc, nextDesired.ClusterIdentifier)
 	}, classifyClusterMutation)
-	return err
+	return currentOutputs, err
 }
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired AuroraClusterSpec, outputs AuroraClusterOutputs) error {
 	id := outputs.ClusterIdentifier

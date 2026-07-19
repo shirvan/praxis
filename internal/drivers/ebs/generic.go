@@ -49,7 +49,7 @@ func newGenericEBSVolumeDriverWithFactories(
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, Readiness: true,
+			Readiness: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec EBSVolumeSpec) (EBSVolumeSpec, error) {
@@ -157,32 +157,32 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired EBSVolumeS
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EBSVolumeSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EBSVolumeSpec, observed ObservedState, currentOutputs EBSVolumeOutputs) (EBSVolumeOutputs, error) {
 	if err := validateImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if desired.SizeGiB < observed.SizeGiB {
-		return restate.TerminalError(fmt.Errorf("sizeGiB cannot shrink from %d to %d; delete and reprovision", observed.SizeGiB, desired.SizeGiB), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("sizeGiB cannot shrink from %d to %d; delete and reprovision", observed.SizeGiB, desired.SizeGiB), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if volumeNeedsModification(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyVolume(rc, observed.VolumeId, modificationSpec(desired, observed))
 		}, classifyEBSMutation); err != nil {
-			return fmt.Errorf("modify volume: %w", err)
+			return currentOutputs, fmt.Errorf("modify volume: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.VolumeId, desired.Tags)
 		}, classifyEBSMutation); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired EBSVolumeSpec, outputs EBSVolumeOutputs) error {

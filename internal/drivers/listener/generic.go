@@ -28,7 +28,7 @@ func newGenericListenerDriverWithFactory(auth authservice.AuthClient, f func(aws
 		f = func(c aws.Config) ListenerAPI { return NewListenerAPI(awsclient.NewELBv2Client(c)) }
 	}
 	o := &genericOperations{auth: auth, apiFactory: f}
-	return kernel.MustNew(kernel.Descriptor[ListenerSpec, ListenerOutputs, ObservedState]{ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true}, Operations: o, Prepare: func(ctx restate.ObjectContext, s ListenerSpec) (ListenerSpec, error) {
+	return kernel.MustNew(kernel.Descriptor[ListenerSpec, ListenerOutputs, ObservedState]{ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true}, Operations: o, Prepare: func(ctx restate.ObjectContext, s ListenerSpec) (ListenerSpec, error) {
 		_, r, e := o.apiForAccount(ctx, s.Account)
 		if e != nil {
 			return ListenerSpec{}, drivers.ClassifyCredentialError(e)
@@ -85,23 +85,23 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, d ListenerSpec) (k
 	}, classifyListenerMutation)
 	return kernel.CreateResult[ListenerOutputs]{SeedOutputs: ListenerOutputs{ListenerArn: arn, Port: d.Port, Protocol: d.Protocol}}, e
 }
-func (o *genericOperations) Converge(ctx restate.ObjectContext, d ListenerSpec, obs ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, d ListenerSpec, obs ObservedState, currentOutputs ListenerOutputs) (ListenerOutputs, error) {
 	if d.LoadBalancerArn != obs.LoadBalancerArn {
-		return restate.TerminalError(fmt.Errorf("loadBalancerArn is immutable; delete and reprovision the listener"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("loadBalancerArn is immutable; delete and reprovision the listener"), 409)
 	}
 	if owner := obs.Tags["praxis:managed-key"]; owner != "" && owner != d.ManagedKey {
-		return restate.TerminalError(fmt.Errorf("listener is owned by Praxis object %q", owner), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("listener is owned by Praxis object %q", owner), 409)
 	}
 	api, _, e := o.apiForAccount(ctx, d.Account)
 	if e != nil {
-		return drivers.ClassifyCredentialError(e)
+		return currentOutputs, drivers.ClassifyCredentialError(e)
 	}
 	modify := d.Port != obs.Port || !strings.EqualFold(d.Protocol, obs.Protocol) || effectiveSslPolicy(d.SslPolicy, d.Protocol) != obs.SslPolicy || d.CertificateArn != obs.CertificateArn || d.AlpnPolicy != obs.AlpnPolicy || !actionsEqual(d.DefaultActions, obs.DefaultActions)
 	if modify {
 		if _, e = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyListener(rc, obs.ListenerArn, d)
 		}, classifyListenerMutation); e != nil {
-			return e
+			return currentOutputs, e
 		}
 	}
 	if !drivers.TagsMatch(d.Tags, obs.Tags) || obs.Tags["praxis:managed-key"] != d.ManagedKey {
@@ -109,7 +109,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, d ListenerSpec, 
 			return restate.Void{}, api.UpdateTags(rc, obs.ListenerArn, listenerManagedTags(d.Tags, d.ManagedKey))
 		}, classifyListenerMutation)
 	}
-	return e
+	return currentOutputs, e
 }
 func (o *genericOperations) Delete(ctx restate.ObjectContext, d ListenerSpec, out ListenerOutputs) error {
 	if out.ListenerArn == "" {

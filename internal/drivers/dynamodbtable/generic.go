@@ -42,7 +42,7 @@ func NewGenericDynamoDBTableDriverWithFactory(auth authservice.AuthClient, facto
 	return kernel.MustNew(kernel.Descriptor[DynamoDBTableSpec, DynamoDBTableOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec DynamoDBTableSpec) (DynamoDBTableSpec, error) {
@@ -105,39 +105,39 @@ func (o *genericTableOperations) Create(ctx restate.ObjectContext, desired Dynam
 	return kernel.CreateResult[DynamoDBTableOutputs]{SeedOutputs: outputsFromObserved(observed)}, nil
 }
 
-func (o *genericTableOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next DynamoDBTableSpec, _ ObservedState) error {
+func (o *genericTableOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next DynamoDBTableSpec, _ ObservedState, currentOutputs DynamoDBTableOutputs) (DynamoDBTableOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.Name != next.Name:
-		return restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision to change it"), 409)
 	case previous.HashKey != next.HashKey:
-		return restate.TerminalError(fmt.Errorf("hashKey is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("hashKey is immutable; delete and reprovision to change it"), 409)
 	case previous.HashKeyType != next.HashKeyType:
-		return restate.TerminalError(fmt.Errorf("hashKeyType is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("hashKeyType is immutable; delete and reprovision to change it"), 409)
 	case previous.RangeKey != next.RangeKey:
-		return restate.TerminalError(fmt.Errorf("rangeKey is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("rangeKey is immutable; delete and reprovision to change it"), 409)
 	case previous.RangeKeyType != next.RangeKeyType:
-		return restate.TerminalError(fmt.Errorf("rangeKeyType is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("rangeKeyType is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericTableOperations) Converge(ctx restate.ObjectContext, desired DynamoDBTableSpec, observed ObservedState) error {
+func (o *genericTableOperations) Converge(ctx restate.ObjectContext, desired DynamoDBTableSpec, observed ObservedState, currentOutputs DynamoDBTableOutputs) (DynamoDBTableOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if !strings.EqualFold(observed.Status, "ACTIVE") {
 		observed, err = o.waitForActive(ctx, api, desired.Name)
 		if err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
-	return o.convergeMutableFields(ctx, api, desired, observed)
+	return currentOutputs, o.convergeMutableFields(ctx, api, desired, observed)
 }
 
 func (o *genericTableOperations) Delete(ctx restate.ObjectContext, desired DynamoDBTableSpec, outputs DynamoDBTableOutputs) error {

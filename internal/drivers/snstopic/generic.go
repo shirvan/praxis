@@ -36,7 +36,7 @@ func newGenericSNSTopicDriverWithFactory(auth authservice.AuthClient, factory fu
 	return kernel.MustNew(kernel.Descriptor[SNSTopicSpec, SNSTopicOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SNSTopicSpec) (SNSTopicSpec, error) {
@@ -95,15 +95,15 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired SNSTopicSp
 	}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSTopicSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSTopicSpec, observed ObservedState, currentOutputs SNSTopicOutputs) (SNSTopicOutputs, error) {
 	if observed.TopicName != "" && desired.TopicName != observed.TopicName {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"topicName is immutable for %s: current=%s desired=%s",
 			observed.TopicArn, observed.TopicName, desired.TopicName,
 		), 409)
 	}
 	if desired.FifoTopic != observed.FifoTopic {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"fifoTopic is immutable for %s: current=%t desired=%t",
 			observed.TopicArn, observed.FifoTopic, desired.FifoTopic,
 		), 409)
@@ -111,7 +111,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSTopic
 
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 
 	type attributeUpdate struct {
@@ -127,7 +127,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSTopic
 		if policy == "" {
 			policy, err = defaultTopicPolicy(observed)
 			if err != nil {
-				return restate.TerminalError(err, 409)
+				return currentOutputs, restate.TerminalError(err, 409)
 			}
 		}
 		updates = append(updates, attributeUpdate{name: "Policy", value: policy})
@@ -154,7 +154,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSTopic
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.SetTopicAttribute(rc, observed.TopicArn, update.name, update.value)
 		}, classifyTopicMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 
@@ -163,10 +163,10 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSTopic
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.TopicArn, tags)
 		}, classifyTopicMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired SNSTopicSpec, outputs SNSTopicOutputs) error {

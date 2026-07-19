@@ -110,7 +110,7 @@ Every resource driver implements eight required handlers:
 
 ```text
 Exclusive (single-writer):
-  Provision(spec)  → outputs     Create or update the resource
+  Provision(request) → outputs   Create or update from spec + lifecycle policy
   Import(ref)      → outputs     Adopt an existing resource
   Delete()                       Remove the resource
   Reconcile()      → result      Check drift, optionally correct it

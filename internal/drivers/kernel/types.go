@@ -52,11 +52,13 @@ type CreateResult[O any] struct {
 
 // Operations contains provider-specific behavior. Implementations must journal
 // every AWS call (normally with drivers.RunAWS) and classify provider errors
-// inside that journaled callback.
+// inside that journaled callback. Converge returns the outputs that identify
+// the committed provider result; the kernel confirms them with Observe before
+// replacing durable Outputs and ignores the returned value when error is non-nil.
 type Operations[S, O, Obs any] interface {
 	Observe(ctx restate.ObjectContext, desired S, outputs O) (Observation[Obs], error)
 	Create(ctx restate.ObjectContext, desired S) (CreateResult[O], error)
-	Converge(ctx restate.ObjectContext, desired S, observed Obs) error
+	Converge(ctx restate.ObjectContext, desired S, observed Obs, currentOutputs O) (O, error)
 	Delete(ctx restate.ObjectContext, desired S, outputs O) error
 	Import(ctx restate.ObjectContext, ref types.ImportRef) (Observation[Obs], error)
 }
@@ -66,9 +68,10 @@ type Operations[S, O, Obs any] interface {
 // The kernel invokes it only from Provision, whenever a prior generation and
 // an existing external resource are both present. The implementation compares
 // previousDesired with nextDesired and no-ops when no provider write is needed.
-// previousDesired remains invocation-local and is never added to State.
-type ProvisionChangeOperations[S, Obs any] interface {
-	ConvergeProvisionChange(ctx restate.ObjectContext, previousDesired, nextDesired S, observed Obs) error
+// previousDesired remains invocation-local and is never added to State. Its
+// returned outputs follow the same commit-and-confirm contract as Converge.
+type ProvisionChangeOperations[S, O, Obs any] interface {
+	ConvergeProvisionChange(ctx restate.ObjectContext, previousDesired, nextDesired S, observed Obs, currentOutputs O) (O, error)
 }
 
 // ReadinessPhase is the provider-independent lifecycle result for an observed
@@ -92,14 +95,13 @@ type ReadinessResult struct {
 // Capabilities is an explicit feature manifest. Declared must be true so a
 // zero-value manifest cannot silently opt a resource into unsafe assumptions.
 type Capabilities struct {
-	Declared               bool
-	Import                 bool
-	ObservedMode           bool
-	Delete                 bool
-	ManagedDriftCorrection bool
-	LateInitialization     bool
-	Readiness              bool
-	ConvergeWhilePending   bool
+	Declared             bool
+	Import               bool
+	ObservedMode         bool
+	Delete               bool
+	LateInitialization   bool
+	Readiness            bool
+	ConvergeWhilePending bool
 }
 
 // Descriptor supplies static resource facts and pure mappings to the kernel.
@@ -147,9 +149,6 @@ func (d Descriptor[S, O, Obs]) ValidateDefinition() error {
 	}
 	if d.Capabilities.ConvergeWhilePending && !d.Capabilities.Readiness {
 		return fmt.Errorf("kernel descriptor %s: ConvergeWhilePending requires the readiness capability", d.ServiceName)
-	}
-	if d.Capabilities.ConvergeWhilePending && !d.Capabilities.ManagedDriftCorrection {
-		return fmt.Errorf("kernel descriptor %s: ConvergeWhilePending requires managed drift correction", d.ServiceName)
 	}
 	if d.Prepare == nil || d.Validate == nil || d.DesiredFromObserved == nil || d.OutputsFromObserved == nil || d.HasDrift == nil || d.FieldDiffs == nil {
 		return fmt.Errorf("kernel descriptor %s: all lifecycle functions are required", d.ServiceName)

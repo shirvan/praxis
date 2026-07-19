@@ -99,7 +99,6 @@ None of them let you declare infrastructure, have it continuously converged, and
 | **Crash recovery** | Manual intervention | Controller restart + re-reconcile | Automatic journal replay |
 | **Dependency resolution** | Provider-determined | Composition functions | DAG from output expressions |
 | **Template language** | HCL | YAML + Compositions | CUE |
-| **Extension model** | Go providers (complex SDK) | Go controllers (complex SDK) | Restate Virtual Objects (any language, no fork) |
 
 ### Key Capabilities
 
@@ -126,8 +125,6 @@ None of them let you declare infrastructure, have it continuously converged, and
 **Point-in-Time Rollback.** Every apply snapshots its plan as a generation. `praxis rollback <key> --to <generation>` replays a known-good generation: changed specs are reverted, resources added since are deleted, resources removed since are re-provisioned — and the rollback itself becomes a new, roll-back-able generation.
 
 **Lightweight Operations.** The entire stack runs in Docker Compose. No etcd, no API server, no cluster to maintain. Drivers are grouped by AWS domain into independent driver packs that register with Restate.
-
-**Extensible Without Forking.** Praxis runs on [Restate](https://restate.dev), and Restate doesn't distinguish between built-in and external services. Write a custom driver in Python, TypeScript, Go, Java, Kotlin, or Rust from your own repository, register it with the same Restate instance, and it participates in DAG orchestration, output expression hydration, state tracking, and event streaming alongside built-in drivers. No plugin SDK, no fork, no code changes to Praxis. See the [Extending Guide](docs/EXTENDING.md).
 
 ---
 
@@ -342,7 +339,6 @@ See [FUTURE.md](docs/FUTURE.md) for what's coming next and [`examples/`](example
 | [Error Handling](docs/ERRORS.md) | Contributors | Error classification, status codes, error codes |
 | [Events](docs/EVENTS.md) | Contributors | CloudEvents pipeline, event types, webhook sinks, retention |
 | [Developer Guide](docs/DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
-| [Extending Praxis](docs/EXTENDING.md) | Contributors | Build custom drivers in any language without forking — extension contract, Python example, deployment patterns |
 
 ---
 

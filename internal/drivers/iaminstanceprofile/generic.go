@@ -37,7 +37,7 @@ func newGenericIAMInstanceProfileDriverWithFactory(auth authservice.AuthClient, 
 	return kernel.MustNew(kernel.Descriptor[IAMInstanceProfileSpec, IAMInstanceProfileOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec IAMInstanceProfileSpec) (IAMInstanceProfileSpec, error) {
@@ -99,12 +99,12 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired IAMInstance
 	return kernel.CreateResult[IAMInstanceProfileOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMInstanceProfileSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMInstanceProfileSpec, observed ObservedState, currentOutputs IAMInstanceProfileOutputs) (IAMInstanceProfileOutputs, error) {
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return o.convergeProfile(ctx, api, desired, observed)
+	return currentOutputs, o.convergeProfile(ctx, api, desired, observed)
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired IAMInstanceProfileSpec, outputs IAMInstanceProfileOutputs) error {

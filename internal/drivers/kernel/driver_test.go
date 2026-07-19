@@ -49,17 +49,22 @@ type fakeOperations struct {
 	updates  int
 	deletes  int
 
-	createThenFail bool
-	deleteThenFail bool
-	failObserve    bool
-	createDefault  string
-	createOnly     string
-	convergeErr    error
+	createThenFail          bool
+	deleteThenFail          bool
+	failObserve             bool
+	createDefault           string
+	createOnly              string
+	convergeErr             error
+	convergeErrOnce         error
+	convergeOutput          testOutputs
+	observeAfterConvergeErr error
+	nextObserveErr          error
 
 	provisionChanges   int
 	previousDesired    testSpec
 	nextDesired        testSpec
 	provisionChangeErr error
+	provisionChangeOut testOutputs
 }
 
 type driftSink struct{}
@@ -73,6 +78,11 @@ func (f *fakeOperations) Observe(ctx restate.ObjectContext, desired testSpec, ou
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.reads++
+		if f.nextObserveErr != nil {
+			err := f.nextObserveErr
+			f.nextObserveErr = nil
+			return kernel.Observation[testObserved]{}, err
+		}
 		if f.failObserve {
 			f.failObserve = false
 			return kernel.Observation[testObserved]{}, errors.New("provider read failed")
@@ -107,21 +117,33 @@ func (f *fakeOperations) Create(ctx restate.ObjectContext, desired testSpec) (ke
 	}, terminalForTest)
 }
 
-func (f *fakeOperations) ConvergeProvisionChange(_ restate.ObjectContext, previousDesired, nextDesired testSpec, _ testObserved) error {
+func (f *fakeOperations) ConvergeProvisionChange(_ restate.ObjectContext, previousDesired, nextDesired testSpec, _ testObserved, currentOutputs testOutputs) (testOutputs, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.provisionChanges++
 	f.previousDesired = previousDesired
 	f.nextDesired = nextDesired
-	return f.provisionChangeErr
+	if f.provisionChangeErr != nil {
+		return currentOutputs, f.provisionChangeErr
+	}
+	if f.provisionChangeOut.ID != "" {
+		f.observed.ID = f.provisionChangeOut.ID
+		return f.provisionChangeOut, nil
+	}
+	return currentOutputs, nil
 }
 
-func (f *fakeOperations) Converge(ctx restate.ObjectContext, desired testSpec, _ testObserved) error {
+func (f *fakeOperations) Converge(ctx restate.ObjectContext, desired testSpec, _ testObserved, currentOutputs testOutputs) (testOutputs, error) {
 	f.mu.Lock()
 	convergeErr := f.convergeErr
+	if f.convergeErrOnce != nil {
+		convergeErr = f.convergeErrOnce
+		f.convergeErrOnce = nil
+	}
+	convergeOutput := f.convergeOutput
 	f.mu.Unlock()
 	if convergeErr != nil {
-		return convergeErr
+		return currentOutputs, convergeErr
 	}
 	_, err := drivers.RunAWS(ctx, func(restate.RunContext) (restate.Void, error) {
 		f.mu.Lock()
@@ -129,9 +151,16 @@ func (f *fakeOperations) Converge(ctx restate.ObjectContext, desired testSpec, _
 		f.updates++
 		f.observed.Name = desired.Name
 		f.observed.Value = desired.Value
+		if convergeOutput.ID != "" {
+			f.observed.ID = convergeOutput.ID
+		}
+		f.nextObserveErr = f.observeAfterConvergeErr
 		return restate.Void{}, nil
 	}, terminalForTest)
-	return err
+	if err != nil || convergeOutput.ID == "" {
+		return currentOutputs, err
+	}
+	return convergeOutput, nil
 }
 
 func (f *fakeOperations) Delete(ctx restate.ObjectContext, _ testSpec, _ testOutputs) error {
@@ -161,7 +190,14 @@ func (f *fakeOperations) Import(ctx restate.ObjectContext, ref types.ImportRef) 
 	}, terminalForTest)
 }
 
-func terminalForTest(err error) error { return restate.TerminalError(err, 500) }
+var errTransientProvider = errors.New("transient provider failure")
+
+func terminalForTest(err error) error {
+	if restate.IsTerminalError(err) || errors.Is(err, errTransientProvider) {
+		return err
+	}
+	return restate.TerminalError(err, 500)
+}
 
 func (f *fakeOperations) snapshot() drivertest.ProviderSnapshot {
 	f.mu.Lock()
@@ -187,6 +223,18 @@ func (f *fakeOperations) failConverge(err error) {
 	f.convergeErr = err
 }
 
+func (f *fakeOperations) failConvergeOnce(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.convergeErrOnce = err
+}
+
+func (f *fakeOperations) failObserveAfterConverge(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.observeAfterConvergeErr = err
+}
+
 func (f *fakeOperations) mutate(value string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -209,7 +257,7 @@ func testDescriptor(ops *fakeOperations) kernel.Descriptor[testSpec, testOutputs
 	return kernel.Descriptor[testSpec, testOutputs, testObserved]{
 		ServiceName: "KernelTestResource",
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(_ restate.ObjectContext, spec testSpec) (testSpec, error) {
@@ -492,31 +540,81 @@ func TestManagedReconcileCorrectsDriftAndObservedReconcileDoesNot(t *testing.T) 
 	})
 }
 
-func TestReconcileWithManagedCorrectionDisabledReportsDriftAndStaysReady(t *testing.T) {
-	ops := &fakeOperations{}
-	descriptor := testDescriptor(ops)
-	descriptor.Capabilities.ManagedDriftCorrection = false
-	driver := kernel.MustNew(descriptor)
-	client := restatetest.Start(t, restate.Reflect(driver), restate.Reflect(driftSink{})).Ingress()
+func TestReconcileCorrectionErrorsUseRestateRetryClassification(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		pathName := "ordinary"
+		if pending {
+			pathName = "pending"
+		}
+		for _, stage := range []string{"converge", "follow-observe"} {
+			for _, terminal := range []bool{false, true} {
+				className := "transient"
+				if terminal {
+					className = "terminal"
+				}
+				t.Run(pathName+"/"+stage+"/"+className, func(t *testing.T) {
+					ops := &fakeOperations{}
+					descriptor := testDescriptor(ops)
+					if pending {
+						descriptor.Capabilities.Readiness = true
+						descriptor.Capabilities.ConvergeWhilePending = true
+						descriptor.CheckReadiness = func(testObserved) kernel.ReadinessResult {
+							return kernel.ReadinessResult{Phase: kernel.ReadinessPending, Message: "provider is still starting"}
+						}
+					}
+					client := restatetest.Start(t, restate.Reflect(kernel.MustNew(descriptor)), restate.Reflect(driftSink{})).Ingress()
+					key := pathName + "-" + stage + "-" + className
+					_, err := provision(t, client, key, testSpec{Name: "resource", Value: "desired"})
+					require.NoError(t, err)
+					baseline := ops.snapshot()
+					if !pending {
+						ops.mutate("drifted")
+					}
 
-	_, err := provision(t, client, "detect-only-drift", testSpec{Name: "resource", Value: "desired"})
-	require.NoError(t, err)
-	ops.mutate("drifted")
+					failure := error(errTransientProvider)
+					if terminal {
+						failure = restate.TerminalError(errors.New("terminal correction failure"), 409)
+					}
+					switch stage {
+					case "converge":
+						if terminal {
+							ops.failConverge(failure)
+						} else {
+							ops.failConvergeOnce(failure)
+						}
+					case "follow-observe":
+						ops.failObserveAfterConverge(failure)
+					}
 
-	result, err := ingress.Object[restate.Void, types.ReconcileResult](client, "KernelTestResource", "detect-only-drift", "Reconcile").Request(t.Context(), restate.Void{})
-	require.NoError(t, err)
-	assert.True(t, result.Drift)
-	assert.False(t, result.Correcting)
-	assert.Empty(t, result.Error)
-	assert.Zero(t, ops.snapshot().Updates, "disabled drift correction must not write to the provider")
+					result, requestErr := ingress.Object[restate.Void, types.ReconcileResult](client, "KernelTestResource", key, "Reconcile").Request(t.Context(), restate.Void{})
+					if terminal {
+						require.NoError(t, requestErr, "terminal correction failures are durable visibility results")
+						assert.Contains(t, result.Error, "terminal correction failure")
+						assert.Equal(t, types.StatusError, status(t, client, key).Status)
+						expectedUpdates := baseline.Updates
+						if stage == "follow-observe" {
+							expectedUpdates++
+						}
+						assert.Equal(t, expectedUpdates, ops.snapshot().Updates)
+						return
+					}
 
-	resourceStatus := status(t, client, "detect-only-drift")
-	assert.Equal(t, types.StatusReady, resourceStatus.Status)
-	assert.Empty(t, resourceStatus.Error)
-	driftFree, ok := types.GetCondition(resourceStatus.Conditions, types.ConditionDriftFree)
-	require.True(t, ok)
-	assert.Equal(t, types.ConditionFalse, driftFree.Status)
-	assert.Equal(t, types.ReasonDriftDetected, driftFree.Reason)
+					require.NoError(t, requestErr, "Restate must retry transient correction failures")
+					assert.Empty(t, result.Error)
+					after := ops.snapshot()
+					assert.Equal(t, baseline.Updates+1, after.Updates, "journal replay must not repeat the provider write")
+					if stage == "follow-observe" {
+						assert.GreaterOrEqual(t, after.Reads, baseline.Reads+3, "the transient confirming read must execute again, not replay a failed result forever")
+					}
+					expectedStatus := types.StatusReady
+					if pending {
+						expectedStatus = types.StatusPending
+					}
+					assert.Equal(t, expectedStatus, status(t, client, key).Status)
+				})
+			}
+		}
+	}
 }
 
 func TestObserveReconcileReportsDriftWithoutProviderWrites(t *testing.T) {
@@ -641,14 +739,6 @@ func TestDescriptorValidationRejectsImplicitOrIncompleteDefinitions(t *testing.T
 		{name: "pending convergence without readiness", mutate: func(d *kernel.Descriptor[testSpec, testOutputs, testObserved]) {
 			d.Capabilities.ConvergeWhilePending = true
 		}, want: "requires the readiness capability"},
-		{name: "pending convergence without managed correction", mutate: func(d *kernel.Descriptor[testSpec, testOutputs, testObserved]) {
-			d.Capabilities.Readiness = true
-			d.Capabilities.ManagedDriftCorrection = false
-			d.Capabilities.ConvergeWhilePending = true
-			d.CheckReadiness = func(testObserved) kernel.ReadinessResult {
-				return kernel.ReadinessResult{Phase: kernel.ReadinessPending}
-			}
-		}, want: "requires managed drift correction"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

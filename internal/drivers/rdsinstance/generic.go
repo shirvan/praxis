@@ -33,7 +33,7 @@ func newGenericRDSInstanceDriverWithFactory(auth authservice.AuthClient, factory
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[RDSInstanceSpec, RDSInstanceOutputs, ObservedState]{
 		ServiceName:  ServiceName,
-		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true},
+		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true},
 		Operations:   ops,
 		Prepare: func(ctx restate.ObjectContext, spec RDSInstanceSpec) (RDSInstanceSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
@@ -120,16 +120,16 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired RDSInstanc
 	return kernel.CreateResult[RDSInstanceOutputs]{SeedOutputs: RDSInstanceOutputs{DBIdentifier: desired.DBIdentifier, ARN: arn}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RDSInstanceSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RDSInstanceSpec, observed ObservedState, currentOutputs RDSInstanceOutputs) (RDSInstanceOutputs, error) {
 	if err := validateExisting(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if desired.AllocatedStorage > 0 && desired.AllocatedStorage < observed.AllocatedStorage {
-		return restate.TerminalError(fmt.Errorf("allocatedStorage cannot shrink from %d to %d; delete and reprovision", observed.AllocatedStorage, desired.AllocatedStorage), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("allocatedStorage cannot shrink from %d to %d; delete and reprovision", observed.AllocatedStorage, desired.AllocatedStorage), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if HasDrift(desired, observed) {
 		visible := desired
@@ -137,12 +137,12 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RDSInsta
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyDBInstance(rc, visible, true)
 		}, classifyInstanceMutation); err != nil {
-			return fmt.Errorf("modify RDS instance: %w", err)
+			return currentOutputs, fmt.Errorf("modify RDS instance: %w", err)
 		}
 		if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.WaitUntilAvailable(rc, desired.DBIdentifier)
 		}, classifyInstanceMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
@@ -150,29 +150,29 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RDSInsta
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		}, classifyInstanceMutation)
 	}
-	return err
+	return currentOutputs, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previousDesired, nextDesired RDSInstanceSpec, observed ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previousDesired, nextDesired RDSInstanceSpec, observed ObservedState, currentOutputs RDSInstanceOutputs) (RDSInstanceOutputs, error) {
 	if err := validateExisting(nextDesired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if nextDesired.MasterUserPassword == "" || nextDesired.MasterUserPassword == previousDesired.MasterUserPassword {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, nextDesired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if _, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.ModifyDBInstance(rc, nextDesired, true)
 	}, classifyInstanceMutation); err != nil {
-		return fmt.Errorf("rotate RDS instance master password: %w", err)
+		return currentOutputs, fmt.Errorf("rotate RDS instance master password: %w", err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.WaitUntilAvailable(rc, nextDesired.DBIdentifier)
 	}, classifyInstanceMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired RDSInstanceSpec, outputs RDSInstanceOutputs) error {

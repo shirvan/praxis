@@ -34,7 +34,7 @@ func newGenericDBSubnetGroupDriverWithFactory(auth authservice.AuthClient, facto
 	return kernel.MustNew(kernel.Descriptor[DBSubnetGroupSpec, DBSubnetGroupOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec DBSubnetGroupSpec) (DBSubnetGroupSpec, error) {
@@ -115,38 +115,38 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired DBSubnetGr
 	return kernel.CreateResult[DBSubnetGroupOutputs]{SeedOutputs: DBSubnetGroupOutputs{GroupName: desired.GroupName, ARN: arn}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired DBSubnetGroupSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired DBSubnetGroupSpec, observed ObservedState, currentOutputs DBSubnetGroupOutputs) (DBSubnetGroupOutputs, error) {
 	if desired.GroupName != observed.GroupName {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"groupName is immutable: observed %q, requested %q; delete and reprovision",
 			observed.GroupName, desired.GroupName,
 		), 409)
 	}
 	if observed.ManagedKey != "" && observed.ManagedKey != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"db subnet group %q is owned by Praxis object %q, not %q",
 			observed.GroupName, observed.ManagedKey, desired.ManagedKey,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if desired.Description != observed.Description || !stringSliceEqual(desired.SubnetIds, observed.SubnetIds) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyDBSubnetGroup(rc, desired)
 		}, classifyDBSubnetGroupMutation); err != nil {
-			return fmt.Errorf("modify db subnet group: %w", err)
+			return currentOutputs, fmt.Errorf("modify db subnet group: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) && observed.ARN != "" {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.ARN, desired.Tags)
 		}, classifyDBSubnetGroupMutation); err != nil {
-			return fmt.Errorf("update db subnet group tags: %w", err)
+			return currentOutputs, fmt.Errorf("update db subnet group tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired DBSubnetGroupSpec, outputs DBSubnetGroupOutputs) error {

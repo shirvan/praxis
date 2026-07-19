@@ -37,7 +37,7 @@ func newGenericEKSClusterDriverWithFactory(auth authservice.AuthClient, factory 
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, Readiness: true,
+			Readiness: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec EKSClusterSpec) (EKSClusterSpec, error) {
@@ -127,52 +127,52 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired EKSCluster
 	return kernel.CreateResult[EKSClusterOutputs]{SeedOutputs: outputsFromObserved(observed)}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next EKSClusterSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next EKSClusterSpec, _ ObservedState, currentOutputs EKSClusterOutputs) (EKSClusterOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.Name != next.Name:
-		return restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision to change it"), 409)
 	case previous.RoleArn != next.RoleArn:
-		return restate.TerminalError(fmt.Errorf("roleArn is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("roleArn is immutable; delete and reprovision to change it"), 409)
 	case !stringSetEqual(previous.SubnetIds, next.SubnetIds):
-		return restate.TerminalError(fmt.Errorf("subnetIds are immutable; delete and reprovision to change them"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("subnetIds are immutable; delete and reprovision to change them"), 409)
 	case !stringSetEqual(previous.SecurityGroupIds, next.SecurityGroupIds):
-		return restate.TerminalError(fmt.Errorf("securityGroupIds are immutable; delete and reprovision to change them"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("securityGroupIds are immutable; delete and reprovision to change them"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EKSClusterSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EKSClusterSpec, observed ObservedState, currentOutputs EKSClusterOutputs) (EKSClusterOutputs, error) {
 	if err := validateEKSImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if versionDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateClusterVersion(rc, desired.Name, desired.Version)
 		}, classifyEKSMutation); err != nil {
-			return fmt.Errorf("update cluster version: %w", err)
+			return currentOutputs, fmt.Errorf("update cluster version: %w", err)
 		}
 	}
 	if endpointAccessDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateClusterConfig(rc, desired)
 		}, classifyEKSMutation); err != nil {
-			return fmt.Errorf("update cluster endpoint configuration: %w", err)
+			return currentOutputs, fmt.Errorf("update cluster endpoint configuration: %w", err)
 		}
 	}
 	if loggingDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateClusterLogging(rc, desired.Name, desired.EnabledLoggingTypes)
 		}, classifyEKSMutation); err != nil {
-			return fmt.Errorf("update cluster logging: %w", err)
+			return currentOutputs, fmt.Errorf("update cluster logging: %w", err)
 		}
 	}
 	toAdd, toRemove := tagDiff(desired.Tags, observed.Tags, desired.ManagedKey)
@@ -180,17 +180,17 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired EKSClust
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UntagResource(rc, observed.ARN, toRemove)
 		}, classifyEKSMutation); err != nil {
-			return fmt.Errorf("remove cluster tags: %w", err)
+			return currentOutputs, fmt.Errorf("remove cluster tags: %w", err)
 		}
 	}
 	if len(toAdd) > 0 {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.TagResource(rc, observed.ARN, toAdd)
 		}, classifyEKSMutation); err != nil {
-			return fmt.Errorf("update cluster tags: %w", err)
+			return currentOutputs, fmt.Errorf("update cluster tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired EKSClusterSpec, outputs EKSClusterOutputs) error {

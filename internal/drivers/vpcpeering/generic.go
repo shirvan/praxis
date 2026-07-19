@@ -35,7 +35,7 @@ func newGenericVPCPeeringDriverWithFactory(auth authservice.AuthClient, factory 
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, Readiness: true, ConvergeWhilePending: true,
+			Readiness: true, ConvergeWhilePending: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec VPCPeeringSpec) (VPCPeeringSpec, error) {
@@ -129,55 +129,55 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired VPCPeering
 	return kernel.CreateResult[VPCPeeringOutputs]{SeedOutputs: VPCPeeringOutputs{VpcPeeringConnectionId: id}}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next VPCPeeringSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next VPCPeeringSpec, _ ObservedState, currentOutputs VPCPeeringOutputs) (VPCPeeringOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.RequesterVpcId != next.RequesterVpcId:
-		return restate.TerminalError(fmt.Errorf("requesterVpcId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("requesterVpcId is immutable; delete and reprovision to change it"), 409)
 	case previous.AccepterVpcId != next.AccepterVpcId:
-		return restate.TerminalError(fmt.Errorf("accepterVpcId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("accepterVpcId is immutable; delete and reprovision to change it"), 409)
 	case previous.PeerOwnerId != next.PeerOwnerId:
-		return restate.TerminalError(fmt.Errorf("peerOwnerId is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("peerOwnerId is immutable; delete and reprovision to change it"), 409)
 	case previous.PeerRegion != next.PeerRegion:
-		return restate.TerminalError(fmt.Errorf("peerRegion is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("peerRegion is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired VPCPeeringSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired VPCPeeringSpec, observed ObservedState, currentOutputs VPCPeeringOutputs) (VPCPeeringOutputs, error) {
 	if err := validateVPCPeeringImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if observed.Status == "pending-acceptance" && desired.AutoAccept {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.AcceptVPCPeeringConnection(rc, observed.VpcPeeringConnectionId)
 		}, classifyVPCPeeringMutation); err != nil {
-			return fmt.Errorf("accept VPC peering connection: %w", err)
+			return currentOutputs, fmt.Errorf("accept VPC peering connection: %w", err)
 		}
 	}
 	if observed.Status == "active" && (optionsDrift(desired.RequesterOptions, observed.RequesterOptions) || optionsDrift(desired.AccepterOptions, observed.AccepterOptions)) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyPeeringOptions(rc, observed.VpcPeeringConnectionId, desired.RequesterOptions, desired.AccepterOptions)
 		}, classifyVPCPeeringMutation); err != nil {
-			return fmt.Errorf("modify VPC peering options: %w", err)
+			return currentOutputs, fmt.Errorf("modify VPC peering options: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.VpcPeeringConnectionId, desired.Tags)
 		}, classifyVPCPeeringMutation); err != nil {
-			return fmt.Errorf("update VPC peering tags: %w", err)
+			return currentOutputs, fmt.Errorf("update VPC peering tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired VPCPeeringSpec, outputs VPCPeeringOutputs) error {

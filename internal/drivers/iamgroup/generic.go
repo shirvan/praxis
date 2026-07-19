@@ -34,7 +34,7 @@ func newGenericIAMGroupDriverWithFactory(auth authservice.AuthClient, factory fu
 	return kernel.MustNew(kernel.Descriptor[IAMGroupSpec, IAMGroupOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec IAMGroupSpec) (IAMGroupSpec, error) {
@@ -94,23 +94,23 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired IAMGroupSpe
 	return kernel.CreateResult[IAMGroupOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next IAMGroupSpec, _ ObservedState) error {
+func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next IAMGroupSpec, _ ObservedState, currentOutputs IAMGroupOutputs) (IAMGroupOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.GroupName != next.GroupName:
-		return restate.TerminalError(fmt.Errorf("groupName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("groupName is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMGroupSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMGroupSpec, observed ObservedState, currentOutputs IAMGroupOutputs) (IAMGroupOutputs, error) {
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return o.convergeGroup(ctx, api, desired, observed)
+	return currentOutputs, o.convergeGroup(ctx, api, desired, observed)
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired IAMGroupSpec, outputs IAMGroupOutputs) error {

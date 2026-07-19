@@ -32,7 +32,7 @@ func NewGenericDashboardDriverWithFactory(auth authservice.AuthClient, factory f
 	return kernel.MustNew(kernel.Descriptor[DashboardSpec, DashboardOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec DashboardSpec) (DashboardSpec, error) {
@@ -87,22 +87,22 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired DashboardS
 	return kernel.CreateResult[DashboardOutputs]{SeedOutputs: DashboardOutputs{DashboardName: desired.DashboardName}}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next DashboardSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next DashboardSpec, _ ObservedState, currentOutputs DashboardOutputs) (DashboardOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.DashboardName != next.DashboardName:
-		return restate.TerminalError(fmt.Errorf("dashboardName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("dashboardName is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired DashboardSpec, _ ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired DashboardSpec, _ ObservedState, currentOutputs DashboardOutputs) (DashboardOutputs, error) {
 	_, err := o.Create(ctx, desired)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired DashboardSpec, outputs DashboardOutputs) error {

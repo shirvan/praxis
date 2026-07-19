@@ -36,11 +36,10 @@ func newGenericListenerRuleDriverWithFactory(auth authservice.AuthClient, factor
 	return kernel.MustNew(kernel.Descriptor[ListenerRuleSpec, ListenerRuleOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared:               true,
-			Import:                 true,
-			ObservedMode:           true,
-			Delete:                 true,
-			ManagedDriftCorrection: true,
+			Declared:     true,
+			Import:       true,
+			ObservedMode: true,
+			Delete:       true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec ListenerRuleSpec) (ListenerRuleSpec, error) {
@@ -117,32 +116,32 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired ListenerRu
 	}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ListenerRuleSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ListenerRuleSpec, observed ObservedState, currentOutputs ListenerRuleOutputs) (ListenerRuleOutputs, error) {
 	if desired.ListenerArn != observed.ListenerArn {
-		return restate.TerminalError(fmt.Errorf("listenerArn is immutable; delete and reprovision the listener rule"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("listenerArn is immutable; delete and reprovision the listener rule"), 409)
 	}
 	if owner := observed.Tags["praxis:managed-key"]; owner != "" && owner != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf("listener rule is owned by Praxis object %q", owner), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("listener rule is owned by Praxis object %q", owner), 409)
 	}
 	if observed.IsDefault {
-		return restate.TerminalError(fmt.Errorf("default rules are managed by the Listener driver"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("default rules are managed by the Listener driver"), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if desired.Priority != observed.Priority {
 		if _, err = drivers.RunAWS(ctx, func(runCtx restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.SetRulePriorities(runCtx, observed.RuleArn, desired.Priority)
 		}, classifyListenerRuleMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !conditionsEqual(desired.Conditions, observed.Conditions) || !actionsEqual(desired.Actions, observed.Actions) {
 		if _, err = drivers.RunAWS(ctx, func(runCtx restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.ModifyRule(runCtx, observed.RuleArn, desired.Conditions, desired.Actions)
 		}, classifyListenerRuleMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) || observed.Tags["praxis:managed-key"] != desired.ManagedKey {
@@ -150,7 +149,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired Listener
 			return restate.Void{}, api.UpdateTags(runCtx, observed.RuleArn, listenerRuleManagedTags(desired.Tags, desired.ManagedKey))
 		}, classifyListenerRuleMutation)
 	}
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired ListenerRuleSpec, outputs ListenerRuleOutputs) error {

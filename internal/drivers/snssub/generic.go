@@ -37,7 +37,7 @@ func newGenericSNSSubscriptionDriverWithFactory(auth authservice.AuthClient, fac
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true, Readiness: true,
+			Readiness: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SNSSubscriptionSpec) (SNSSubscriptionSpec, error) {
@@ -102,18 +102,18 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired SNSSubscri
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSSubscriptionSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SNSSubscriptionSpec, observed ObservedState, currentOutputs SNSSubscriptionOutputs) (SNSSubscriptionOutputs, error) {
 	if err := validateImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if observed.PendingConfirmation {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return convergeAttributes(ctx, api, observed.SubscriptionArn, desired, specFromObserved(observed, types.ImportRef{}))
+	return currentOutputs, convergeAttributes(ctx, api, observed.SubscriptionArn, desired, specFromObserved(observed, types.ImportRef{}))
 }
 
 func validateImmutableIdentity(desired SNSSubscriptionSpec, observed ObservedState) error {

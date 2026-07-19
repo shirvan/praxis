@@ -47,7 +47,7 @@ func newGenericElasticIPDriverWithFactories(
 	return kernel.MustNew(kernel.Descriptor[ElasticIPSpec, ElasticIPOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec ElasticIPSpec) (ElasticIPSpec, error) {
@@ -127,31 +127,31 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired ElasticIPS
 	return kernel.CreateResult[ElasticIPOutputs]{SeedOutputs: seed}, err
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next ElasticIPSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next ElasticIPSpec, _ ObservedState, currentOutputs ElasticIPOutputs) (ElasticIPOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ElasticIPSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired ElasticIPSpec, observed ObservedState, currentOutputs ElasticIPOutputs) (ElasticIPOutputs, error) {
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		api, _, err := o.apiForAccount(ctx, desired.Account)
 		if err != nil {
-			return drivers.ClassifyCredentialError(err)
+			return currentOutputs, drivers.ClassifyCredentialError(err)
 		}
 		_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, observed.AllocationId, desired.Tags)
 		}, classifyEIPMutation)
 		if err != nil {
-			return fmt.Errorf("update elastic IP tags: %w", err)
+			return currentOutputs, fmt.Errorf("update elastic IP tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired ElasticIPSpec, outputs ElasticIPOutputs) error {

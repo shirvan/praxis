@@ -277,7 +277,7 @@ func TestGenericNATProvisionChangeRejectsEveryImmutableField(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			next := previous
 			mutate(&next)
-			err := (&genericOperations{}).ConvergeProvisionChange(nil, previous, next, ObservedState{})
+			_, err := (&genericOperations{}).ConvergeProvisionChange(nil, previous, next, ObservedState{}, NATGatewayOutputs{})
 			require.Error(t, err)
 			assert.EqualValues(t, 409, restate.ErrorCode(err))
 		})

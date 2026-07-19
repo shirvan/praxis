@@ -1,6 +1,5 @@
 // Package types defines the shared types that flow between Praxis Core and
-// driver services over Restate RPC. This is the only public-facing package in the
-// repository — external driver service authors import it.
+// built-in driver services over Restate RPC.
 //
 // All types must be JSON-serializable since Restate uses encoding/json by
 // default for handler input/output serialization.

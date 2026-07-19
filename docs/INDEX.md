@@ -18,7 +18,6 @@
 | [ERRORS.md](ERRORS.md) | Contributors | Error classification, status codes, stable error codes |
 | [OPERATORS.md](OPERATORS.md) | Operators | Deployment, configuration, registration, monitoring, troubleshooting |
 | [DEVELOPERS.md](DEVELOPERS.md) | Contributors | Building, testing, project structure, contributing |
-| [EXTENDING.md](EXTENDING.md) | Contributors | Custom drivers in any language without forking |
 | [DRIVER_ROADMAP.md](DRIVER_ROADMAP.md) | Everyone | Planned driver coverage |
 | [FUTURE.md](FUTURE.md) | Everyone | Where Praxis is going |
 

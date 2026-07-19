@@ -180,7 +180,7 @@ func TestGenericESMProvisionChangeAndExternalDelete(t *testing.T) {
 	assert.Equal(t, 1, api.snapshot().Creates)
 }
 
-func TestGenericESMManagedDriftCorrectionAndObservePolicy(t *testing.T) {
+func TestGenericESMAutoCorrectionAndObservePolicy(t *testing.T) {
 	api := &statefulESMAPI{}
 	c := setupGenericESM(t, api)
 	key := "us-east-1~managed"

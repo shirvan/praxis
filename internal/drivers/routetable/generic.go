@@ -39,7 +39,7 @@ func newGenericRouteTableDriverWithFactory(auth authservice.AuthClient, factory 
 	return kernel.MustNew(kernel.Descriptor[RouteTableSpec, RouteTableOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec RouteTableSpec) (RouteTableSpec, error) {
@@ -137,23 +137,23 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired RouteTable
 	return kernel.CreateResult[RouteTableOutputs]{SeedOutputs: RouteTableOutputs{RouteTableId: id, VpcId: desired.VpcId}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RouteTableSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired RouteTableSpec, observed ObservedState, currentOutputs RouteTableOutputs) (RouteTableOutputs, error) {
 	if desired.VpcId != observed.VpcId {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"vpcId is immutable; delete and reprovision the route table to move it from %s to %s",
 			observed.VpcId, desired.VpcId,
 		), 409)
 	}
 	if currentOwner := strings.TrimSpace(observed.Tags[routeTableManagedKeyTag]); currentOwner != "" && currentOwner != desired.ManagedKey {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"route table %s is owned by Praxis object %q, not %q", observed.RouteTableId, currentOwner, desired.ManagedKey,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return convergeRouteTable(ctx, api, observed.RouteTableId, desired, observed)
+	return currentOutputs, convergeRouteTable(ctx, api, observed.RouteTableId, desired, observed)
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired RouteTableSpec, outputs RouteTableOutputs) error {

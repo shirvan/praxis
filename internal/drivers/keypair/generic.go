@@ -35,7 +35,7 @@ func newGenericKeyPairDriverWithFactory(auth authservice.AuthClient, factory fun
 	return kernel.MustNew(kernel.Descriptor[KeyPairSpec, KeyPairOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec KeyPairSpec) (KeyPairSpec, error) {
@@ -133,41 +133,41 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired KeyPairSpe
 	return result, nil
 }
 
-func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next KeyPairSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next KeyPairSpec, _ ObservedState, currentOutputs KeyPairOutputs) (KeyPairOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.KeyName != next.KeyName:
-		return restate.TerminalError(fmt.Errorf("keyName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keyName is immutable; delete and reprovision to change it"), 409)
 	case previous.KeyType != next.KeyType:
-		return restate.TerminalError(fmt.Errorf("keyType is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keyType is immutable; delete and reprovision to change it"), 409)
 	case previous.PublicKeyMaterial != next.PublicKeyMaterial:
-		return restate.TerminalError(fmt.Errorf("publicKeyMaterial is create-only; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("publicKeyMaterial is create-only; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired KeyPairSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired KeyPairSpec, observed ObservedState, currentOutputs KeyPairOutputs) (KeyPairOutputs, error) {
 	if desired.KeyName != observed.KeyName {
-		return restate.TerminalError(fmt.Errorf("keyName is immutable: observed %q, requested %q; delete and reprovision", observed.KeyName, desired.KeyName), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keyName is immutable: observed %q, requested %q; delete and reprovision", observed.KeyName, desired.KeyName), 409)
 	}
 	if desired.KeyType != observed.KeyType {
-		return restate.TerminalError(fmt.Errorf("keyType is immutable: observed %q, requested %q; delete and reprovision", observed.KeyType, desired.KeyType), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keyType is immutable: observed %q, requested %q; delete and reprovision", observed.KeyType, desired.KeyType), 409)
 	}
 	if drivers.TagsMatch(desired.Tags, observed.Tags) && observed.Tags[managedKeyTag] == desired.ManagedKey {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.UpdateTags(rc, observed.KeyPairId, keyPairManagedTags(desired.Tags, desired.ManagedKey))
 	}, classifyKeyPairMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired KeyPairSpec, outputs KeyPairOutputs) error {

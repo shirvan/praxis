@@ -40,7 +40,7 @@ func NewGenericKMSKeyDriverWithFactory(auth authservice.AuthClient, factory func
 	return kernel.MustNew(kernel.Descriptor[KMSKeySpec, KMSKeyOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec KMSKeySpec) (KMSKeySpec, error) {
@@ -107,29 +107,29 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired KMSKeySpec)
 	return kernel.CreateResult[KMSKeyOutputs]{SeedOutputs: KMSKeyOutputs{KeyID: keyID, AliasName: alias}}, err
 }
 
-func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next KMSKeySpec, _ ObservedState) error {
+func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next KMSKeySpec, _ ObservedState, currentOutputs KMSKeyOutputs) (KMSKeyOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.Region != next.Region:
-		return restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("region is immutable; delete and reprovision to change it"), 409)
 	case previous.Name != next.Name:
-		return restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("name is immutable; delete and reprovision to change it"), 409)
 	case previous.KeyUsage != next.KeyUsage:
-		return restate.TerminalError(fmt.Errorf("keyUsage is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keyUsage is immutable; delete and reprovision to change it"), 409)
 	case previous.KeySpec != next.KeySpec:
-		return restate.TerminalError(fmt.Errorf("keySpec is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("keySpec is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired KMSKeySpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired KMSKeySpec, observed ObservedState, currentOutputs KMSKeyOutputs) (KMSKeyOutputs, error) {
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return o.convergeMutableFields(ctx, api, desired, observed)
+	return currentOutputs, o.convergeMutableFields(ctx, api, desired, observed)
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired KMSKeySpec, outputs KMSKeyOutputs) error {

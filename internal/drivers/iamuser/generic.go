@@ -34,7 +34,7 @@ func newGenericIAMUserDriverWithFactory(auth authservice.AuthClient, factory fun
 	return kernel.MustNew(kernel.Descriptor[IAMUserSpec, IAMUserOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec IAMUserSpec) (IAMUserSpec, error) {
@@ -94,23 +94,23 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired IAMUserSpec
 	return kernel.CreateResult[IAMUserOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next IAMUserSpec, _ ObservedState) error {
+func (o *kernelOperations) ConvergeProvisionChange(_ restate.ObjectContext, previous, next IAMUserSpec, _ ObservedState, currentOutputs IAMUserOutputs) (IAMUserOutputs, error) {
 	switch {
 	case previous.Account != next.Account:
-		return restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("account is immutable; delete and reprovision to change it"), 409)
 	case previous.UserName != next.UserName:
-		return restate.TerminalError(fmt.Errorf("userName is immutable; delete and reprovision to change it"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("userName is immutable; delete and reprovision to change it"), 409)
 	default:
-		return nil
+		return currentOutputs, nil
 	}
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMUserSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired IAMUserSpec, observed ObservedState, currentOutputs IAMUserOutputs) (IAMUserOutputs, error) {
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	return o.convergeUser(ctx, api, desired, observed)
+	return currentOutputs, o.convergeUser(ctx, api, desired, observed)
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired IAMUserSpec, outputs IAMUserOutputs) error {

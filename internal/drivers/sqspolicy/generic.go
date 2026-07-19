@@ -35,7 +35,7 @@ func newGenericSQSQueuePolicyDriverWithFactory(auth authservice.AuthClient, fact
 	return kernel.MustNew(kernel.Descriptor[SQSQueuePolicySpec, SQSQueuePolicyOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SQSQueuePolicySpec) (SQSQueuePolicySpec, error) {
@@ -106,21 +106,21 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired SQSQueuePo
 	}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SQSQueuePolicySpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired SQSQueuePolicySpec, observed ObservedState, currentOutputs SQSQueuePolicyOutputs) (SQSQueuePolicyOutputs, error) {
 	if err := validateImmutableIdentity(desired, observed); err != nil {
-		return restate.TerminalError(err, 409)
+		return currentOutputs, restate.TerminalError(err, 409)
 	}
 	if policiesEqual(desired.Policy, observed.Policy) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 		return restate.Void{}, api.SetQueuePolicy(rc, observed.QueueUrl, desired.Policy)
 	}, classifyPolicyMutation)
-	return err
+	return currentOutputs, err
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired SQSQueuePolicySpec, outputs SQSQueuePolicyOutputs) error {

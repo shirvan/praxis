@@ -34,7 +34,6 @@ func newGenericHealthCheckDriverWithFactory(auth authservice.AuthClient, factory
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
 			Declared: true, Import: true, ObservedMode: true, Delete: true,
-			ManagedDriftCorrection: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec HealthCheckSpec) (HealthCheckSpec, error) {
@@ -92,16 +91,16 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired HealthChec
 	return kernel.CreateResult[HealthCheckOutputs]{SeedOutputs: HealthCheckOutputs{HealthCheckId: strings.TrimSpace(healthCheckID)}}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HealthCheckSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HealthCheckSpec, observed ObservedState, currentOutputs HealthCheckOutputs) (HealthCheckOutputs, error) {
 	if desired.Type != observed.Type {
-		return restate.TerminalError(fmt.Errorf("health check type is immutable: observed %q, requested %q; delete and reprovision", observed.Type, desired.Type), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("health check type is immutable: observed %q, requested %q; delete and reprovision", observed.Type, desired.Type), 409)
 	}
 	if observed.RequestInterval != 0 && desired.RequestInterval != observed.RequestInterval {
-		return restate.TerminalError(fmt.Errorf("health check requestInterval is immutable: observed %d, requested %d; delete and reprovision", observed.RequestInterval, desired.RequestInterval), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("health check requestInterval is immutable: observed %d, requested %d; delete and reprovision", observed.RequestInterval, desired.RequestInterval), 409)
 	}
 	api, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	healthCheckID := observed.HealthCheckId
 	if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
@@ -114,16 +113,16 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired HealthCh
 		}
 		return restate.Void{}, api.UpdateHealthCheck(rc, healthCheckID, latest, desired)
 	}, classifyHealthCheckMutation); err != nil {
-		return fmt.Errorf("update health check configuration: %w", err)
+		return currentOutputs, fmt.Errorf("update health check configuration: %w", err)
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UpdateTags(rc, healthCheckID, desired.Tags)
 		}, classifyHealthCheckMutation); err != nil {
-			return fmt.Errorf("update health check tags: %w", err)
+			return currentOutputs, fmt.Errorf("update health check tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired HealthCheckSpec, outputs HealthCheckOutputs) error {

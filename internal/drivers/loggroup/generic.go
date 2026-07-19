@@ -35,7 +35,7 @@ func NewGenericLogGroupDriverWithFactory(auth authservice.AuthClient, factory fu
 	return kernel.MustNew(kernel.Descriptor[LogGroupSpec, LogGroupOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec LogGroupSpec) (LogGroupSpec, error) {
@@ -90,16 +90,16 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired LogGroupSp
 	}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LogGroupSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LogGroupSpec, observed ObservedState, currentOutputs LogGroupOutputs) (LogGroupOutputs, error) {
 	if desired.LogGroupClass != "" && observed.LogGroupClass != "" && desired.LogGroupClass != observed.LogGroupClass {
-		return restate.TerminalError(fmt.Errorf(
+		return currentOutputs, restate.TerminalError(fmt.Errorf(
 			"logGroupClass is immutable for %s: current=%s desired=%s",
 			desired.LogGroupName, observed.LogGroupClass, desired.LogGroupClass,
 		), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 
 	if !retentionMatch(desired.RetentionInDays, observed.RetentionInDays) {
@@ -109,7 +109,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LogGroup
 			}
 			return restate.Void{}, api.PutRetentionPolicy(rc, desired.LogGroupName, *desired.RetentionInDays)
 		}, classifyLogGroupMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 
@@ -120,7 +120,7 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LogGroup
 			}
 			return restate.Void{}, api.AssociateKmsKey(rc, desired.LogGroupName, desired.KmsKeyID)
 		}, classifyLogGroupMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 
@@ -129,17 +129,17 @@ func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LogGroup
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.UntagResource(rc, observed.ARN, toRemove)
 		}, classifyLogGroupMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
 	if len(toAdd) > 0 {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.TagResource(rc, observed.ARN, toAdd)
 		}, classifyLogGroupMutation); err != nil {
-			return err
+			return currentOutputs, err
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired LogGroupSpec, outputs LogGroupOutputs) error {

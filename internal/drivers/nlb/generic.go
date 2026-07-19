@@ -40,7 +40,7 @@ func newGenericNLBDriverWithFactory(auth authservice.AuthClient, factory func(aw
 	ops := &genericOperations{auth: auth, apiFactory: factory}
 	return kernel.MustNew(kernel.Descriptor[NLBSpec, NLBOutputs, ObservedState]{
 		ServiceName:  ServiceName,
-		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true},
+		Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true},
 		Operations:   ops,
 		Prepare: func(ctx restate.ObjectContext, spec NLBSpec) (NLBSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
@@ -123,40 +123,40 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired NLBSpec) (
 	return kernel.CreateResult[NLBOutputs]{SeedOutputs: outputs}, err
 }
 
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired NLBSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired NLBSpec, observed ObservedState, currentOutputs NLBOutputs) (NLBOutputs, error) {
 	if hasImmutableChange(desired, observed) {
-		return restate.TerminalError(fmt.Errorf("NLB %q has immutable changes (name or scheme); delete and reprovision it", observed.Name), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("NLB %q has immutable changes (name or scheme); delete and reprovision it", observed.Name), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	arn := observed.LoadBalancerArn
 	if desired.IpAddressType != observed.IpAddressType {
 		if err = runNLBMutation(ctx, func(rc restate.RunContext) error { return api.SetIpAddressType(rc, arn, desired.IpAddressType) }); err != nil {
-			return fmt.Errorf("set IP address type: %w", err)
+			return currentOutputs, fmt.Errorf("set IP address type: %w", err)
 		}
 	}
 	if !sortedStringsEqual(resolveSubnets(desired), observed.Subnets) {
 		if err = runNLBMutation(ctx, func(rc restate.RunContext) error { return api.SetSubnets(rc, arn, resolveSubnetMappings(desired)) }); err != nil {
-			return fmt.Errorf("set subnets: %w", err)
+			return currentOutputs, fmt.Errorf("set subnets: %w", err)
 		}
 	}
 	attrs := buildAttributeMap(desired)
 	observedAttrs := map[string]string{"deletion_protection.enabled": fmt.Sprintf("%t", observed.DeletionProtection), "load_balancing.cross_zone.enabled": fmt.Sprintf("%t", observed.CrossZoneLoadBalancing)}
 	if !maps.Equal(attrs, observedAttrs) {
 		if err = runNLBMutation(ctx, func(rc restate.RunContext) error { return api.ModifyAttributes(rc, arn, attrs) }); err != nil {
-			return fmt.Errorf("modify attributes: %w", err)
+			return currentOutputs, fmt.Errorf("modify attributes: %w", err)
 		}
 	}
 	if !drivers.TagsMatch(desired.Tags, observed.Tags) || observed.Tags[managedKeyTag] != desired.ManagedKey {
 		if err = runNLBMutation(ctx, func(rc restate.RunContext) error {
 			return api.UpdateTags(rc, arn, nlbManagedTags(desired.Tags, desired.ManagedKey))
 		}); err != nil {
-			return fmt.Errorf("update tags: %w", err)
+			return currentOutputs, fmt.Errorf("update tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired NLBSpec, outputs NLBOutputs) error {

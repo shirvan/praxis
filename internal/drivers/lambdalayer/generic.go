@@ -27,7 +27,7 @@ func newGenericLambdaLayerDriverWithFactory(auth authservice.AuthClient, factory
 		factory = func(cfg aws.Config) LayerAPI { return NewLayerAPI(awsclient.NewLambdaClient(cfg)) }
 	}
 	ops := &genericOperations{auth: auth, apiFactory: factory}
-	return kernel.MustNew(kernel.Descriptor[LambdaLayerSpec, LambdaLayerOutputs, ObservedState]{ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true}, Operations: ops,
+	return kernel.MustNew(kernel.Descriptor[LambdaLayerSpec, LambdaLayerOutputs, ObservedState]{ServiceName: ServiceName, Capabilities: kernel.Capabilities{Declared: true, Import: true, ObservedMode: true, Delete: true}, Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec LambdaLayerSpec) (LambdaLayerSpec, error) {
 			_, region, err := ops.apiForAccount(ctx, spec.Account)
 			if err != nil {
@@ -83,55 +83,96 @@ func (o *genericOperations) Create(ctx restate.ObjectContext, desired LambdaLaye
 	if err != nil {
 		return kernel.CreateResult[LambdaLayerOutputs]{}, drivers.ClassifyCredentialError(err)
 	}
-	outputs, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) { return api.PublishLayerVersion(rc, desired) }, classifyLayerMutation)
+	outputs, err := publishConfiguredLayer(ctx, api, desired)
 	return kernel.CreateResult[LambdaLayerOutputs]{SeedOutputs: outputs}, err
 }
-func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previous, next LambdaLayerSpec, _ ObservedState) error {
+func (o *genericOperations) ConvergeProvisionChange(ctx restate.ObjectContext, previous, next LambdaLayerSpec, _ ObservedState, currentOutputs LambdaLayerOutputs) (LambdaLayerOutputs, error) {
 	if previous.LayerName != "" && previous.LayerName != next.LayerName {
-		return restate.TerminalError(fmt.Errorf("layerName is immutable; delete and reprovision the layer"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("layerName is immutable; delete and reprovision the layer"), 409)
 	}
 	if !layerContentChanged(previous.Code, next.Code) && !layerMetadataChanged(previous, next) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, next.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
-	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) { return api.PublishLayerVersion(rc, next) }, classifyLayerMutation)
-	return err
+	published, err := publishConfiguredLayer(ctx, api, next)
+	return publishedOrCurrent(published, currentOutputs, err)
 }
-func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaLayerSpec, observed ObservedState) error {
+func (o *genericOperations) Converge(ctx restate.ObjectContext, desired LambdaLayerSpec, observed ObservedState, currentOutputs LambdaLayerOutputs) (LambdaLayerOutputs, error) {
 	if desired.LayerName != observed.LayerName {
-		return restate.TerminalError(fmt.Errorf("layerName is immutable; delete and reprovision the layer"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("layerName is immutable; delete and reprovision the layer"), 409)
 	}
 	if observed.expectedVersion != 0 && observed.Version != observed.expectedVersion {
 		api, _, err := o.apiForAccount(ctx, desired.Account)
 		if err != nil {
-			return drivers.ClassifyCredentialError(err)
+			return currentOutputs, drivers.ClassifyCredentialError(err)
 		}
-		published, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) {
-			return api.PublishLayerVersion(rc, desired)
-		}, classifyLayerMutation)
-		if err != nil {
-			return err
-		}
-		_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (PermissionsSpec, error) {
-			return api.SyncLayerVersionPermissions(rc, desired.LayerName, published.Version, desiredPermissions(desired))
-		}, classifyLayerMutation)
-		return err
+		published, err := publishConfiguredLayer(ctx, api, desired)
+		return publishedOrCurrent(published, currentOutputs, err)
 	}
 	desiredPerms := desiredPermissions(desired)
 	if normalizePermissions(desiredPerms).Public == normalizePermissions(observed.Permissions).Public && sortedSlicesEqual(normalizePermissions(desiredPerms).AccountIds, normalizePermissions(observed.Permissions).AccountIds) {
-		return nil
+		return currentOutputs, nil
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (PermissionsSpec, error) {
 		return api.SyncLayerVersionPermissions(rc, desired.LayerName, observed.Version, desiredPerms)
 	}, classifyLayerMutation)
+	return currentOutputs, err
+}
+
+func publishConfiguredLayer(ctx restate.ObjectContext, api LayerAPI, desired LambdaLayerSpec) (LambdaLayerOutputs, error) {
+	published, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (LambdaLayerOutputs, error) {
+		return api.PublishLayerVersion(rc, desired)
+	}, classifyLayerMutation)
+	if err != nil {
+		return LambdaLayerOutputs{}, err
+	}
+	permissions := normalizePermissions(desiredPermissions(desired))
+	if !permissions.Public && len(permissions.AccountIds) == 0 {
+		return published, nil
+	}
+	_, err = drivers.RunAWS(ctx, func(rc restate.RunContext) (PermissionsSpec, error) {
+		return api.SyncLayerVersionPermissions(rc, desired.LayerName, published.Version, permissions)
+	}, classifyLayerMutation)
+	if err == nil {
+		return published, nil
+	}
+	if !restate.IsTerminalError(err) {
+		// Restate retries the same invocation. The successful publish is already
+		// journaled, so only permission synchronization executes again.
+		return LambdaLayerOutputs{}, err
+	}
+	rollbackErr := rollbackPublishedLayer(ctx, api, desired.LayerName, published.Version)
+	if rollbackErr == nil {
+		return LambdaLayerOutputs{}, err
+	}
+	// Wrap only the rollback error. If it is transient, Restate retries the
+	// journaled invocation; if terminal, the combined failure remains terminal.
+	return LambdaLayerOutputs{}, fmt.Errorf("sync permissions for published layer version %d failed (%s); rollback failed: %w", published.Version, err.Error(), rollbackErr)
+}
+
+func rollbackPublishedLayer(ctx restate.ObjectContext, api LayerAPI, layerName string, version int64) error {
+	_, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
+		err := api.DeleteLayerVersion(rc, layerName, version)
+		if IsNotFound(err) {
+			return restate.Void{}, nil
+		}
+		return restate.Void{}, err
+	}, classifyLayerMutation)
 	return err
+}
+
+func publishedOrCurrent(published, current LambdaLayerOutputs, err error) (LambdaLayerOutputs, error) {
+	if err != nil {
+		return current, err
+	}
+	return published, nil
 }
 func (o *genericOperations) Delete(ctx restate.ObjectContext, desired LambdaLayerSpec, outputs LambdaLayerOutputs) error {
 	name := outputs.LayerName

@@ -39,7 +39,7 @@ func newGenericSSMParameterDriverWithFactory(auth authservice.AuthClient, factor
 	return kernel.MustNew(kernel.Descriptor[SSMParameterSpec, SSMParameterOutputs, ObservedState]{
 		ServiceName: ServiceName,
 		Capabilities: kernel.Capabilities{
-			Declared: true, Import: true, ObservedMode: true, Delete: true, ManagedDriftCorrection: true,
+			Declared: true, Import: true, ObservedMode: true, Delete: true,
 		},
 		Operations: ops,
 		Prepare: func(ctx restate.ObjectContext, spec SSMParameterSpec) (SSMParameterSpec, error) {
@@ -104,19 +104,19 @@ func (o *kernelOperations) Create(ctx restate.ObjectContext, desired SSMParamete
 	}, err
 }
 
-func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SSMParameterSpec, observed ObservedState) error {
+func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SSMParameterSpec, observed ObservedState, currentOutputs SSMParameterOutputs) (SSMParameterOutputs, error) {
 	if desired.ParameterName != observed.ParameterName {
-		return restate.TerminalError(fmt.Errorf("parameterName is immutable; delete and recreate the parameter to change its name"), 409)
+		return currentOutputs, restate.TerminalError(fmt.Errorf("parameterName is immutable; delete and recreate the parameter to change its name"), 409)
 	}
 	api, _, err := o.apiForAccount(ctx, desired.Account)
 	if err != nil {
-		return drivers.ClassifyCredentialError(err)
+		return currentOutputs, drivers.ClassifyCredentialError(err)
 	}
 	if parameterFieldsDrift(desired, observed) {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (int64, error) {
 			return api.PutParameter(rc, desired, true)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("overwrite SSM parameter: %w", err)
+			return currentOutputs, fmt.Errorf("overwrite SSM parameter: %w", err)
 		}
 	}
 	toAdd, toRemove := tagDiff(desired.Tags, observed.Tags, desired.ManagedKey)
@@ -124,17 +124,17 @@ func (o *kernelOperations) Converge(ctx restate.ObjectContext, desired SSMParame
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.RemoveTags(rc, desired.ParameterName, toRemove)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("remove SSM parameter tags: %w", err)
+			return currentOutputs, fmt.Errorf("remove SSM parameter tags: %w", err)
 		}
 	}
 	if len(toAdd) > 0 {
 		if _, err := drivers.RunAWS(ctx, func(rc restate.RunContext) (restate.Void, error) {
 			return restate.Void{}, api.AddTags(rc, desired.ParameterName, toAdd)
 		}, classifyMutation); err != nil {
-			return fmt.Errorf("add SSM parameter tags: %w", err)
+			return currentOutputs, fmt.Errorf("add SSM parameter tags: %w", err)
 		}
 	}
-	return nil
+	return currentOutputs, nil
 }
 
 func (o *kernelOperations) Delete(ctx restate.ObjectContext, desired SSMParameterSpec, outputs SSMParameterOutputs) error {
