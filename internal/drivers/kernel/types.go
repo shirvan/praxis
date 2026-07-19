@@ -118,6 +118,7 @@ type Descriptor[S, O, Obs any] struct {
 	DesiredFromObserved func(ref types.ImportRef, observed Obs) S
 	OutputsFromObserved func(observed Obs, seed O) O
 	HasDrift            func(desired S, observed Obs) bool
+	FieldDiffs          func(desired S, observed Obs) []types.FieldDiff
 	LateInitialize      func(desired S, observed Obs) (S, bool)
 	CheckReadiness      func(observed Obs) ReadinessResult
 }
@@ -150,7 +151,7 @@ func (d Descriptor[S, O, Obs]) ValidateDefinition() error {
 	if d.Capabilities.ConvergeWhilePending && !d.Capabilities.ManagedDriftCorrection {
 		return fmt.Errorf("kernel descriptor %s: ConvergeWhilePending requires managed drift correction", d.ServiceName)
 	}
-	if d.Prepare == nil || d.Validate == nil || d.DesiredFromObserved == nil || d.OutputsFromObserved == nil || d.HasDrift == nil {
+	if d.Prepare == nil || d.Validate == nil || d.DesiredFromObserved == nil || d.OutputsFromObserved == nil || d.HasDrift == nil || d.FieldDiffs == nil {
 		return fmt.Errorf("kernel descriptor %s: all lifecycle functions are required", d.ServiceName)
 	}
 	return nil

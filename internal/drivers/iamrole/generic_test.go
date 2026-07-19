@@ -248,7 +248,7 @@ func TestGenericIAMRoleReconcileConvergesEveryCompositeComponent(t *testing.T) {
 	client := setupGenericIAMRole(t, api)
 	spec := managedRoleSpec("drift-role")
 
-	_, err := ingress.Object[IAMRoleSpec, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	beforeDrift := api.snapshot()
 	api.forceCompositeDrift()
@@ -268,14 +268,14 @@ func TestGenericIAMRoleRecoversPartialCreateWithoutSecondRole(t *testing.T) {
 	client := setupGenericIAMRole(t, api)
 	spec := managedRoleSpec("partial-role")
 
-	_, err := ingress.Object[IAMRoleSpec, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, spec.RoleName, api.role().RoleName, "role creation must survive a later composite-step failure")
 	status := getRoleStatus(t, client, spec.RoleName)
 	assert.Equal(t, types.StatusError, status.Status)
 
-	_, err = ingress.Object[IAMRoleSpec, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "recovery must observe and finish the existing role")
 	assertRoleMatchesSpec(t, spec, api.role())
@@ -285,7 +285,7 @@ func TestGenericIAMRoleDeleteDoesNotCleanExternalInstanceProfiles(t *testing.T) 
 	api := &statefulIAMRoleAPI{}
 	client := setupGenericIAMRole(t, api)
 	spec := managedRoleSpec("attached-role")
-	_, err := ingress.Object[IAMRoleSpec, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.instanceProfiles = []string{"external-profile"}
@@ -308,7 +308,7 @@ func TestGenericIAMRoleRejectsImmutableIdentityAndRetainsInputs(t *testing.T) {
 	api := &statefulIAMRoleAPI{}
 	client := setupGenericIAMRole(t, api)
 	spec := managedRoleSpec("immutable-role")
-	_, err := ingress.Object[IAMRoleSpec, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, IAMRoleSpec](client, ServiceName, spec.RoleName, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -323,7 +323,7 @@ func TestGenericIAMRoleRejectsImmutableIdentityAndRetainsInputs(t *testing.T) {
 	for _, tt := range tests {
 		changed := accepted
 		tt.mutate(&changed)
-		_, err = ingress.Object[IAMRoleSpec, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), changed)
+		_, err = ingress.Object[types.ProvisionRequest, IAMRoleOutputs](client, ServiceName, spec.RoleName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tt.field+" is immutable")
 		retained, getErr := ingress.Object[restate.Void, IAMRoleSpec](client, ServiceName, spec.RoleName, "GetInputs").Request(t.Context(), restate.Void{})

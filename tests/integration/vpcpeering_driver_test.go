@@ -60,7 +60,7 @@ func TestVPCPeeringProvision_CreatesPeering(t *testing.T) {
 	name := uniqueVPCPeeringName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), vpcpeering.VPCPeeringSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, vpcpeering.VPCPeeringSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		RequesterVpcId: requesterVpcID,
@@ -68,7 +68,7 @@ func TestVPCPeeringProvision_CreatesPeering(t *testing.T) {
 		AutoAccept:     true,
 		ManagedKey:     key,
 		Tags:           map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.VpcPeeringConnectionId)
 	assert.Equal(t, "active", outputs.Status)
@@ -99,9 +99,9 @@ func TestVPCPeeringProvision_Idempotent(t *testing.T) {
 		Tags:           map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.VpcPeeringConnectionId, out2.VpcPeeringConnectionId)
 }
@@ -144,7 +144,7 @@ func TestVPCPeeringDelete_Deletes(t *testing.T) {
 	name := uniqueVPCPeeringName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), vpcpeering.VPCPeeringSpec{
+	out, err := ingress.Object[types.ProvisionRequest, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, vpcpeering.VPCPeeringSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		RequesterVpcId: requesterVpcID,
@@ -152,7 +152,7 @@ func TestVPCPeeringDelete_Deletes(t *testing.T) {
 		AutoAccept:     true,
 		ManagedKey:     key,
 		Tags:           map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, vpcpeering.ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -173,7 +173,7 @@ func TestVPCPeeringReconcile_TagDrift(t *testing.T) {
 	name := uniqueVPCPeeringName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), vpcpeering.VPCPeeringSpec{
+	out, err := ingress.Object[types.ProvisionRequest, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, vpcpeering.VPCPeeringSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		RequesterVpcId: requesterVpcID,
@@ -181,7 +181,7 @@ func TestVPCPeeringReconcile_TagDrift(t *testing.T) {
 		AutoAccept:     true,
 		ManagedKey:     key,
 		Tags:           map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{
@@ -210,7 +210,7 @@ func TestVPCPeeringGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueVPCPeeringName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), vpcpeering.VPCPeeringSpec{
+	_, err := ingress.Object[types.ProvisionRequest, vpcpeering.VPCPeeringOutputs](client, vpcpeering.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, vpcpeering.VPCPeeringSpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		RequesterVpcId: requesterVpcID,
@@ -218,7 +218,7 @@ func TestVPCPeeringGetStatus_ReturnsReady(t *testing.T) {
 		AutoAccept:     true,
 		ManagedKey:     key,
 		Tags:           map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, vpcpeering.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})

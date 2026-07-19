@@ -15,7 +15,8 @@ generic adapter.
 The generic adapter owns:
 
 - resource-document parsing and dispatch plumbing;
-- the alpha `ProvisionRequest[Spec]{Spec, Lifecycle}` envelope;
+- the alpha `ProvisionRequest{Spec, Lifecycle}` envelope (the generic adapter
+  encodes the typed spec into the envelope's raw JSON field);
 - Restate futures for Provision/Delete/Import;
 - create/update/no-op plan selection and sensitive-field masking;
 - Auth Service credential resolution and common plan-error classification.

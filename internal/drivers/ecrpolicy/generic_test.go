@@ -213,7 +213,7 @@ func TestGenericECRLifecyclePolicyFormattingOnlyDifferenceDoesNotWrite(t *testin
 	client := setupGenericLifecyclePolicy(t, api)
 	before := api.current()
 
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	assert.Equal(t, before.putCalls, api.current().putCalls, "canonical JSON equality must avoid PutLifecyclePolicy")
 }
@@ -223,12 +223,12 @@ func TestGenericECRLifecyclePolicyRecoversAmbiguousPutAcrossProvision(t *testing
 	api.putAfterApplyErrors = []error{errors.New("AccessDenied: response lost after policy write")}
 	client := setupGenericLifecyclePolicy(t, api)
 
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.current().putCalls)
 	assert.Equal(t, normalizePolicy(managedLifecyclePolicy), normalizePolicy(api.current().policy))
 
-	_, err = ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err = ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.current().putCalls, "observe-before-create must recover the completed policy")
 }
@@ -238,7 +238,7 @@ func TestGenericECRLifecyclePolicyRetriesAmbiguousPutIdempotently(t *testing.T) 
 	api.putAfterApplyErrors = []error{&smithy.GenericAPIError{Code: "ServerException", Message: "response lost"}}
 	client := setupGenericLifecyclePolicy(t, api)
 
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 2, api.current().putCalls)
 	assert.Equal(t, 1, api.snapshot().Creates, "retry must replace the same policy subresource")
@@ -247,7 +247,7 @@ func TestGenericECRLifecyclePolicyRetriesAmbiguousPutIdempotently(t *testing.T) 
 func TestGenericECRLifecyclePolicyRecoversAmbiguousDelete(t *testing.T) {
 	api := newStatefulLifecyclePolicyAPI("generic-repo", "")
 	client := setupGenericLifecyclePolicy(t, api)
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	api.deleteAfterApplyErrors = []error{&smithy.GenericAPIError{Code: "ServerException", Message: "delete response lost"}}
 
@@ -260,7 +260,7 @@ func TestGenericECRLifecyclePolicyRecoversAmbiguousDelete(t *testing.T) {
 func TestGenericECRLifecyclePolicyManagedReconcileCorrectsOnlyPolicy(t *testing.T) {
 	api := newStatefulLifecyclePolicyAPI("generic-repo", "")
 	client := setupGenericLifecyclePolicy(t, api)
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.policy = `{"rules":[]}`
@@ -279,7 +279,7 @@ func TestGenericECRLifecyclePolicyManagedReconcileCorrectsOnlyPolicy(t *testing.
 func TestGenericECRLifecyclePolicyExternalRemovalRequiresReplacementWithoutPut(t *testing.T) {
 	api := newStatefulLifecyclePolicyAPI("generic-repo", "")
 	client := setupGenericLifecyclePolicy(t, api)
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.policy = ""
@@ -298,7 +298,7 @@ func TestGenericECRLifecyclePolicyMissingRepositoryIsNeverCreated(t *testing.T) 
 	api.repositoryExists = false
 	client := setupGenericLifecyclePolicy(t, api)
 
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RepositoryNotFoundException")
 	assert.Equal(t, 1, api.current().putCalls, "the driver may attempt policy creation but has no repository-create API")
@@ -320,13 +320,13 @@ func TestGenericECRLifecyclePolicyImportRejectsMissingPolicy(t *testing.T) {
 func TestGenericECRLifecyclePolicyCannotRetargetRepository(t *testing.T) {
 	api := newStatefulLifecyclePolicyAPI("generic-repo", "")
 	client := setupGenericLifecyclePolicy(t, api)
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), managedLifecyclePolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedLifecyclePolicySpec()))
 	require.NoError(t, err)
 	before := api.current()
 
 	spec := managedLifecyclePolicySpec()
 	spec.RepositoryName = "different-repo"
-	_, err = ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "repositoryName is immutable")
 	assert.Equal(t, before.putCalls, api.current().putCalls)
@@ -338,7 +338,7 @@ func TestGenericECRLifecyclePolicyAcceptsValidNonObjectJSON(t *testing.T) {
 	spec := managedLifecyclePolicySpec()
 	spec.LifecyclePolicyText = `[]`
 
-	_, err := ingress.Object[ECRLifecyclePolicySpec, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECRLifecyclePolicyOutputs](client, ServiceName, managedLifecyclePolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.current().putCalls)
 	assert.Equal(t, `[]`, api.current().policy)

@@ -9,6 +9,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/shirvan/praxis/internal/drivers/s3"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // motoEndpoint is the URL for the Moto (mock AWS) instance.
@@ -43,6 +45,16 @@ func configureLocalAccount(t *testing.T) {
 
 func accountVariables() map[string]any {
 	return map[string]any{"account": integrationAccountName}
+}
+
+func provisionRequest(t testing.TB, spec any) types.ProvisionRequest {
+	t.Helper()
+	encoded, err := json.Marshal(spec)
+	require.NoError(t, err)
+	return types.ProvisionRequest{
+		Spec:      encoded,
+		Lifecycle: types.NormalizeLifecyclePolicy(nil),
+	}
 }
 
 // setupS3Driver starts a Restate test environment with the S3 driver registered.

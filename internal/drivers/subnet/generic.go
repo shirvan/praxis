@@ -55,6 +55,7 @@ func newGenericSubnetDriverWithFactory(auth authservice.AuthClient, factory func
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

@@ -289,7 +289,7 @@ func TestGenericSSMParameterAmbiguousCreateFailsClosedThenRecovers(t *testing.T)
 	key := "us-east-1~praxis-ambiguous"
 	spec := managedParameterSpec("/praxis/ambiguous")
 
-	_, err := ingress.Object[SSMParameterSpec, SSMParameterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SSMParameterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err, "Parameter Store has no idempotency token; an ambiguous create must fail closed")
 	assert.Equal(t, types.StatusError, getParameterStatus(t, client, key).Status)
 
@@ -325,7 +325,7 @@ func TestGenericSSMParameterRejectsImmutableNameChange(t *testing.T) {
 	provisionParameter(t, client, key, spec)
 	spec.ParameterName = "/praxis/different"
 
-	_, err := ingress.Object[SSMParameterSpec, SSMParameterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SSMParameterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parameterName is immutable")
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -351,7 +351,7 @@ func TestGenericSSMParameterExternalDeleteRequiresReplacementWithoutCreation(t *
 
 func provisionParameter(t *testing.T, client *ingress.Client, key string, spec SSMParameterSpec) SSMParameterOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[SSMParameterSpec, SSMParameterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SSMParameterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }

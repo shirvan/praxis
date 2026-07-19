@@ -117,12 +117,7 @@ func amiDescriptor(staticAPI ami.AMIAPI) GenericDescriptor[ami.AMISpec, ami.AMIO
 		},
 
 		DiffFields: func(desired ami.AMISpec, observed ami.ObservedState, _ ami.AMIOutputs) []types.FieldDiff {
-			rawDiffs := ami.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ami.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

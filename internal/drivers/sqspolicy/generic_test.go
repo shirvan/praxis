@@ -205,9 +205,9 @@ func TestGenericSQSQueuePolicyFormattingOnlyDifferenceDoesNotWrite(t *testing.T)
 	client := setupGenericPolicy(t, api)
 	before := api.current()
 
-	outputs, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](
 		client, ServiceName, managedPolicyKey, "Provision",
-	).Request(t.Context(), managedPolicySpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "generic-orders", outputs.QueueName)
 	assert.Equal(t, before.setCalls, api.current().setCalls, "semantic JSON equality must avoid a provider write")
@@ -218,12 +218,12 @@ func TestGenericSQSQueuePolicyRecoversAfterSetCompletesBeforeFailure(t *testing.
 	api.setAfterApplyErrors = []error{errors.New("AccessDenied: response lost after apply")}
 	client := setupGenericPolicy(t, api)
 
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.Error(t, err)
 	assert.Equal(t, managedPolicyJSON, api.current().policy)
 	assert.Equal(t, 1, api.current().setCalls)
 
-	_, err = ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err = ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.current().setCalls, "observe-before-create must recover the completed policy write")
 }
@@ -233,7 +233,7 @@ func TestGenericSQSQueuePolicyRetriesTransientPartialSetIdempotently(t *testing.
 	api.setAfterApplyErrors = []error{&smithy.GenericAPIError{Code: "ServiceUnavailable", Message: "response lost"}}
 	client := setupGenericPolicy(t, api)
 
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 2, api.current().setCalls, "the journal callback must retry the idempotent Policy replacement")
 	assert.Equal(t, 1, api.snapshot().Creates, "retry must not create a second policy subresource")
@@ -244,7 +244,7 @@ func TestGenericSQSQueuePolicyInvalidSetIsTerminal(t *testing.T) {
 	api.setErrors = []error{errors.New("InvalidAttributeValue: malformed policy")}
 	client := setupGenericPolicy(t, api)
 
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.current().setCalls, "permanent request errors must not retry")
 }
@@ -252,7 +252,7 @@ func TestGenericSQSQueuePolicyInvalidSetIsTerminal(t *testing.T) {
 func TestGenericSQSQueuePolicyManagedReconcileCorrectsOnlyPolicy(t *testing.T) {
 	api := newStatefulPolicyAPI("generic-orders", "")
 	client := setupGenericPolicy(t, api)
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.policy = `{"Version":"2012-10-17","Statement":[]}`
@@ -271,7 +271,7 @@ func TestGenericSQSQueuePolicyManagedReconcileCorrectsOnlyPolicy(t *testing.T) {
 func TestGenericSQSQueuePolicyExternalRemovalRequiresReplacementWithoutWrite(t *testing.T) {
 	api := newStatefulPolicyAPI("generic-orders", "")
 	client := setupGenericPolicy(t, api)
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.policy = ""
@@ -290,7 +290,7 @@ func TestGenericSQSQueuePolicyMissingQueueIsNotCreatedOrDeleted(t *testing.T) {
 	api.queueExists = false
 	client := setupGenericPolicy(t, api)
 
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")
 	assert.Zero(t, api.current().setCalls)
@@ -312,13 +312,13 @@ func TestGenericSQSQueuePolicyImportRejectsQueueWithoutPolicy(t *testing.T) {
 func TestGenericSQSQueuePolicyCannotRetargetCommittedPolicy(t *testing.T) {
 	api := newStatefulPolicyAPI("generic-orders", "")
 	client := setupGenericPolicy(t, api)
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), managedPolicySpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedPolicySpec()))
 	require.NoError(t, err)
 	before := api.current()
 
 	spec := managedPolicySpec()
 	spec.QueueName = "different-orders"
-	_, err = ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "queueName is immutable")
 	after := api.current()
@@ -331,7 +331,7 @@ func TestGenericSQSQueuePolicyRejectsInvalidJSONBeforeProviderWrite(t *testing.T
 	client := setupGenericPolicy(t, api)
 	spec := managedPolicySpec()
 	spec.Policy = `[]`
-	_, err := ingress.Object[SQSQueuePolicySpec, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueuePolicyOutputs](client, ServiceName, managedPolicyKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "JSON object")
 	assert.Zero(t, api.current().setCalls)

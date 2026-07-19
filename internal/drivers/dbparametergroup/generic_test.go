@@ -179,9 +179,9 @@ func TestGenericDBParameterGroupObservedImportLifecycle(t *testing.T) {
 func TestGenericDBParameterGroupRecoversAmbiguousCreate(t *testing.T) {
 	api := &statefulParameterGroupAPI{createErrors: []error{errors.New("request timeout")}}
 	client := setupGenericDBParameterGroup(t, api)
-	_, err := ingress.Object[DBParameterGroupSpec, DBParameterGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, DBParameterGroupOutputs](
 		client, ServiceName, "us-east-1~generic-parameter-group", "Provision",
-	).Request(t.Context(), managedParameterGroupSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, managedParameterGroupSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 }
@@ -193,9 +193,9 @@ func TestGenericDBParameterGroupRejectsNameCollisionWithoutOwnership(t *testing.
 		Description: spec.Description, Parameters: maps.Clone(spec.Parameters), Tags: maps.Clone(spec.Tags),
 	}}
 	client := setupGenericDBParameterGroup(t, api)
-	_, err := ingress.Object[DBParameterGroupSpec, DBParameterGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, DBParameterGroupOutputs](
 		client, ServiceName, "us-east-1~generic-parameter-group", "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exact Praxis ownership")
 	assert.Zero(t, api.snapshot().Creates)
@@ -206,11 +206,11 @@ func TestGenericDBParameterGroupRejectsImmutableFamilyChange(t *testing.T) {
 	client := setupGenericDBParameterGroup(t, api)
 	key := "us-east-1~generic-parameter-group"
 	spec := managedParameterGroupSpec()
-	_, err := ingress.Object[DBParameterGroupSpec, DBParameterGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, DBParameterGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	before := api.snapshot()
 	spec.Family = "postgres16"
-	_, err = ingress.Object[DBParameterGroupSpec, DBParameterGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, DBParameterGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "family is immutable")
 	assert.Equal(t, before.Creates, api.snapshot().Creates)
@@ -220,7 +220,7 @@ func TestGenericDBParameterGroupExternalDeleteRequiresReplacement(t *testing.T) 
 	api := &statefulParameterGroupAPI{}
 	client := setupGenericDBParameterGroup(t, api)
 	key := "us-east-1~generic-parameter-group"
-	_, err := ingress.Object[DBParameterGroupSpec, DBParameterGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedParameterGroupSpec())
+	_, err := ingress.Object[types.ProvisionRequest, DBParameterGroupOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedParameterGroupSpec()))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.removeExternally()

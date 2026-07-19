@@ -357,7 +357,7 @@ func TestProvision_CreatesPublicZone(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "example.com"
 
-	outputs, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, map[string]string{"env": "dev"}))
+	outputs, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, map[string]string{"env": "dev"})))
 	require.NoError(t, err)
 	assert.Equal(t, "Z123456", outputs.HostedZoneId)
 	assert.Equal(t, "example.com", outputs.Name)
@@ -375,9 +375,9 @@ func TestGenericHostedZoneInvalidSpecReturnsTerminalError(t *testing.T) {
 	api := newFakeHostedZoneAPI()
 	client := setupHostedZoneDriver(t, api)
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, "invalid-private.example", "Provision").Request(t.Context(), HostedZoneSpec{
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, "invalid-private.example", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, HostedZoneSpec{
 		Account: "test", IsPrivate: true,
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "private hosted zones require at least one VPC association")
 	assert.Zero(t, api.createCalls)
@@ -389,9 +389,9 @@ func TestProvision_IdempotentReprovision(t *testing.T) {
 	key := "example.com"
 	spec := testZoneSpec(key, map[string]string{"env": "dev"})
 
-	out1, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.HostedZoneId, out2.HostedZoneId)
 	assert.Equal(t, 1, api.createCalls)
@@ -403,7 +403,7 @@ func TestGenericHostedZoneRecoversAmbiguousCreateWithCallerReference(t *testing.
 	client := setupHostedZoneDriver(t, api)
 	key := "ambiguous.example"
 
-	outputs, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	outputs, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, nil)))
 	require.NoError(t, err)
 	assert.Equal(t, "Z123456", outputs.HostedZoneId)
 	assert.Equal(t, 1, api.createCalls, "native CallerReference replay must not create a duplicate zone")
@@ -418,7 +418,7 @@ func TestGenericHostedZoneRejectsSameNameWithoutExactCallerReference(t *testing.
 	api.nameIndex["claimed.example"] = "ZEXISTING"
 	client := setupHostedZoneDriver(t, api)
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, "claimed.example", "Provision").Request(t.Context(), testZoneSpec("claimed.example", nil))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, "claimed.example", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec("claimed.example", nil)))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "without exact Praxis ownership")
 	assert.Zero(t, api.createCalls)
@@ -429,11 +429,11 @@ func TestGenericHostedZoneRejectsImmutablePrivateModeChange(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "immutable.example"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, nil)))
 	require.NoError(t, err)
-	_, err = ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), HostedZoneSpec{
+	_, err = ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, HostedZoneSpec{
 		Account: "test", IsPrivate: true, VPCs: []HostedZoneVPC{{VpcId: "vpc-123", VpcRegion: "us-east-1"}},
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "isPrivate is immutable")
 }
@@ -443,7 +443,7 @@ func TestGenericHostedZoneExternalDeleteRequiresReplacementWithoutCreate(t *test
 	client := setupHostedZoneDriver(t, api)
 	key := "external-delete.example"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, nil)))
 	require.NoError(t, err)
 	before := api.createCalls
 	api.mu.Lock()
@@ -462,10 +462,10 @@ func TestProvision_TagUpdate(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "example.com"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, map[string]string{"env": "dev"}))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, map[string]string{"env": "dev"})))
 	require.NoError(t, err)
 
-	_, err = ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, map[string]string{"env": "prod"}))
+	_, err = ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, map[string]string{"env": "prod"})))
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, api.tagCalls, 1)
 	assert.Equal(t, "prod", api.zones["Z123456"].Tags["env"])
@@ -476,10 +476,10 @@ func TestProvision_CommentUpdate(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "example.com"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), HostedZoneSpec{Account: "test", Comment: "old comment", Tags: map[string]string{}})
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, HostedZoneSpec{Account: "test", Comment: "old comment", Tags: map[string]string{}}))
 	require.NoError(t, err)
 
-	_, err = ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), HostedZoneSpec{Account: "test", Comment: "new comment", Tags: map[string]string{}})
+	_, err = ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, HostedZoneSpec{Account: "test", Comment: "new comment", Tags: map[string]string{}}))
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, api.commentCalls, 1)
 	assert.Equal(t, "new comment", api.zones["Z123456"].Comment)
@@ -513,7 +513,7 @@ func TestDelete_DeletesZone(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "example.com"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, nil)))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -542,7 +542,7 @@ func TestReconcile_CommentDriftCorrected(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "example.com"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, map[string]string{}))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, map[string]string{})))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -590,7 +590,7 @@ func TestGetOutputs_ReturnsCurrentState(t *testing.T) {
 	client := setupHostedZoneDriver(t, api)
 	key := "example.com"
 
-	_, err := ingress.Object[HostedZoneSpec, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testZoneSpec(key, nil))
+	_, err := ingress.Object[types.ProvisionRequest, HostedZoneOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testZoneSpec(key, nil)))
 	require.NoError(t, err)
 
 	outputs, err := ingress.Object[restate.Void, HostedZoneOutputs](client, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})

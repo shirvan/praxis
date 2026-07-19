@@ -65,7 +65,8 @@ func newGenericECRLifecyclePolicyDriverWithFactory(auth authservice.AuthClient, 
 		OutputsFromObserved: func(observed ObservedState, _ ECRLifecyclePolicyOutputs) ECRLifecyclePolicyOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

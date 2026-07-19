@@ -10,7 +10,6 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
-	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/dbparametergroup"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -81,12 +80,7 @@ func dbParameterGroupDescriptor() GenericDescriptor[dbparametergroup.DBParameter
 			return dbParameterGroupProbe(dbparametergroup.NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg)))
 		},
 		DiffFields: func(desired dbparametergroup.DBParameterGroupSpec, observed dbparametergroup.ObservedState, _ dbparametergroup.DBParameterGroupOutputs) []types.FieldDiff {
-			raw := dbparametergroup.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(raw))
-			for _, diff := range raw {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return dbparametergroup.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }
@@ -98,10 +92,7 @@ func dbParameterGroupProbe(api dbparametergroup.DBParameterGroupAPI) PlanProbeFu
 			if dbparametergroup.IsNotFound(err) {
 				return dbparametergroup.ObservedState{}, false, nil
 			}
-			if awserr.IsThrottled(err) {
-				return dbparametergroup.ObservedState{}, false, err
-			}
-			return dbparametergroup.ObservedState{}, false, restate.TerminalError(err, 500)
+			return dbparametergroup.ObservedState{}, false, err
 		}
 		return observed, true, nil
 	}

@@ -96,9 +96,9 @@ func TestSGProvision_CreatesSecurityGroup(t *testing.T) {
 	registerSGCleanup(t, ec2Client, sgName, vpcId)
 	key := fmt.Sprintf("%s~%s", vpcId, sgName)
 
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account:     integrationAccountName,
 		GroupName:   sgName,
 		Description: "Test security group",
@@ -110,7 +110,7 @@ func TestSGProvision_CreatesSecurityGroup(t *testing.T) {
 			{Protocol: "-1", FromPort: 0, ToPort: 0, CidrBlock: "0.0.0.0/0"},
 		},
 		Tags: map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.GroupId)
 	assert.Equal(t, vpcId, outputs.VpcId)
@@ -143,11 +143,11 @@ func TestSGProvision_RejectsUnownedSameNameCollision(t *testing.T) {
 	require.NoError(t, err)
 	externalID := aws.ToString(created.GroupId)
 
-	_, err = ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, sg.ServiceName, key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account: integrationAccountName, GroupName: sgName, Description: "external", VpcId: vpcID,
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "different ownership")
 
@@ -169,14 +169,14 @@ func TestSGProvision_RejectsImmutableDescriptionChange(t *testing.T) {
 		Account: integrationAccountName, GroupName: sgName, Description: "original", VpcId: vpcID,
 	}
 
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, sg.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.Description = "changed"
-	_, err = ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, sg.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "description is immutable")
 
@@ -205,12 +205,12 @@ func TestSGProvision_RecoversExactManagedKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, sg.ServiceName, key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account: integrationAccountName, GroupName: sgName, Description: "recover", VpcId: vpcID,
 		Tags: map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, aws.ToString(created.GroupId), outputs.GroupId)
 
@@ -235,14 +235,14 @@ func TestSGProvision_TagConvergencePreservesManagedKey(t *testing.T) {
 		Tags: map[string]string{"env": "before", "remove": "me"},
 	}
 
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, sg.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.Tags = map[string]string{"env": "after"}
-	_, err = ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, sg.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	desc, err := ec2Client.DescribeSecurityGroups(t.Context(), &ec2sdk.DescribeSecurityGroupsInput{GroupIds: []string{outputs.GroupId}})
@@ -273,15 +273,15 @@ func TestSGProvision_Idempotent(t *testing.T) {
 	}
 
 	// First provision
-	out1, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Second provision with same spec — should succeed
-	out2, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.GroupId, out2.GroupId)
 }
@@ -322,14 +322,14 @@ func TestSGDelete_RemovesGroup(t *testing.T) {
 	key := fmt.Sprintf("%s~%s", vpcId, sgName)
 
 	// Provision
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account:     integrationAccountName,
 		GroupName:   sgName,
 		Description: "To be deleted",
 		VpcId:       vpcId,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Delete
@@ -355,9 +355,9 @@ func TestSGReconcile_DetectsDrift(t *testing.T) {
 	registerDriftEventOwner(t, client, key, streamKey, sgName, sg.ServiceName)
 
 	// Provision with one ingress rule
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account:     integrationAccountName,
 		GroupName:   sgName,
 		Description: "Drift test",
@@ -365,7 +365,7 @@ func TestSGReconcile_DetectsDrift(t *testing.T) {
 		IngressRules: []sg.IngressRule{
 			{Protocol: "tcp", FromPort: 80, ToPort: 80, CidrBlock: "0.0.0.0/0"},
 		},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: add an extra ingress rule directly via EC2 API
@@ -415,14 +415,14 @@ func TestSGReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	streamKey := "dep-sg-external-delete-" + sgName
 	registerDriftEventOwner(t, client, key, streamKey, sgName, sg.ServiceName)
 
-	outputs, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account:     integrationAccountName,
 		GroupName:   sgName,
 		Description: "Delete test",
 		VpcId:       vpcId,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteSecurityGroup(context.Background(), &ec2sdk.DeleteSecurityGroupInput{GroupId: aws.String(outputs.GroupId)})
@@ -447,14 +447,14 @@ func TestSGGetStatus_ReturnsReady(t *testing.T) {
 	key := fmt.Sprintf("%s~%s", vpcId, sgName)
 
 	// Provision
-	_, err := ingress.Object[sg.SecurityGroupSpec, sg.SecurityGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, sg.SecurityGroupOutputs](
 		client, "SecurityGroup", key, "Provision",
-	).Request(t.Context(), sg.SecurityGroupSpec{
+	).Request(t.Context(), provisionRequest(t, sg.SecurityGroupSpec{
 		Account:     integrationAccountName,
 		GroupName:   sgName,
 		Description: "Status test",
 		VpcId:       vpcId,
-	})
+	}))
 	require.NoError(t, err)
 
 	// GetStatus

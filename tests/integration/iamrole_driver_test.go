@@ -41,7 +41,7 @@ func TestIAMRoleProvision_CreatesRole(t *testing.T) {
 	roleName := uniqueIAMName(t, "role")
 	policyArn := createManagedPolicy(t, iamClient, uniqueIAMName(t, "policy"))
 
-	outputs, err := ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), iamrole.IAMRoleSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), provisionRequest(t, iamrole.IAMRoleSpec{
 		Account:                  integrationAccountName,
 		Path:                     "/app/",
 		RoleName:                 roleName,
@@ -51,7 +51,7 @@ func TestIAMRoleProvision_CreatesRole(t *testing.T) {
 		InlinePolicies:           map[string]string{"inline-access": allowAllS3PolicyDoc()},
 		ManagedPolicyArns:        []string{policyArn},
 		Tags:                     map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, roleName, outputs.RoleName)
 	assert.NotEmpty(t, outputs.RoleId)
@@ -81,11 +81,11 @@ func TestIAMRoleProvision_UpdatesTrustPolicy(t *testing.T) {
 		MaxSessionDuration:       3600,
 	}
 
-	_, err := ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.AssumeRolePolicyDocument = lambdaAssumeRolePolicyDoc
-	_, err = ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	roleOut, err := iamClient.GetRole(context.Background(), &iamsdk.GetRoleInput{RoleName: aws.String(roleName)})
@@ -119,14 +119,14 @@ func TestIAMRoleDelete_RemovesRole(t *testing.T) {
 	roleName := uniqueIAMName(t, "role")
 	policyArn := createManagedPolicy(t, iamClient, uniqueIAMName(t, "policy"))
 
-	_, err := ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), iamrole.IAMRoleSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), provisionRequest(t, iamrole.IAMRoleSpec{
 		Account:                  integrationAccountName,
 		RoleName:                 roleName,
 		AssumeRolePolicyDocument: assumeRolePolicyDoc,
 		MaxSessionDuration:       3600,
 		InlinePolicies:           map[string]string{"inline-access": allowAllS3PolicyDoc()},
 		ManagedPolicyArns:        []string{policyArn},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, iamrole.ServiceName, roleName, "Delete").Request(t.Context(), restate.Void{})
@@ -142,12 +142,12 @@ func TestIAMRoleDelete_ExternalInstanceProfileMustBeDetached(t *testing.T) {
 	roleName := uniqueIAMName(t, "role")
 	profileName := uniqueIAMName(t, "profile")
 
-	_, err := ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), iamrole.IAMRoleSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), provisionRequest(t, iamrole.IAMRoleSpec{
 		Account:                  integrationAccountName,
 		RoleName:                 roleName,
 		AssumeRolePolicyDocument: assumeRolePolicyDoc,
 		MaxSessionDuration:       3600,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = iamClient.CreateInstanceProfile(context.Background(), &iamsdk.CreateInstanceProfileInput{
@@ -201,13 +201,13 @@ func TestIAMRoleReconcile_DetectsDrift(t *testing.T) {
 	client, iamClient := setupIAMRoleDriver(t)
 	roleName := uniqueIAMName(t, "role")
 
-	_, err := ingress.Object[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), iamrole.IAMRoleSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Provision").Request(t.Context(), provisionRequest(t, iamrole.IAMRoleSpec{
 		Account:                  integrationAccountName,
 		RoleName:                 roleName,
 		AssumeRolePolicyDocument: assumeRolePolicyDoc,
 		MaxSessionDuration:       3600,
 		InlinePolicies:           map[string]string{"inline-access": allowAllS3PolicyDoc()},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = iamClient.PutRolePolicy(context.Background(), &iamsdk.PutRolePolicyInput{

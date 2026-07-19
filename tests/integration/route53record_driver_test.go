@@ -54,16 +54,16 @@ func TestRoute53RecordProvision_CreatesARecord(t *testing.T) {
 	recordName := fmt.Sprintf("web-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
-	outputs, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, route53record.RecordOutputs](
 		client, route53record.ServiceName, key, "Provision",
-	).Request(t.Context(), route53record.RecordSpec{
+	).Request(t.Context(), provisionRequest(t, route53record.RecordSpec{
 		Account:         integrationAccountName,
 		HostedZoneId:    zoneID,
 		Name:            recordName,
 		Type:            "A",
 		TTL:             300,
 		ResourceRecords: []string{"1.2.3.4"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, zoneID, outputs.HostedZoneId)
 	assert.Equal(t, "A", outputs.Type)
@@ -98,16 +98,16 @@ func TestRoute53RecordProvision_UpdatesTTL(t *testing.T) {
 		ResourceRecords: []string{"1.2.3.4"},
 	}
 
-	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, route53record.RecordOutputs](
 		client, route53record.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Update TTL
 	spec.TTL = 60
-	_, err = ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, route53record.RecordOutputs](
 		client, route53record.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Verify TTL
@@ -172,16 +172,16 @@ func TestRoute53RecordDelete_RemovesRecord(t *testing.T) {
 	recordName := fmt.Sprintf("del-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
-	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, route53record.RecordOutputs](
 		client, route53record.ServiceName, key, "Provision",
-	).Request(t.Context(), route53record.RecordSpec{
+	).Request(t.Context(), provisionRequest(t, route53record.RecordSpec{
 		Account:         integrationAccountName,
 		HostedZoneId:    zoneID,
 		Name:            recordName,
 		Type:            "A",
 		TTL:             300,
 		ResourceRecords: []string{"1.2.3.4"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -207,16 +207,16 @@ func TestRoute53RecordReconcile_DetectsTTLDrift(t *testing.T) {
 	recordName := fmt.Sprintf("drift-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
-	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, route53record.RecordOutputs](
 		client, route53record.ServiceName, key, "Provision",
-	).Request(t.Context(), route53record.RecordSpec{
+	).Request(t.Context(), provisionRequest(t, route53record.RecordSpec{
 		Account:         integrationAccountName,
 		HostedZoneId:    zoneID,
 		Name:            recordName,
 		Type:            "A",
 		TTL:             300,
 		ResourceRecords: []string{"1.2.3.4"},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally change the TTL to introduce drift.
@@ -336,16 +336,16 @@ func TestRoute53RecordGetStatus_ReturnsReady(t *testing.T) {
 	recordName := fmt.Sprintf("status-%d.%s", time.Now().UnixNano()%100000, zoneName)
 	key := fmt.Sprintf("%s~%s~A", zoneID, recordName)
 
-	_, err := ingress.Object[route53record.RecordSpec, route53record.RecordOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, route53record.RecordOutputs](
 		client, route53record.ServiceName, key, "Provision",
-	).Request(t.Context(), route53record.RecordSpec{
+	).Request(t.Context(), provisionRequest(t, route53record.RecordSpec{
 		Account:         integrationAccountName,
 		HostedZoneId:    zoneID,
 		Name:            recordName,
 		Type:            "A",
 		TTL:             300,
 		ResourceRecords: []string{"1.2.3.4"},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

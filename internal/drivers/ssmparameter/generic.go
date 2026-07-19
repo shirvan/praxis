@@ -71,7 +71,8 @@ func newGenericSSMParameterDriverWithFactory(auth authservice.AuthClient, factor
 			}
 			return outputs
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

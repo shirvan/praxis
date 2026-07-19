@@ -210,7 +210,7 @@ func TestGenericKeyPairGeneratedPrivateKeyIsCreateOnly(t *testing.T) {
 	spec := managedKeyPairSpec("generated-key")
 	spec.PublicKeyMaterial = ""
 
-	first, err := ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	first, err := ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, generatedPrivateKey, first.PrivateKeyMaterial)
 
@@ -225,7 +225,7 @@ func TestGenericKeyPairGeneratedPrivateKeyIsCreateOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, rawState, generatedPrivateKey, "StateKey envelope must never contain generated private material")
 
-	second, err := ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	second, err := ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Empty(t, second.PrivateKeyMaterial)
 	assert.Equal(t, first.KeyPairId, second.KeyPairId)
@@ -239,7 +239,7 @@ func TestGenericKeyPairRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
 	spec := managedKeyPairSpec("ambiguous-key")
 	spec.PublicKeyMaterial = ""
 
-	outputs, err := ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, "us-east-1~ambiguous-key", "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, "us-east-1~ambiguous-key", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "key-generated", outputs.KeyPairId)
 	assert.Empty(t, outputs.PrivateKeyMaterial, "a provider response lost before journaling cannot safely recover private material")
@@ -250,7 +250,7 @@ func TestGenericKeyPairRejectsUnownedNameCollision(t *testing.T) {
 	api := newStatefulKeyPairAPI()
 	api.seed(ObservedState{KeyName: "collision", KeyPairId: "key-other", KeyType: "rsa", Tags: map[string]string{}})
 	client := setupGenericKeyPair(t, api)
-	_, err := ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), managedKeyPairSpec("collision"))
+	_, err := ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedKeyPairSpec("collision")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exact Praxis ownership")
 	assert.Equal(t, 0, api.snapshot().Creates)
@@ -261,13 +261,13 @@ func TestGenericKeyPairRejectsImmutableTypeAndPublicMaterial(t *testing.T) {
 	client := setupGenericKeyPair(t, api)
 	key := "us-east-1~immutable-key"
 	spec := managedKeyPairSpec("immutable-key")
-	_, err := ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	original := spec
 
 	changedName := spec
 	changedName.KeyName = "renamed-key"
-	_, err = ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changedName)
+	_, err = ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changedName))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "keyName is immutable")
 	storedInputs, inputErr := ingress.Object[restate.Void, KeyPairSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -276,7 +276,7 @@ func TestGenericKeyPairRejectsImmutableTypeAndPublicMaterial(t *testing.T) {
 
 	changedType := spec
 	changedType.KeyType = "ed25519"
-	_, err = ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changedType)
+	_, err = ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changedType))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "keyType is immutable")
 	storedInputs, inputErr = ingress.Object[restate.Void, KeyPairSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -285,7 +285,7 @@ func TestGenericKeyPairRejectsImmutableTypeAndPublicMaterial(t *testing.T) {
 
 	changedMaterial := spec
 	changedMaterial.PublicKeyMaterial = "ssh-rsa different-public-key"
-	_, err = ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changedMaterial)
+	_, err = ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changedMaterial))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "publicKeyMaterial is create-only")
 	storedInputs, inputErr = ingress.Object[restate.Void, KeyPairSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -317,7 +317,7 @@ func TestGenericKeyPairExternalDeleteRequiresExplicitProvision(t *testing.T) {
 	api := newStatefulKeyPairAPI()
 	client := setupGenericKeyPair(t, api)
 	key := "us-east-1~external-delete"
-	_, err := ingress.Object[KeyPairSpec, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedKeyPairSpec("external-delete"))
+	_, err := ingress.Object[types.ProvisionRequest, KeyPairOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedKeyPairSpec("external-delete")))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.remove("external-delete")

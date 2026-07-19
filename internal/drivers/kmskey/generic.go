@@ -63,7 +63,8 @@ func NewGenericKMSKeyDriverWithFactory(auth authservice.AuthClient, factory func
 		OutputsFromObserved: func(observed ObservedState, _ KMSKeyOutputs) KMSKeyOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

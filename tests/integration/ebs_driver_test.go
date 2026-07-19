@@ -62,9 +62,9 @@ func TestEBSProvision_CreatesRealVolume(t *testing.T) {
 	_, az := defaultSubnetAndAZ(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](
 		client, "EBSVolume", key, "Provision",
-	).Request(t.Context(), ebs.EBSVolumeSpec{
+	).Request(t.Context(), provisionRequest(t, ebs.EBSVolumeSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		AvailabilityZone: az,
@@ -73,7 +73,7 @@ func TestEBSProvision_CreatesRealVolume(t *testing.T) {
 		Encrypted:        true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.VolumeId)
 	assert.Equal(t, az, outputs.AvailabilityZone)
@@ -101,9 +101,9 @@ func TestEBSProvision_Idempotent(t *testing.T) {
 		Tags:             map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.VolumeId, out2.VolumeId)
 }
@@ -144,7 +144,7 @@ func TestEBSDelete_RemovesVolume(t *testing.T) {
 	_, az := defaultSubnetAndAZ(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), ebs.EBSVolumeSpec{
+	out, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), provisionRequest(t, ebs.EBSVolumeSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		AvailabilityZone: az,
@@ -153,7 +153,7 @@ func TestEBSDelete_RemovesVolume(t *testing.T) {
 		Encrypted:        true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, "EBSVolume", key, "Delete").Request(t.Context(), restate.Void{})
@@ -169,7 +169,7 @@ func TestEBSDelete_AttachedVolumeFails(t *testing.T) {
 	subnetID, az := defaultSubnetAndAZ(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	vol, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), ebs.EBSVolumeSpec{
+	vol, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), provisionRequest(t, ebs.EBSVolumeSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		AvailabilityZone: az,
@@ -178,7 +178,7 @@ func TestEBSDelete_AttachedVolumeFails(t *testing.T) {
 		Encrypted:        true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	runOut, err := ec2Client.RunInstances(context.Background(), &ec2sdk.RunInstancesInput{
@@ -212,7 +212,7 @@ func TestEBSReconcile_DetectsAndFixesDrift(t *testing.T) {
 	_, az := defaultSubnetAndAZ(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), ebs.EBSVolumeSpec{
+	out, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), provisionRequest(t, ebs.EBSVolumeSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		AvailabilityZone: az,
@@ -221,7 +221,7 @@ func TestEBSReconcile_DetectsAndFixesDrift(t *testing.T) {
 		Encrypted:        true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{
@@ -247,7 +247,7 @@ func TestEBSGetStatus_ReturnsReady(t *testing.T) {
 	_, az := defaultSubnetAndAZ(t, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), ebs.EBSVolumeSpec{
+	_, err := ingress.Object[types.ProvisionRequest, ebs.EBSVolumeOutputs](client, "EBSVolume", key, "Provision").Request(t.Context(), provisionRequest(t, ebs.EBSVolumeSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		AvailabilityZone: az,
@@ -256,7 +256,7 @@ func TestEBSGetStatus_ReturnsReady(t *testing.T) {
 		Encrypted:        true,
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, "EBSVolume", key, "GetStatus").Request(t.Context(), restate.Void{})

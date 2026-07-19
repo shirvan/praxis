@@ -97,12 +97,7 @@ func routeTableDescriptor() GenericDescriptor[routetable.RouteTableSpec, routeta
 		},
 
 		DiffFields: func(desired routetable.RouteTableSpec, observed routetable.ObservedState, _ routetable.RouteTableOutputs) []types.FieldDiff {
-			rawDiffs := routetable.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return routetable.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

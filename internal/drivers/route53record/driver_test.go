@@ -261,7 +261,7 @@ func TestGenericRecordReplaysAmbiguousUpsertWithoutDuplicate(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~ambiguous.example~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "ambiguous.example", "A"))
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "ambiguous.example", "A")))
 	require.NoError(t, err)
 	assert.Len(t, api.records, 1)
 	assert.Equal(t, 1, api.createCount)
@@ -273,10 +273,10 @@ func TestGenericRecordRejectsImmutableIdentityChange(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~immutable.example~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "immutable.example", "A"))
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "immutable.example", "A")))
 	require.NoError(t, err)
 	changed := testRecordSpec("Z999", "immutable.example", "A")
-	_, err = ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "identity is immutable")
 	assert.Len(t, api.records, 1)
@@ -287,7 +287,7 @@ func TestRecordProvision_CreatesRecord(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~example.com~A"
 
-	outputs, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "example.com", "A"))
+	outputs, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "example.com", "A")))
 	require.NoError(t, err)
 	assert.Equal(t, "Z123", outputs.HostedZoneId)
 	assert.Equal(t, "example.com", outputs.FQDN)
@@ -306,9 +306,9 @@ func TestRecordProvision_Idempotent(t *testing.T) {
 	key := "Z123~example.com~A"
 	spec := testRecordSpec("Z123", "example.com", "A")
 
-	out1, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.FQDN, out2.FQDN)
 }
@@ -318,7 +318,7 @@ func TestRecordProvision_MissingHostedZoneIdFails(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~example.com~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), RecordSpec{Account: "test", Name: "example.com", Type: "A", TTL: 300, ResourceRecords: []string{"1.2.3.4"}})
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, RecordSpec{Account: "test", Name: "example.com", Type: "A", TTL: 300, ResourceRecords: []string{"1.2.3.4"}}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "hostedZoneId is required")
 }
@@ -350,7 +350,7 @@ func TestRecordDelete_DeletesRecord(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~example.com~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "example.com", "A"))
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "example.com", "A")))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -383,7 +383,7 @@ func TestRecordReconcile_TTLDriftCorrected(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~example.com~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "example.com", "A"))
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "example.com", "A")))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -434,7 +434,7 @@ func TestRecordReconcile_ExternalDelete_EmitsEvent(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~example.com~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "example.com", "A"))
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "example.com", "A")))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -454,7 +454,7 @@ func TestRecordGetOutputs_ReturnsCurrentState(t *testing.T) {
 	client := setupRecordDriver(t, api)
 	key := "Z123~example.com~A"
 
-	_, err := ingress.Object[RecordSpec, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testRecordSpec("Z123", "example.com", "A"))
+	_, err := ingress.Object[types.ProvisionRequest, RecordOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testRecordSpec("Z123", "example.com", "A")))
 	require.NoError(t, err)
 
 	outputs, err := ingress.Object[restate.Void, RecordOutputs](client, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})

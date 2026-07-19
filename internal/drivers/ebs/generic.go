@@ -76,6 +76,7 @@ func newGenericEBSVolumeDriverWithFactories(
 			return spec
 		},
 		OutputsFromObserved: outputsFromGenericObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 		CheckReadiness: func(observed ObservedState) kernel.ReadinessResult {
 			if observed.State == "available" || observed.State == "in-use" {

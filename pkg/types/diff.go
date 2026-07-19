@@ -42,6 +42,36 @@ func PathIsSensitive(path string, sensitive []string) bool {
 	return false
 }
 
+// FieldPathMatches reports whether a provider-facing diff path matches a
+// lifecycle path relative to spec. A leading "spec." on diff paths is display
+// syntax only; users always write one canonical relative path.
+func FieldPathMatches(diffPath, lifecyclePath string) bool {
+	diffPath = strings.TrimPrefix(diffPath, "spec.")
+	return diffPath == lifecyclePath || strings.HasPrefix(diffPath, lifecyclePath+".")
+}
+
+// FilterIgnoredFieldDiffs returns only actionable differences after applying
+// lifecycle.ignoreChanges. It does not mutate the input slice.
+func FilterIgnoredFieldDiffs(diffs []FieldDiff, ignoreChanges []string) []FieldDiff {
+	if len(diffs) == 0 || len(ignoreChanges) == 0 {
+		return diffs
+	}
+	filtered := make([]FieldDiff, 0, len(diffs))
+	for _, diff := range diffs {
+		ignored := false
+		for _, pattern := range ignoreChanges {
+			if FieldPathMatches(diff.Path, pattern) {
+				ignored = true
+				break
+			}
+		}
+		if !ignored {
+			filtered = append(filtered, diff)
+		}
+	}
+	return filtered
+}
+
 // MaskJSONPaths replaces the values at the given dot-separated paths in a
 // generic JSON map with the sensitive placeholder, mutating m in place.
 // Missing segments and empty-string leaves are left untouched. Used to mask

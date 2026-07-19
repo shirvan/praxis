@@ -86,12 +86,7 @@ func ecrLifecyclePolicyDescriptor() GenericDescriptor[ecrpolicy.ECRLifecyclePoli
 		},
 
 		DiffFields: func(desired ecrpolicy.ECRLifecyclePolicySpec, observed ecrpolicy.ObservedState, _ ecrpolicy.ECRLifecyclePolicyOutputs) []types.FieldDiff {
-			rawDiffs := ecrpolicy.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ecrpolicy.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

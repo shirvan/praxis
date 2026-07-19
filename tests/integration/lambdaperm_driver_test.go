@@ -77,9 +77,9 @@ func TestLambdaPermissionProvision_AddsPermission(t *testing.T) {
 		SourceArn:    "arn:aws:s3:::my-bucket",
 	}
 
-	outputs, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, lambdaperm.LambdaPermissionOutputs](
 		client, lambdaperm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, stmtId, outputs.StatementId)
 	assert.Equal(t, funcName, outputs.FunctionName)
@@ -109,14 +109,14 @@ func TestLambdaPermissionProvision_Idempotent(t *testing.T) {
 		Principal:    "s3.amazonaws.com",
 	}
 
-	out1, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, lambdaperm.LambdaPermissionOutputs](
 		client, lambdaperm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, lambdaperm.LambdaPermissionOutputs](
 		client, lambdaperm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.StatementId, out2.StatementId)
 }
@@ -137,9 +137,9 @@ func TestLambdaPermissionDelete_RemovesPermission(t *testing.T) {
 		Principal:    "events.amazonaws.com",
 	}
 
-	_, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambdaperm.LambdaPermissionOutputs](
 		client, lambdaperm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -163,9 +163,9 @@ func TestLambdaPermissionReconcile_DetectsExternalDelete(t *testing.T) {
 	createTestFunction(t, lambdaClient, funcName)
 
 	key := fmt.Sprintf("us-east-1~%s~%s", funcName, stmtId)
-	_, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambdaperm.LambdaPermissionOutputs](
 		client, lambdaperm.ServiceName, key, "Provision",
-	).Request(t.Context(), lambdaperm.LambdaPermissionSpec{
+	).Request(t.Context(), provisionRequest(t, lambdaperm.LambdaPermissionSpec{
 		Account:      integrationAccountName,
 		Region:       "us-east-1",
 		FunctionName: funcName,
@@ -173,7 +173,7 @@ func TestLambdaPermissionReconcile_DetectsExternalDelete(t *testing.T) {
 		Action:       "lambda:InvokeFunction",
 		Principal:    "s3.amazonaws.com",
 		SourceArn:    "arn:aws:s3:::my-bucket",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally remove the permission to introduce drift.
@@ -215,9 +215,9 @@ func TestLambdaPermissionGetStatus_ReturnsReady(t *testing.T) {
 		Principal:    "s3.amazonaws.com",
 	}
 
-	_, err := ingress.Object[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambdaperm.LambdaPermissionOutputs](
 		client, lambdaperm.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

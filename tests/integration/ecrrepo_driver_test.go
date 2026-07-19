@@ -25,9 +25,9 @@ func TestECRRepository_Provision(t *testing.T) {
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	outputs, err := ingress.Object[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, ecrrepo.ECRRepositoryOutputs](
 		client, ecrrepo.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrrepo.ECRRepositorySpec{
+	).Request(t.Context(), provisionRequest(t, ecrrepo.ECRRepositorySpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		RepositoryName:     repoName,
@@ -36,7 +36,7 @@ func TestECRRepository_Provision(t *testing.T) {
 			ScanOnPush: true,
 		},
 		Tags: map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, repoName, outputs.RepositoryName)
 	assert.NotEmpty(t, outputs.RepositoryArn)
@@ -63,14 +63,14 @@ func TestECRRepository_Provision_Idempotent(t *testing.T) {
 		Tags:               map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, ecrrepo.ECRRepositoryOutputs](
 		client, ecrrepo.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, ecrrepo.ECRRepositoryOutputs](
 		client, ecrrepo.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.RepositoryArn, out2.RepositoryArn)
@@ -112,13 +112,13 @@ func TestECRRepository_Delete(t *testing.T) {
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	_, err := ingress.Object[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ecrrepo.ECRRepositoryOutputs](
 		client, ecrrepo.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrrepo.ECRRepositorySpec{
+	).Request(t.Context(), provisionRequest(t, ecrrepo.ECRRepositorySpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		RepositoryName: repoName,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -139,9 +139,9 @@ func TestECRRepository_Reconcile_DetectsScanningDrift(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
 	// Provision with scanOnPush=true
-	_, err := ingress.Object[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ecrrepo.ECRRepositoryOutputs](
 		client, ecrrepo.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrrepo.ECRRepositorySpec{
+	).Request(t.Context(), provisionRequest(t, ecrrepo.ECRRepositorySpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		RepositoryName:     repoName,
@@ -149,7 +149,7 @@ func TestECRRepository_Reconcile_DetectsScanningDrift(t *testing.T) {
 		ImageScanningConfiguration: &ecrrepo.ImageScanningConfiguration{
 			ScanOnPush: true,
 		},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: disable scanning directly via ECR API
@@ -187,13 +187,13 @@ func TestECRRepository_GetStatus(t *testing.T) {
 	repoName := uniqueRepoName(t)
 	key := fmt.Sprintf("us-east-1~%s", repoName)
 
-	_, err := ingress.Object[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, ecrrepo.ECRRepositoryOutputs](
 		client, ecrrepo.ServiceName, key, "Provision",
-	).Request(t.Context(), ecrrepo.ECRRepositorySpec{
+	).Request(t.Context(), provisionRequest(t, ecrrepo.ECRRepositorySpec{
 		Account:        integrationAccountName,
 		Region:         "us-east-1",
 		RepositoryName: repoName,
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

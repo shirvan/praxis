@@ -179,7 +179,7 @@ func TestGenericListenerReplayAndCollision(t *testing.T) {
 	s := listenerSpec(83)
 	a.seed(obsListener("arn:listener/collision", s))
 	c = setupListener(t, a)
-	_, e := ingress.Object[ListenerSpec, ListenerOutputs](c, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), s)
+	_, e := ingress.Object[types.ProvisionRequest, ListenerOutputs](c, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.Error(t, e)
 	assert.Contains(t, e.Error(), "exact Praxis ownership")
 }
@@ -195,7 +195,7 @@ func TestGenericListenerDriftImmutableExternal(t *testing.T) {
 	assert.True(t, r.Drift)
 	assert.True(t, r.Correcting)
 	s.LoadBalancerArn = "lb-2"
-	_, e = ingress.Object[ListenerSpec, ListenerOutputs](c, ServiceName, key, "Provision").Request(t.Context(), s)
+	_, e = ingress.Object[types.ProvisionRequest, ListenerOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.Error(t, e)
 	assert.Contains(t, e.Error(), "immutable")
 	a = newListenerAPI()
@@ -210,7 +210,7 @@ func TestGenericListenerDriftImmutableExternal(t *testing.T) {
 }
 func provisionListener(t *testing.T, c *ingress.Client, k string, s ListenerSpec) ListenerOutputs {
 	t.Helper()
-	o, e := ingress.Object[ListenerSpec, ListenerOutputs](c, ServiceName, k, "Provision").Request(t.Context(), s)
+	o, e := ingress.Object[types.ProvisionRequest, ListenerOutputs](c, ServiceName, k, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, s))
 	require.NoError(t, e)
 	return o
 }

@@ -61,7 +61,8 @@ func newGenericHostedZoneDriverWithFactory(auth authservice.AuthClient, factory 
 		OutputsFromObserved: func(observed ObservedState, _ HostedZoneOutputs) HostedZoneOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

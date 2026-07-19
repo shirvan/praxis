@@ -57,7 +57,8 @@ func newGenericNetworkACLDriverWithFactory(auth authservice.AuthClient, factory 
 		OutputsFromObserved: func(observed ObservedState, _ NetworkACLOutputs) NetworkACLOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

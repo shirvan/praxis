@@ -63,6 +63,7 @@ func NewGenericEC2InstanceDriverWithFactory(auth authservice.AuthClient, factory
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 		LateInitialize:      LateInitEC2Instance,
 	})

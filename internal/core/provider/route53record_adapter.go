@@ -109,12 +109,7 @@ func route53RecordDescriptor() GenericDescriptor[route53record.RecordSpec, route
 		},
 
 		DiffFields: func(desired route53record.RecordSpec, observed route53record.ObservedState, _ route53record.RecordOutputs) []types.FieldDiff {
-			rawDiffs := route53record.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return route53record.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

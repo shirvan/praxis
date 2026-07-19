@@ -140,9 +140,9 @@ func TestListenerRuleProvision(t *testing.T) {
 	listenerArn, tgArn := rulePrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueRuleName(t))
 
-	outputs, err := ingress.Object[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, listenerrule.ListenerRuleOutputs](
 		client, "ListenerRule", key, "Provision",
-	).Request(t.Context(), listenerrule.ListenerRuleSpec{
+	).Request(t.Context(), provisionRequest(t, listenerrule.ListenerRuleSpec{
 		Account:     integrationAccountName,
 		ListenerArn: listenerArn,
 		Priority:    100,
@@ -155,7 +155,7 @@ func TestListenerRuleProvision(t *testing.T) {
 			TargetGroupArn: tgArn,
 		}},
 		Tags: map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.RuleArn)
 	assert.Equal(t, 100, outputs.Priority)
@@ -173,9 +173,9 @@ func TestListenerRuleDelete(t *testing.T) {
 	listenerArn, tgArn := rulePrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueRuleName(t))
 
-	out, err := ingress.Object[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, listenerrule.ListenerRuleOutputs](
 		client, "ListenerRule", key, "Provision",
-	).Request(t.Context(), listenerrule.ListenerRuleSpec{
+	).Request(t.Context(), provisionRequest(t, listenerrule.ListenerRuleSpec{
 		Account:     integrationAccountName,
 		ListenerArn: listenerArn,
 		Priority:    200,
@@ -187,7 +187,7 @@ func TestListenerRuleDelete(t *testing.T) {
 			Type:           "forward",
 			TargetGroupArn: tgArn,
 		}},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -206,9 +206,9 @@ func TestListenerRuleGetStatus(t *testing.T) {
 	listenerArn, tgArn := rulePrereqs(t, elbClient, ec2Client)
 	key := fmt.Sprintf("us-east-1~%s", uniqueRuleName(t))
 
-	_, err := ingress.Object[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, listenerrule.ListenerRuleOutputs](
 		client, "ListenerRule", key, "Provision",
-	).Request(t.Context(), listenerrule.ListenerRuleSpec{
+	).Request(t.Context(), provisionRequest(t, listenerrule.ListenerRuleSpec{
 		Account:     integrationAccountName,
 		ListenerArn: listenerArn,
 		Priority:    300,
@@ -220,7 +220,7 @@ func TestListenerRuleGetStatus(t *testing.T) {
 			Type:           "forward",
 			TargetGroupArn: tgArn,
 		}},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

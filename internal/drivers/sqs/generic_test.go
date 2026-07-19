@@ -235,13 +235,13 @@ func TestGenericSQSQueueRecoversCreatedQueueAfterPostCreateFailure(t *testing.T)
 	client := setupGenericQueue(t, api)
 	spec := managedQueueSpec()
 
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, "generic-orders", api.current().QueueName)
 	assert.Equal(t, managedQueueKey, api.current().Tags["praxis:managed-key"])
 
-	outputs, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "generic-orders", outputs.QueueName)
 	assert.Equal(t, 1, api.snapshot().Creates, "managed-key recovery must not issue a second CreateQueue")
@@ -254,7 +254,7 @@ func TestGenericSQSQueueRejectsUnownedSameNameQueue(t *testing.T) {
 	api := &statefulQueueAPI{exists: true, observed: external}
 	client := setupGenericQueue(t, api)
 
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not owned")
 	assert.Zero(t, api.snapshot().Creates)
@@ -272,14 +272,14 @@ func TestGenericSQSQueueIgnoresMissingInternalTagButRejectsDifferentOwner(t *tes
 	api := &statefulQueueAPI{}
 	client := setupGenericQueue(t, api)
 	spec := managedQueueSpec()
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	api.mu.Lock()
 	delete(api.observed.Tags, "praxis:managed-key")
 	api.mu.Unlock()
 	beforeMissing := api.snapshot()
-	_, err = ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.NotContains(t, api.current().Tags, "praxis:managed-key", "the internal recovery tag is not user-declarative drift")
 	assert.Equal(t, beforeMissing.Updates, api.snapshot().Updates)
@@ -288,7 +288,7 @@ func TestGenericSQSQueueIgnoresMissingInternalTagButRejectsDifferentOwner(t *tes
 	api.observed.Tags["praxis:managed-key"] = "us-east-1~different-owner"
 	api.mu.Unlock()
 	beforeConflict := api.snapshot()
-	_, err = ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "different-owner")
 	assert.Equal(t, beforeConflict.Updates, api.snapshot().Updates, "ownership conflicts must be rejected, not overwritten")
@@ -300,7 +300,7 @@ func TestGenericSQSQueueRetriesTransientCreateInsideDurableCallback(t *testing.T
 	}}}
 	client := setupGenericQueue(t, api)
 
-	outputs, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), managedQueueSpec())
+	outputs, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedQueueSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "generic-orders", outputs.QueueName)
 	assert.Equal(t, 2, api.snapshot().Creates, "temporary SQS cooldown must retry in the journaled callback")
@@ -310,7 +310,7 @@ func TestGenericSQSQueueNameConflictIsTerminal(t *testing.T) {
 	api := &statefulQueueAPI{createErrors: []error{errors.New("QueueNameExists: different attributes")}}
 	client := setupGenericQueue(t, api)
 
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), managedQueueSpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedQueueSpec()))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "permanent name conflicts must not retry")
 }
@@ -319,7 +319,7 @@ func TestGenericSQSQueueManagedReconcileCorrectsAttributesRedriveAndTags(t *test
 	api := &statefulQueueAPI{}
 	client := setupGenericQueue(t, api)
 	spec := managedQueueSpec()
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.forceDrift()
 	before := api.snapshot()
@@ -336,7 +336,7 @@ func TestGenericSQSQueueTagMutationRecoversAfterPartialCompletion(t *testing.T) 
 	api := &statefulQueueAPI{}
 	client := setupGenericQueue(t, api)
 	spec := managedQueueSpec()
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.observed.Tags = map[string]string{"obsolete": "remove", "praxis:managed-key": managedQueueKey}
@@ -355,7 +355,7 @@ func TestGenericSQSQueueTagMutationRecoversAfterPartialCompletion(t *testing.T) 
 func TestGenericSQSQueueExternalDeleteRequiresReplacementWithoutCreate(t *testing.T) {
 	api := &statefulQueueAPI{}
 	client := setupGenericQueue(t, api)
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), managedQueueSpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedQueueSpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.exists = false
@@ -373,7 +373,7 @@ func TestGenericSQSQueueExternalDeleteRequiresReplacementWithoutCreate(t *testin
 func TestGenericSQSQueueDeleteTreatsProviderNotFoundAsSuccess(t *testing.T) {
 	api := &statefulQueueAPI{}
 	client := setupGenericQueue(t, api)
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), managedQueueSpec())
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, managedQueueKey, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedQueueSpec()))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.exists = false
@@ -396,7 +396,7 @@ func TestGenericSQSQueueLateInitializesFIFOProviderDefaults(t *testing.T) {
 	api := &statefulQueueAPI{}
 	client := setupGenericQueue(t, api)
 	key := "us-east-1~events.fifo"
-	_, err := ingress.Object[SQSQueueSpec, SQSQueueOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SQSQueueOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	inputs, err := ingress.Object[restate.Void, SQSQueueSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})

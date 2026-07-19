@@ -97,9 +97,9 @@ func baseSecretSpec(name string) secret.SecretsManagerSecretSpec {
 
 func provisionSecret(t *testing.T, client *ingress.Client, key string, spec secret.SecretsManagerSecretSpec) secret.SecretsManagerSecretOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[secret.SecretsManagerSecretSpec, secret.SecretsManagerSecretOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, secret.SecretsManagerSecretOutputs](
 		client, secret.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }

@@ -109,12 +109,7 @@ func sqsQueueDescriptor() GenericDescriptor[sqs.SQSQueueSpec, sqs.SQSQueueOutput
 		},
 
 		DiffFields: func(desired sqs.SQSQueueSpec, observed sqs.ObservedState, _ sqs.SQSQueueOutputs) []types.FieldDiff {
-			rawDiffs := sqs.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return sqs.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

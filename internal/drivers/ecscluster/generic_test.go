@@ -199,7 +199,7 @@ func TestGenericECSRejectsUnownedNameCollision(t *testing.T) {
 	api := newStatefulECSAPI()
 	api.seed(ObservedState{ARN: "arn:collision", Name: "collision", Status: "ACTIVE", Tags: map[string]string{}})
 	c := setupGenericECS(t, api)
-	_, err := ingress.Object[ECSClusterSpec, ECSClusterOutputs](c, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), ecsSpec("collision"))
+	_, err := ingress.Object[types.ProvisionRequest, ECSClusterOutputs](c, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, ecsSpec("collision")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "without exact Praxis ownership")
 }
@@ -230,7 +230,7 @@ func TestGenericECSRejectsImmutableNameChange(t *testing.T) {
 	key := "us-east-1~fixed"
 	provisionECS(t, c, key, spec)
 	spec.Name = "other"
-	_, err := ingress.Object[ECSClusterSpec, ECSClusterOutputs](c, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ECSClusterOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "name is immutable")
 }
@@ -261,7 +261,7 @@ func TestECSClassifiers(t *testing.T) {
 }
 func provisionECS(t *testing.T, c *ingress.Client, key string, spec ECSClusterSpec) ECSClusterOutputs {
 	t.Helper()
-	out, err := ingress.Object[ECSClusterSpec, ECSClusterOutputs](c, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out, err := ingress.Object[types.ProvisionRequest, ECSClusterOutputs](c, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return out
 }

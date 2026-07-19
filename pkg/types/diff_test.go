@@ -53,3 +53,23 @@ func TestMaskJSONPaths_NilAndEmpty(t *testing.T) {
 	MaskJSONPaths(m, nil)
 	assert.Equal(t, "s3cr3t", m["value"], "no paths means no masking")
 }
+
+func TestFilterIgnoredFieldDiffsCanonicalizesSpecPrefix(t *testing.T) {
+	diffs := []FieldDiff{
+		{Path: "spec.versioning"},
+		{Path: "spec.encryption.algorithm"},
+		{Path: "tags.env"},
+		{Path: "spec.tags.owner"},
+		{Path: "spec.region"},
+	}
+
+	filtered := FilterIgnoredFieldDiffs(diffs, []string{"versioning", "encryption", "tags.env", "tags.owner"})
+	assert.Equal(t, []FieldDiff{{Path: "spec.region"}}, filtered)
+}
+
+func TestFieldPathMatchesRequiresSegmentBoundary(t *testing.T) {
+	assert.True(t, FieldPathMatches("spec.tags.env", "tags"))
+	assert.True(t, FieldPathMatches("tags.env", "tags.env"))
+	assert.False(t, FieldPathMatches("spec.tagsExtra", "tags"))
+	assert.False(t, FieldPathMatches("spec.tags.environment", "tags.env"))
+}

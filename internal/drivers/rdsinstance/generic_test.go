@@ -167,10 +167,10 @@ func TestGenericRDSInstancePasswordChangeIsProvisionOnly(t *testing.T) {
 	client := setupInstance(t, api)
 	key := "us-east-1~password"
 	spec := instanceSpec("password", "old-secret")
-	_, err := ingress.Object[RDSInstanceSpec, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.MasterUserPassword = "new-secret"
-	_, err = ingress.Object[RDSInstanceSpec, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"new-secret"}, api.passwords())
 	api.force("password", func(o *ObservedState) { o.InstanceClass = "db.t3.small" })
@@ -184,11 +184,11 @@ func TestGenericRDSInstanceImmutableOnlyChangeKeepsPriorAcceptedInputs(t *testin
 	client := setupInstance(t, api)
 	key := "us-east-1~immutable"
 	accepted := instanceSpec("immutable", "secret")
-	_, err := ingress.Object[RDSInstanceSpec, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), accepted)
+	_, err := ingress.Object[types.ProvisionRequest, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, accepted))
 	require.NoError(t, err)
 	changed := accepted
 	changed.Engine = "postgres"
-	_, err = ingress.Object[RDSInstanceSpec, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, RDSInstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "409")
 	stored, err := ingress.Object[restate.Void, RDSInstanceSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})

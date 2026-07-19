@@ -82,12 +82,7 @@ func iamGroupDescriptor() GenericDescriptor[iamgroup.IAMGroupSpec, iamgroup.IAMG
 		},
 
 		DiffFields: func(desired iamgroup.IAMGroupSpec, observed iamgroup.ObservedState, _ iamgroup.IAMGroupOutputs) []types.FieldDiff {
-			rawDiffs := iamgroup.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return iamgroup.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

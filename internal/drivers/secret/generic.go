@@ -68,7 +68,8 @@ func newGenericSecretsManagerSecretDriverWithFactory(auth authservice.AuthClient
 			}
 			return outputs
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

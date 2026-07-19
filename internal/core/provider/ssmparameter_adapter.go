@@ -97,12 +97,7 @@ func ssmParameterDescriptor() GenericDescriptor[ssmparameter.SSMParameterSpec, s
 		},
 
 		DiffFields: func(desired ssmparameter.SSMParameterSpec, observed ssmparameter.ObservedState, _ ssmparameter.SSMParameterOutputs) []types.FieldDiff {
-			rawDiffs := ssmparameter.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return ssmparameter.ComputeFieldDiffs(desired, observed)
 		},
 		// SSM parameter values are masked unconditionally in plan output. The
 		// driver's own drift diff masks only SecureString on the update path;

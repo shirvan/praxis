@@ -53,7 +53,8 @@ func NewGenericDashboardDriverWithFactory(auth authservice.AuthClient, factory f
 		OutputsFromObserved: func(observed ObservedState, _ DashboardOutputs) DashboardOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

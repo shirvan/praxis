@@ -52,15 +52,15 @@ func TestLogGroupProvision_CreatesLogGroup(t *testing.T) {
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(14)
 
-	outputs, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, loggroup.LogGroupOutputs](
 		client, loggroup.ServiceName, key, "Provision",
-	).Request(t.Context(), loggroup.LogGroupSpec{
+	).Request(t.Context(), provisionRequest(t, loggroup.LogGroupSpec{
 		Account:         integrationAccountName,
 		Region:          "us-east-1",
 		LogGroupName:    name,
 		RetentionInDays: &retention,
 		Tags:            map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.LogGroupName)
 	assert.NotEmpty(t, outputs.ARN)
@@ -87,14 +87,14 @@ func TestLogGroupProvision_Idempotent(t *testing.T) {
 		Tags:            map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, loggroup.LogGroupOutputs](
 		client, loggroup.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, loggroup.LogGroupOutputs](
 		client, loggroup.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.ARN, out2.ARN)
@@ -134,14 +134,14 @@ func TestLogGroupDelete_RemovesLogGroup(t *testing.T) {
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(7)
 
-	_, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, loggroup.LogGroupOutputs](
 		client, loggroup.ServiceName, key, "Provision",
-	).Request(t.Context(), loggroup.LogGroupSpec{
+	).Request(t.Context(), provisionRequest(t, loggroup.LogGroupSpec{
 		Account:         integrationAccountName,
 		Region:          "us-east-1",
 		LogGroupName:    name,
 		RetentionInDays: &retention,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -186,14 +186,14 @@ func TestLogGroupReconcile_DetectsRetentionDrift(t *testing.T) {
 	key := url.PathEscape(fmt.Sprintf("us-east-1~%s", name))
 	retention := int32(14)
 
-	_, err := ingress.Object[loggroup.LogGroupSpec, loggroup.LogGroupOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, loggroup.LogGroupOutputs](
 		client, loggroup.ServiceName, key, "Provision",
-	).Request(t.Context(), loggroup.LogGroupSpec{
+	).Request(t.Context(), provisionRequest(t, loggroup.LogGroupSpec{
 		Account:         integrationAccountName,
 		Region:          "us-east-1",
 		LogGroupName:    name,
 		RetentionInDays: &retention,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally change retention to introduce drift

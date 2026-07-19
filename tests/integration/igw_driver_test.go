@@ -61,13 +61,13 @@ func TestIGWProvision_CreatesAndAttaches(t *testing.T) {
 	name := uniqueIGWName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), igw.IGWSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, igw.IGWSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.InternetGatewayId)
 	assert.Equal(t, vpcID, outputs.VpcId)
@@ -94,9 +94,9 @@ func TestIGWProvision_Idempotent(t *testing.T) {
 		Tags:       map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.InternetGatewayId, out2.InternetGatewayId)
 }
@@ -160,13 +160,13 @@ func TestIGWDelete_DetachesAndDeletes(t *testing.T) {
 	name := uniqueIGWName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), igw.IGWSpec{
+	out, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, igw.IGWSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, igw.ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -184,13 +184,13 @@ func TestIGWReconcile_ReattachesDetachedIGW(t *testing.T) {
 	name := uniqueIGWName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), igw.IGWSpec{
+	out, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, igw.IGWSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DetachInternetGateway(context.Background(), &ec2sdk.DetachInternetGatewayInput{
@@ -216,13 +216,13 @@ func TestIGWReconcile_TagDrift(t *testing.T) {
 	name := uniqueIGWName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), igw.IGWSpec{
+	out, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, igw.IGWSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{
@@ -248,13 +248,13 @@ func TestIGWGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueIGWName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[igw.IGWSpec, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), igw.IGWSpec{
+	_, err := ingress.Object[types.ProvisionRequest, igw.IGWOutputs](client, igw.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, igw.IGWSpec{
 		Account:    integrationAccountName,
 		Region:     "us-east-1",
 		VpcId:      vpcID,
 		ManagedKey: key,
 		Tags:       map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, igw.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})

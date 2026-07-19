@@ -198,7 +198,7 @@ func TestGenericALBRejectsUnownedCollision(t *testing.T) {
 	delete(observed.Tags, managedKeyTag)
 	api.seed(observed)
 	client := setupGenericALB(t, api)
-	_, err := ingress.Object[ALBSpec, ALBOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), genericALBSpec("collision"))
+	_, err := ingress.Object[types.ProvisionRequest, ALBOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericALBSpec("collision")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "without exact Praxis ownership")
 }
@@ -225,7 +225,7 @@ func TestGenericALBImmutableAndExternalDelete(t *testing.T) {
 	key := "us-east-1~fixed"
 	provisionALB(t, client, key, spec)
 	spec.Scheme = "internal"
-	_, err := ingress.Object[ALBSpec, ALBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ALBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 
@@ -244,7 +244,7 @@ func TestGenericALBImmutableAndExternalDelete(t *testing.T) {
 
 func provisionALB(t *testing.T, client *ingress.Client, key string, spec ALBSpec) ALBOutputs {
 	t.Helper()
-	out, err := ingress.Object[ALBSpec, ALBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out, err := ingress.Object[types.ProvisionRequest, ALBOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return out
 }

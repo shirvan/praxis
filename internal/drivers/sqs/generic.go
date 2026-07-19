@@ -64,6 +64,7 @@ func newGenericSQSQueueDriverWithFactory(auth authservice.AuthClient, factory fu
 			return specFromObserved(observed, ref)
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 		LateInitialize:      lateInitializeFIFODefaults,
 	})

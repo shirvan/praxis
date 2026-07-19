@@ -56,6 +56,7 @@ func newGenericSNSTopicDriverWithFactory(auth authservice.AuthClient, factory fu
 			return spec
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

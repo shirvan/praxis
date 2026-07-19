@@ -244,14 +244,14 @@ func TestGenericIAMUserRejectsImmutableNameAndRetainsInputs(t *testing.T) {
 	api := &statefulIAMUserAPI{}
 	client := setupGenericIAMUser(t, api)
 	key := "immutable-user"
-	_, err := ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedUserSpec(key))
+	_, err := ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedUserSpec(key)))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, IAMUserSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 
 	changed := accepted
 	changed.UserName = "different-user"
-	_, err = ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "userName is immutable")
 	retained, err := ingress.Object[restate.Void, IAMUserSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -272,7 +272,7 @@ func TestGenericIAMUserReconcileConvergesEveryCompositeComponent(t *testing.T) {
 	api := &statefulIAMUserAPI{}
 	client := setupGenericIAMUser(t, api)
 	spec := managedUserSpec("drift-user")
-	_, err := ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	beforeDrift := api.snapshot()
 	api.forceCompositeDrift()
@@ -292,13 +292,13 @@ func TestGenericIAMUserRecoversPartialCreateWithoutSecondUser(t *testing.T) {
 	client := setupGenericIAMUser(t, api)
 	spec := managedUserSpec("partial-user")
 
-	_, err := ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, spec.UserName, api.user().UserName)
 	assert.Equal(t, types.StatusError, getUserStatus(t, client, spec.UserName).Status)
 
-	_, err = ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "recovery must observe and finish the existing user")
 	assertUserMatchesSpec(t, spec, api.user())
@@ -308,11 +308,11 @@ func TestGenericIAMUserProvisionConvergesMutablePath(t *testing.T) {
 	api := &statefulIAMUserAPI{}
 	client := setupGenericIAMUser(t, api)
 	spec := managedUserSpec("path-user")
-	_, err := ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Path = "/services/"
-	_, err = ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "/services/", api.user().Path)
 }
@@ -321,7 +321,7 @@ func TestGenericIAMUserDeleteDoesNotCleanExternalCredentials(t *testing.T) {
 	api := &statefulIAMUserAPI{}
 	client := setupGenericIAMUser(t, api)
 	spec := managedUserSpec("credential-user")
-	_, err := ingress.Object[IAMUserSpec, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMUserOutputs](client, ServiceName, spec.UserName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.accessKeys = 2

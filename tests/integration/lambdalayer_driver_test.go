@@ -62,9 +62,9 @@ func TestLambdaLayerProvision_PublishesVersion(t *testing.T) {
 	name := uniqueLayerName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, lambdalayer.LambdaLayerOutputs](
 		client, lambdalayer.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLayerSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLayerSpec(name)))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.LayerName)
 	assert.NotEmpty(t, outputs.LayerArn)
@@ -86,15 +86,15 @@ func TestLambdaLayerProvision_Idempotent(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	spec := defaultLayerSpec(name)
 
-	out1, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, lambdalayer.LambdaLayerOutputs](
 		client, lambdalayer.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Re-provision with same spec should not publish a new version.
-	out2, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, lambdalayer.LambdaLayerOutputs](
 		client, lambdalayer.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.Version, out2.Version)
 	assert.Equal(t, out1.LayerVersionArn, out2.LayerVersionArn)
@@ -137,9 +137,9 @@ func TestLambdaLayerDelete_RemovesLayer(t *testing.T) {
 	name := uniqueLayerName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, lambdalayer.LambdaLayerOutputs](
 		client, lambdalayer.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLayerSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLayerSpec(name)))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -160,9 +160,9 @@ func TestLambdaLayerReconcile_DetectsExternalPublish(t *testing.T) {
 	name := uniqueLayerName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, lambdalayer.LambdaLayerOutputs](
 		client, lambdalayer.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLayerSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLayerSpec(name)))
 	require.NoError(t, err)
 	require.Equal(t, int64(1), outputs.Version)
 
@@ -199,9 +199,9 @@ func TestLambdaLayerGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueLayerName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambdalayer.LambdaLayerOutputs](
 		client, lambdalayer.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLayerSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLayerSpec(name)))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

@@ -250,7 +250,7 @@ func TestGenericIAMInstanceProfileReconcileConvergesRoleAndTags(t *testing.T) {
 	api := newStatefulIAMInstanceProfileAPI()
 	client := setupGenericIAMInstanceProfile(t, api)
 	spec := managedProfileSpec("drift-profile", "desired-role")
-	_, err := ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.forceRoleAndTagDrift(spec.InstanceProfileName)
 
@@ -267,13 +267,13 @@ func TestGenericIAMInstanceProfileRecoversCreateAfterRoleAssociationFailure(t *t
 	client := setupGenericIAMInstanceProfile(t, api)
 	spec := managedProfileSpec("partial-create-profile", "eventual-role")
 
-	_, err := ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, "", api.profile(spec.InstanceProfileName).RoleName)
 	assert.Equal(t, types.StatusError, getProfileStatus(t, client, spec.InstanceProfileName).Status)
 
-	_, err = ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "recovery must finish the existing profile, not create another")
 	assertProfileMatchesSpec(t, spec, api.profile(spec.InstanceProfileName))
@@ -285,7 +285,7 @@ func TestGenericIAMInstanceProfileRetriesTransientRoleAssociation(t *testing.T) 
 	client := setupGenericIAMInstanceProfile(t, api)
 	spec := managedProfileSpec("retry-profile", "retry-role")
 
-	_, err := ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Len(t, api.addRoleCalls, 2, "the journaled callback should retry only the transient provider operation")
@@ -296,18 +296,18 @@ func TestGenericIAMInstanceProfileRecoversInterruptedRoleReplacement(t *testing.
 	api := newStatefulIAMInstanceProfileAPI()
 	client := setupGenericIAMInstanceProfile(t, api)
 	spec := managedProfileSpec("role-change-profile", "role-a")
-	_, err := ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	api.mu.Lock()
 	api.failAddRoleOnce = true
 	api.mu.Unlock()
 	spec.RoleName = "role-b"
-	_, err = ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, "", api.profile(spec.InstanceProfileName).RoleName, "the durable remove step completed before the injected add failure")
 
-	_, err = ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Equal(t, "role-b", api.profile(spec.InstanceProfileName).RoleName)
@@ -317,18 +317,18 @@ func TestGenericIAMInstanceProfileRejectsImmutableChanges(t *testing.T) {
 	api := newStatefulIAMInstanceProfileAPI()
 	client := setupGenericIAMInstanceProfile(t, api)
 	spec := managedProfileSpec("immutable-profile", "role")
-	_, err := ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	changedPath := spec
 	changedPath.Path = "/other/"
-	_, err = ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), changedPath)
+	_, err = ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changedPath))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "path is immutable")
 
 	changedName := spec
 	changedName.InstanceProfileName = "different-profile"
-	_, err = ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), changedName)
+	_, err = ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changedName))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "instanceProfileName is immutable")
 }
@@ -337,7 +337,7 @@ func TestGenericIAMInstanceProfileDeleteSurfacesUnownedProviderConflict(t *testi
 	api := newStatefulIAMInstanceProfileAPI()
 	client := setupGenericIAMInstanceProfile(t, api)
 	spec := managedProfileSpec("conflict-profile", "owned-role")
-	_, err := ingress.Object[IAMInstanceProfileSpec, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMInstanceProfileOutputs](client, ServiceName, spec.InstanceProfileName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	api.deleteConflict = true

@@ -51,9 +51,9 @@ func TestAuroraClusterProvision_Creates(t *testing.T) {
 	name := uniqueClusterName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, auroracluster.AuroraClusterOutputs](
 		client, "AuroraCluster", key, "Provision",
-	).Request(t.Context(), auroracluster.AuroraClusterSpec{
+	).Request(t.Context(), provisionRequest(t, auroracluster.AuroraClusterSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		ClusterIdentifier:  name,
@@ -62,7 +62,7 @@ func TestAuroraClusterProvision_Creates(t *testing.T) {
 		MasterUsername:     "admin",
 		MasterUserPassword: "TestPass1234!",
 		Tags:               map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.ClusterIdentifier)
 	assert.NotEmpty(t, outputs.ARN)
@@ -91,14 +91,14 @@ func TestAuroraClusterProvision_Idempotent(t *testing.T) {
 		Tags:               map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, auroracluster.AuroraClusterOutputs](
 		client, "AuroraCluster", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, auroracluster.AuroraClusterOutputs](
 		client, "AuroraCluster", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.ARN, out2.ARN, "re-provision should return same ARN")
 }
@@ -137,9 +137,9 @@ func TestAuroraClusterDelete_Removes(t *testing.T) {
 	name := uniqueClusterName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, auroracluster.AuroraClusterOutputs](
 		client, "AuroraCluster", key, "Provision",
-	).Request(t.Context(), auroracluster.AuroraClusterSpec{
+	).Request(t.Context(), provisionRequest(t, auroracluster.AuroraClusterSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		ClusterIdentifier:  name,
@@ -147,7 +147,7 @@ func TestAuroraClusterDelete_Removes(t *testing.T) {
 		EngineVersion:      "8.0.mysql_aurora.3.04.0",
 		MasterUsername:     "admin",
 		MasterUserPassword: "TestPass1234!",
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -166,9 +166,9 @@ func TestAuroraClusterReconcile_DetectsBackupRetentionDrift(t *testing.T) {
 	name := uniqueClusterName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, auroracluster.AuroraClusterOutputs](
 		client, "AuroraCluster", key, "Provision",
-	).Request(t.Context(), auroracluster.AuroraClusterSpec{
+	).Request(t.Context(), provisionRequest(t, auroracluster.AuroraClusterSpec{
 		Account:               integrationAccountName,
 		Region:                "us-east-1",
 		ClusterIdentifier:     name,
@@ -178,7 +178,7 @@ func TestAuroraClusterReconcile_DetectsBackupRetentionDrift(t *testing.T) {
 		MasterUserPassword:    "TestPass1234!",
 		BackupRetentionPeriod: 7,
 		Tags:                  map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally change the backup retention period to introduce drift.
@@ -220,9 +220,9 @@ func TestAuroraClusterGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueClusterName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, auroracluster.AuroraClusterOutputs](
 		client, "AuroraCluster", key, "Provision",
-	).Request(t.Context(), auroracluster.AuroraClusterSpec{
+	).Request(t.Context(), provisionRequest(t, auroracluster.AuroraClusterSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		ClusterIdentifier:  name,
@@ -230,7 +230,7 @@ func TestAuroraClusterGetStatus_ReturnsReady(t *testing.T) {
 		EngineVersion:      "8.0.mysql_aurora.3.04.0",
 		MasterUsername:     "admin",
 		MasterUserPassword: "TestPass1234!",
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

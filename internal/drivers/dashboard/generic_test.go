@@ -97,14 +97,14 @@ func TestGenericDashboardRejectsImmutableNameAndRetainsInputs(t *testing.T) {
 	key := "us-east-1~immutable-dashboard"
 	spec := DashboardSpec{Account: "test", Region: "us-east-1", DashboardName: "immutable-dashboard", DashboardBody: `{"widgets":[]}`}
 
-	_, err := ingress.Object[DashboardSpec, DashboardOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, DashboardOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, DashboardSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 
 	changed := accepted
 	changed.DashboardName = "different-dashboard"
-	_, err = ingress.Object[DashboardSpec, DashboardOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+	_, err = ingress.Object[types.ProvisionRequest, DashboardOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dashboardName is immutable")
 

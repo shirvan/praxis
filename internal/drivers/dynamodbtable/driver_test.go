@@ -268,9 +268,9 @@ func TestProvision_RetriesLimitExceededInsideDurableCallback(t *testing.T) {
 	client := setupRetryDynamoDBDriver(t, api)
 	key := "us-east-1~prod"
 
-	outputs, err := ingress.Object[DynamoDBTableSpec, DynamoDBTableOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, DynamoDBTableOutputs](
 		client, ServiceName, key, "Provision",
-	).Request(t.Context(), baseSpec())
+	).Request(t.Context(), drivertest.ProvisionRequest(t, baseSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "prod", outputs.Name)
 	assert.Equal(t, "ACTIVE", outputs.Status)
@@ -325,7 +325,7 @@ func TestGenericDynamoDBTableRejectsImmutableIdentityAndRetainsInputs(t *testing
 		BillingMode: BillingModePayPerRequest, HashKey: "pk", HashKeyType: "S",
 		RangeKey: "sk", RangeKeyType: "S",
 	}
-	_, err := ingress.Object[DynamoDBTableSpec, DynamoDBTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, DynamoDBTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, DynamoDBTableSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -343,7 +343,7 @@ func TestGenericDynamoDBTableRejectsImmutableIdentityAndRetainsInputs(t *testing
 	for _, tt := range tests {
 		changed := accepted
 		tt.mutate(&changed)
-		_, err = ingress.Object[DynamoDBTableSpec, DynamoDBTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+		_, err = ingress.Object[types.ProvisionRequest, DynamoDBTableOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tt.field+" is immutable")
 		retained, getErr := ingress.Object[restate.Void, DynamoDBTableSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})

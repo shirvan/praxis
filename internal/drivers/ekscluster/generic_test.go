@@ -238,7 +238,7 @@ func TestGenericEKSPendingProgressesToReady(t *testing.T) {
 	api.createStatus = "CREATING"
 	client := setupGenericEKS(t, api)
 	key := "us-east-1~pending-eks"
-	outputs, err := ingress.Object[EKSClusterSpec, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEKSSpec("pending-eks"))
+	outputs, err := ingress.Object[types.ProvisionRequest, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEKSSpec("pending-eks")))
 	require.NoError(t, err)
 	assert.Equal(t, "CREATING", outputs.Status)
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
@@ -258,7 +258,7 @@ func TestGenericEKSFailedReadinessBecomesError(t *testing.T) {
 	api.createStatus = "FAILED"
 	client := setupGenericEKS(t, api)
 	key := "us-east-1~failed-eks"
-	_, err := ingress.Object[EKSClusterSpec, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEKSSpec("failed-eks"))
+	_, err := ingress.Object[types.ProvisionRequest, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEKSSpec("failed-eks")))
 	require.Error(t, err)
 	status, statusErr := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
 	require.NoError(t, statusErr)
@@ -271,7 +271,7 @@ func TestGenericEKSRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
 	api := newStatefulEKSAPI()
 	api.createErrors = []error{errors.New("create response lost")}
 	client := setupGenericEKS(t, api)
-	outputs, err := ingress.Object[EKSClusterSpec, EKSClusterOutputs](client, ServiceName, "us-east-1~ambiguous-eks", "Provision").Request(t.Context(), managedEKSSpec("ambiguous-eks"))
+	outputs, err := ingress.Object[types.ProvisionRequest, EKSClusterOutputs](client, ServiceName, "us-east-1~ambiguous-eks", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEKSSpec("ambiguous-eks")))
 	require.NoError(t, err)
 	assert.Equal(t, "ambiguous-eks", outputs.Name)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -282,10 +282,10 @@ func TestGenericEKSRejectsImmutablePlacement(t *testing.T) {
 	client := setupGenericEKS(t, api)
 	key := "us-east-1~immutable-eks"
 	spec := managedEKSSpec("immutable-eks")
-	_, err := ingress.Object[EKSClusterSpec, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.RoleArn = "arn:aws:iam::123456789012:role/other"
-	_, err = ingress.Object[EKSClusterSpec, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "roleArn is immutable")
 	stored, storedErr := ingress.Object[restate.Void, EKSClusterSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -318,7 +318,7 @@ func TestGenericEKSExternalDeleteRequiresExplicitProvision(t *testing.T) {
 	api := newStatefulEKSAPI()
 	client := setupGenericEKS(t, api)
 	key := "us-east-1~external-eks"
-	_, err := ingress.Object[EKSClusterSpec, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedEKSSpec("external-eks"))
+	_, err := ingress.Object[types.ProvisionRequest, EKSClusterOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedEKSSpec("external-eks")))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.remove("external-eks")

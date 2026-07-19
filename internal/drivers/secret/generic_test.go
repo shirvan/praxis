@@ -301,7 +301,7 @@ func TestGenericSecretSensitiveValueBoundary(t *testing.T) {
 	api := newStatefulSecretAPI()
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("sensitive-secret")
-	outputs, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~sensitive-secret", "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~sensitive-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	status := getSecretStatus(t, client, "us-east-1~sensitive-secret")
 	inputs := getSecretInputs(t, client, "us-east-1~sensitive-secret")
@@ -319,7 +319,7 @@ func TestGenericSecretAmbiguousCreateUsesStableRecoveryToken(t *testing.T) {
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("ambiguous-create-secret")
 
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~ambiguous-create-secret", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~ambiguous-create-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	assert.Equal(t, 1, api.physicalCreates)
@@ -335,14 +335,14 @@ func TestGenericSecretValueRetryDoesNotCreateDuplicateVersion(t *testing.T) {
 	api := newStatefulSecretAPI()
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("value-retry-secret")
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~value-retry-secret", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~value-retry-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 
 	api.mu.Lock()
 	api.failValueResponseOnce = true
 	api.mu.Unlock()
 	spec.SecretString = "rotated-secret-value"
-	_, err = ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~value-retry-secret", "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~value-retry-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.mu.Lock()
 	assert.Equal(t, 2, api.versions, "the retry token must collapse a lost PutSecretValue response into one version")
@@ -354,7 +354,7 @@ func TestGenericSecretConvergesAllMutableFields(t *testing.T) {
 	api := newStatefulSecretAPI()
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("mutable-secret")
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~mutable-secret", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~mutable-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.forceCompositeDrift()
 
@@ -369,10 +369,10 @@ func TestGenericSecretRejectsImmutableNameChange(t *testing.T) {
 	api := newStatefulSecretAPI()
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("immutable-secret")
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~immutable-secret", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~immutable-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.Name = "different-secret"
-	_, err = ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~immutable-secret", "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, "us-east-1~immutable-secret", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "name is immutable")
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -383,14 +383,14 @@ func TestGenericSecretSoftDeleteThenProvisionRestores(t *testing.T) {
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("restore-secret")
 	key := "us-east-1~restore-secret"
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	assert.True(t, api.secret().ScheduledForDeletion)
 
 	spec.SecretString = "restored-secret-value"
-	_, err = ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.False(t, api.secret().ScheduledForDeletion)
 	assert.Equal(t, "restored-secret-value", api.secret().SecretString)
@@ -417,7 +417,7 @@ func TestGenericSecretRecoversAfterRestoreThenMetadataFault(t *testing.T) {
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("partial-restore-secret")
 	key := "us-east-1~partial-restore-secret"
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.scheduleDeletion()
 	api.mu.Lock()
@@ -425,12 +425,12 @@ func TestGenericSecretRecoversAfterRestoreThenMetadataFault(t *testing.T) {
 	api.failMetadataOnce = true
 	api.mu.Unlock()
 
-	_, err = ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.False(t, api.secret().ScheduledForDeletion, "the durable restore completed before metadata failed")
 	assert.Equal(t, types.StatusError, getSecretStatus(t, client, key).Status)
 
-	_, err = ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assertSecretMatchesSpec(t, spec, api.secret())
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -441,7 +441,7 @@ func TestGenericSecretExternalDeleteRequiresReplacementWithoutCreation(t *testin
 	client := setupGenericSecret(t, api)
 	spec := managedSecretSpec("external-delete-secret")
 	key := "us-east-1~external-delete-secret"
-	_, err := ingress.Object[SecretsManagerSecretSpec, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecretsManagerSecretOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.forceDeleteExternally()
 	before := api.snapshot()

@@ -71,7 +71,7 @@ func TestIAMUserProvision_CreatesUser(t *testing.T) {
 	createIAMGroup(t, iamClient, groupName)
 	policyArn := createManagedPolicy(t, iamClient, policyName)
 
-	outputs, err := ingress.Object[iamuser.IAMUserSpec, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), iamuser.IAMUserSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), provisionRequest(t, iamuser.IAMUserSpec{
 		Account:           integrationAccountName,
 		Path:              "/app/",
 		UserName:          userName,
@@ -79,7 +79,7 @@ func TestIAMUserProvision_CreatesUser(t *testing.T) {
 		ManagedPolicyArns: []string{policyArn},
 		Groups:            []string{groupName},
 		Tags:              map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, userName, outputs.UserName)
 	assert.NotEmpty(t, outputs.UserId)
@@ -118,12 +118,12 @@ func TestIAMUserProvision_UpdatesPathAndGroups(t *testing.T) {
 		UserName: userName,
 		Groups:   []string{groupA},
 	}
-	_, err := ingress.Object[iamuser.IAMUserSpec, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.Path = "/app/"
 	spec.Groups = []string{groupA, groupB}
-	_, err = ingress.Object[iamuser.IAMUserSpec, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	userOut, err := iamClient.GetUser(context.Background(), &iamsdk.GetUserInput{UserName: aws.String(userName)})
@@ -158,13 +158,13 @@ func TestIAMUserDelete_RemovesUser(t *testing.T) {
 	createIAMGroup(t, iamClient, groupName)
 	policyArn := createManagedPolicy(t, iamClient, policyName)
 
-	_, err := ingress.Object[iamuser.IAMUserSpec, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), iamuser.IAMUserSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), provisionRequest(t, iamuser.IAMUserSpec{
 		Account:           integrationAccountName,
 		UserName:          userName,
 		InlinePolicies:    map[string]string{"inline-access": allowAllS3PolicyDoc()},
 		ManagedPolicyArns: []string{policyArn},
 		Groups:            []string{groupName},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, iamuser.ServiceName, userName, "Delete").Request(t.Context(), restate.Void{})
@@ -183,11 +183,11 @@ func TestIAMUserReconcile_DetectsGroupDrift(t *testing.T) {
 	createIAMGroup(t, iamClient, groupA)
 	createIAMGroup(t, iamClient, groupB)
 
-	_, err := ingress.Object[iamuser.IAMUserSpec, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), iamuser.IAMUserSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iamuser.IAMUserOutputs](client, iamuser.ServiceName, userName, "Provision").Request(t.Context(), provisionRequest(t, iamuser.IAMUserSpec{
 		Account:  integrationAccountName,
 		UserName: userName,
 		Groups:   []string{groupA},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = iamClient.AddUserToGroup(context.Background(), &iamsdk.AddUserToGroupInput{UserName: aws.String(userName), GroupName: aws.String(groupB)})

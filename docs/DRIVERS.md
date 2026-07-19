@@ -125,10 +125,10 @@ These run one-at-a-time per object key. While a `Provision` is running for `my-b
 
 | Handler | Signature | Purpose |
 | --- | --- | --- |
-| `Provision` | `(ObjectContext, Spec) → (Outputs, error)` | Idempotent create-or-converge. If the resource exists and matches the spec, succeed. If it differs, converge. |
+| `Provision` | `(ObjectContext, ProvisionRequest) → (Outputs, error)` | Decode the typed spec plus lifecycle policy, then idempotently create or converge. |
 | `Import` | `(ObjectContext, ImportRef) → (Outputs, error)` | Adopt an existing cloud resource. Captures observed state as desired baseline. |
 | `Delete` | `(ObjectContext) → error` | Remove the resource. Fail terminally if unsafe (e.g., non-empty bucket). |
-| `Reconcile` | `(ObjectContext) → (ReconcileResult, error)` | Periodic drift detection. Managed mode: correct drift. Observed mode: report only. |
+| `Reconcile` | `(ObjectContext) → (ReconcileResult, error)` | Periodic drift detection. `reconcile: auto` corrects actionable drift; `observe` reports only. |
 | `ClearState` | `(ObjectContext) → error` | Explicitly clear all Virtual Object state after an orphan/reset operation. |
 
 ### Shared Handlers (Concurrent Reads)
@@ -167,11 +167,13 @@ type State[Spec, Outputs, Observed any] struct {
     Outputs            Outputs              `json:"outputs"`
     Status             types.ResourceStatus `json:"status"`
     Mode               types.Mode           `json:"mode"`
+    Reconcile          types.ReconcileMode  `json:"reconcile"`
+    IgnoreChanges      []string             `json:"ignoreChanges,omitempty"`
     Error              string               `json:"error,omitempty"`
     Generation         int64                `json:"generation"`
     LastReconcile      string               `json:"lastReconcile,omitempty"`
     ReconcileScheduled bool                 `json:"reconcileScheduled"`
-	Conditions         []types.Condition    `json:"conditions,omitempty"`
+    Conditions         []types.Condition    `json:"conditions,omitempty"`
 }
 ```
 
@@ -184,6 +186,11 @@ version; Praxis does not upgrade older state during alpha.
 ## Provision Flow
 
 Provision follows a check-then-converge pattern:
+
+The alpha wire request has one shape: `ProvisionRequest{spec, lifecycle}`. Core
+encodes the resource-specific spec into that envelope, and the generic kernel
+decodes it into the descriptor's concrete spec type. There is no legacy bare
+spec request form.
 
 ```mermaid
 flowchart TD
@@ -252,9 +259,10 @@ flowchart TD
    - Describes the actual cloud resource state
    - Compares it against the desired spec
 
-3. Based on mode:
-   - **Managed**: corrects drift by re-applying configuration, updates observed state
-   - **Observed**: reports drift (sets `ReconcileResult.Drift = true`) but does not modify the resource
+3. Based on ownership and lifecycle policy:
+   - **Managed + `reconcile: auto`**: corrects non-ignored drift and updates observed state
+   - **Managed + `reconcile: observe`**: reports non-ignored drift without provider writes
+   - **Observed import**: reports drift without provider writes
 
 4. Schedules the next timer.
 
@@ -268,7 +276,12 @@ praxis reconcile EC2Instance/us-east-1~web-server
 
 See the [CLI reference](CLI.md#reconcile) for details.
 
-The plan diff engine (in Core) also respects `lifecycle.ignoreChanges` — field diffs matching ignored paths are filtered before presenting plan results. This filtering happens in the command handlers, not in drivers. Drivers always report full drift; the orchestrator decides what to act on.
+The generic kernel and plan engine both respect `lifecycle.ignoreChanges` using
+the same semantic field-diff paths. Ignored differences are omitted from plans
+and are not corrected during periodic reconciliation. With
+`lifecycle.reconcile: observe`, the kernel reports all non-ignored drift without
+provider writes and keeps an otherwise healthy resource `Ready` with
+`DriftFree=False`.
 
 ### Timer Deduplication
 
@@ -489,7 +502,7 @@ type Adapter interface {
     Scope() KeyScope                 // Global, Region, Custom
     BuildKey(doc json.RawMessage) (string, error)
     DecodeSpec(doc json.RawMessage) (any, error)
-    Provision(ctx, key, account, spec) (ProvisionInvocation, error)
+    Provision(ctx, key, account, spec, lifecycle) (ProvisionInvocation, error)
     Delete(ctx, key) (DeleteInvocation, error)
     Plan(ctx, key, account, spec) (DiffOperation, []FieldDiff, error)
     Import(ctx, key, account, ref) (ResourceStatus, map[string]any, error)
@@ -784,7 +797,11 @@ return types.ReconcileResult{
 }, nil
 ```
 
-When drift is detected: `DriftFree` status is `False` with reason `DriftDetected`. When the resource is externally deleted: `Healthy` is `False` with reason `NotFound`.
+When drift is detected, `DriftFree` is `False` with reason `DriftDetected`.
+External deletion under automatic reconciliation marks the resource unhealthy
+and lets Core recovery decide whether to reprovision. Under observe-only
+reconciliation it remains `Ready` and healthy-by-policy, with
+`DriftFree=False` clearly recording the provider absence.
 
 ### Late Initialization
 

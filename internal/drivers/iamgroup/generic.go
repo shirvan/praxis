@@ -62,7 +62,8 @@ func newGenericIAMGroupDriverWithFactory(auth authservice.AuthClient, factory fu
 			}
 			return outputs
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

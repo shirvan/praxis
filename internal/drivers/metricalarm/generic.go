@@ -59,7 +59,8 @@ func newGenericMetricAlarmDriverWithFactory(auth authservice.AuthClient, factory
 		OutputsFromObserved: func(observed ObservedState, _ MetricAlarmOutputs) MetricAlarmOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

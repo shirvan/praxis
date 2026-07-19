@@ -39,16 +39,16 @@ func TestS3Provision_CreatesRealBucket(t *testing.T) {
 	key := bucket
 
 	// Provision the bucket
-	outputs, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), s3.S3BucketSpec{
+	).Request(t.Context(), provisionRequest(t, s3.S3BucketSpec{
 		Account:    integrationAccountName,
 		BucketName: bucket,
 		Region:     "us-east-1",
 		Versioning: true,
 		Encryption: s3.EncryptionSpec{Enabled: true, Algorithm: "AES256"},
 		Tags:       map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, bucket, outputs.BucketName)
 	assert.Contains(t, outputs.ARN, bucket)
@@ -73,15 +73,15 @@ func TestS3Provision_Idempotent(t *testing.T) {
 	}
 
 	// First provision
-	_, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Second provision with same spec — should succeed without error
-	outputs2, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	outputs2, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, bucket, outputs2.BucketName)
 }
@@ -116,13 +116,13 @@ func TestS3Delete_RemovesBucket(t *testing.T) {
 	key := bucket
 
 	// Provision
-	_, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), s3.S3BucketSpec{
+	).Request(t.Context(), provisionRequest(t, s3.S3BucketSpec{
 		Account:    integrationAccountName,
 		BucketName: bucket,
 		Region:     "us-east-1",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Delete
@@ -144,13 +144,13 @@ func TestS3Delete_NonEmptyBucketFails(t *testing.T) {
 	key := bucket
 
 	// Provision
-	_, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), s3.S3BucketSpec{
+	).Request(t.Context(), provisionRequest(t, s3.S3BucketSpec{
 		Account:    integrationAccountName,
 		BucketName: bucket,
 		Region:     "us-east-1",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Upload an object directly to make bucket non-empty
@@ -176,15 +176,15 @@ func TestS3Reconcile_DetectsAndFixesDrift(t *testing.T) {
 	key := bucket
 
 	// Provision with versioning enabled
-	_, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), s3.S3BucketSpec{
+	).Request(t.Context(), provisionRequest(t, s3.S3BucketSpec{
 		Account:    integrationAccountName,
 		BucketName: bucket,
 		Region:     "us-east-1",
 		Versioning: true,
 		Encryption: s3.EncryptionSpec{Enabled: true, Algorithm: "AES256"},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Introduce drift: suspend versioning directly via S3 API
@@ -218,13 +218,13 @@ func TestS3GetStatus_ReturnsReady(t *testing.T) {
 	key := bucket
 
 	// Provision
-	_, err := ingress.Object[s3.S3BucketSpec, s3.S3BucketOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, s3.S3BucketOutputs](
 		client, "S3Bucket", key, "Provision",
-	).Request(t.Context(), s3.S3BucketSpec{
+	).Request(t.Context(), provisionRequest(t, s3.S3BucketSpec{
 		Account:    integrationAccountName,
 		BucketName: bucket,
 		Region:     "us-east-1",
-	})
+	}))
 	require.NoError(t, err)
 
 	// GetStatus

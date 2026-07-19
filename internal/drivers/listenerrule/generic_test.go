@@ -248,7 +248,7 @@ func TestGenericListenerRuleAmbiguousCreateAndCollision(t *testing.T) {
 	spec := listenerRuleSpec(13)
 	api.seed(observedListenerRule("arn:listener-rule/collision", spec))
 	client = setupListenerRule(t, api)
-	_, err := ingress.Object[ListenerRuleSpec, ListenerRuleOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, ListenerRuleOutputs](client, ServiceName, "us-east-1~collision", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exact Praxis ownership")
 	assert.Equal(t, 0, api.snapshot().Creates)
@@ -277,7 +277,7 @@ func TestGenericListenerRuleDriftImmutableAndExternalDelete(t *testing.T) {
 	assert.Equal(t, "test", corrected.Tags["env"])
 
 	spec.ListenerArn = "arn:listener/other"
-	_, err = ingress.Object[ListenerRuleSpec, ListenerRuleOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, ListenerRuleOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "immutable")
 
@@ -306,7 +306,7 @@ func TestGenericListenerRuleRejectsDefaultRuleImport(t *testing.T) {
 
 func provisionListenerRule(t *testing.T, client *ingress.Client, key string, spec ListenerRuleSpec) ListenerRuleOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[ListenerRuleSpec, ListenerRuleOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, ListenerRuleOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }

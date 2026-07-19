@@ -115,9 +115,9 @@ func TestLambdaProvision_CreatesFunction(t *testing.T) {
 	name := uniqueFunctionName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLambdaSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLambdaSpec(name)))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.FunctionName)
 	assert.NotEmpty(t, outputs.FunctionArn)
@@ -138,14 +138,14 @@ func TestLambdaProvision_Idempotent(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	spec := defaultLambdaSpec(name)
 
-	out1, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.FunctionArn, out2.FunctionArn)
 }
@@ -156,9 +156,9 @@ func TestLambdaProvision_UpdatesConfiguration(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	spec := defaultLambdaSpec(name)
 
-	_, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	// Update memory and timeout
@@ -166,9 +166,9 @@ func TestLambdaProvision_UpdatesConfiguration(t *testing.T) {
 	spec.Timeout = 60
 	spec.Description = "updated"
 
-	out, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	out, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, name, out.FunctionName)
 
@@ -219,9 +219,9 @@ func TestLambdaDelete_RemovesFunction(t *testing.T) {
 	name := uniqueFunctionName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLambdaSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLambdaSpec(name)))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -241,9 +241,9 @@ func TestLambdaGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueFunctionName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLambdaSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLambdaSpec(name)))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](
@@ -260,9 +260,9 @@ func TestLambdaReconcile_DetectsDrift(t *testing.T) {
 	name := uniqueFunctionName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, lambda.LambdaFunctionOutputs](
 		client, lambda.ServiceName, key, "Provision",
-	).Request(t.Context(), defaultLambdaSpec(name))
+	).Request(t.Context(), provisionRequest(t, defaultLambdaSpec(name)))
 	require.NoError(t, err)
 
 	// Introduce drift: change description directly via Lambda API

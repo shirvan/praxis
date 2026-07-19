@@ -64,6 +64,7 @@ func newGenericSQSQueuePolicyDriverWithFactory(auth authservice.AuthClient, fact
 			}
 		},
 		OutputsFromObserved: outputsFromObserved,
+		FieldDiffs:          ComputeFieldDiffs,
 		HasDrift:            HasDrift,
 	})
 }

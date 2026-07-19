@@ -366,7 +366,7 @@ func TestGenericSGRejectsSameNameDifferentOwnership(t *testing.T) {
 			api.seedOwned(managedSGSpec(), test.managedKey)
 			client := setupGenericSG(t, api)
 
-			_, err := ingress.Object[SecurityGroupSpec, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), managedSGSpec())
+			_, err := ingress.Object[types.ProvisionRequest, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedSGSpec()))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "different ownership")
 			assert.Zero(t, api.snapshot().Creates)
@@ -382,7 +382,7 @@ func TestGenericSGRejectsManagedKeyCollisionWithDifferentIdentity(t *testing.T) 
 	api.seedOwned(conflict, "vpc-123~web")
 	client := setupGenericSG(t, api)
 
-	_, err := ingress.Object[SecurityGroupSpec, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), managedSGSpec())
+	_, err := ingress.Object[types.ProvisionRequest, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedSGSpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "incompatible resource")
 	assert.Contains(t, err.Error(), "groupName is immutable")
@@ -393,7 +393,7 @@ func TestGenericSGRejectsAmbiguousManagedKeyOwnership(t *testing.T) {
 	api := &statefulSGAPI{managedKeyFindErr: &ownershipConflictError{message: "ownership corruption: two security groups claim the managed key"}}
 	client := setupGenericSG(t, api)
 
-	_, err := ingress.Object[SecurityGroupSpec, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), managedSGSpec())
+	_, err := ingress.Object[types.ProvisionRequest, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedSGSpec()))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ownership corruption")
 	assert.Zero(t, api.snapshot().Creates)
@@ -417,7 +417,7 @@ func TestGenericSGRejectsImmutableIdentityChanges(t *testing.T) {
 			before := api.group()
 			test.mutate(&spec)
 
-			_, err := ingress.Object[SecurityGroupSpec, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), spec)
+			_, err := ingress.Object[types.ProvisionRequest, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.field)
 			assert.Contains(t, err.Error(), "delete and reprovision")
@@ -437,7 +437,7 @@ func TestGenericSGRecoversPartialRuleConvergenceOnProvision(t *testing.T) {
 	})
 	api.failAuthorizeOnce = true
 
-	_, err := ingress.Object[SecurityGroupSpec, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, types.StatusError, getSGStatus(t, client).Status)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -486,7 +486,7 @@ func TestSpecFromObservedPreservesRulesAndFiltersPraxisTags(t *testing.T) {
 
 func provisionSG(t *testing.T, client *ingress.Client, spec SecurityGroupSpec) SecurityGroupOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[SecurityGroupSpec, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, SecurityGroupOutputs](client, ServiceName, "vpc-123~web", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }

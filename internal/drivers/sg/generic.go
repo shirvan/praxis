@@ -76,7 +76,8 @@ func newGenericSecurityGroupDriverWithFactory(auth authservice.AuthClient, facto
 			}
 			return outputs
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

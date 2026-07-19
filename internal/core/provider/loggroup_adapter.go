@@ -97,12 +97,7 @@ func logGroupDescriptor() GenericDescriptor[loggroup.LogGroupSpec, loggroup.LogG
 		},
 
 		DiffFields: func(desired loggroup.LogGroupSpec, observed loggroup.ObservedState, _ loggroup.LogGroupOutputs) []types.FieldDiff {
-			rawDiffs := loggroup.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return loggroup.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

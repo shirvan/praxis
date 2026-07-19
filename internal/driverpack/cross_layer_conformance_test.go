@@ -36,10 +36,12 @@ func TestProductionResourceVerticalSlicesStayComplete(t *testing.T) {
 	root := repositoryRoot(t)
 	driverImports := productionDriverImports(t, root)
 	schemaKinds := productionSchemaKinds(t)
+	exampleKinds := productionExampleKinds(t, root)
 	integrationImports, integrationFiles := integrationDriverImports(t, root)
 
 	expectedKinds := sortedSetKeys(expectedGenericDrivers)
 	assert.Equal(t, expectedKinds, sortedSetKeys(schemaKinds), "schema inventory must match production drivers")
+	assert.Equal(t, expectedKinds, sortedSetKeys(exampleKinds), "example inventory must cover every production resource kind")
 	assert.Equal(t, expectedKinds, sortedSetKeys(driverImports), "generic driver packages must match production bindings")
 	require.Equal(t, len(expectedKinds), integrationFiles, "expected one integration driver file per production resource")
 
@@ -48,6 +50,28 @@ func TestProductionResourceVerticalSlicesStayComplete(t *testing.T) {
 			require.Containsf(t, integrationImports, importPath, "integration inventory does not import %s", importPath)
 		})
 	}
+}
+
+func productionExampleKinds(t *testing.T, root string) map[string]struct{} {
+	t.Helper()
+	kinds := map[string]struct{}{}
+	require.NoError(t, filepath.WalkDir(filepath.Join(root, "examples"), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".cue") || strings.Contains(path, string(filepath.Separator)+"policies"+string(filepath.Separator)) {
+			return nil
+		}
+		contents, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, match := range schemaKindPattern.FindAllSubmatch(contents, -1) {
+			kinds[string(match[1])] = struct{}{}
+		}
+		return nil
+	}))
+	return kinds
 }
 
 func productionSchemaKinds(t *testing.T) map[string]struct{} {
@@ -64,14 +88,14 @@ func productionSchemaKinds(t *testing.T) map[string]struct{} {
 		if readErr != nil {
 			return readErr
 		}
-		match := schemaKindPattern.FindSubmatch(contents)
-		require.Lenf(t, match, 2, "%s must declare exactly one resource kind", path)
-		kind := string(match[1])
+		kindMatches := schemaKindPattern.FindAllSubmatch(contents, -1)
+		require.Lenf(t, kindMatches, 1, "%s must declare exactly one resource kind", path)
+		kind := string(kindMatches[0][1])
 		_, duplicate := kinds[kind]
 		require.Falsef(t, duplicate, "schema kind %q is declared more than once", kind)
-		require.Regexp(t, schemaVersionPattern, string(contents), "%s must use the exact alpha API version", path)
-		require.Regexp(t, structuredMetadataField, string(contents), "%s must use the standard metadata block", path)
-		require.Regexp(t, schemaOutputsPattern, string(contents), "%s must declare its driver outputs", path)
+		require.Lenf(t, schemaVersionPattern.FindAll(contents, -1), 1, "%s must declare exactly one alpha API version", path)
+		require.Lenf(t, structuredMetadataField.FindAll(contents, -1), 1, "%s must use exactly one standard metadata block", path)
+		require.Lenf(t, schemaOutputsPattern.FindAll(contents, -1), 1, "%s must declare exactly one driver outputs block", path)
 		kinds[kind] = struct{}{}
 		return nil
 	}))
@@ -91,11 +115,21 @@ func productionDriverImports(t *testing.T, root string) map[string]string {
 		if _, statErr := os.Stat(filepath.Join(dir, "generic.go")); statErr != nil {
 			continue
 		}
-		contents, readErr := os.ReadFile(filepath.Join(dir, "types.go"))
-		require.NoErrorf(t, readErr, "read %s types", entry.Name())
-		match := driverServicePattern.FindSubmatch(contents)
-		require.Lenf(t, match, 2, "%s must declare ServiceName in types.go", entry.Name())
-		serviceName := string(match[1])
+		files, readErr := os.ReadDir(dir)
+		require.NoErrorf(t, readErr, "read %s package", entry.Name())
+		var source strings.Builder
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
+				continue
+			}
+			contents, fileErr := os.ReadFile(filepath.Join(dir, file.Name()))
+			require.NoErrorf(t, fileErr, "read %s/%s", entry.Name(), file.Name())
+			source.Write(contents)
+			source.WriteByte('\n')
+		}
+		matches := driverServicePattern.FindAllStringSubmatch(source.String(), -1)
+		require.Lenf(t, matches, 1, "%s must declare exactly one ServiceName", entry.Name())
+		serviceName := matches[0][1]
 		_, duplicate := result[serviceName]
 		require.Falsef(t, duplicate, "driver service %q is declared more than once", serviceName)
 		result[serviceName] = "github.com/shirvan/praxis/internal/drivers/" + entry.Name()
@@ -117,13 +151,19 @@ func integrationDriverImports(t *testing.T, root string) (map[string]struct{}, i
 		files++
 		parsed, parseErr := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, entry.Name()), nil, parser.ImportsOnly)
 		require.NoErrorf(t, parseErr, "parse %s imports", entry.Name())
+		var fileDriverImports []string
 		for _, imported := range parsed.Imports {
 			path, unquoteErr := strconv.Unquote(imported.Path.Value)
 			require.NoError(t, unquoteErr)
 			if strings.HasPrefix(path, "github.com/shirvan/praxis/internal/drivers/") {
-				imports[path] = struct{}{}
+				fileDriverImports = append(fileDriverImports, path)
 			}
 		}
+		require.Lenf(t, fileDriverImports, 1, "%s must import exactly one production driver package", entry.Name())
+		path := fileDriverImports[0]
+		_, duplicate := imports[path]
+		require.Falsef(t, duplicate, "%s is imported by more than one integration driver file", path)
+		imports[path] = struct{}{}
 	}
 	return imports, files
 }

@@ -52,14 +52,14 @@ func TestDashboardProvision_CreatesDashboard(t *testing.T) {
 	name := uniqueDashboardName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[dashboard.DashboardSpec, dashboard.DashboardOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, dashboard.DashboardOutputs](
 		client, dashboard.ServiceName, key, "Provision",
-	).Request(t.Context(), dashboard.DashboardSpec{
+	).Request(t.Context(), provisionRequest(t, dashboard.DashboardSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		DashboardName: name,
 		DashboardBody: testDashboardBody,
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.DashboardName)
 	assert.NotEmpty(t, outputs.DashboardArn)
@@ -83,14 +83,14 @@ func TestDashboardProvision_Idempotent(t *testing.T) {
 		DashboardBody: testDashboardBody,
 	}
 
-	out1, err := ingress.Object[dashboard.DashboardSpec, dashboard.DashboardOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, dashboard.DashboardOutputs](
 		client, dashboard.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[dashboard.DashboardSpec, dashboard.DashboardOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, dashboard.DashboardOutputs](
 		client, dashboard.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.DashboardArn, out2.DashboardArn)
@@ -130,14 +130,14 @@ func TestDashboardDelete_RemovesDashboard(t *testing.T) {
 	name := uniqueDashboardName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[dashboard.DashboardSpec, dashboard.DashboardOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, dashboard.DashboardOutputs](
 		client, dashboard.ServiceName, key, "Provision",
-	).Request(t.Context(), dashboard.DashboardSpec{
+	).Request(t.Context(), provisionRequest(t, dashboard.DashboardSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		DashboardName: name,
 		DashboardBody: testDashboardBody,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -156,14 +156,14 @@ func TestDashboardReconcile_DetectsBodyDrift(t *testing.T) {
 	name := uniqueDashboardName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[dashboard.DashboardSpec, dashboard.DashboardOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, dashboard.DashboardOutputs](
 		client, dashboard.ServiceName, key, "Provision",
-	).Request(t.Context(), dashboard.DashboardSpec{
+	).Request(t.Context(), provisionRequest(t, dashboard.DashboardSpec{
 		Account:       integrationAccountName,
 		Region:        "us-east-1",
 		DashboardName: name,
 		DashboardBody: testDashboardBody,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally change dashboard body to introduce drift

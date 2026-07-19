@@ -344,7 +344,7 @@ func TestGenericIAMPolicyRecoversAfterVersionRotationPartiallyCompletes(t *testi
 	api.mu.Unlock()
 	spec.PolicyDocument = policyDocument("Deny", "s3:RecoveredAction")
 
-	_, err := ingress.Object[IAMPolicySpec, IAMPolicyOutputs](client, ServiceName, spec.PolicyName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMPolicyOutputs](client, ServiceName, spec.PolicyName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
 	assert.Len(t, api.policyVersions(), 4, "the independently journaled limit cleanup completed before the injected create fault")
@@ -401,7 +401,7 @@ func TestGenericIAMPolicyRejectsImmutableChanges(t *testing.T) {
 	provisionPolicy(t, client, spec)
 
 	spec.Description = "different immutable description"
-	_, err := ingress.Object[IAMPolicySpec, IAMPolicyOutputs](client, ServiceName, spec.PolicyName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, IAMPolicyOutputs](client, ServiceName, spec.PolicyName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "description is immutable")
 	assert.Equal(t, "application policy", api.policy().Description)
@@ -409,7 +409,7 @@ func TestGenericIAMPolicyRejectsImmutableChanges(t *testing.T) {
 
 func provisionPolicy(t *testing.T, client *ingress.Client, spec IAMPolicySpec) IAMPolicyOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[IAMPolicySpec, IAMPolicyOutputs](client, ServiceName, spec.PolicyName, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, IAMPolicyOutputs](client, ServiceName, spec.PolicyName, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }

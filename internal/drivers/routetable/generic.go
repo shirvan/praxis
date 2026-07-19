@@ -75,7 +75,8 @@ func newGenericRouteTableDriverWithFactory(auth authservice.AuthClient, factory 
 		OutputsFromObserved: func(observed ObservedState, _ RouteTableOutputs) RouteTableOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

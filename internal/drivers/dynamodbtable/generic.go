@@ -64,7 +64,8 @@ func NewGenericDynamoDBTableDriverWithFactory(auth authservice.AuthClient, facto
 		OutputsFromObserved: func(observed ObservedState, _ DynamoDBTableOutputs) DynamoDBTableOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

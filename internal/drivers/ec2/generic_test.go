@@ -285,7 +285,7 @@ func TestGenericEC2RejectsCreateOnlyChangesAndRetainsInputs(t *testing.T) {
 	api := &statefulEC2API{}
 	key := "us-east-1~immutable-ec2"
 	client := setupGenericEC2(t, api)
-	_, err := ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), genericEC2Spec(key))
+	_, err := ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericEC2Spec(key)))
 	require.NoError(t, err)
 	accepted, err := ingress.Object[restate.Void, EC2InstanceSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
 	require.NoError(t, err)
@@ -307,7 +307,7 @@ func TestGenericEC2RejectsCreateOnlyChangesAndRetainsInputs(t *testing.T) {
 	for _, tt := range tests {
 		changed := accepted
 		tt.mutate(&changed)
-		_, err = ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), changed)
+		_, err = ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, changed))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), tt.field+" is immutable")
 		retained, getErr := ingress.Object[restate.Void, EC2InstanceSpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -339,7 +339,7 @@ func TestGenericEC2RecoversInstanceByManagedKeyWithoutDuplicateCreate(t *testing
 		Tags: map[string]string{"Name": "generic", "env": "test", "praxis:managed-key": key},
 	}}
 	client := setupGenericEC2(t, api)
-	outputs, err := ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "i-recovered", outputs.InstanceId)
 	creates, _ := api.counters()
@@ -350,7 +350,7 @@ func TestGenericEC2WaiterRetriesWithoutLaunchingSecondInstance(t *testing.T) {
 	api := &statefulEC2API{waitFailures: 1}
 	key := "us-east-1~wait-retry"
 	client := setupGenericEC2(t, api)
-	outputs, err := ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), genericEC2Spec(key))
+	outputs, err := ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericEC2Spec(key)))
 	require.NoError(t, err)
 	assert.Equal(t, "running", outputs.State)
 	creates, waits := api.counters()
@@ -365,7 +365,7 @@ func TestGenericEC2ManagedReconcileConvergesIndependentProviderDrift(t *testing.
 	key := "us-east-1~drift"
 	spec := genericEC2Spec(key)
 	client := setupGenericEC2(t, api)
-	_, err := ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	api.injectDrift()
 
@@ -388,22 +388,22 @@ func TestGenericEC2ConvergesIAMInstanceProfileAddReplaceAndRemove(t *testing.T) 
 	spec := genericEC2Spec(key)
 	spec.IamInstanceProfile = ""
 
-	_, err := ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Empty(t, api.current().IamInstanceProfile)
 
 	spec.IamInstanceProfile = "app-profile"
-	_, err = ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "app-profile", api.current().IamInstanceProfile)
 
 	spec.IamInstanceProfile = "arn:aws:iam::123456789012:instance-profile/platform/replacement-profile"
-	_, err = ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, "replacement-profile", api.current().IamInstanceProfile)
 
 	spec.IamInstanceProfile = ""
-	_, err = ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Empty(t, api.current().IamInstanceProfile)
 }
@@ -412,7 +412,7 @@ func TestGenericEC2ExternalTerminationRequiresCoreReplacement(t *testing.T) {
 	api := &statefulEC2API{}
 	key := "us-east-1~external-delete"
 	client := setupGenericEC2(t, api)
-	_, err := ingress.Object[EC2InstanceSpec, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), genericEC2Spec(key))
+	_, err := ingress.Object[types.ProvisionRequest, EC2InstanceOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, genericEC2Spec(key)))
 	require.NoError(t, err)
 	api.terminateExternally()
 

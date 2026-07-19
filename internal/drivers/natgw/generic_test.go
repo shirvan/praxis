@@ -205,7 +205,7 @@ func TestGenericNATPendingProgressesToReady(t *testing.T) {
 	api.createState = "pending"
 	client := setupGenericNAT(t, api)
 	key := "us-east-1~pending-nat"
-	outputs, err := ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedNATSpec())
+	outputs, err := ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedNATSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, "pending", outputs.State)
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})
@@ -224,16 +224,16 @@ func TestGenericNATFailedRequiresDeleteThenProvision(t *testing.T) {
 	api.createState = "failed"
 	client := setupGenericNAT(t, api)
 	key := "us-east-1~failed-nat"
-	_, err := ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedNATSpec())
+	_, err := ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedNATSpec()))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates)
-	_, err = ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedNATSpec())
+	_, err = ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedNATSpec()))
 	require.Error(t, err)
 	assert.Equal(t, 1, api.snapshot().Creates, "failed gateways must never be auto-recreated")
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Send(t.Context(), restate.Void{})
 	require.NoError(t, err)
 	api.createState = "available"
-	_, err = ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedNATSpec())
+	_, err = ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedNATSpec()))
 	require.NoError(t, err)
 	assert.Equal(t, 2, api.snapshot().Creates)
 }
@@ -242,7 +242,7 @@ func TestGenericNATRecoversAmbiguousCreate(t *testing.T) {
 	api := newGenericNATAPI()
 	api.createErrors = []error{errors.New("create response lost")}
 	client := setupGenericNAT(t, api)
-	outputs, err := ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, "us-east-1~ambiguous-nat", "Provision").Request(t.Context(), managedNATSpec())
+	outputs, err := ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, "us-east-1~ambiguous-nat", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedNATSpec()))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.NatGatewayId)
 	assert.Equal(t, 1, api.snapshot().Creates)
@@ -253,10 +253,10 @@ func TestGenericNATRejectsImmutablePlacement(t *testing.T) {
 	client := setupGenericNAT(t, api)
 	key := "us-east-1~immutable-nat"
 	spec := managedNATSpec()
-	_, err := ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	spec.SubnetId = "subnet-other"
-	_, err = ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "subnetId is immutable")
 	stored, storedErr := ingress.Object[restate.Void, NATGatewaySpec](client, ServiceName, key, "GetInputs").Request(t.Context(), restate.Void{})
@@ -288,7 +288,7 @@ func TestGenericNATExternalDeleteRequiresExplicitProvision(t *testing.T) {
 	api := newGenericNATAPI()
 	client := setupGenericNAT(t, api)
 	key := "us-east-1~external-nat"
-	outputs, err := ingress.Object[NATGatewaySpec, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), managedNATSpec())
+	outputs, err := ingress.Object[types.ProvisionRequest, NATGatewayOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, managedNATSpec()))
 	require.NoError(t, err)
 	before := api.snapshot()
 	api.remove(outputs.NatGatewayId)

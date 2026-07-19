@@ -58,14 +58,14 @@ func TestACMCertificateProvision(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	domainName := fmt.Sprintf("%s.example.com", name)
 
-	outputs, err := ingress.Object[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs](client, acmcert.ServiceName, key, "Provision").Request(t.Context(), acmcert.ACMCertificateSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, acmcert.ACMCertificateOutputs](client, acmcert.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, acmcert.ACMCertificateSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		DomainName:       domainName,
 		ValidationMethod: "DNS",
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.CertificateArn)
 	assert.Equal(t, domainName, outputs.DomainName)
@@ -81,14 +81,14 @@ func TestACMCertificateGetStatus(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	domainName := fmt.Sprintf("%s.example.com", name)
 
-	_, err := ingress.Object[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs](client, acmcert.ServiceName, key, "Provision").Request(t.Context(), acmcert.ACMCertificateSpec{
+	_, err := ingress.Object[types.ProvisionRequest, acmcert.ACMCertificateOutputs](client, acmcert.ServiceName, key, "Provision").Request(t.Context(), provisionRequest(t, acmcert.ACMCertificateSpec{
 		Account:          integrationAccountName,
 		Region:           "us-east-1",
 		DomainName:       domainName,
 		ValidationMethod: "DNS",
 		ManagedKey:       key,
 		Tags:             map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](client, acmcert.ServiceName, key, "GetStatus").Request(t.Context(), restate.Void{})

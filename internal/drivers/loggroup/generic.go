@@ -57,7 +57,8 @@ func NewGenericLogGroupDriverWithFactory(auth authservice.AuthClient, factory fu
 		OutputsFromObserved: func(observed ObservedState, _ LogGroupOutputs) LogGroupOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

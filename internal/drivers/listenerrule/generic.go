@@ -62,7 +62,8 @@ func newGenericListenerRuleDriverWithFactory(auth authservice.AuthClient, factor
 		OutputsFromObserved: func(observed ObservedState, _ ListenerRuleOutputs) ListenerRuleOutputs {
 			return outputsFromObserved(observed)
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

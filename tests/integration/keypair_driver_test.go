@@ -51,13 +51,13 @@ func TestKeyPairProvision_CreatesKeyPair(t *testing.T) {
 	name := uniqueKeyPairName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), keypair.KeyPairSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), provisionRequest(t, keypair.KeyPairSpec{
 		Account: integrationAccountName,
 		Region:  "us-east-1",
 		KeyName: name,
 		KeyType: "rsa",
 		Tags:    map[string]string{"Name": name, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.KeyName)
 	assert.NotEmpty(t, outputs.KeyPairId)
@@ -83,9 +83,9 @@ func TestKeyPairProvision_Idempotent(t *testing.T) {
 		Tags:    map[string]string{"Name": name},
 	}
 
-	out1, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	assert.Equal(t, out1.KeyPairId, out2.KeyPairId)
@@ -109,14 +109,14 @@ func TestKeyPairProvision_ImportPublicKey(t *testing.T) {
 	key := fmt.Sprintf("us-east-1~%s", name)
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9nKdNEhyWj7L6VR/80+65OlrVc8W+gyhKhMSKRO4L7bQd4MumLregNNjb1elO6CMoCtvblJ207O5L3KlQQZ72srMnk40GvPrT/vTBRl9u+kMG3IGotwcrd184NPaCF3PsftHNWciGUUPnYoPkhZEt/ekQaZ0K29W4nhhyTO2boucCIQYC9uZPOmjr7e6bmxkdPpCIrpNARSOYolMyrbVx3XOl1CFShdsnDJIKzAAM2z7gLDbmlVJcS6gvTGq6C3jN9fOhppavy2x+UmCvanRTi4NHS7bIOAv76vqtarYXDYIaSrhSPhCNObnl+1jiUUPnrJKE/EvRjQf6SWJd3qwv test@localhost"
 
-	outputs, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), keypair.KeyPairSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), provisionRequest(t, keypair.KeyPairSpec{
 		Account:           integrationAccountName,
 		Region:            "us-east-1",
 		KeyName:           name,
 		KeyType:           "rsa",
 		PublicKeyMaterial: publicKey,
 		Tags:              map[string]string{"Name": name, "env": "imported"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.KeyName)
 	assert.NotEmpty(t, outputs.KeyPairId)
@@ -153,13 +153,13 @@ func TestKeyPairDelete_RemovesKeyPair(t *testing.T) {
 	name := uniqueKeyPairName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), keypair.KeyPairSpec{
+	_, err := ingress.Object[types.ProvisionRequest, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), provisionRequest(t, keypair.KeyPairSpec{
 		Account: integrationAccountName,
 		Region:  "us-east-1",
 		KeyName: name,
 		KeyType: "rsa",
 		Tags:    map[string]string{"Name": name},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, "KeyPair", key, "Delete").Request(t.Context(), restate.Void{})
@@ -174,13 +174,13 @@ func TestKeyPairReconcile_DetectsTagDrift(t *testing.T) {
 	name := uniqueKeyPairName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	out, err := ingress.Object[keypair.KeyPairSpec, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), keypair.KeyPairSpec{
+	out, err := ingress.Object[types.ProvisionRequest, keypair.KeyPairOutputs](client, "KeyPair", key, "Provision").Request(t.Context(), provisionRequest(t, keypair.KeyPairSpec{
 		Account: integrationAccountName,
 		Region:  "us-east-1",
 		KeyName: name,
 		KeyType: "rsa",
 		Tags:    map[string]string{"Name": name, "env": "managed"},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ec2Client.DeleteTags(context.Background(), &ec2sdk.DeleteTagsInput{

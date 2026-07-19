@@ -51,9 +51,9 @@ func TestRDSInstanceProvision_Creates(t *testing.T) {
 	name := uniqueDBInstanceName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	outputs, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, rdsinstance.RDSInstanceOutputs](
 		client, "RDSInstance", key, "Provision",
-	).Request(t.Context(), rdsinstance.RDSInstanceSpec{
+	).Request(t.Context(), provisionRequest(t, rdsinstance.RDSInstanceSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		DBIdentifier:       name,
@@ -65,7 +65,7 @@ func TestRDSInstanceProvision_Creates(t *testing.T) {
 		MasterUsername:     "admin",
 		MasterUserPassword: "TestPass1234!",
 		Tags:               map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, name, outputs.DBIdentifier)
 	assert.NotEmpty(t, outputs.ARN)
@@ -97,14 +97,14 @@ func TestRDSInstanceProvision_Idempotent(t *testing.T) {
 		Tags:               map[string]string{"env": "test"},
 	}
 
-	out1, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+	out1, err := ingress.Object[types.ProvisionRequest, rdsinstance.RDSInstanceOutputs](
 		client, "RDSInstance", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
-	out2, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+	out2, err := ingress.Object[types.ProvisionRequest, rdsinstance.RDSInstanceOutputs](
 		client, "RDSInstance", key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.ARN, out2.ARN, "re-provision should return same ARN")
 }
@@ -145,9 +145,9 @@ func TestRDSInstanceDelete_Removes(t *testing.T) {
 	name := uniqueDBInstanceName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, rdsinstance.RDSInstanceOutputs](
 		client, "RDSInstance", key, "Provision",
-	).Request(t.Context(), rdsinstance.RDSInstanceSpec{
+	).Request(t.Context(), provisionRequest(t, rdsinstance.RDSInstanceSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		DBIdentifier:       name,
@@ -158,7 +158,7 @@ func TestRDSInstanceDelete_Removes(t *testing.T) {
 		StorageType:        "gp3",
 		MasterUsername:     "admin",
 		MasterUserPassword: "TestPass1234!",
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -204,9 +204,9 @@ func TestRDSInstanceReconcile_DetectsBackupRetentionDrift(t *testing.T) {
 	name := uniqueDBInstanceName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, rdsinstance.RDSInstanceOutputs](
 		client, "RDSInstance", key, "Provision",
-	).Request(t.Context(), rdsinstance.RDSInstanceSpec{
+	).Request(t.Context(), provisionRequest(t, rdsinstance.RDSInstanceSpec{
 		Account:               integrationAccountName,
 		Region:                "us-east-1",
 		DBIdentifier:          name,
@@ -219,7 +219,7 @@ func TestRDSInstanceReconcile_DetectsBackupRetentionDrift(t *testing.T) {
 		MasterUserPassword:    "TestPass1234!",
 		BackupRetentionPeriod: 7,
 		Tags:                  map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Externally change the backup retention period to introduce drift.
@@ -261,9 +261,9 @@ func TestRDSInstanceGetStatus_ReturnsReady(t *testing.T) {
 	name := uniqueDBInstanceName(t)
 	key := fmt.Sprintf("us-east-1~%s", name)
 
-	_, err := ingress.Object[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs](
+	_, err := ingress.Object[types.ProvisionRequest, rdsinstance.RDSInstanceOutputs](
 		client, "RDSInstance", key, "Provision",
-	).Request(t.Context(), rdsinstance.RDSInstanceSpec{
+	).Request(t.Context(), provisionRequest(t, rdsinstance.RDSInstanceSpec{
 		Account:            integrationAccountName,
 		Region:             "us-east-1",
 		DBIdentifier:       name,
@@ -274,7 +274,7 @@ func TestRDSInstanceGetStatus_ReturnsReady(t *testing.T) {
 		StorageType:        "gp3",
 		MasterUsername:     "admin",
 		MasterUserPassword: "TestPass1234!",
-	})
+	}))
 	require.NoError(t, err)
 
 	status, err := ingress.Object[restate.Void, types.StatusResponse](

@@ -355,7 +355,7 @@ func TestProvision_CreatesAndAttaches(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	outputs, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", map[string]string{"Name": "web-igw", "env": "dev"}))
+	outputs, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", map[string]string{"Name": "web-igw", "env": "dev"})))
 	require.NoError(t, err)
 	assert.Equal(t, "igw-123", outputs.InternetGatewayId)
 	assert.Equal(t, "vpc-123", outputs.VpcId)
@@ -374,7 +374,7 @@ func TestProvision_MissingVpcIDFails(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), IGWSpec{Account: "test", Region: "us-east-1", ManagedKey: key})
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, IGWSpec{Account: "test", Region: "us-east-1", ManagedKey: key}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpcId is required")
 }
@@ -384,7 +384,7 @@ func TestProvision_ConflictFails(t *testing.T) {
 	api.managedKeys["us-east-1~web-igw"] = "igw-existing"
 	client := setupIGWDriver(t, api)
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, "us-east-1~web-igw", "Provision").Request(t.Context(), testSpec("us-east-1~web-igw", "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, "us-east-1~web-igw", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec("us-east-1~web-igw", "vpc-123", nil)))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already managed by Praxis")
 	assert.Equal(t, 0, api.createCalls)
@@ -396,8 +396,8 @@ func TestGenericIGWRecoversAmbiguousCreateWithoutDuplicate(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~ambiguous"
 
-	outputs, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(
-		t.Context(), testSpec(key, "vpc-123", nil),
+	outputs, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(
+		t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "igw-123", outputs.InternetGatewayId)
@@ -410,9 +410,9 @@ func TestProvision_IdempotentReprovision(t *testing.T) {
 	key := "us-east-1~web-igw"
 	spec := testSpec(key, "vpc-123", map[string]string{"Name": "web-igw"})
 
-	out1, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out1, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
-	out2, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	out2, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	assert.Equal(t, out1.InternetGatewayId, out2.InternetGatewayId)
 	assert.Equal(t, 1, api.createCalls)
@@ -425,10 +425,10 @@ func TestProvision_VpcAttachmentChange(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
-	outputs, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-456", nil))
+	outputs, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-456", nil)))
 	require.NoError(t, err)
 	assert.Equal(t, "vpc-456", outputs.VpcId)
 	assert.Len(t, api.detachCalls, 1)
@@ -442,10 +442,10 @@ func TestProvision_TagUpdate(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", map[string]string{"Name": "web-igw", "env": "dev"}))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", map[string]string{"Name": "web-igw", "env": "dev"})))
 	require.NoError(t, err)
 
-	_, err = ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", map[string]string{"Name": "web-igw", "env": "prod"}))
+	_, err = ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", map[string]string{"Name": "web-igw", "env": "prod"})))
 	require.NoError(t, err)
 	assert.Equal(t, 1, api.updateCalls)
 	assert.Equal(t, "prod", api.observed["igw-123"].Tags["env"])
@@ -457,7 +457,7 @@ func TestProvision_VpcAlreadyHasIGWFails(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already has an internet gateway attached")
 }
@@ -516,7 +516,7 @@ func TestDelete_DetachesAndDeletes(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, ServiceName, key, "Delete").Request(t.Context(), restate.Void{})
@@ -532,7 +532,7 @@ func TestDelete_RetriesDependencyViolationInsideDurableCallback(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	var attempts int
@@ -567,7 +567,7 @@ func TestReconcile_DetachedIGWReattaches(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -616,7 +616,7 @@ func TestReconcile_EmitsExternalDeleteEvent(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	api.mu.Lock()
@@ -636,7 +636,7 @@ func TestGetOutputs_ReturnsCurrentState(t *testing.T) {
 	client := setupIGWDriver(t, api)
 	key := "us-east-1~web-igw"
 
-	_, err := ingress.Object[IGWSpec, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), testSpec(key, "vpc-123", nil))
+	_, err := ingress.Object[types.ProvisionRequest, IGWOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, testSpec(key, "vpc-123", nil)))
 	require.NoError(t, err)
 
 	outputs, err := ingress.Object[restate.Void, IGWOutputs](client, ServiceName, key, "GetOutputs").Request(t.Context(), restate.Void{})

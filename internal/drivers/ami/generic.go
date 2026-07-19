@@ -65,7 +65,8 @@ func newGenericAMIDriverWithFactory(auth authservice.AuthClient, factory func(aw
 			spec.Account = ref.Account
 			return spec
 		},
-		OutputsFromObserved: func(observed ObservedState, _ AMIOutputs) AMIOutputs { return outputsFromObserved(observed) }, HasDrift: func(desired AMISpec, observed ObservedState) bool {
+		OutputsFromObserved: func(observed ObservedState, _ AMIOutputs) AMIOutputs { return outputsFromObserved(observed) }, FieldDiffs: ComputeFieldDiffs,
+		HasDrift: func(desired AMISpec, observed ObservedState) bool {
 			desired.Tags = desiredTags(desired)
 			return HasDrift(desired, observed)
 		},

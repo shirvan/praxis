@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/shirvan/praxis/internal/drivers/nlb"
 )
 
 func TestNLBAdapter_DecodeSpecAndBuildKey(t *testing.T) {
@@ -23,4 +25,17 @@ func TestNLBAdapter_DecodeSpecAndBuildKey(t *testing.T) {
 	key, err := adapter.BuildKey(doc)
 	require.NoError(t, err)
 	assert.Equal(t, "us-east-1~my-nlb", key)
+}
+
+func TestNLBAdapter_NormalizeOutputs(t *testing.T) {
+	adapter := NewNLBAdapterWithAuth(nil)
+	outputs, err := adapter.NormalizeOutputs(nlb.NLBOutputs{
+		LoadBalancerArn: "arn:nlb", DnsName: "nlb.example.com", HostedZoneId: "zone-1",
+		VpcId: "vpc-1", CanonicalHostedZoneId: "canonical-zone-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"loadBalancerArn": "arn:nlb", "dnsName": "nlb.example.com", "hostedZoneId": "zone-1",
+		"vpcId": "vpc-1", "canonicalHostedZoneId": "canonical-zone-1",
+	}, outputs)
 }

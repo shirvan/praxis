@@ -101,12 +101,7 @@ func snsSubscriptionDescriptor() GenericDescriptor[snssub.SNSSubscriptionSpec, s
 		},
 
 		DiffFields: func(desired snssub.SNSSubscriptionSpec, observed snssub.ObservedState, _ snssub.SNSSubscriptionOutputs) []types.FieldDiff {
-			rawDiffs := snssub.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return snssub.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

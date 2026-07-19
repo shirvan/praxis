@@ -115,13 +115,13 @@ func TestIAMInstanceProfileProvision_Creates(t *testing.T) {
 	createIAMRole(t, iamClient, roleName)
 	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
-	outputs, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), iaminstanceprofile.IAMInstanceProfileSpec{
+	outputs, err := ingress.Object[types.ProvisionRequest, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), provisionRequest(t, iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,
 		Path:                "/",
 		InstanceProfileName: profileName,
 		RoleName:            roleName,
 		Tags:                map[string]string{"Name": profileName, "env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.NotEmpty(t, outputs.InstanceProfileId)
 	assert.Equal(t, profileName, outputs.InstanceProfileName)
@@ -149,11 +149,11 @@ func TestIAMInstanceProfileProvision_ChangeRole(t *testing.T) {
 		RoleName:            roleA,
 		Tags:                map[string]string{"Name": profileName},
 	}
-	_, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), spec)
+	_, err := ingress.Object[types.ProvisionRequest, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	spec.RoleName = roleB
-	_, err = ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), spec)
+	_, err = ingress.Object[types.ProvisionRequest, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	desc, err := iamClient.GetInstanceProfile(context.Background(), &iamsdk.GetInstanceProfileInput{InstanceProfileName: aws.String(profileName)})
@@ -190,13 +190,13 @@ func TestIAMInstanceProfileDelete_RemovesProfile(t *testing.T) {
 	createIAMRole(t, iamClient, roleName)
 	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
-	_, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), iaminstanceprofile.IAMInstanceProfileSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), provisionRequest(t, iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,
 		Path:                "/",
 		InstanceProfileName: profileName,
 		RoleName:            roleName,
 		Tags:                map[string]string{"Name": profileName},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](client, iaminstanceprofile.ServiceName, profileName, "Delete").Request(t.Context(), restate.Void{})
@@ -214,13 +214,13 @@ func TestIAMInstanceProfileReconcile_DetectsRoleDrift(t *testing.T) {
 	createIAMRole(t, iamClient, roleName)
 	registerIAMInstanceProfileCleanup(t, iamClient, profileName)
 
-	_, err := ingress.Object[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), iaminstanceprofile.IAMInstanceProfileSpec{
+	_, err := ingress.Object[types.ProvisionRequest, iaminstanceprofile.IAMInstanceProfileOutputs](client, iaminstanceprofile.ServiceName, profileName, "Provision").Request(t.Context(), provisionRequest(t, iaminstanceprofile.IAMInstanceProfileSpec{
 		Account:             integrationAccountName,
 		Path:                "/",
 		InstanceProfileName: profileName,
 		RoleName:            roleName,
 		Tags:                map[string]string{"Name": profileName},
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = iamClient.RemoveRoleFromInstanceProfile(context.Background(), &iamsdk.RemoveRoleFromInstanceProfileInput{InstanceProfileName: aws.String(profileName), RoleName: aws.String(roleName)})

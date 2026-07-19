@@ -188,7 +188,7 @@ func certificateSpec(domain string) ACMCertificateSpec {
 
 func provisionCertificate(t *testing.T, client *ingress.Client, key string, spec ACMCertificateSpec) ACMCertificateOutputs {
 	t.Helper()
-	outputs, err := ingress.Object[ACMCertificateSpec, ACMCertificateOutputs](client, ServiceName, key, "Provision").Request(t.Context(), spec)
+	outputs, err := ingress.Object[types.ProvisionRequest, ACMCertificateOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, spec))
 	require.NoError(t, err)
 	return outputs
 }
@@ -229,7 +229,7 @@ func TestGenericCertificateRejectsImmutableIdentityChange(t *testing.T) {
 	client := setupGenericCertificate(t, api)
 	key := "immutable-cert"
 	provisionCertificate(t, client, key, certificateSpec("old.example.com"))
-	_, err := ingress.Object[ACMCertificateSpec, ACMCertificateOutputs](client, ServiceName, key, "Provision").Request(t.Context(), certificateSpec("new.example.com"))
+	_, err := ingress.Object[types.ProvisionRequest, ACMCertificateOutputs](client, ServiceName, key, "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, certificateSpec("new.example.com")))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "identity is immutable")
 }
@@ -268,7 +268,7 @@ func TestGenericCertificateExternalDeleteRequiresReplacement(t *testing.T) {
 func TestGenericCertificateInvalidInputIsTerminal(t *testing.T) {
 	api := newStatefulCertificateAPI()
 	client := setupGenericCertificate(t, api)
-	_, err := ingress.Object[ACMCertificateSpec, ACMCertificateOutputs](client, ServiceName, "invalid-cert", "Provision").Request(t.Context(), ACMCertificateSpec{Account: "test"})
+	_, err := ingress.Object[types.ProvisionRequest, ACMCertificateOutputs](client, ServiceName, "invalid-cert", "Provision").Request(t.Context(), drivertest.ProvisionRequest(t, ACMCertificateSpec{Account: "test"}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "domainName is required")
 }

@@ -62,7 +62,8 @@ func newGenericIAMRoleDriverWithFactory(auth authservice.AuthClient, factory fun
 			}
 			return outputs
 		},
-		HasDrift: HasDrift,
+		FieldDiffs: ComputeFieldDiffs,
+		HasDrift:   HasDrift,
 	})
 }
 

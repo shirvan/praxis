@@ -129,12 +129,7 @@ func acmCertificateDescriptor() GenericDescriptor[acmcert.ACMCertificateSpec, ac
 		},
 
 		DiffFields: func(desired acmcert.ACMCertificateSpec, observed acmcert.ObservedState, _ acmcert.ACMCertificateOutputs) []types.FieldDiff {
-			rawDiffs := acmcert.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(rawDiffs))
-			for _, diff := range rawDiffs {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return acmcert.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }

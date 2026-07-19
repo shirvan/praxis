@@ -25,16 +25,16 @@ func TestSQSQueueProvision_CreatesStandardQueue(t *testing.T) {
 	queueName := uniqueQueueName(t, false)
 	key := fmt.Sprintf("us-east-1~%s", queueName)
 
-	outputs, err := ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sqs.SQSQueueOutputs](
 		client, sqs.ServiceName, key, "Provision",
-	).Request(t.Context(), sqs.SQSQueueSpec{
+	).Request(t.Context(), provisionRequest(t, sqs.SQSQueueSpec{
 		Account:                       integrationAccountName,
 		Region:                        "us-east-1",
 		QueueName:                     queueName,
 		VisibilityTimeout:             45,
 		ReceiveMessageWaitTimeSeconds: 5,
 		Tags:                          map[string]string{"env": "test"},
-	})
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, queueName, outputs.QueueName)
 	assert.NotEmpty(t, outputs.QueueUrl)
@@ -59,9 +59,9 @@ func TestSQSQueueProvision_CreatesFIFOQueue(t *testing.T) {
 	queueName := uniqueQueueName(t, true)
 	key := fmt.Sprintf("us-east-1~%s", queueName)
 
-	outputs, err := ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sqs.SQSQueueOutputs](
 		client, sqs.ServiceName, key, "Provision",
-	).Request(t.Context(), sqs.SQSQueueSpec{
+	).Request(t.Context(), provisionRequest(t, sqs.SQSQueueSpec{
 		Account:                   integrationAccountName,
 		Region:                    "us-east-1",
 		QueueName:                 queueName,
@@ -69,7 +69,7 @@ func TestSQSQueueProvision_CreatesFIFOQueue(t *testing.T) {
 		ContentBasedDeduplication: true,
 		DeduplicationScope:        "messageGroup",
 		FifoThroughputLimit:       "perMessageGroupId",
-	})
+	}))
 	require.NoError(t, err)
 
 	attrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
@@ -122,13 +122,13 @@ func TestSQSQueueDelete_RemovesQueue(t *testing.T) {
 	queueName := uniqueQueueName(t, false)
 	key := fmt.Sprintf("us-east-1~%s", queueName)
 
-	outputs, err := ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sqs.SQSQueueOutputs](
 		client, sqs.ServiceName, key, "Provision",
-	).Request(t.Context(), sqs.SQSQueueSpec{
+	).Request(t.Context(), provisionRequest(t, sqs.SQSQueueSpec{
 		Account:   integrationAccountName,
 		Region:    "us-east-1",
 		QueueName: queueName,
-	})
+	}))
 	require.NoError(t, err)
 
 	_, err = ingress.Object[restate.Void, restate.Void](
@@ -153,9 +153,9 @@ func TestSQSQueueProvision_UpdatePreservesSeparateQueuePolicy(t *testing.T) {
 		VisibilityTimeout: 30, Tags: map[string]string{"env": "initial"},
 	}
 
-	outputs, err := ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+	outputs, err := ingress.Object[types.ProvisionRequest, sqs.SQSQueueOutputs](
 		client, sqs.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"sqs:GetQueueAttributes","Resource":%q}]}`, outputs.QueueArn)
 	_, err = sqsClient.SetQueueAttributes(t.Context(), &sqssdk.SetQueueAttributesInput{
@@ -185,9 +185,9 @@ func TestSQSQueueProvision_UpdatePreservesSeparateQueuePolicy(t *testing.T) {
 
 	spec.VisibilityTimeout = 75
 	spec.Tags = map[string]string{"env": "updated"}
-	_, err = ingress.Object[sqs.SQSQueueSpec, sqs.SQSQueueOutputs](
+	_, err = ingress.Object[types.ProvisionRequest, sqs.SQSQueueOutputs](
 		client, sqs.ServiceName, key, "Provision",
-	).Request(t.Context(), spec)
+	).Request(t.Context(), provisionRequest(t, spec))
 	require.NoError(t, err)
 
 	attrs, err := sqsClient.GetQueueAttributes(t.Context(), &sqssdk.GetQueueAttributesInput{

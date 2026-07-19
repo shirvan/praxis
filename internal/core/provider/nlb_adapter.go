@@ -10,7 +10,6 @@ import (
 	restate "github.com/restatedev/sdk-go"
 
 	"github.com/shirvan/praxis/internal/core/authservice"
-	"github.com/shirvan/praxis/internal/drivers/awserr"
 	"github.com/shirvan/praxis/internal/drivers/nlb"
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
@@ -87,12 +86,7 @@ func nlbDescriptor() GenericDescriptor[nlb.NLBSpec, nlb.NLBOutputs, nlb.Observed
 			return nlbProbe(nlb.NewNLBAPI(awsclient.NewELBv2Client(cfg)))
 		},
 		DiffFields: func(desired nlb.NLBSpec, observed nlb.ObservedState, _ nlb.NLBOutputs) []types.FieldDiff {
-			raw := nlb.ComputeFieldDiffs(desired, observed)
-			fields := make([]types.FieldDiff, 0, len(raw))
-			for _, diff := range raw {
-				fields = append(fields, types.FieldDiff{Path: diff.Path, OldValue: diff.OldValue, NewValue: diff.NewValue})
-			}
-			return fields
+			return nlb.ComputeFieldDiffs(desired, observed)
 		},
 	}
 }
@@ -104,10 +98,7 @@ func nlbProbe(api nlb.NLBAPI) PlanProbeFunc[nlb.NLBSpec, nlb.NLBOutputs, nlb.Obs
 			if nlb.IsNotFound(err) {
 				return nlb.ObservedState{}, false, nil
 			}
-			if awserr.IsThrottled(err) {
-				return nlb.ObservedState{}, false, err
-			}
-			return nlb.ObservedState{}, false, restate.TerminalError(err, 500)
+			return nlb.ObservedState{}, false, err
 		}
 		return observed, true, nil
 	}
