@@ -152,7 +152,7 @@ tags := spec.Tags
 - [ ] Error classifiers cover known AWS errors
 - [ ] Drift detection covers all mutable spec fields
 - [ ] Unit tests pass (`just test-unit`)
-- [ ] Integration tests pass (`just test-integration`)
+- [ ] Release integration tests pass (`just test-integration-release`)
 - [ ] CUE schema validates example templates
 - [ ] No goroutines or non-deterministic calls in Restate handlers
 - [ ] Adapter registered in driver pack binary

@@ -96,6 +96,6 @@ jobs:
           docker compose up --exit-code-from moto-init moto-init
 
       - name: Integration tests
-        run: just test-integration
+        run: just test-integration-release
         env:
           PRAXIS_INTEGRATION_TIMEOUT: 60m

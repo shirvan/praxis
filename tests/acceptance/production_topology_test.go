@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,8 +25,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/stretchr/testify/assert"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/stretchr/testify/require"
 
 	"github.com/shirvan/praxis/internal/core/provider"
@@ -44,6 +46,7 @@ type topology struct {
 	ingressURL string
 	adminURL   string
 	motoURL    string
+	ec2        *ec2sdk.Client
 	s3         *s3sdk.Client
 }
 
@@ -64,6 +67,9 @@ func TestProductionTopology(t *testing.T) {
 
 	t.Run("all production services are registered", env.requireProductionServices)
 	t.Run("CLI plan deploy inspect delete reaches provider", env.requireCLILifecycle)
+	t.Run("cross-pack dependency graph reaches provider", env.requireCrossPackLifecycle)
+	t.Run("drift policy update and rollback are observable", env.requireDriftUpdateRollback)
+	t.Run("observed import never owns provider deletion", env.requireObservedImport)
 }
 
 func newTopology(t *testing.T) *topology {
@@ -91,6 +97,7 @@ func newTopology(t *testing.T) *topology {
 		ingressURL: envOrDefault("PRAXIS_ACCEPTANCE_INGRESS_URL", defaultIngressURL),
 		adminURL:   envOrDefault("PRAXIS_ACCEPTANCE_ADMIN_URL", defaultAdminURL),
 		motoURL:    motoURL,
+		ec2:        ec2sdk.NewFromConfig(awsCfg),
 		s3:         s3sdk.NewFromConfig(awsCfg, func(options *s3sdk.Options) { options.UsePathStyle = true }),
 	}
 }
@@ -161,11 +168,9 @@ func (env *topology) requireProductionServices(t *testing.T) {
 }
 
 func (env *topology) requireCLILifecycle(t *testing.T) {
-	suffix := time.Now().UTC().Format("20060102-150405.000000000")
-	suffix = strings.ReplaceAll(suffix, ".", "-")
+	suffix := acceptanceSuffix()
 	bucketName := "praxis-acceptance-" + suffix
 	deploymentKey := "acceptance-" + suffix
-	templatePath := filepath.Join(t.TempDir(), "acceptance.cue")
 	template := fmt.Sprintf(`resources: bucket: {
 	apiVersion: "praxis.io/alpha"
 	kind:       "S3Bucket"
@@ -182,60 +187,23 @@ func (env *topology) requireCLILifecycle(t *testing.T) {
 	}
 }
 `, bucketName)
-	require.NoError(t, os.WriteFile(templatePath, []byte(template), 0o600))
-
-	assertBucketMissing(t, env.s3, bucketName)
-
-	var plan types.PlanResponse
-	env.runCLIJSON(t, &plan, "plan", templatePath, "--account", "local", "--key", deploymentKey)
-	require.NotNil(t, plan.Plan)
-	assert.Equal(t, 1, plan.Plan.Summary.ToCreate)
-	assert.Equal(t, 0, plan.Plan.Summary.ToUpdate)
-	assert.Equal(t, 0, plan.Plan.Summary.ToDelete)
-	assertBucketMissing(t, env.s3, bucketName)
-
-	cleanupNeeded := false
-	t.Cleanup(func() {
-		if !cleanupNeeded {
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		_, _ = env.runCLIContext(ctx, "delete", "Deployment/"+deploymentKey, "--yes", "--wait", "--timeout", "90s")
+	env.runManagedDeploymentScenario(t, managedDeploymentScenario{
+		DeploymentKey: deploymentKey,
+		Template:      template,
+		Resources:     map[string]string{"bucket": "S3Bucket"},
+		AssertAbsent: func(t *testing.T) {
+			assertBucketMissing(t, env.s3, bucketName)
+		},
+		AssertPresent: func(t *testing.T, _ types.DeploymentDetail) {
+			_, err := env.s3.HeadBucket(t.Context(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketName)})
+			require.NoError(t, err, "deployed bucket must exist in the provider")
+		},
 	})
+}
 
-	cleanupNeeded = true
-	var deployedDetail types.DeploymentDetail
-	env.runCLIJSON(t, &deployedDetail,
-		"deploy", templatePath,
-		"--account", "local",
-		"--key", deploymentKey,
-		"--yes", "--wait",
-		"--poll-interval", "100ms",
-		"--timeout", "2m",
-	)
-	require.Equal(t, types.DeploymentComplete, deployedDetail.Status)
-	require.Len(t, deployedDetail.Resources, 1)
-	assert.Equal(t, types.DeploymentResourceReady, deployedDetail.Resources[0].Status)
-	assert.Equal(t, "S3Bucket", deployedDetail.Resources[0].Kind)
-
-	_, err := env.s3.HeadBucket(t.Context(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucketName)})
-	require.NoError(t, err, "deployed bucket must exist in the provider")
-
-	var inspected deploymentJSON
-	env.runCLIJSON(t, &inspected, "get", "Deployment/"+deploymentKey)
-	assert.Equal(t, deploymentKey, inspected.Deployment.Key)
-	assert.Equal(t, types.DeploymentComplete, inspected.Deployment.Status)
-	require.Contains(t, inspected.Inputs, "bucket")
-
-	var deletedDetail types.DeploymentDetail
-	env.runCLIJSON(t, &deletedDetail,
-		"delete", "Deployment/"+deploymentKey,
-		"--yes", "--wait", "--timeout", "2m",
-	)
-	require.Equal(t, types.DeploymentDeleted, deletedDetail.Status)
-	assertBucketMissing(t, env.s3, bucketName)
-	cleanupNeeded = false
+func acceptanceSuffix() string {
+	suffix := time.Now().UTC().Format("20060102-150405.000000000")
+	return strings.ReplaceAll(suffix, ".", "-")
 }
 
 func (env *topology) runCLIJSON(t *testing.T, target any, args ...string) {
@@ -290,6 +258,9 @@ func assertBucketMissing(t *testing.T, client *s3sdk.Client, bucket string) {
 	t.Helper()
 	_, err := client.HeadBucket(t.Context(), &s3sdk.HeadBucketInput{Bucket: aws.String(bucket)})
 	require.Error(t, err, "bucket %q must not exist", bucket)
+	var responseErr *smithyhttp.ResponseError
+	require.True(t, errors.As(err, &responseErr), "HeadBucket for %q failed without an HTTP response: %v", bucket, err)
+	require.Equal(t, http.StatusNotFound, responseErr.HTTPStatusCode(), "HeadBucket for %q must return 404", bucket)
 }
 
 func envOrDefault(name, fallback string) string {
