@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -38,10 +37,7 @@ func setupIAMGroupDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 func ensureIAMEnabledForGroupTests(t *testing.T, iamClient *iamsdk.Client) {
 	t.Helper()
 	_, err := iamClient.ListGroups(context.Background(), &iamsdk.ListGroupsInput{MaxItems: aws.Int32(1)})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 }
 
 func TestIAMGroupProvision_CreatesGroup(t *testing.T) {
@@ -102,10 +98,7 @@ func TestIAMGroupImport_ExistingGroupDefaultsObserved(t *testing.T) {
 	groupName := uniqueIAMName(t, "group")
 
 	_, err := iamClient.CreateGroup(context.Background(), &iamsdk.CreateGroupInput{GroupName: aws.String(groupName)})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 
 	outputs, err := ingress.Object[types.ImportRef, iamgroup.IAMGroupOutputs](client, iamgroup.ServiceName, groupName, "Import").Request(t.Context(), types.ImportRef{ResourceID: groupName, Account: integrationAccountName})
 	require.NoError(t, err)

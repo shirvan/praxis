@@ -60,10 +60,7 @@ func createIAMRole(t *testing.T, iamClient *iamsdk.Client, roleName string) {
 		RoleName:                 aws.String(roleName),
 		AssumeRolePolicyDocument: aws.String(assumeRolePolicyDoc),
 	})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 	t.Cleanup(func() {
 		_, cleanupErr := iamClient.DeleteRole(context.Background(), &iamsdk.DeleteRoleInput{RoleName: aws.String(roleName)})
 		if cleanupErr != nil && !isIAMNoSuchEntity(cleanupErr) {

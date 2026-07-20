@@ -4,7 +4,7 @@
 // These tests require Docker (Testcontainers starts Restate automatically)
 // and a running Moto instance with S3 support.
 //
-// Run with: go test ./tests/integration/... -v -tags=integration -timeout=5m
+// Run with: go test ./tests/integration/... -v -tags=integration -timeout=60m
 package integration
 
 import (

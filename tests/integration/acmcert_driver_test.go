@@ -33,12 +33,10 @@ func uniqueACMCertName(t *testing.T) string {
 	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%1000000)
 }
 
-func skipIfACMUnavailable(t *testing.T, client *acmsdk.Client) {
+func requireACMAvailable(t *testing.T, client *acmsdk.Client) {
 	t.Helper()
 	_, err := client.ListCertificates(context.Background(), &acmsdk.ListCertificatesInput{})
-	if err != nil {
-		t.Skipf("ACM API unavailable in test environment: %v", err)
-	}
+	require.NoError(t, err, "ACM API must be available in the integration environment")
 }
 
 func setupACMCertificateDriver(t *testing.T) (*ingress.Client, *acmsdk.Client) {
@@ -46,7 +44,7 @@ func setupACMCertificateDriver(t *testing.T) (*ingress.Client, *acmsdk.Client) {
 	configureLocalAccount(t)
 	awsCfg := motoAWSConfig(t)
 	acmClient := awsclient.NewACMClient(awsCfg)
-	skipIfACMUnavailable(t, acmClient)
+	requireACMAvailable(t, acmClient)
 	driver := acmcert.NewGenericACMCertificateDriver(authservice.NewAuthClient())
 	ingressClient := setupDriverEventingEnv(t, driver)
 	return ingressClient, acmClient

@@ -39,10 +39,7 @@ func setupRoute53ZoneDriver(t *testing.T) (*ingress.Client, *route53sdk.Client) 
 func ensureRoute53Enabled(t *testing.T, client *route53sdk.Client) {
 	t.Helper()
 	_, err := client.ListHostedZones(context.Background(), &route53sdk.ListHostedZonesInput{MaxItems: aws.Int32(1)})
-	if err != nil && strings.Contains(err.Error(), "Service 'route53' is not enabled") {
-		t.Skip("Moto Route53 service is not enabled")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "Route53 API must be available in the integration environment")
 }
 
 func uniqueZoneName(t *testing.T) string {

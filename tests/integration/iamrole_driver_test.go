@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -100,10 +99,7 @@ func TestIAMRoleImport_ExistingRoleDefaultsObserved(t *testing.T) {
 		RoleName:                 aws.String(roleName),
 		AssumeRolePolicyDocument: aws.String(assumeRolePolicyDoc),
 	})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 
 	outputs, err := ingress.Object[types.ImportRef, iamrole.IAMRoleOutputs](client, iamrole.ServiceName, roleName, "Import").Request(t.Context(), types.ImportRef{ResourceID: roleName, Account: integrationAccountName})
 	require.NoError(t, err)

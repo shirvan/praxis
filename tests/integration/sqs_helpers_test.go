@@ -10,6 +10,7 @@ import (
 	"time"
 
 	sqssdk "github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/stretchr/testify/require"
 
 	"github.com/restatedev/sdk-go/ingress"
 
@@ -33,12 +34,10 @@ func uniqueQueueName(t *testing.T, fifo bool) string {
 	return name
 }
 
-func skipIfSQSUnavailable(t *testing.T, client *sqssdk.Client) {
+func requireSQSAvailable(t *testing.T, client *sqssdk.Client) {
 	t.Helper()
 	_, err := client.ListQueues(context.Background(), &sqssdk.ListQueuesInput{})
-	if err != nil {
-		t.Skipf("SQS API unavailable in test environment: %v", err)
-	}
+	require.NoError(t, err, "SQS API must be available in the integration environment")
 }
 
 func setupSQSQueueDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
@@ -47,7 +46,7 @@ func setupSQSQueueDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	sqsClient := awsclient.NewSQSClient(awsCfg)
-	skipIfSQSUnavailable(t, sqsClient)
+	requireSQSAvailable(t, sqsClient)
 
 	return setupDriverEventingEnv(t, sqs.NewGenericSQSQueueDriver(authservice.NewAuthClient())), sqsClient
 }
@@ -58,7 +57,7 @@ func setupSQSQueuePolicyDriver(t *testing.T) (*ingress.Client, *sqssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	sqsClient := awsclient.NewSQSClient(awsCfg)
-	skipIfSQSUnavailable(t, sqsClient)
+	requireSQSAvailable(t, sqsClient)
 
 	return setupDriverEventingEnv(t, sqspolicy.NewGenericSQSQueuePolicyDriver(authservice.NewAuthClient())), sqsClient
 }

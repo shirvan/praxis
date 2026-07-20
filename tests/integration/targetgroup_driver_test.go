@@ -43,7 +43,7 @@ func uniqueTGName(t *testing.T) string {
 func setupTargetGroupDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *ec2sdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
-	skipIfELBv2Unavailable(t)
+	requireELBv2Available(t)
 
 	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
@@ -56,14 +56,12 @@ func setupTargetGroupDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *e
 
 // skipIfELBv2Unavailable skips the test when the ELBv2 service is not
 // reachable (e.g., mock server not running).
-func skipIfELBv2Unavailable(t *testing.T) {
+func requireELBv2Available(t *testing.T) {
 	t.Helper()
 	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)
 	_, err := elbClient.DescribeTargetGroups(context.Background(), &elbv2sdk.DescribeTargetGroupsInput{})
-	if err != nil {
-		t.Skipf("ELBv2 service not available — skipping: %v", err)
-	}
+	require.NoError(t, err, "ELBv2 API must be available in the integration environment")
 }
 
 func tgDefaultVpcId(t *testing.T, ec2Client *ec2sdk.Client) string {
