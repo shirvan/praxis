@@ -317,13 +317,16 @@ just test-dashboard  # CloudWatch Dashboard driver
 # Lint
 just lint
 
-# Integration tests (requires Docker — Testcontainers)
-just test-integration
+# High-signal integration lane for normal development (requires Docker)
+just test-integration-confidence
+
+# Comprehensive release lane: all Core and per-driver integration tests
+just test-integration-release
 
 # Core integration tests (Restate + Moto — deploys, plans, deletes, events)
 just test-core-integration
 
-# Full lifecycle tests (all 51 drivers, saas-platform.cue — requires Docker)
+# Full application-stack lifecycle (45 resource kinds, end-to-end.cue)
 just test-lifecycle
 
 # Compiled CLI against a running Core + five-pack production topology
@@ -370,12 +373,34 @@ graph TD
 
 The acceptance suite does not reflect services in-process. It executes the
 compiled `praxis` binary against Restate, Praxis Core, and all five production
-driver-pack processes. It requires all 51 driver services and all 19 Core
-services to be visible in Restate, then runs plan, deploy, get, and delete
-through the CLI while checking the resulting S3 resource directly in Moto. This
-catches binary entry-point,
-container, registration, routing, and CLI/API integration failures that package
-tests cannot see.
+driver-pack processes. It verifies all 51 driver services and all 19 Core
+services are visible in Restate, then exercises four provider-observable paths:
+
+- S3 plan, deploy, inspect, and delete, including proof that plan performs no writes.
+- A VPC → Subnet/Security Group → EC2 → S3 graph spanning the network,
+  compute, and storage packs, with direct AWS assertions for output hydration
+  and reverse-order deletion.
+- Observe-only drift, automatic drift correction, a normal update, generation
+  history, and point-in-time rollback through the compiled CLI.
+- Import of an externally created observed resource, including visible drift
+  and proof that Praxis rejects provider deletion for resources it does not own.
+
+This catches binary entry-point, container, registration, routing,
+serialization, polling, CLI projection, management-mode, and cross-pack
+integration failures that package tests cannot see.
+
+#### Integration lanes
+
+`just test-integration-confidence` is the development feedback lane. It selects
+six system behaviors with high fault-detection value: Core apply for one and
+multiple dependent resources, reverse deletion, import, point-in-time rollback,
+and deployment completion after a process restart. It is deliberately not a
+release substitute.
+
+`just test-integration-release` runs the entire integration package, including
+provider-backed lifecycle coverage for all 51 drivers and the broader Core,
+fault-injection, eventing, lifecycle, and rollback matrix. There is no ambiguous
+unqualified integration recipe: callers choose the confidence or release lane.
 
 #### Layer 1: Unit Tests (Pure Logic)
 
@@ -721,7 +746,7 @@ The Docker-backed integration and production-topology acceptance suites are
 explicit because the integration suite can take more than 45 minutes:
 
 ```bash
-just test-integration
+just test-integration-release
 
 cp .env.example .env
 docker compose build

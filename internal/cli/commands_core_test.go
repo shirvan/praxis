@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shirvan/praxis/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -133,6 +134,32 @@ func TestGetCmd_Resource(t *testing.T) {
 	require.NoError(t, err)
 	// Should have called GetResourceStatus and GetResourceOutputs
 	require.GreaterOrEqual(t, len(paths), 1)
+}
+
+func TestGetCmd_ResourceIncludesReconcilePolicyAndConditions(t *testing.T) {
+	now := time.Now().UTC()
+	status := &types.StatusResponse{
+		Status:        types.StatusReady,
+		Mode:          types.ModeManaged,
+		Reconcile:     types.ReconcileModeObserve,
+		IgnoreChanges: []string{"spec.tags.owner"},
+		Generation:    2,
+		Conditions: []types.Condition{{
+			Type: types.ConditionDriftFree, Status: types.ConditionFalse,
+			Reason: types.ReasonDriftDetected, Message: "provider state differs from desired state",
+			LastTransitionTime: now,
+		}},
+	}
+	got := resourceResult("S3Bucket", "my-bucket", status, nil, nil)
+	assert.Equal(t, types.StatusReady, got["status"])
+	assert.Equal(t, types.ModeManaged, got["mode"])
+	assert.Equal(t, types.ReconcileModeObserve, got["reconcile"])
+	assert.Equal(t, []string{"spec.tags.owner"}, got["ignoreChanges"])
+	conditions, ok := got["conditions"].([]types.Condition)
+	require.True(t, ok)
+	require.Len(t, conditions, 1)
+	assert.Equal(t, types.ConditionDriftFree, conditions[0].Type)
+	assert.Equal(t, types.ConditionFalse, conditions[0].Status)
 }
 
 // Canonical resource keys may contain slashes (e.g. hierarchical log group or

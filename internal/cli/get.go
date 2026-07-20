@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shirvan/praxis/pkg/types"
 )
 
 // newGetCmd builds the `praxis get` subcommand.
@@ -399,35 +401,36 @@ func getResource(ctx context.Context, client *Client, kind, key string, format O
 		inputs = nil
 	}
 
-	// Build a combined view for display.
-	result := map[string]any{
-		"kind":       kind,
-		"key":        key,
-		"status":     status.Status,
-		"mode":       status.Mode,
-		"generation": status.Generation,
-	}
-	if status.Error != "" {
-		result["error"] = status.Error
-	}
-	if inputs != nil {
-		result["inputs"] = inputs
-	}
-	if outputs != nil {
-		result["outputs"] = outputs
-	}
+	result := resourceResult(kind, key, status, inputs, outputs)
 
 	if format == OutputJSON {
 		return printJSON(result)
 	}
 
-	// Human-readable resource display.
+	// Build a combined view for display.
 	renderer.writeLabelValue("Resource", 11, kind+"/"+key)
 	renderer.writeLabelStyledValue("Status", 11, renderer.renderStatus(string(status.Status)))
 	renderer.writeLabelValue("Mode", 11, string(status.Mode))
+	renderer.writeLabelValue("Reconcile", 11, string(status.Reconcile))
 	renderer.writeLabelValue("Generation", 11, fmt.Sprintf("%d", status.Generation))
+	if len(status.IgnoreChanges) > 0 {
+		renderer.writeLabelValue("Ignored", 11, strings.Join(status.IgnoreChanges, ", "))
+	}
 	if status.Error != "" {
 		renderer.writeLabelValue("Error", 11, status.Error)
+	}
+	if len(status.Conditions) > 0 {
+		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Conditions:"))
+		for _, condition := range orderedConditions(status.Conditions) {
+			line := fmt.Sprintf("  %-13s %s", condition.Type+":", condition.Status)
+			if condition.Reason != "" {
+				line += fmt.Sprintf(" (%s)", condition.Reason)
+			}
+			if condition.Message != "" {
+				line += fmt.Sprintf(" - %s", condition.Message)
+			}
+			_, _ = fmt.Fprintln(renderer.out, line)
+		}
 	}
 	if len(inputs) > 0 {
 		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Inputs:"))
@@ -452,4 +455,31 @@ func getResource(ctx context.Context, client *Client, kind, key string, format O
 		}
 	}
 	return nil
+}
+
+func resourceResult(kind, key string, status *types.StatusResponse, inputs, outputs map[string]any) map[string]any {
+	result := map[string]any{
+		"kind":       kind,
+		"key":        key,
+		"status":     status.Status,
+		"mode":       status.Mode,
+		"reconcile":  status.Reconcile,
+		"generation": status.Generation,
+	}
+	if len(status.IgnoreChanges) > 0 {
+		result["ignoreChanges"] = status.IgnoreChanges
+	}
+	if len(status.Conditions) > 0 {
+		result["conditions"] = status.Conditions
+	}
+	if status.Error != "" {
+		result["error"] = status.Error
+	}
+	if inputs != nil {
+		result["inputs"] = inputs
+	}
+	if outputs != nil {
+		result["outputs"] = outputs
+	}
+	return result
 }

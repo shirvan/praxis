@@ -233,7 +233,8 @@ just test                                              # All
 go test ./internal/drivers/{resource}/... -v -count=1 -race  # Specific driver
 
 # Integration tests (requires Docker)
-just test-integration                                   # All
+just test-integration-confidence                        # High-signal development lane
+just test-integration-release                           # Comprehensive release lane
 go test ./tests/integration/{resource}_driver_test.go -v -tags=integration -timeout=5m
 
 # E2E

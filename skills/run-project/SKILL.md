@@ -127,7 +127,7 @@ just test-cli             # CLI command tests
 Integration tests use Testcontainers (Docker required):
 
 ```bash
-just test-integration          # Full suite
+just test-integration-release  # Full suite
 just test-core-integration     # Restate + Moto core lifecycle
 just test-sqs-integration
 just test-sqspolicy-integration

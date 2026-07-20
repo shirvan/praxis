@@ -183,7 +183,7 @@ build-cli:
 # Verify the compiled CLI against an already-running production process
 # topology (Moto, Restate, Core, and all five production driver packs).
 test-production-topology: build-cli
-    go test -tags=acceptance ./tests/acceptance/ -v -count=1 -timeout=5m
+    go test -tags=acceptance ./tests/acceptance/ -v -count=1 -timeout=10m
 
 # Generate JSON Schema artifacts for CloudEvent payload definitions.
 generate-event-schemas:
@@ -506,15 +506,32 @@ test-iamuser-integration:
 test-template:
     go test ./internal/core/template/... ./internal/core/resolver/... -v -count=1 -race
 
-# Run integration tests (requires Docker — Testcontainers + Moto on :4566)
-test-integration:
+# Run a high-signal integration subset for development confidence. This covers
+# Core single- and multi-resource apply, reverse deletion, import, point-in-time
+# rollback, and crash recovery without repeating every per-driver CRUD suite.
+test-integration-confidence:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
-    echo "Running integration tests (heartbeat every ${heartbeat}s, timeout {{integration_timeout}})..."
+    pattern='^(TestCore_Apply_SingleS3|TestCore_Apply_MultiResource_WithDependencies|TestCore_Delete_ReverseOrder|TestCore_Import_S3|TestRollbackTo_RevertsChangesAndDeletesAdded|TestCrashResume_DeploymentCompletesAfterRestart)$'
+    echo "Running confidence integration tests (heartbeat every ${heartbeat}s, timeout 20m)..."
+    go test ./tests/integration/... -run "$pattern" -v -count=1 -tags=integration -timeout=20m &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "[test-integration-confidence] still running at $(date +%H:%M:%S)"
+        sleep "$heartbeat"
+    done
+    wait "$pid"
+
+# Run the comprehensive release integration suite: every Core workflow and
+# every implemented driver's provider-backed lifecycle tests.
+test-integration-release:
+    #!/bin/sh
+    heartbeat={{test_heartbeat_seconds}}
+    echo "Running release integration tests (heartbeat every ${heartbeat}s, timeout {{integration_timeout}})..."
     go test ./tests/integration/... -v -count=1 -tags=integration -timeout={{integration_timeout}} &
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
-        echo "[test-integration] still running at $(date +%H:%M:%S)"
+        echo "[test-integration-release] still running at $(date +%H:%M:%S)"
         sleep "$heartbeat"
     done
     wait "$pid"
@@ -543,7 +560,7 @@ test-core-integration:
     done
     wait "$pid"
 
-# Run full lifecycle tests (requires Docker — all 45 drivers, saas-platform.cue)
+# Run the 45-kind application-stack lifecycle (requires Docker — end-to-end.cue)
 test-lifecycle:
     #!/bin/sh
     heartbeat={{test_heartbeat_seconds}}
@@ -796,7 +813,7 @@ test-elb-integration:
     wait "$pid"
 
 # Run all tests
-test-all: test test-integration
+test-all: test test-integration-release
 
 # ─── Lint & Format ──────────────────────────────────────────
 
@@ -823,7 +840,7 @@ check-schema-drift: generate-event-schemas
 # Full local CI pipeline — mirrors .github/workflows/ci.yml so a green `just ci`
 # means a green CI run: lint → fmt → unit tests → build → schema drift →
 # integration tests.
-ci: lint fmt-check test build check-schema-drift test-integration
+ci: lint fmt-check test build check-schema-drift test-integration-release
     @echo "CI passed."
 
 # ─── Moto Helpers ───────────────────────────────────────────
