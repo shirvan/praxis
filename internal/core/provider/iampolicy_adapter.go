@@ -81,10 +81,52 @@ func iamPolicyDescriptor() GenericDescriptor[iampolicy.IAMPolicySpec, iampolicy.
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iampolicy.IAMPolicySpec, iampolicy.IAMPolicyOutputs, iampolicy.ObservedState] {
 			return iamPolicyProbe(iampolicy.NewIAMPolicyAPI(awsclient.NewIAMClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[iampolicy.IAMPolicyOutputs] {
+			return iamPolicyLookupProbe(iampolicy.NewIAMPolicyAPI(awsclient.NewIAMClient(cfg)))
+		},
 
 		DiffFields: func(desired iampolicy.IAMPolicySpec, observed iampolicy.ObservedState, _ iampolicy.IAMPolicyOutputs) []types.FieldDiff {
 			return iampolicy.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func iamPolicyLookupProbe(api iampolicy.IAMPolicyAPI) LookupProbeFunc[iampolicy.IAMPolicyOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (iampolicy.IAMPolicyOutputs, bool, error) {
+		var (
+			observed iampolicy.ObservedState
+			err      error
+		)
+		if policyARN := strings.TrimSpace(filter.ID); policyARN != "" {
+			observed, err = api.DescribePolicy(ctx, policyARN)
+		} else if policyName := strings.TrimSpace(filter.Name); policyName != "" {
+			observed, err = api.DescribePolicyByName(ctx, policyName, "")
+		} else {
+			return iampolicy.IAMPolicyOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("IAMPolicy lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		if err != nil {
+			if isLookupNotFound(err, iampolicy.IsNotFound) {
+				return iampolicy.IAMPolicyOutputs{}, false, nil
+			}
+			return iampolicy.IAMPolicyOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.Arn != id {
+			return iampolicy.IAMPolicyOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.PolicyName != name {
+			return iampolicy.IAMPolicyOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return iampolicy.IAMPolicyOutputs{}, false, nil
+		}
+		return iampolicy.IAMPolicyOutputs{
+			Arn:        observed.Arn,
+			PolicyId:   observed.PolicyId,
+			PolicyName: observed.PolicyName,
+		}, true, nil
 	}
 }
 
@@ -113,5 +155,5 @@ func NewIAMPolicyAdapterWithAuth(auth authservice.AuthClient) *IAMPolicyAdapter 
 // NewIAMPolicyAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewIAMPolicyAdapterWithAPI(api iampolicy.IAMPolicyAPI) *IAMPolicyAdapter {
-	return NewGenericAdapterWithProbe(iamPolicyDescriptor(), iamPolicyProbe(api))
+	return NewGenericAdapterWithProbes(iamPolicyDescriptor(), iamPolicyProbe(api), iamPolicyLookupProbe(api))
 }

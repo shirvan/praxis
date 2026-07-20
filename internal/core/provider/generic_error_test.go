@@ -39,3 +39,37 @@ func TestClassifyPlanProbeError(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifyLookupProbeError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		terminal bool
+		status   uint16
+	}{
+		{name: "ambiguous", err: errors.New("multiple resources matched the filter"), terminal: true, status: 409},
+		{name: "access denied", err: &smithy.GenericAPIError{Code: "AccessDeniedException", Message: "denied"}, terminal: true, status: 403},
+		{name: "validation", err: &smithy.GenericAPIError{Code: "ValidationException", Message: "invalid"}, terminal: true, status: 400},
+		{name: "throttling retries", err: &smithy.GenericAPIError{Code: "ThrottlingException", Message: "slow down"}},
+		{name: "transport and unknown errors retry", err: errors.New("connection reset")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyLookupProbeError(tt.err)
+			assert.Equal(t, tt.terminal, restate.IsTerminalError(got))
+			if tt.terminal {
+				assert.Equal(t, tt.status, uint16(restate.ErrorCode(got)))
+			} else {
+				assert.True(t, errors.Is(got, tt.err))
+			}
+		})
+	}
+}
+
+func TestValidateLookupFilter(t *testing.T) {
+	assert.Error(t, validateLookupFilter(LookupFilter{}))
+	assert.Error(t, validateLookupFilter(LookupFilter{Region: "us-west-2"}))
+	assert.NoError(t, validateLookupFilter(LookupFilter{ID: "vpc-123"}))
+	assert.NoError(t, validateLookupFilter(LookupFilter{Name: "production"}))
+	assert.NoError(t, validateLookupFilter(LookupFilter{Tag: map[string]string{"env": "prod"}}))
+}

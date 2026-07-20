@@ -79,10 +79,54 @@ func dbParameterGroupDescriptor() GenericDescriptor[dbparametergroup.DBParameter
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs, dbparametergroup.ObservedState] {
 			return dbParameterGroupProbe(dbparametergroup.NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[dbparametergroup.DBParameterGroupOutputs] {
+			return dbParameterGroupLookupProbe(dbparametergroup.NewDBParameterGroupAPI(awsclient.NewRDSClient(cfg)))
+		},
 		DiffFields: func(desired dbparametergroup.DBParameterGroupSpec, observed dbparametergroup.ObservedState, _ dbparametergroup.DBParameterGroupOutputs) []types.FieldDiff {
 			return dbparametergroup.ComputeFieldDiffs(desired, observed)
 		},
 	}
+}
+
+func dbParameterGroupLookupProbe(api dbparametergroup.DBParameterGroupAPI) LookupProbeFunc[dbparametergroup.DBParameterGroupOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (dbparametergroup.DBParameterGroupOutputs, bool, error) {
+		if strings.TrimSpace(filter.Name) != "" || strings.TrimSpace(filter.ID) == "" {
+			return dbparametergroup.DBParameterGroupOutputs{}, false, restate.TerminalError(fmt.Errorf("DBParameterGroup lookup requires a parameter-group ARN in filter.id"), 400)
+		}
+		groupName, groupType, err := dbParameterGroupIdentityFromARN(filter.ID)
+		if err != nil {
+			return dbparametergroup.DBParameterGroupOutputs{}, false, restate.TerminalError(err, 400)
+		}
+		observed, err := api.DescribeParameterGroup(ctx, groupName, groupType)
+		if err != nil {
+			if isLookupNotFound(err, dbparametergroup.IsNotFound) {
+				return dbparametergroup.DBParameterGroupOutputs{}, false, nil
+			}
+			return dbparametergroup.DBParameterGroupOutputs{}, false, err
+		}
+		if observed.ARN != strings.TrimSpace(filter.ID) || !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return dbparametergroup.DBParameterGroupOutputs{}, false, nil
+		}
+		return dbparametergroup.DBParameterGroupOutputs{
+			GroupName: observed.GroupName, ARN: observed.ARN, Family: observed.Family, Type: observed.Type,
+		}, true, nil
+	}
+}
+
+func dbParameterGroupIdentityFromARN(value string) (string, string, error) {
+	arn := strings.TrimSpace(value)
+	for marker, groupType := range map[string]string{
+		":cluster-pg:": dbparametergroup.TypeCluster,
+		":pg:":         dbparametergroup.TypeDB,
+	} {
+		if index := strings.Index(arn, marker); index >= 0 {
+			name := strings.TrimSpace(arn[index+len(marker):])
+			if name != "" {
+				return name, groupType, nil
+			}
+		}
+	}
+	return "", "", fmt.Errorf("DBParameterGroup filter.id must be an RDS parameter-group ARN")
 }
 
 func dbParameterGroupProbe(api dbparametergroup.DBParameterGroupAPI) PlanProbeFunc[dbparametergroup.DBParameterGroupSpec, dbparametergroup.DBParameterGroupOutputs, dbparametergroup.ObservedState] {
@@ -103,5 +147,5 @@ func NewDBParameterGroupAdapterWithAuth(auth authservice.AuthClient) *DBParamete
 }
 
 func NewDBParameterGroupAdapterWithAPI(api dbparametergroup.DBParameterGroupAPI) *DBParameterGroupAdapter {
-	return NewGenericAdapterWithProbe(dbParameterGroupDescriptor(), dbParameterGroupProbe(api))
+	return NewGenericAdapterWithProbes(dbParameterGroupDescriptor(), dbParameterGroupProbe(api), dbParameterGroupLookupProbe(api))
 }

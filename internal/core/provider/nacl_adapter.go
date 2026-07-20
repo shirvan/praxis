@@ -95,10 +95,39 @@ func naclDescriptor() GenericDescriptor[nacl.NetworkACLSpec, nacl.NetworkACLOutp
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[nacl.NetworkACLSpec, nacl.NetworkACLOutputs, nacl.ObservedState] {
 			return naclProbe(nacl.NewNetworkACLAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[nacl.NetworkACLOutputs] {
+			return naclLookupProbe(nacl.NewNetworkACLAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired nacl.NetworkACLSpec, observed nacl.ObservedState, _ nacl.NetworkACLOutputs) []types.FieldDiff {
 			return nacl.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func naclLookupProbe(api nacl.NetworkACLAPI) LookupProbeFunc[nacl.NetworkACLOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (nacl.NetworkACLOutputs, bool, error) {
+		networkACLID := strings.TrimSpace(filter.ID)
+		if networkACLID == "" {
+			return nacl.NetworkACLOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("NetworkACL lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeNetworkACL(ctx, networkACLID)
+		if err != nil {
+			if isLookupNotFound(err, nacl.IsNotFound) {
+				return nacl.NetworkACLOutputs{}, false, nil
+			}
+			return nacl.NetworkACLOutputs{}, false, err
+		}
+		if observed.NetworkAclId != networkACLID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return nacl.NetworkACLOutputs{}, false, nil
+		}
+		return nacl.NetworkACLOutputs{
+			NetworkAclId: observed.NetworkAclId, VpcId: observed.VpcId, IsDefault: observed.IsDefault,
+			IngressRules: observed.IngressRules, EgressRules: observed.EgressRules, Associations: observed.Associations,
+		}, true, nil
 	}
 }
 
@@ -126,5 +155,5 @@ func NewNetworkACLAdapterWithAuth(auth authservice.AuthClient) *NetworkACLAdapte
 // NewNetworkACLAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewNetworkACLAdapterWithAPI(api nacl.NetworkACLAPI) *NetworkACLAdapter {
-	return NewGenericAdapterWithProbe(naclDescriptor(), naclProbe(api))
+	return NewGenericAdapterWithProbes(naclDescriptor(), naclProbe(api), naclLookupProbe(api))
 }

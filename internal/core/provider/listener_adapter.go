@@ -92,10 +92,40 @@ func listenerDescriptor() GenericDescriptor[listener.ListenerSpec, listener.List
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[listener.ListenerSpec, listener.ListenerOutputs, listener.ObservedState] {
 			return listenerProbe(listener.NewListenerAPI(awsclient.NewELBv2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[listener.ListenerOutputs] {
+			return listenerLookupProbe(listener.NewListenerAPI(awsclient.NewELBv2Client(cfg)))
+		},
 
 		DiffFields: func(desired listener.ListenerSpec, observed listener.ObservedState, _ listener.ListenerOutputs) []types.FieldDiff {
 			return listener.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func listenerLookupProbe(api listener.ListenerAPI) LookupProbeFunc[listener.ListenerOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (listener.ListenerOutputs, bool, error) {
+		listenerARN := strings.TrimSpace(filter.ID)
+		if listenerARN == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
+			return listener.ListenerOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("Listener lookup supports listener ARN via id only"),
+				400,
+			)
+		}
+		observed, err := api.DescribeListener(ctx, listenerARN)
+		if err != nil {
+			if isLookupNotFound(err, listener.IsNotFound) {
+				return listener.ListenerOutputs{}, false, nil
+			}
+			return listener.ListenerOutputs{}, false, err
+		}
+		if observed.ListenerArn != listenerARN {
+			return listener.ListenerOutputs{}, false, nil
+		}
+		return listener.ListenerOutputs{
+			ListenerArn: observed.ListenerArn,
+			Port:        observed.Port,
+			Protocol:    observed.Protocol,
+		}, true, nil
 	}
 }
 
@@ -123,7 +153,7 @@ func NewListenerAdapterWithAuth(auth authservice.AuthClient) *ListenerAdapter {
 // NewListenerAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewListenerAdapterWithAPI(api listener.ListenerAPI) *ListenerAdapter {
-	return NewGenericAdapterWithProbe(listenerDescriptor(), listenerProbe(api))
+	return NewGenericAdapterWithProbes(listenerDescriptor(), listenerProbe(api), listenerLookupProbe(api))
 }
 
 func extractRegionFromLBArn(arn string) string {

@@ -65,6 +65,9 @@ func securityGroupDescriptor() GenericDescriptor[sg.SecurityGroupSpec, sg.Securi
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[sg.SecurityGroupSpec, sg.SecurityGroupOutputs, sg.ObservedState] {
 			return securityGroupProbe(sg.NewSGAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[sg.SecurityGroupOutputs] {
+			return securityGroupLookupProbe(sg.NewSGAPI(awsclient.NewEC2Client(cfg)))
+		},
 		DiffFields: func(desired sg.SecurityGroupSpec, observed sg.ObservedState, _ sg.SecurityGroupOutputs) []types.FieldDiff {
 			return sg.ComputeFieldDiffs(desired, observed)
 		},
@@ -84,6 +87,26 @@ func securityGroupProbe(api sg.SGAPI) PlanProbeFunc[sg.SecurityGroupSpec, sg.Sec
 	}
 }
 
+func securityGroupLookupProbe(api sg.SGAPI) LookupProbeFunc[sg.SecurityGroupOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (sg.SecurityGroupOutputs, bool, error) {
+		observed, err := lookupSecurityGroup(ctx, api, filter)
+		if err != nil {
+			if isLookupNotFound(err, sg.IsNotFound) {
+				return sg.SecurityGroupOutputs{}, false, nil
+			}
+			return sg.SecurityGroupOutputs{}, false, err
+		}
+		if !matchesSecurityGroupFilter(observed, filter) {
+			return sg.SecurityGroupOutputs{}, false, nil
+		}
+		return sg.SecurityGroupOutputs{
+			GroupId:  observed.GroupId,
+			GroupArn: securityGroupARN(filter.Region, observed.OwnerId, observed.GroupId),
+			VpcId:    observed.VpcId,
+		}, true, nil
+	}
+}
+
 func NewSecurityGroupAdapterWithAuth(auth authservice.AuthClient) *SecurityGroupAdapter {
 	factory := func(cfg aws.Config) sg.SGAPI { return sg.NewSGAPI(awsclient.NewEC2Client(cfg)) }
 	return &SecurityGroupAdapter{
@@ -95,32 +118,9 @@ func NewSecurityGroupAdapterWithAuth(auth authservice.AuthClient) *SecurityGroup
 
 func NewSecurityGroupAdapterWithAPI(api sg.SGAPI) *SecurityGroupAdapter {
 	return &SecurityGroupAdapter{
-		GenericAdapter: NewGenericAdapterWithProbe(securityGroupDescriptor(), securityGroupProbe(api)),
+		GenericAdapter: NewGenericAdapterWithProbes(securityGroupDescriptor(), securityGroupProbe(api), securityGroupLookupProbe(api)),
 		staticAPI:      api,
 	}
-}
-
-func (a *SecurityGroupAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
-	api, err := a.resolveAPI(ctx, account, filter.Region)
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (sg.ObservedState, error) {
-		obs, runErr := lookupSecurityGroup(runCtx, api, filter)
-		if runErr != nil {
-			return obs, classifyLookupError(runErr, sg.IsNotFound)
-		}
-		return obs, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !matchesSecurityGroupFilter(observed, filter) {
-		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no SecurityGroup found matching filter"), 404)
-	}
-	return a.NormalizeOutputs(sg.SecurityGroupOutputs{
-		GroupId: observed.GroupId, GroupArn: securityGroupARN(filter.Region, observed.OwnerId, observed.GroupId), VpcId: observed.VpcId,
-	})
 }
 
 func (a *SecurityGroupAdapter) Observe(ctx restate.Context, key string, account string, spec any) (ObserveResult, error) {

@@ -93,10 +93,43 @@ func igwDescriptor() GenericDescriptor[igw.IGWSpec, igw.IGWOutputs, igw.Observed
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[igw.IGWSpec, igw.IGWOutputs, igw.ObservedState] {
 			return igwProbe(igw.NewIGWAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[igw.IGWOutputs] {
+			return igwLookupProbe(igw.NewIGWAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired igw.IGWSpec, observed igw.ObservedState, _ igw.IGWOutputs) []types.FieldDiff {
 			return igw.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func igwLookupProbe(api igw.IGWAPI) LookupProbeFunc[igw.IGWOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (igw.IGWOutputs, bool, error) {
+		gatewayID := strings.TrimSpace(filter.ID)
+		if gatewayID == "" {
+			return igw.IGWOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("InternetGateway lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeInternetGateway(ctx, gatewayID)
+		if err != nil {
+			if isLookupNotFound(err, igw.IsNotFound) {
+				return igw.IGWOutputs{}, false, nil
+			}
+			return igw.IGWOutputs{}, false, err
+		}
+		if observed.InternetGatewayId != gatewayID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return igw.IGWOutputs{}, false, nil
+		}
+		state := "detached"
+		if observed.AttachedVpcId != "" {
+			state = "available"
+		}
+		return igw.IGWOutputs{
+			InternetGatewayId: observed.InternetGatewayId, VpcId: observed.AttachedVpcId,
+			OwnerId: observed.OwnerId, State: state,
+		}, true, nil
 	}
 }
 
@@ -124,5 +157,5 @@ func NewIGWAdapterWithAuth(auth authservice.AuthClient) *IGWAdapter {
 // NewIGWAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewIGWAdapterWithAPI(api igw.IGWAPI) *IGWAdapter {
-	return NewGenericAdapterWithProbe(igwDescriptor(), igwProbe(api))
+	return NewGenericAdapterWithProbes(igwDescriptor(), igwProbe(api), igwLookupProbe(api))
 }

@@ -21,9 +21,8 @@ type DataSourceSpec struct {
 }
 
 // DataSourceFilter contains the supported data source lookup selectors.
-// At least one field must be set. The driver will use the most specific
-// selector available: ID takes precedence over Name, which takes
-// precedence over Tag.
+// At least one field must be set. Drivers use ID or Name as the provider
+// identity and apply any additional selectors as AND constraints.
 type DataSourceFilter struct {
 	// ID is a provider-native resource ID (e.g. "ami-0abc123").
 	ID string `json:"id,omitempty"`

@@ -93,10 +93,47 @@ func metricAlarmDescriptor() GenericDescriptor[metricalarm.MetricAlarmSpec, metr
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[metricalarm.MetricAlarmSpec, metricalarm.MetricAlarmOutputs, metricalarm.ObservedState] {
 			return metricAlarmProbe(metricalarm.NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[metricalarm.MetricAlarmOutputs] {
+			return metricAlarmLookupProbe(metricalarm.NewMetricAlarmAPI(awsclient.NewCloudWatchClient(cfg)))
+		},
 
 		DiffFields: func(desired metricalarm.MetricAlarmSpec, observed metricalarm.ObservedState, _ metricalarm.MetricAlarmOutputs) []types.FieldDiff {
 			return metricalarm.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func metricAlarmLookupProbe(api metricalarm.MetricAlarmAPI) LookupProbeFunc[metricalarm.MetricAlarmOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (metricalarm.MetricAlarmOutputs, bool, error) {
+		if strings.TrimSpace(filter.ID) != "" {
+			return metricalarm.MetricAlarmOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("MetricAlarm lookup by id is not available; use name"),
+				400,
+			)
+		}
+		name := strings.TrimSpace(filter.Name)
+		if name == "" {
+			return metricalarm.MetricAlarmOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("MetricAlarm lookup requires name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, found, err := api.DescribeAlarm(ctx, name)
+		if err != nil {
+			if isLookupNotFound(err, metricalarm.IsNotFound) {
+				return metricalarm.MetricAlarmOutputs{}, false, nil
+			}
+			return metricalarm.MetricAlarmOutputs{}, false, err
+		}
+		if !found || !matchesNativeLookupFilter(observed.AlarmName, observed.Tags, filter) {
+			return metricalarm.MetricAlarmOutputs{}, false, nil
+		}
+		return metricalarm.MetricAlarmOutputs{
+			AlarmArn:    observed.AlarmArn,
+			AlarmName:   observed.AlarmName,
+			StateValue:  observed.StateValue,
+			StateReason: observed.StateReason,
+		}, true, nil
 	}
 }
 
@@ -125,5 +162,5 @@ func NewMetricAlarmAdapterWithAuth(auth authservice.AuthClient) *MetricAlarmAdap
 // NewMetricAlarmAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewMetricAlarmAdapterWithAPI(api metricalarm.MetricAlarmAPI) *MetricAlarmAdapter {
-	return NewGenericAdapterWithProbe(metricAlarmDescriptor(), metricAlarmProbe(api))
+	return NewGenericAdapterWithProbes(metricAlarmDescriptor(), metricAlarmProbe(api), metricAlarmLookupProbe(api))
 }

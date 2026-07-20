@@ -93,6 +93,9 @@ func dynamoDBTableDescriptor() GenericDescriptor[dynamodbtable.DynamoDBTableSpec
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dynamodbtable.DynamoDBTableSpec, dynamodbtable.DynamoDBTableOutputs, dynamodbtable.ObservedState] {
 			return dynamoDBTableProbe(dynamodbtable.NewDynamoDBTableAPI(awsclient.NewDynamoDBClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[dynamodbtable.DynamoDBTableOutputs] {
+			return dynamoDBTableLookupProbe(dynamodbtable.NewDynamoDBTableAPI(awsclient.NewDynamoDBClient(cfg)))
+		},
 
 		DiffFields: func(desired dynamodbtable.DynamoDBTableSpec, observed dynamodbtable.ObservedState, _ dynamodbtable.DynamoDBTableOutputs) []types.FieldDiff {
 			return dynamodbtable.ComputeFieldDiffs(desired, observed)
@@ -115,6 +118,34 @@ func dynamoDBTableProbe(api dynamodbtable.DynamoDBTableAPI) PlanProbeFunc[dynamo
 	}
 }
 
+func dynamoDBTableLookupProbe(api dynamodbtable.DynamoDBTableAPI) LookupProbeFunc[dynamodbtable.DynamoDBTableOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (dynamodbtable.DynamoDBTableOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return dynamodbtable.DynamoDBTableOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("DynamoDBTable lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, found, err := api.DescribeTable(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, dynamodbtable.IsNotFound) {
+				return dynamodbtable.DynamoDBTableOutputs{}, false, nil
+			}
+			return dynamodbtable.DynamoDBTableOutputs{}, false, err
+		}
+		if !found || !matchesNativeLookupFilter(observed.Name, observed.Tags, filter) {
+			return dynamodbtable.DynamoDBTableOutputs{}, false, nil
+		}
+		return dynamodbtable.DynamoDBTableOutputs{
+			ARN:       observed.ARN,
+			Name:      observed.Name,
+			Status:    observed.Status,
+			ItemCount: observed.ItemCount,
+		}, true, nil
+	}
+}
+
 // NewDynamoDBTableAdapterWithAuth builds the production adapter; plan-time
 // credentials are resolved through the Auth Service.
 func NewDynamoDBTableAdapterWithAuth(auth authservice.AuthClient) *DynamoDBTableAdapter {
@@ -124,5 +155,5 @@ func NewDynamoDBTableAdapterWithAuth(auth authservice.AuthClient) *DynamoDBTable
 // NewDynamoDBTableAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewDynamoDBTableAdapterWithAPI(api dynamodbtable.DynamoDBTableAPI) *DynamoDBTableAdapter {
-	return NewGenericAdapterWithProbe(dynamoDBTableDescriptor(), dynamoDBTableProbe(api))
+	return NewGenericAdapterWithProbes(dynamoDBTableDescriptor(), dynamoDBTableProbe(api), dynamoDBTableLookupProbe(api))
 }

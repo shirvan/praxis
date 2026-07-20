@@ -14,6 +14,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	restate "github.com/restatedev/sdk-go"
@@ -38,6 +39,12 @@ type PlanProbeInput[S any, O any] struct {
 // The bool reports whether the resource exists; a NotFound from the provider
 // must be translated to (zero, false, nil), and other errors returned as-is.
 type PlanProbeFunc[S any, O any, Obs any] func(ctx restate.RunContext, input PlanProbeInput[S, O]) (Obs, bool, error)
+
+// LookupProbeFunc resolves an existing provider resource into the driver's
+// typed output shape. The bool reports whether a matching resource exists.
+// Provider not-found responses must become (zero, false, nil); all other
+// errors are returned for classification inside the generic Restate boundary.
+type LookupProbeFunc[O any] func(ctx restate.RunContext, filter LookupFilter) (O, bool, error)
 
 // storedPlanIdentity is the common planning strategy for resources that can
 // only be described after a provider identifier has been persisted.
@@ -93,6 +100,10 @@ type GenericDescriptor[S any, O any, Obs any] struct {
 	// and returns field-level diffs (typically the driver's ComputeFieldDiffs).
 	DiffFields func(desired S, observed Obs, outputs O) []types.FieldDiff
 
+	// NewLookupProbe builds the read-only data-source lookup function from AWS
+	// config. It is nil while a resource kind has no implemented lookup probe.
+	NewLookupProbe func(cfg aws.Config) LookupProbeFunc[O]
+
 	// SensitiveFields lists spec paths (dot notation, e.g. "spec.secretString")
 	// whose values must never appear in plan output. Matching field diffs — on
 	// both the create and update paths — have their values replaced with
@@ -105,9 +116,10 @@ type GenericDescriptor[S any, O any, Obs any] struct {
 // GenericDescriptor. Construct with NewGenericAdapter (production) or
 // NewGenericAdapterWithProbe (tests, static plan probe).
 type GenericAdapter[S any, O any, Obs any] struct {
-	desc        GenericDescriptor[S, O, Obs]
-	auth        authservice.AuthClient
-	staticProbe PlanProbeFunc[S, O, Obs]
+	desc              GenericDescriptor[S, O, Obs]
+	auth              authservice.AuthClient
+	staticProbe       PlanProbeFunc[S, O, Obs]
+	staticLookupProbe LookupProbeFunc[O]
 }
 
 // NewGenericAdapter builds a production adapter that resolves plan-time AWS
@@ -122,6 +134,20 @@ func NewGenericAdapterWithProbe[S any, O any, Obs any](desc GenericDescriptor[S,
 	return &GenericAdapter[S, O, Obs]{desc: desc, staticProbe: probe}
 }
 
+// NewGenericAdapterWithProbes builds an adapter with fixed plan and lookup
+// probes, bypassing credential resolution. Used by provider adapter tests.
+func NewGenericAdapterWithProbes[S any, O any, Obs any](
+	desc GenericDescriptor[S, O, Obs],
+	planProbe PlanProbeFunc[S, O, Obs],
+	lookupProbe LookupProbeFunc[O],
+) *GenericAdapter[S, O, Obs] {
+	return &GenericAdapter[S, O, Obs]{
+		desc:              desc,
+		staticProbe:       planProbe,
+		staticLookupProbe: lookupProbe,
+	}
+}
+
 func (a *GenericAdapter[S, O, Obs]) Kind() string        { return a.desc.Kind }
 func (a *GenericAdapter[S, O, Obs]) ServiceName() string { return a.desc.Kind }
 func (a *GenericAdapter[S, O, Obs]) Scope() KeyScope     { return a.desc.Scope }
@@ -130,6 +156,10 @@ func (a *GenericAdapter[S, O, Obs]) Scope() KeyScope     { return a.desc.Scope }
 // conformance checks. Embedded GenericAdapter values promote this method while
 // still allowing a resource to expose optional capabilities such as Lookup.
 func (a *GenericAdapter[S, O, Obs]) genericAdapter() {}
+
+func (a *GenericAdapter[S, O, Obs]) lookupConfigured() bool {
+	return a.staticLookupProbe != nil || a.desc.NewLookupProbe != nil
+}
 
 // SensitiveFields exposes the descriptor's sensitive spec paths so callers
 // outside the adapter (e.g. the command-layer expression-resource fallback,
@@ -285,6 +315,63 @@ func (a *GenericAdapter[S, O, Obs]) Import(ctx restate.Context, key string, acco
 	return types.StatusReady, a.desc.NormalizeOutputs(output), nil
 }
 
+// Lookup performs a read-only provider lookup and returns normalized resource
+// outputs without creating driver state. Every implemented lookup uses this
+// path so credential resolution, region selection, durable execution, and
+// error classification stay uniform across resource kinds.
+func (a *GenericAdapter[S, O, Obs]) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
+	if err := validateLookupFilter(filter); err != nil {
+		return nil, restate.TerminalError(err, 400)
+	}
+
+	probe, effectiveRegion, err := a.lookupProbe(ctx, account, filter.Region)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(filter.Region) == "" {
+		filter.Region = effectiveRegion
+	}
+
+	type lookupResult struct {
+		Outputs O `json:"outputs"`
+	}
+	result, err := restate.Run(ctx, func(runCtx restate.RunContext) (lookupResult, error) {
+		outputs, found, lookupErr := probe(runCtx, filter)
+		if lookupErr != nil {
+			return lookupResult{}, classifyLookupProbeError(lookupErr)
+		}
+		if !found {
+			return lookupResult{}, restate.TerminalError(
+				fmt.Errorf("data source lookup: no %s found matching filter", a.Kind()),
+				404,
+			)
+		}
+		return lookupResult{Outputs: outputs}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return a.desc.NormalizeOutputs(result.Outputs), nil
+}
+
+func validateLookupFilter(filter LookupFilter) error {
+	if strings.TrimSpace(filter.ID) == "" && strings.TrimSpace(filter.Name) == "" && len(filter.Tag) == 0 {
+		return fmt.Errorf("data source lookup requires at least one of: id, name, tag")
+	}
+	return nil
+}
+
+func classifyLookupProbeError(err error) error {
+	if restate.IsTerminalError(err) {
+		return err
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "ambiguous") || strings.Contains(message, "multiple") {
+		return restate.TerminalError(err, 409)
+	}
+	return classifyPlanProbeError(err)
+}
+
 // planProbe resolves the describe function for plan-time lookups: the static
 // test probe when set, otherwise a fresh probe built from the account's
 // resolved AWS credentials.
@@ -300,6 +387,23 @@ func (a *GenericAdapter[S, O, Obs]) planProbe(ctx restate.Context, account strin
 		return nil, fmt.Errorf("resolve %s planning account %q: %w", a.Kind(), account, err)
 	}
 	return a.desc.NewPlanProbe(awsCfg), nil
+}
+
+func (a *GenericAdapter[S, O, Obs]) lookupProbe(ctx restate.Context, account, region string) (LookupProbeFunc[O], string, error) {
+	if a.staticLookupProbe != nil {
+		return a.staticLookupProbe, strings.TrimSpace(region), nil
+	}
+	if a.auth == nil || a.desc.NewLookupProbe == nil {
+		return nil, "", restate.TerminalError(fmt.Errorf("data source lookup is not supported for %q", a.Kind()), 501)
+	}
+	awsCfg, err := a.auth.GetCredentials(ctx, account)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve %s lookup account %q: %w", a.Kind(), account, err)
+	}
+	if strings.TrimSpace(region) != "" {
+		awsCfg.Region = strings.TrimSpace(region)
+	}
+	return a.desc.NewLookupProbe(awsCfg), awsCfg.Region, nil
 }
 
 // planCreate renders the OpCreate result for a resource with no prior state.

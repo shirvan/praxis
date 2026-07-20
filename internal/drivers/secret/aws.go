@@ -37,6 +37,12 @@ type SecretsManagerSecretAPI interface {
 	RemoveTags(ctx context.Context, name string, tagKeys []string) error
 }
 
+// SecretsManagerSecretMetadataAPI is the least-privilege read surface used by
+// data-source lookup. It never requests the secret value.
+type SecretsManagerSecretMetadataAPI interface {
+	DescribeSecretMetadata(ctx context.Context, name string) (ObservedState, bool, error)
+}
+
 type realSecretsManagerSecretAPI struct {
 	client  *secretsmanager.Client
 	limiter *ratelimit.Limiter
@@ -46,6 +52,16 @@ type realSecretsManagerSecretAPI struct {
 // backed by the given AWS SDK client, with built-in rate limiting to avoid
 // throttling.
 func NewSecretsManagerSecretAPI(client *secretsmanager.Client) SecretsManagerSecretAPI {
+	return newRealSecretsManagerSecretAPI(client)
+}
+
+// NewSecretsManagerSecretMetadataAPI constructs the metadata-only read surface
+// used by provider lookups.
+func NewSecretsManagerSecretMetadataAPI(client *secretsmanager.Client) SecretsManagerSecretMetadataAPI {
+	return newRealSecretsManagerSecretAPI(client)
+}
+
+func newRealSecretsManagerSecretAPI(client *secretsmanager.Client) *realSecretsManagerSecretAPI {
 	return &realSecretsManagerSecretAPI{
 		client:  client,
 		limiter: ratelimit.Shared("secretsmanager", 10, 5),
@@ -86,6 +102,31 @@ func (r *realSecretsManagerSecretAPI) CreateSecret(ctx context.Context, spec Sec
 // supplies the ARN, description, KMS key, and tags; GetSecretValue supplies the
 // current secret value and version so value drift is detectable.
 func (r *realSecretsManagerSecretAPI) DescribeSecret(ctx context.Context, name string) (ObservedState, bool, error) {
+	observed, found, err := r.DescribeSecretMetadata(ctx, name)
+	if err != nil || !found || observed.ScheduledForDeletion {
+		return observed, found, err
+	}
+
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, false, err
+	}
+	val, err := r.client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(name),
+	})
+	if err != nil {
+		if IsNotFound(err) {
+			return ObservedState{}, false, nil
+		}
+		return ObservedState{}, false, err
+	}
+	observed.SecretString = aws.ToString(val.SecretString)
+	observed.VersionID = aws.ToString(val.VersionId)
+	return observed, true, nil
+}
+
+// DescribeSecretMetadata reads identity, configuration, and tags without
+// requesting secret material.
+func (r *realSecretsManagerSecretAPI) DescribeSecretMetadata(ctx context.Context, name string) (ObservedState, bool, error) {
 	if err := r.limiter.Wait(ctx); err != nil {
 		return ObservedState{}, false, err
 	}
@@ -108,6 +149,19 @@ func (r *realSecretsManagerSecretAPI) DescribeSecret(ctx context.Context, name s
 	for _, tag := range desc.Tags {
 		observed.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
+	currentVersions := make([]string, 0, 1)
+	for versionID, stages := range desc.VersionIdsToStages {
+		for _, stage := range stages {
+			if stage == "AWSCURRENT" {
+				currentVersions = append(currentVersions, versionID)
+				break
+			}
+		}
+	}
+	sort.Strings(currentVersions)
+	if len(currentVersions) > 0 {
+		observed.VersionID = currentVersions[0]
+	}
 
 	// A secret scheduled for deletion (recovery window) still describes
 	// successfully but rejects GetSecretValue with InvalidRequestException.
@@ -115,23 +169,7 @@ func (r *realSecretsManagerSecretAPI) DescribeSecret(ctx context.Context, name s
 	// of failing on the value read.
 	if desc.DeletedDate != nil {
 		observed.ScheduledForDeletion = true
-		return observed, true, nil
 	}
-
-	if err := r.limiter.Wait(ctx); err != nil {
-		return ObservedState{}, false, err
-	}
-	val, err := r.client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(name),
-	})
-	if err != nil {
-		if IsNotFound(err) {
-			return ObservedState{}, false, nil
-		}
-		return ObservedState{}, false, err
-	}
-	observed.SecretString = aws.ToString(val.SecretString)
-	observed.VersionID = aws.ToString(val.VersionId)
 	return observed, true, nil
 }
 

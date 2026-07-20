@@ -8,6 +8,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -90,11 +91,55 @@ func iamInstanceProfileDescriptor() GenericDescriptor[iaminstanceprofile.IAMInst
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iaminstanceprofile.IAMInstanceProfileSpec, iaminstanceprofile.IAMInstanceProfileOutputs, iaminstanceprofile.ObservedState] {
 			return iamInstanceProfileProbe(iaminstanceprofile.NewIAMInstanceProfileAPI(awsclient.NewIAMClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[iaminstanceprofile.IAMInstanceProfileOutputs] {
+			return iamInstanceProfileLookupProbe(iaminstanceprofile.NewIAMInstanceProfileAPI(awsclient.NewIAMClient(cfg)))
+		},
 
 		DiffFields: func(desired iaminstanceprofile.IAMInstanceProfileSpec, observed iaminstanceprofile.ObservedState, _ iaminstanceprofile.IAMInstanceProfileOutputs) []types.FieldDiff {
 			return iaminstanceprofile.ComputeFieldDiffs(desired, observed)
 		},
 	}
+}
+
+func iamInstanceProfileLookupProbe(api iaminstanceprofile.IAMInstanceProfileAPI) LookupProbeFunc[iaminstanceprofile.IAMInstanceProfileOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (iaminstanceprofile.IAMInstanceProfileOutputs, bool, error) {
+		profileName := iamInstanceProfileLookupName(filter)
+		if profileName == "" {
+			return iaminstanceprofile.IAMInstanceProfileOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("IAMInstanceProfile lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeInstanceProfile(ctx, profileName)
+		if err != nil {
+			if isLookupNotFound(err, iaminstanceprofile.IsNotFound) {
+				return iaminstanceprofile.IAMInstanceProfileOutputs{}, false, nil
+			}
+			return iaminstanceprofile.IAMInstanceProfileOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.Arn != id && observed.InstanceProfileId != id && observed.InstanceProfileName != id {
+			return iaminstanceprofile.IAMInstanceProfileOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.InstanceProfileName != name {
+			return iaminstanceprofile.IAMInstanceProfileOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return iaminstanceprofile.IAMInstanceProfileOutputs{}, false, nil
+		}
+		return iaminstanceprofile.IAMInstanceProfileOutputs{
+			Arn:                 observed.Arn,
+			InstanceProfileId:   observed.InstanceProfileId,
+			InstanceProfileName: observed.InstanceProfileName,
+		}, true, nil
+	}
+}
+
+func iamInstanceProfileLookupName(filter LookupFilter) string {
+	identity := nativeLookupIdentity(filter)
+	if strings.Contains(identity, ":instance-profile/") {
+		return path.Base(identity)
+	}
+	return identity
 }
 
 // iamInstanceProfileProbe adapts the driver API to the generic plan probe shape.
@@ -121,5 +166,5 @@ func NewIAMInstanceProfileAdapterWithAuth(auth authservice.AuthClient) *IAMInsta
 // NewIAMInstanceProfileAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewIAMInstanceProfileAdapterWithAPI(api iaminstanceprofile.IAMInstanceProfileAPI) *IAMInstanceProfileAdapter {
-	return NewGenericAdapterWithProbe(iamInstanceProfileDescriptor(), iamInstanceProfileProbe(api))
+	return NewGenericAdapterWithProbes(iamInstanceProfileDescriptor(), iamInstanceProfileProbe(api), iamInstanceProfileLookupProbe(api))
 }

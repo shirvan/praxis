@@ -1,11 +1,8 @@
 package provider
 
 import (
-	"fmt"
 	"maps"
 	"strings"
-
-	restate "github.com/restatedev/sdk-go"
 )
 
 // lookupTags builds the tag filter map for data source lookups.
@@ -35,28 +32,46 @@ func cloneLookupTags(input map[string]string) map[string]string {
 	return cloned
 }
 
-// classifyLookupError converts a driver-level lookup error into a Restate
-// TerminalError with an appropriate HTTP status code. Terminal errors stop
-// Restate's automatic retry loop because lookup failures are deterministic:
-//   - 404: resource not found (custom notFound predicate or message heuristic)
-//   - 409: ambiguous match (multiple results for a filter)
-//   - 500: unexpected failure
-//
-// The notFound callback allows each driver to supply service-specific detection
-// logic (e.g. checking for a typed AWS "NotFoundException").
-func classifyLookupError(err error, notFound func(error) bool) error {
+func isLookupNotFound(err error, serviceNotFound func(error) bool) bool {
 	if err == nil {
-		return nil
+		return false
 	}
-	message := strings.ToLower(err.Error())
-	if notFound != nil && notFound(err) {
-		return restate.TerminalError(err, 404)
+	if serviceNotFound != nil && serviceNotFound(err) {
+		return true
 	}
-	if strings.Contains(message, "not found") {
-		return restate.TerminalError(err, 404)
+	return strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+func nativeLookupIdentity(filter LookupFilter) string {
+	if id := strings.TrimSpace(filter.ID); id != "" {
+		return id
 	}
-	if strings.Contains(message, "ambiguous") || strings.Contains(message, "multiple") {
-		return restate.TerminalError(err, 409)
+	return strings.TrimSpace(filter.Name)
+}
+
+func matchesNativeLookupFilter(identity string, tags map[string]string, filter LookupFilter) bool {
+	if id := strings.TrimSpace(filter.ID); id != "" && identity != id {
+		return false
 	}
-	return restate.TerminalError(fmt.Errorf("data source lookup failed: %w", err), 500)
+	if name := strings.TrimSpace(filter.Name); name != "" && identity != name {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if tags[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func matchesLookupTags(tags map[string]string, filter LookupFilter) bool {
+	if name := strings.TrimSpace(filter.Name); name != "" && tags["Name"] != name {
+		return false
+	}
+	for key, value := range filter.Tag {
+		if tags[key] != value {
+			return false
+		}
+	}
+	return true
 }

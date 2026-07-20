@@ -90,10 +90,33 @@ func ecsClusterDescriptor() GenericDescriptor[ecscluster.ECSClusterSpec, ecsclus
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecscluster.ECSClusterSpec, ecscluster.ECSClusterOutputs, ecscluster.ObservedState] {
 			return ecsClusterProbe(ecscluster.NewECSClusterAPI(awsclient.NewECSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ecscluster.ECSClusterOutputs] {
+			return ecsClusterLookupProbe(ecscluster.NewECSClusterAPI(awsclient.NewECSClient(cfg)))
+		},
 
 		DiffFields: func(desired ecscluster.ECSClusterSpec, observed ecscluster.ObservedState, _ ecscluster.ECSClusterOutputs) []types.FieldDiff {
 			return ecscluster.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func ecsClusterLookupProbe(api ecscluster.ECSClusterAPI) LookupProbeFunc[ecscluster.ECSClusterOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ecscluster.ECSClusterOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return ecscluster.ECSClusterOutputs{}, false, restate.TerminalError(fmt.Errorf("ECSCluster lookup supports id or name; tag-only lookup is not available"), 400)
+		}
+		observed, found, err := api.DescribeCluster(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, ecscluster.IsNotFound) {
+				return ecscluster.ECSClusterOutputs{}, false, nil
+			}
+			return ecscluster.ECSClusterOutputs{}, false, err
+		}
+		if !found || !matchesNativeLookupFilter(observed.Name, observed.Tags, filter) {
+			return ecscluster.ECSClusterOutputs{}, false, nil
+		}
+		return ecscluster.ECSClusterOutputs{ARN: observed.ARN, Name: observed.Name, Status: observed.Status}, true, nil
 	}
 }
 
@@ -121,5 +144,5 @@ func NewECSClusterAdapterWithAuth(auth authservice.AuthClient) *ECSClusterAdapte
 // NewECSClusterAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewECSClusterAdapterWithAPI(api ecscluster.ECSClusterAPI) *ECSClusterAdapter {
-	return NewGenericAdapterWithProbe(ecsClusterDescriptor(), ecsClusterProbe(api))
+	return NewGenericAdapterWithProbes(ecsClusterDescriptor(), ecsClusterProbe(api), ecsClusterLookupProbe(api))
 }

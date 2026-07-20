@@ -95,10 +95,39 @@ func routeTableDescriptor() GenericDescriptor[routetable.RouteTableSpec, routeta
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[routetable.RouteTableSpec, routetable.RouteTableOutputs, routetable.ObservedState] {
 			return routeTableProbe(routetable.NewRouteTableAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[routetable.RouteTableOutputs] {
+			return routeTableLookupProbe(routetable.NewRouteTableAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired routetable.RouteTableSpec, observed routetable.ObservedState, _ routetable.RouteTableOutputs) []types.FieldDiff {
 			return routetable.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func routeTableLookupProbe(api routetable.RouteTableAPI) LookupProbeFunc[routetable.RouteTableOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (routetable.RouteTableOutputs, bool, error) {
+		routeTableID := strings.TrimSpace(filter.ID)
+		if routeTableID == "" {
+			return routetable.RouteTableOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("RouteTable lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeRouteTable(ctx, routeTableID)
+		if err != nil {
+			if isLookupNotFound(err, routetable.IsNotFound) {
+				return routetable.RouteTableOutputs{}, false, nil
+			}
+			return routetable.RouteTableOutputs{}, false, err
+		}
+		if observed.RouteTableId != routeTableID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return routetable.RouteTableOutputs{}, false, nil
+		}
+		return routetable.RouteTableOutputs{
+			RouteTableId: observed.RouteTableId, VpcId: observed.VpcId, OwnerId: observed.OwnerId,
+			Routes: observed.Routes, Associations: observed.Associations,
+		}, true, nil
 	}
 }
 
@@ -126,5 +155,5 @@ func NewRouteTableAdapterWithAuth(auth authservice.AuthClient) *RouteTableAdapte
 // NewRouteTableAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewRouteTableAdapterWithAPI(api routetable.RouteTableAPI) *RouteTableAdapter {
-	return NewGenericAdapterWithProbe(routeTableDescriptor(), routeTableProbe(api))
+	return NewGenericAdapterWithProbes(routeTableDescriptor(), routeTableProbe(api), routeTableLookupProbe(api))
 }

@@ -106,10 +106,57 @@ func snsTopicDescriptor() GenericDescriptor[snstopic.SNSTopicSpec, snstopic.SNST
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[snstopic.SNSTopicSpec, snstopic.SNSTopicOutputs, snstopic.ObservedState] {
 			return snsTopicProbe(snstopic.NewTopicAPI(awsclient.NewSNSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[snstopic.SNSTopicOutputs] {
+			return snsTopicLookupProbe(snstopic.NewTopicAPI(awsclient.NewSNSClient(cfg)))
+		},
 
 		DiffFields: func(desired snstopic.SNSTopicSpec, observed snstopic.ObservedState, _ snstopic.SNSTopicOutputs) []types.FieldDiff {
 			return snstopic.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func snsTopicLookupProbe(api snstopic.TopicAPI) LookupProbeFunc[snstopic.SNSTopicOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (snstopic.SNSTopicOutputs, bool, error) {
+		topicARN := strings.TrimSpace(filter.ID)
+		if topicARN == "" {
+			topicName := strings.TrimSpace(filter.Name)
+			if topicName == "" {
+				return snstopic.SNSTopicOutputs{}, false, restate.TerminalError(
+					fmt.Errorf("SNSTopic lookup supports id or name; tag-only lookup is not available"),
+					400,
+				)
+			}
+			var err error
+			topicARN, err = api.FindByName(ctx, topicName)
+			if err != nil {
+				return snstopic.SNSTopicOutputs{}, false, err
+			}
+			if strings.TrimSpace(topicARN) == "" {
+				return snstopic.SNSTopicOutputs{}, false, nil
+			}
+		}
+		observed, err := api.GetTopicAttributes(ctx, topicARN)
+		if err != nil {
+			if isLookupNotFound(err, snstopic.IsNotFound) {
+				return snstopic.SNSTopicOutputs{}, false, nil
+			}
+			return snstopic.SNSTopicOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.TopicArn != id {
+			return snstopic.SNSTopicOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.TopicName != name {
+			return snstopic.SNSTopicOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return snstopic.SNSTopicOutputs{}, false, nil
+		}
+		return snstopic.SNSTopicOutputs{
+			TopicArn:  observed.TopicArn,
+			TopicName: observed.TopicName,
+			Owner:     observed.Owner,
+		}, true, nil
 	}
 }
 
@@ -137,5 +184,5 @@ func NewSNSTopicAdapterWithAuth(auth authservice.AuthClient) *SNSTopicAdapter {
 // NewSNSTopicAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewSNSTopicAdapterWithAPI(api snstopic.TopicAPI) *SNSTopicAdapter {
-	return NewGenericAdapterWithProbe(snsTopicDescriptor(), snsTopicProbe(api))
+	return NewGenericAdapterWithProbes(snsTopicDescriptor(), snsTopicProbe(api), snsTopicLookupProbe(api))
 }

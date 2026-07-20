@@ -107,6 +107,9 @@ func lambdaDescriptor() GenericDescriptor[lambda.LambdaFunctionSpec, lambda.Lamb
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambda.LambdaFunctionSpec, lambda.LambdaFunctionOutputs, lambda.ObservedState] {
 			return lambdaProbe(lambda.NewLambdaAPI(awsclient.NewLambdaClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[lambda.LambdaFunctionOutputs] {
+			return lambdaLookupProbe(lambda.NewLambdaAPI(awsclient.NewLambdaClient(cfg)))
+		},
 
 		DiffFields: func(desired lambda.LambdaFunctionSpec, observed lambda.ObservedState, _ lambda.LambdaFunctionOutputs) []types.FieldDiff {
 			return lambda.ComputeFieldDiffs(desired, observed)
@@ -129,6 +132,37 @@ func lambdaProbe(api lambda.LambdaAPI) PlanProbeFunc[lambda.LambdaFunctionSpec, 
 	}
 }
 
+func lambdaLookupProbe(api lambda.LambdaAPI) LookupProbeFunc[lambda.LambdaFunctionOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (lambda.LambdaFunctionOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return lambda.LambdaFunctionOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("LambdaFunction lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeFunction(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, lambda.IsNotFound) {
+				return lambda.LambdaFunctionOutputs{}, false, nil
+			}
+			return lambda.LambdaFunctionOutputs{}, false, err
+		}
+		if !matchesNativeLookupFilter(observed.FunctionName, observed.Tags, filter) {
+			return lambda.LambdaFunctionOutputs{}, false, nil
+		}
+		return lambda.LambdaFunctionOutputs{
+			FunctionArn:      observed.FunctionArn,
+			FunctionName:     observed.FunctionName,
+			Version:          observed.Version,
+			State:            observed.State,
+			LastModified:     observed.LastModified,
+			LastUpdateStatus: observed.LastUpdateStatus,
+			CodeSha256:       observed.CodeSha256,
+		}, true, nil
+	}
+}
+
 // NewLambdaAdapterWithAuth builds the production adapter; plan-time
 // credentials are resolved through the Auth Service.
 func NewLambdaAdapterWithAuth(auth authservice.AuthClient) *LambdaAdapter {
@@ -138,7 +172,7 @@ func NewLambdaAdapterWithAuth(auth authservice.AuthClient) *LambdaAdapter {
 // NewLambdaAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewLambdaAdapterWithAPI(api lambda.LambdaAPI) *LambdaAdapter {
-	return &LambdaAdapter{GenericAdapter: NewGenericAdapterWithProbe(lambdaDescriptor(), lambdaProbe(api))}
+	return &LambdaAdapter{GenericAdapter: NewGenericAdapterWithProbes(lambdaDescriptor(), lambdaProbe(api), lambdaLookupProbe(api))}
 }
 
 // DefaultTimeouts provides per-kind default timeouts for Lambda functions.

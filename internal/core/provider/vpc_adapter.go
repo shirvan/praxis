@@ -20,9 +20,8 @@ import (
 )
 
 // VPCAdapter is the descriptor-driven adapter for VPC, extended with per-kind
-// default timeouts, a read-only Lookup for template data sources, and a live
-// Observe check. The auth/staticPlanningAPI/apiFactory fields back the Lookup
-// and Observe paths; the embedded GenericAdapter owns the plan-time probe.
+// default timeouts and a live Observe check. The embedded GenericAdapter owns
+// plan and data-source lookup execution.
 type VPCAdapter struct {
 	*GenericAdapter[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState]
 	auth              authservice.AuthClient
@@ -97,6 +96,9 @@ func vpcDescriptor() GenericDescriptor[vpc.VPCSpec, vpc.VPCOutputs, vpc.Observed
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpc.VPCSpec, vpc.VPCOutputs, vpc.ObservedState] {
 			return vpcProbe(vpc.NewVPCAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[vpc.VPCOutputs] {
+			return vpcLookupProbe(vpc.NewVPCAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired vpc.VPCSpec, observed vpc.ObservedState, _ vpc.VPCOutputs) []types.FieldDiff {
 			return vpc.ComputeFieldDiffs(desired, observed)
@@ -139,6 +141,33 @@ func vpcProbe(api vpc.VPCAPI) PlanProbeFunc[vpc.VPCSpec, vpc.VPCOutputs, vpc.Obs
 	}
 }
 
+func vpcLookupProbe(api vpc.VPCAPI) LookupProbeFunc[vpc.VPCOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (vpc.VPCOutputs, bool, error) {
+		observed, err := lookupVPC(ctx, api, filter)
+		if err != nil {
+			if isLookupNotFound(err, vpc.IsNotFound) {
+				return vpc.VPCOutputs{}, false, nil
+			}
+			return vpc.VPCOutputs{}, false, err
+		}
+		if !matchesVPCFilter(observed, filter) {
+			return vpc.VPCOutputs{}, false, nil
+		}
+		return vpc.VPCOutputs{
+			VpcId:              observed.VpcId,
+			ARN:                vpcARN(filter.Region, observed.OwnerId, observed.VpcId),
+			CidrBlock:          observed.CidrBlock,
+			State:              observed.State,
+			EnableDnsHostnames: observed.EnableDnsHostnames,
+			EnableDnsSupport:   observed.EnableDnsSupport,
+			InstanceTenancy:    observed.InstanceTenancy,
+			OwnerId:            observed.OwnerId,
+			DhcpOptionsId:      observed.DhcpOptionsId,
+			IsDefault:          observed.IsDefault,
+		}, true, nil
+	}
+}
+
 // NewVPCAdapterWithAuth builds the production adapter; plan-time, lookup-time,
 // and observe-time credentials are resolved through the Auth Service.
 func NewVPCAdapterWithAuth(auth authservice.AuthClient) *VPCAdapter {
@@ -155,45 +184,9 @@ func NewVPCAdapterWithAuth(auth authservice.AuthClient) *VPCAdapter {
 // Used by tests.
 func NewVPCAdapterWithAPI(api vpc.VPCAPI) *VPCAdapter {
 	return &VPCAdapter{
-		GenericAdapter:    NewGenericAdapterWithProbe(vpcDescriptor(), vpcProbe(api)),
+		GenericAdapter:    NewGenericAdapterWithProbes(vpcDescriptor(), vpcProbe(api), vpcLookupProbe(api)),
 		staticPlanningAPI: api,
 	}
-}
-
-// Lookup performs a read-only data-source query for an existing VPC
-// resource, matching by ID, name, or tags. This is used by template data
-// source blocks to resolve references to pre-existing infrastructure.
-func (a *VPCAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
-	api, err := a.lookupAPI(ctx, account, filter.Region)
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-
-	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (vpc.ObservedState, error) {
-		obs, runErr := lookupVPC(runCtx, api, filter)
-		if runErr != nil {
-			return obs, classifyLookupError(runErr, vpc.IsNotFound)
-		}
-		return obs, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !matchesVPCFilter(observed, filter) {
-		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no VPC found matching filter"), 404)
-	}
-	return normalizeVPCOutputs(vpc.VPCOutputs{
-		VpcId:              observed.VpcId,
-		ARN:                vpcARN(filter.Region, observed.OwnerId, observed.VpcId),
-		CidrBlock:          observed.CidrBlock,
-		State:              observed.State,
-		EnableDnsHostnames: observed.EnableDnsHostnames,
-		EnableDnsSupport:   observed.EnableDnsSupport,
-		InstanceTenancy:    observed.InstanceTenancy,
-		OwnerId:            observed.OwnerId,
-		DhcpOptionsId:      observed.DhcpOptionsId,
-		IsDefault:          observed.IsDefault,
-	}), nil
 }
 
 // DefaultTimeouts provides per-kind default timeouts for VPCs.
@@ -256,26 +249,6 @@ func (a *VPCAdapter) planningAPI(ctx restate.Context, account string) (vpc.VPCAP
 	awsCfg, err := a.auth.GetCredentials(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve VPC planning account %q: %w", account, err)
-	}
-	return a.apiFactory(awsCfg), nil
-}
-
-// lookupAPI returns the AWS API client used for Lookup (data-source) queries.
-// Like planningAPI, it resolves credentials per-account, but also overrides
-// the region when the lookup filter specifies one.
-func (a *VPCAdapter) lookupAPI(ctx restate.Context, account string, region string) (vpc.VPCAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("VPC adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve VPC planning account %q: %w", account, err)
-	}
-	if strings.TrimSpace(region) != "" {
-		awsCfg.Region = strings.TrimSpace(region)
 	}
 	return a.apiFactory(awsCfg), nil
 }

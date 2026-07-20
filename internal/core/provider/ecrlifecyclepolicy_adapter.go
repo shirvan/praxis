@@ -84,10 +84,46 @@ func ecrLifecyclePolicyDescriptor() GenericDescriptor[ecrpolicy.ECRLifecyclePoli
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecrpolicy.ECRLifecyclePolicySpec, ecrpolicy.ECRLifecyclePolicyOutputs, ecrpolicy.ObservedState] {
 			return ecrLifecyclePolicyProbe(ecrpolicy.NewLifecyclePolicyAPI(awsclient.NewECRClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ecrpolicy.ECRLifecyclePolicyOutputs] {
+			return ecrLifecyclePolicyLookupProbe(ecrpolicy.NewLifecyclePolicyAPI(awsclient.NewECRClient(cfg)))
+		},
 
 		DiffFields: func(desired ecrpolicy.ECRLifecyclePolicySpec, observed ecrpolicy.ObservedState, _ ecrpolicy.ECRLifecyclePolicyOutputs) []types.FieldDiff {
 			return ecrpolicy.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func ecrLifecyclePolicyLookupProbe(api ecrpolicy.LifecyclePolicyAPI) LookupProbeFunc[ecrpolicy.ECRLifecyclePolicyOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ecrpolicy.ECRLifecyclePolicyOutputs, bool, error) {
+		if len(filter.Tag) != 0 {
+			return ecrpolicy.ECRLifecyclePolicyOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("ECRLifecyclePolicy lookup does not support tags"),
+				400,
+			)
+		}
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return ecrpolicy.ECRLifecyclePolicyOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("ECRLifecyclePolicy lookup requires id or name"),
+				400,
+			)
+		}
+		observed, err := api.GetLifecyclePolicy(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, ecrpolicy.IsNotFound) {
+				return ecrpolicy.ECRLifecyclePolicyOutputs{}, false, nil
+			}
+			return ecrpolicy.ECRLifecyclePolicyOutputs{}, false, err
+		}
+		if !matchesNativeLookupFilter(observed.RepositoryName, nil, filter) {
+			return ecrpolicy.ECRLifecyclePolicyOutputs{}, false, nil
+		}
+		return ecrpolicy.ECRLifecyclePolicyOutputs{
+			RepositoryName: observed.RepositoryName,
+			RepositoryArn:  observed.RepositoryArn,
+			RegistryId:     observed.RegistryId,
+		}, true, nil
 	}
 }
 
@@ -115,5 +151,5 @@ func NewECRLifecyclePolicyAdapterWithAuth(auth authservice.AuthClient) *ECRLifec
 // NewECRLifecyclePolicyAdapterWithAPI builds an adapter with a fixed planning
 // API. Used by tests.
 func NewECRLifecyclePolicyAdapterWithAPI(api ecrpolicy.LifecyclePolicyAPI) *ECRLifecyclePolicyAdapter {
-	return NewGenericAdapterWithProbe(ecrLifecyclePolicyDescriptor(), ecrLifecyclePolicyProbe(api))
+	return NewGenericAdapterWithProbes(ecrLifecyclePolicyDescriptor(), ecrLifecyclePolicyProbe(api), ecrLifecyclePolicyLookupProbe(api))
 }

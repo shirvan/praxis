@@ -95,6 +95,9 @@ func ssmParameterDescriptor() GenericDescriptor[ssmparameter.SSMParameterSpec, s
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ssmparameter.SSMParameterSpec, ssmparameter.SSMParameterOutputs, ssmparameter.ObservedState] {
 			return ssmParameterProbe(ssmparameter.NewSSMParameterAPI(awsclient.NewSSMClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ssmparameter.SSMParameterOutputs] {
+			return ssmParameterLookupProbe(ssmparameter.NewSSMParameterMetadataAPI(awsclient.NewSSMClient(cfg)))
+		},
 
 		DiffFields: func(desired ssmparameter.SSMParameterSpec, observed ssmparameter.ObservedState, _ ssmparameter.SSMParameterOutputs) []types.FieldDiff {
 			return ssmparameter.ComputeFieldDiffs(desired, observed)
@@ -106,6 +109,55 @@ func ssmParameterDescriptor() GenericDescriptor[ssmparameter.SSMParameterSpec, s
 		// SecureString value.
 		SensitiveFields: []string{"spec.value"},
 	}
+}
+
+func ssmParameterLookupProbe(api ssmparameter.SSMParameterMetadataAPI) LookupProbeFunc[ssmparameter.SSMParameterOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ssmparameter.SSMParameterOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return ssmparameter.SSMParameterOutputs{}, false, restate.TerminalError(fmt.Errorf("SSMParameter lookup supports id or name; tag-only lookup is not available"), 400)
+		}
+		var observed ssmparameter.ObservedState
+		found := false
+		for _, queryName := range ssmParameterNames(identity) {
+			var err error
+			observed, found, err = api.DescribeParameterMetadata(ctx, queryName)
+			if err != nil {
+				if isLookupNotFound(err, ssmparameter.IsNotFound) {
+					continue
+				}
+				return ssmparameter.SSMParameterOutputs{}, false, err
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return ssmparameter.SSMParameterOutputs{}, false, nil
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.ARN != id && observed.ParameterName != id {
+			return ssmparameter.SSMParameterOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.ParameterName != name {
+			return ssmparameter.SSMParameterOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return ssmparameter.SSMParameterOutputs{}, false, nil
+		}
+		return ssmparameter.SSMParameterOutputs{
+			ARN: observed.ARN, ParameterName: observed.ParameterName, Type: observed.Type,
+			Version: observed.Version, Tier: observed.Tier, DataType: observed.DataType,
+		}, true, nil
+	}
+}
+
+func ssmParameterNames(identity string) []string {
+	identity = strings.TrimSpace(identity)
+	if marker := strings.Index(identity, ":parameter/"); marker >= 0 {
+		resource := strings.TrimPrefix(identity[marker+len(":parameter/"):], "/")
+		return []string{resource, "/" + resource}
+	}
+	return []string{identity}
 }
 
 // ssmParameterProbe adapts the driver API to the generic plan probe shape. The
@@ -133,5 +185,8 @@ func NewSSMParameterAdapterWithAuth(auth authservice.AuthClient) *SSMParameterAd
 // NewSSMParameterAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewSSMParameterAdapterWithAPI(api ssmparameter.SSMParameterAPI) *SSMParameterAdapter {
+	if metadataAPI, ok := api.(ssmparameter.SSMParameterMetadataAPI); ok {
+		return NewGenericAdapterWithProbes(ssmParameterDescriptor(), ssmParameterProbe(api), ssmParameterLookupProbe(metadataAPI))
+	}
 	return NewGenericAdapterWithProbe(ssmParameterDescriptor(), ssmParameterProbe(api))
 }

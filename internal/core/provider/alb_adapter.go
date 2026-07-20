@@ -85,9 +85,47 @@ func albDescriptor() GenericDescriptor[alb.ALBSpec, alb.ALBOutputs, alb.Observed
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[alb.ALBSpec, alb.ALBOutputs, alb.ObservedState] {
 			return albProbe(alb.NewALBAPI(awsclient.NewELBv2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[alb.ALBOutputs] {
+			return albLookupProbe(alb.NewALBAPI(awsclient.NewELBv2Client(cfg)))
+		},
 		DiffFields: func(desired alb.ALBSpec, observed alb.ObservedState, _ alb.ALBOutputs) []types.FieldDiff {
 			return alb.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func albLookupProbe(api alb.ALBAPI) LookupProbeFunc[alb.ALBOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (alb.ALBOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return alb.ALBOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("ALB lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeALB(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, alb.IsNotFound) {
+				return alb.ALBOutputs{}, false, nil
+			}
+			return alb.ALBOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.LoadBalancerArn != id {
+			return alb.ALBOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.Name != name {
+			return alb.ALBOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return alb.ALBOutputs{}, false, nil
+		}
+		return alb.ALBOutputs{
+			LoadBalancerArn:       observed.LoadBalancerArn,
+			DnsName:               observed.DnsName,
+			HostedZoneId:          observed.HostedZoneId,
+			VpcId:                 observed.VpcId,
+			CanonicalHostedZoneId: observed.HostedZoneId,
+		}, true, nil
 	}
 }
 
@@ -109,7 +147,7 @@ func NewALBAdapterWithAuth(auth authservice.AuthClient) *ALBAdapter {
 }
 
 func NewALBAdapterWithAPI(api alb.ALBAPI) *ALBAdapter {
-	return &ALBAdapter{GenericAdapter: NewGenericAdapterWithProbe(albDescriptor(), albProbe(api))}
+	return &ALBAdapter{GenericAdapter: NewGenericAdapterWithProbes(albDescriptor(), albProbe(api), albLookupProbe(api))}
 }
 
 func (a *ALBAdapter) DefaultTimeouts() types.ResourceTimeouts {

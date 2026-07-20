@@ -81,10 +81,43 @@ func esmDescriptor() GenericDescriptor[esm.EventSourceMappingSpec, esm.EventSour
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[esm.EventSourceMappingSpec, esm.EventSourceMappingOutputs, esm.ObservedState] {
 			return esmProbe(esm.NewESMAPI(awsclient.NewLambdaClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[esm.EventSourceMappingOutputs] {
+			return esmLookupProbe(esm.NewESMAPI(awsclient.NewLambdaClient(cfg)))
+		},
 
 		DiffFields: func(desired esm.EventSourceMappingSpec, observed esm.ObservedState, _ esm.EventSourceMappingOutputs) []types.FieldDiff {
 			return esm.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func esmLookupProbe(api esm.ESMAPI) LookupProbeFunc[esm.EventSourceMappingOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (esm.EventSourceMappingOutputs, bool, error) {
+		uuid := strings.TrimSpace(filter.ID)
+		if uuid == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
+			return esm.EventSourceMappingOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("EventSourceMapping lookup supports UUID via id only"),
+				400,
+			)
+		}
+		observed, err := api.GetEventSourceMapping(ctx, uuid)
+		if err != nil {
+			if isLookupNotFound(err, esm.IsNotFound) {
+				return esm.EventSourceMappingOutputs{}, false, nil
+			}
+			return esm.EventSourceMappingOutputs{}, false, err
+		}
+		if observed.UUID != uuid {
+			return esm.EventSourceMappingOutputs{}, false, nil
+		}
+		return esm.EventSourceMappingOutputs{
+			UUID:           observed.UUID,
+			EventSourceArn: observed.EventSourceArn,
+			FunctionArn:    observed.FunctionArn,
+			State:          observed.State,
+			LastModified:   observed.LastModified,
+			BatchSize:      observed.BatchSize,
+		}, true, nil
 	}
 }
 
@@ -111,5 +144,5 @@ func NewESMAdapterWithAuth(auth authservice.AuthClient) *ESMAdapter {
 
 // NewESMAdapterWithAPI builds an adapter with a fixed planning API. Used by tests.
 func NewESMAdapterWithAPI(api esm.ESMAPI) *ESMAdapter {
-	return NewGenericAdapterWithProbe(esmDescriptor(), esmProbe(api))
+	return NewGenericAdapterWithProbes(esmDescriptor(), esmProbe(api), esmLookupProbe(api))
 }

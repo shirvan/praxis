@@ -112,6 +112,9 @@ func ec2Descriptor() GenericDescriptor[ec2.EC2InstanceSpec, ec2.EC2InstanceOutpu
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ec2.EC2InstanceSpec, ec2.EC2InstanceOutputs, ec2.ObservedState] {
 			return ec2Probe(ec2.NewEC2API(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ec2.EC2InstanceOutputs] {
+			return ec2LookupProbe(ec2.NewEC2API(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired ec2.EC2InstanceSpec, observed ec2.ObservedState, _ ec2.EC2InstanceOutputs) []types.FieldDiff {
 			return ec2.ComputeFieldDiffs(desired, observed)
@@ -139,6 +142,41 @@ func ec2Probe(api ec2.EC2API) PlanProbeFunc[ec2.EC2InstanceSpec, ec2.EC2Instance
 	}
 }
 
+func ec2LookupProbe(api ec2.EC2API) LookupProbeFunc[ec2.EC2InstanceOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ec2.EC2InstanceOutputs, bool, error) {
+		instanceID := strings.TrimSpace(filter.ID)
+		if instanceID == "" {
+			var err error
+			instanceID, err = api.FindByTags(ctx, lookupTags(filter))
+			if err != nil {
+				return ec2.EC2InstanceOutputs{}, false, err
+			}
+			if instanceID == "" {
+				return ec2.EC2InstanceOutputs{}, false, nil
+			}
+		}
+		observed, err := api.DescribeInstance(ctx, instanceID)
+		if err != nil {
+			if isLookupNotFound(err, ec2.IsNotFound) {
+				return ec2.EC2InstanceOutputs{}, false, nil
+			}
+			return ec2.EC2InstanceOutputs{}, false, err
+		}
+		if observed.State == "terminated" || observed.State == "shutting-down" || !matchesLookupTags(observed.Tags, filter) {
+			return ec2.EC2InstanceOutputs{}, false, nil
+		}
+		return ec2.EC2InstanceOutputs{
+			InstanceId:       observed.InstanceId,
+			PrivateIpAddress: observed.PrivateIpAddress,
+			PublicIpAddress:  observed.PublicIpAddress,
+			PrivateDnsName:   observed.PrivateDnsName,
+			State:            observed.State,
+			SubnetId:         observed.SubnetId,
+			VpcId:            observed.VpcId,
+		}, true, nil
+	}
+}
+
 // NewEC2AdapterWithAuth builds the production adapter; plan-time credentials
 // are resolved through the Auth Service.
 func NewEC2AdapterWithAuth(auth authservice.AuthClient) *EC2Adapter {
@@ -148,7 +186,7 @@ func NewEC2AdapterWithAuth(auth authservice.AuthClient) *EC2Adapter {
 // NewEC2AdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewEC2AdapterWithAPI(api ec2.EC2API) *EC2Adapter {
-	return &EC2Adapter{GenericAdapter: NewGenericAdapterWithProbe(ec2Descriptor(), ec2Probe(api))}
+	return &EC2Adapter{GenericAdapter: NewGenericAdapterWithProbes(ec2Descriptor(), ec2Probe(api), ec2LookupProbe(api))}
 }
 
 // DefaultTimeouts provides per-kind default timeouts for EC2 instances.

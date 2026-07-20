@@ -95,10 +95,40 @@ func logGroupDescriptor() GenericDescriptor[loggroup.LogGroupSpec, loggroup.LogG
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[loggroup.LogGroupSpec, loggroup.LogGroupOutputs, loggroup.ObservedState] {
 			return logGroupProbe(loggroup.NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[loggroup.LogGroupOutputs] {
+			return logGroupLookupProbe(loggroup.NewLogGroupAPI(awsclient.NewCloudWatchLogsClient(cfg)))
+		},
 
 		DiffFields: func(desired loggroup.LogGroupSpec, observed loggroup.ObservedState, _ loggroup.LogGroupOutputs) []types.FieldDiff {
 			return loggroup.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func logGroupLookupProbe(api loggroup.LogGroupAPI) LookupProbeFunc[loggroup.LogGroupOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (loggroup.LogGroupOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return loggroup.LogGroupOutputs{}, false, restate.TerminalError(fmt.Errorf("LogGroup lookup supports id or name; tag-only lookup is not available"), 400)
+		}
+		observed, found, err := api.DescribeLogGroup(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, loggroup.IsNotFound) {
+				return loggroup.LogGroupOutputs{}, false, nil
+			}
+			return loggroup.LogGroupOutputs{}, false, err
+		}
+		if !found || !matchesNativeLookupFilter(observed.LogGroupName, observed.Tags, filter) {
+			return loggroup.LogGroupOutputs{}, false, nil
+		}
+		retention := int32(0)
+		if observed.RetentionInDays != nil {
+			retention = *observed.RetentionInDays
+		}
+		return loggroup.LogGroupOutputs{
+			ARN: observed.ARN, LogGroupName: observed.LogGroupName, LogGroupClass: observed.LogGroupClass,
+			RetentionInDays: retention, KmsKeyID: observed.KmsKeyID, CreationTime: observed.CreationTime, StoredBytes: observed.StoredBytes,
+		}, true, nil
 	}
 }
 
@@ -127,5 +157,5 @@ func NewLogGroupAdapterWithAuth(auth authservice.AuthClient) *LogGroupAdapter {
 // NewLogGroupAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewLogGroupAdapterWithAPI(api loggroup.LogGroupAPI) *LogGroupAdapter {
-	return NewGenericAdapterWithProbe(logGroupDescriptor(), logGroupProbe(api))
+	return NewGenericAdapterWithProbes(logGroupDescriptor(), logGroupProbe(api), logGroupLookupProbe(api))
 }

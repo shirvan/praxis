@@ -85,9 +85,47 @@ func nlbDescriptor() GenericDescriptor[nlb.NLBSpec, nlb.NLBOutputs, nlb.Observed
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[nlb.NLBSpec, nlb.NLBOutputs, nlb.ObservedState] {
 			return nlbProbe(nlb.NewNLBAPI(awsclient.NewELBv2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[nlb.NLBOutputs] {
+			return nlbLookupProbe(nlb.NewNLBAPI(awsclient.NewELBv2Client(cfg)))
+		},
 		DiffFields: func(desired nlb.NLBSpec, observed nlb.ObservedState, _ nlb.NLBOutputs) []types.FieldDiff {
 			return nlb.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func nlbLookupProbe(api nlb.NLBAPI) LookupProbeFunc[nlb.NLBOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (nlb.NLBOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return nlb.NLBOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("NLB lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeNLB(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, nlb.IsNotFound) {
+				return nlb.NLBOutputs{}, false, nil
+			}
+			return nlb.NLBOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.LoadBalancerArn != id {
+			return nlb.NLBOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.Name != name {
+			return nlb.NLBOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return nlb.NLBOutputs{}, false, nil
+		}
+		return nlb.NLBOutputs{
+			LoadBalancerArn:       observed.LoadBalancerArn,
+			DnsName:               observed.DnsName,
+			HostedZoneId:          observed.HostedZoneId,
+			VpcId:                 observed.VpcId,
+			CanonicalHostedZoneId: observed.HostedZoneId,
+		}, true, nil
 	}
 }
 
@@ -109,7 +147,7 @@ func NewNLBAdapterWithAuth(auth authservice.AuthClient) *NLBAdapter {
 }
 
 func NewNLBAdapterWithAPI(api nlb.NLBAPI) *NLBAdapter {
-	return &NLBAdapter{GenericAdapter: NewGenericAdapterWithProbe(nlbDescriptor(), nlbProbe(api))}
+	return &NLBAdapter{GenericAdapter: NewGenericAdapterWithProbes(nlbDescriptor(), nlbProbe(api), nlbLookupProbe(api))}
 }
 
 func (a *NLBAdapter) DefaultTimeouts() types.ResourceTimeouts {

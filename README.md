@@ -114,7 +114,7 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 **Import Existing Resources.** Adopt cloud resources already running in your account. Praxis captures their current state as a baseline and begins managing or observing them.
 
-**Data Sources.** Reference existing cloud resources in templates without managing them. A `data` block performs read-only lookups that inject outputs (VPC IDs, ARNs, CIDR blocks) into managed resource specs — no state stored, no lifecycle tracked. Currently supported for VPC, Subnet, Security Group, S3 Bucket, IAM Role, and Route 53 Hosted Zone.
+**Data Sources.** Reference existing cloud resources in templates without managing them. A `data` block performs read-only lookups that inject outputs (VPC IDs, ARNs, CIDR blocks) into managed resource specs — no state stored, no lifecycle tracked. All 51 resource kinds use the generic lookup contract.
 
 **CUE Templates.** Platform teams define typed, validated templates in CUE. End users fill in variables. Output expressions wire resource outputs into downstream specs. Policy constraints enforce organizational standards via CUE unification.
 
