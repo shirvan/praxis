@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -151,11 +152,8 @@ func (r *realSecretsManagerSecretAPI) DescribeSecretMetadata(ctx context.Context
 	}
 	currentVersions := make([]string, 0, 1)
 	for versionID, stages := range desc.VersionIdsToStages {
-		for _, stage := range stages {
-			if stage == "AWSCURRENT" {
-				currentVersions = append(currentVersions, versionID)
-				break
-			}
+		if slices.Contains(stages, "AWSCURRENT") {
+			currentVersions = append(currentVersions, versionID)
 		}
 	}
 	sort.Strings(currentVersions)

@@ -58,7 +58,7 @@ approval gate as usual.`,
 				renderer.successLine(fmt.Sprintf("Rollback of %q to generation %d submitted.", resp.DeploymentKey, toGeneration))
 			}
 			if wait {
-				return pollDeployment(ctx, client, resp.DeploymentKey, pollInterval, flags.outputFormat(), renderer)
+				return pollDeployment(ctx, client, resp.DeploymentKey, pollInterval, flags.outputFormat(), renderer, types.DeploymentComplete)
 			}
 			if flags.outputFormat() == OutputJSON {
 				return printJSON(resp)

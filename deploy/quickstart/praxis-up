@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+cd "$(dirname "$0")"
+
+docker compose pull
+docker compose up -d --wait \
+  moto restate \
+  praxis-core praxis-storage praxis-network praxis-compute \
+  praxis-identity praxis-monitoring
+docker compose run --rm register
+
+echo "Praxis alpha is ready at http://localhost:8080"

@@ -21,7 +21,10 @@ praxis/
 │   ├── data/               # Data source lookup schema
 │   ├── events/             # CloudEvent schemas
 │   └── notifications/      # Sink/retention schemas
-├── tests/integration/      # Integration tests (60+ files)
+├── tests/integration/      # In-process integration tests (60+ files)
+├── tests/acceptance/       # Compiled CLI + production process topology
+├── deploy/quickstart/      # No-clone, image-based alpha evaluation bundle
+├── scripts/                # Alpha artifact build and verification
 ├── docs/                   # Documentation (see INDEX.md)
 ├── skills/                 # Agent skills (how-to procedures)
 ├── examples/               # Example templates

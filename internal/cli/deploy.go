@@ -434,7 +434,7 @@ func finishDeployment(flags *rootFlags, ctx context.Context, client *Client, ren
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 	}
 
-	err := pollDeployment(ctx, client, deploymentKey, pollInterval, flags.outputFormat(), renderer)
+	err := pollDeployment(ctx, client, deploymentKey, pollInterval, flags.outputFormat(), renderer, types.DeploymentComplete)
 	if cancel != nil {
 		cancel()
 	}
@@ -509,11 +509,11 @@ func parseVariables(vars []string) (map[string]any, error) {
 	return result, nil
 }
 
-// pollDeployment queries the deployment state at regular intervals until it
-// reaches a terminal status. It prints incremental status updates for the user.
-// When the deployment ends Failed or Cancelled, the terminal detail is printed
-// and a non-nil error is returned so the process exits non-zero.
-func pollDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat, renderer *Renderer) error {
+// pollDeployment queries deployment state until it reaches the success state
+// for the requested operation. A different terminal state may be a stale read
+// from the previous operation, so it does not finish the wait. Failed and
+// Cancelled always stop polling and return a non-nil error.
+func pollDeployment(ctx context.Context, client *Client, key string, interval time.Duration, format OutputFormat, renderer *Renderer, successStatus types.DeploymentStatus) error {
 	if format != OutputJSON {
 		_, _ = fmt.Fprintln(renderer.out, "\n"+renderer.renderSection("Waiting for deployment to complete..."))
 	}
@@ -547,7 +547,7 @@ func pollDeployment(ctx context.Context, client *Client, key string, interval ti
 			return nil
 		}
 
-		if isTerminalStatus(detail.Status) {
+		if detail.Status == successStatus || detail.Status == types.DeploymentFailed || detail.Status == types.DeploymentCancelled {
 			if format == OutputJSON {
 				if err := printJSON(detail); err != nil {
 					return err

@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
         - name: praxis-core
-          image: ghcr.io/shirvan/praxis-core:latest
+          image: ghcr.io/shirvan/praxis-core:alpha
           ports:
             - name: restate
               containerPort: 9080
@@ -169,7 +169,7 @@ spec:
     spec:
       containers:
         - name: praxis-storage
-          image: ghcr.io/shirvan/praxis-storage:latest
+          image: ghcr.io/shirvan/praxis-storage:alpha
           ports:
             - name: restate
               containerPort: 9080
@@ -241,7 +241,7 @@ spec:
     spec:
       containers:
         - name: praxis-compute
-          image: ghcr.io/shirvan/praxis-compute:latest
+          image: ghcr.io/shirvan/praxis-compute:alpha
           ports:
             - name: restate
               containerPort: 9080
@@ -313,7 +313,7 @@ spec:
     spec:
       containers:
         - name: praxis-network
-          image: ghcr.io/shirvan/praxis-network:latest
+          image: ghcr.io/shirvan/praxis-network:alpha
           ports:
             - name: restate
               containerPort: 9080
@@ -385,7 +385,7 @@ spec:
     spec:
       containers:
         - name: praxis-identity
-          image: ghcr.io/shirvan/praxis-identity:latest
+          image: ghcr.io/shirvan/praxis-identity:alpha
           ports:
             - name: restate
               containerPort: 9080
@@ -457,7 +457,7 @@ spec:
     spec:
       containers:
         - name: praxis-monitoring
-          image: ghcr.io/shirvan/praxis-monitoring:latest
+          image: ghcr.io/shirvan/praxis-monitoring:alpha
           ports:
             - name: restate
               containerPort: 9080

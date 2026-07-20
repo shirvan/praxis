@@ -153,8 +153,8 @@ func ssmParameterLookupProbe(api ssmparameter.SSMParameterMetadataAPI) LookupPro
 
 func ssmParameterNames(identity string) []string {
 	identity = strings.TrimSpace(identity)
-	if marker := strings.Index(identity, ":parameter/"); marker >= 0 {
-		resource := strings.TrimPrefix(identity[marker+len(":parameter/"):], "/")
+	if _, resource, ok := strings.Cut(identity, ":parameter/"); ok {
+		resource = strings.TrimPrefix(resource, "/")
 		return []string{resource, "/" + resource}
 	}
 	return []string{identity}

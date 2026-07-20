@@ -107,7 +107,7 @@ func listenerLookupProbe(api listener.ListenerAPI) LookupProbeFunc[listener.List
 		listenerARN := strings.TrimSpace(filter.ID)
 		if listenerARN == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
 			return listener.ListenerOutputs{}, false, restate.TerminalError(
-				fmt.Errorf("Listener lookup supports listener ARN via id only"),
+				fmt.Errorf("listener lookup supports listener ARN via id only"),
 				400,
 			)
 		}

@@ -93,17 +93,20 @@ Defaults are private — keep them that way:
 
 ### Kubernetes Deployment (Helm)
 
-The recommended way to deploy Praxis on Kubernetes is via the Helm chart published to GitHub Container Registry. The chart deploys Praxis Core, all driver packs, and optionally a bundled Restate instance — or points to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
+The recommended way to deploy Praxis on Kubernetes is with the Helm chart
+attached to the mutable GitHub alpha release. The chart deploys Praxis Core,
+all driver packs, and optionally a bundled Restate instance, or points to an
+external one such as Restate Cloud.
 
 ```bash
 # Deploy with bundled Restate
-helm install praxis oci://ghcr.io/shirvan/charts/praxis \
+helm install praxis https://github.com/shirvan/praxis/releases/download/alpha/praxis-alpha-chart.tgz \
   --namespace praxis-system --create-namespace \
   --set aws.region=us-east-1 \
   --set account.credentialSource=default
 
 # Deploy with Restate Cloud (no bundled Restate)
-helm install praxis oci://ghcr.io/shirvan/charts/praxis \
+helm install praxis https://github.com/shirvan/praxis/releases/download/alpha/praxis-alpha-chart.tgz \
   --namespace praxis-system --create-namespace \
   --set restate.enabled=false \
   --set restate.external.ingressUrl=https://<env>.dev.restate.cloud:8080 \
@@ -114,7 +117,7 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # Enable autoscaling for driver packs
-helm upgrade praxis oci://ghcr.io/shirvan/charts/praxis \
+helm upgrade praxis https://github.com/shirvan/praxis/releases/download/alpha/praxis-alpha-chart.tgz \
   --namespace praxis-system \
   --set drivers.network.autoscaling.enabled=true \
   --set drivers.compute.autoscaling.enabled=true
@@ -164,60 +167,47 @@ done
 kubectl apply -f examples/ops/k8s/praxis-autoscaling.yaml
 ```
 
-## Quick Start (Local Development)
+## Quick Start (Published Alpha)
 
-### Prerequisites
+The supported evaluation path uses the artifacts attached to the mutable
+[GitHub alpha release](https://github.com/shirvan/praxis/releases/tag/alpha).
+It does not require Go, `just`, or a repository clone.
 
-- Docker + Docker Compose
-- [just](https://github.com/casey/just) task runner
-- Go >= 1.25 (building from source)
+### Prerequisite
+
+- Docker with Docker Compose
 
 ### Start the Stack
 
-```bash
-# Start everything — Moto, Restate, Core, drivers
-just up
-
-# The recipe:
-#   1. Validates .env exists
-#   2. Builds and starts all containers
-#   3. Waits for Moto + Restate health checks
-#   4. Registers all Praxis endpoints with Restate
-
-# Stop and clean up (removes volumes)
-just down
-```
-
-### Just Recipes
+Download the CLI archive for your platform, `checksums.txt`, and
+`praxis-alpha-quickstart.tar.gz`. Verify the archives, install the CLI on your
+`PATH`, then run:
 
 ```bash
-just              # List all available recipes
-just up           # Start the full stack
-just down         # Stop and remove volumes
-just restart      # Rebuild and restart core + drivers, then re-register
-just wait-stack   # Wait for Moto + Restate readiness
-just status       # Show current container status
-just doctor       # Fast endpoint + registration sanity check
+tar -xzf praxis-alpha-quickstart.tar.gz
+cd praxis-alpha-quickstart
+./praxis-up
+
+praxis version
+praxis list schemas
 ```
 
-**Logs:**
+The bundle pulls Praxis Core and all five driver-pack images at the single
+supported `:alpha` tag, then starts and registers them with Restate. Moto is
+included for local evaluation.
 
 ```bash
-just logs         # Follow Praxis Core logs
-just logs-storage # Follow Storage driver pack logs
-just logs-network # Follow Network driver pack logs
-just logs-compute # Follow Compute driver pack logs
-just logs-drivers # Follow all driver pack logs together
-just logs-all     # Follow all service logs
+praxis plan bucket.cue --account local
+praxis deploy bucket.cue --account local --key quickstart --yes --wait
+praxis delete Deployment/quickstart --yes --wait
+./praxis-down
 ```
 
-**Helpers:**
+Alpha revisions may change the contract without backwards compatibility.
+Update the CLI, all service images, chart, schemas, and templates together.
 
-```bash
-just ls-s3        # List S3 buckets in Moto
-just rs-services  # List registered Restate services
-just rs-deployments # List registered Restate deployments
-```
+For repository builds, local service development, logs, Moto helpers, and
+individual test recipes, see the [developer guide](DEVELOPERS.md).
 
 ## Configuration
 
