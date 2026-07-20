@@ -92,11 +92,43 @@ func secretsManagerSecretDescriptor() GenericDescriptor[secret.SecretsManagerSec
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[secret.SecretsManagerSecretSpec, secret.SecretsManagerSecretOutputs, secret.ObservedState] {
 			return secretsManagerSecretProbe(secret.NewSecretsManagerSecretAPI(awsclient.NewSecretsManagerClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[secret.SecretsManagerSecretOutputs] {
+			return secretsManagerSecretLookupProbe(secret.NewSecretsManagerSecretMetadataAPI(awsclient.NewSecretsManagerClient(cfg)))
+		},
 
 		DiffFields: func(desired secret.SecretsManagerSecretSpec, observed secret.ObservedState, _ secret.SecretsManagerSecretOutputs) []types.FieldDiff {
 			return secret.ComputeFieldDiffs(desired, observed)
 		},
 		SensitiveFields: []string{"spec.secretString"},
+	}
+}
+
+func secretsManagerSecretLookupProbe(api secret.SecretsManagerSecretMetadataAPI) LookupProbeFunc[secret.SecretsManagerSecretOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (secret.SecretsManagerSecretOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return secret.SecretsManagerSecretOutputs{}, false, restate.TerminalError(fmt.Errorf("SecretsManagerSecret lookup supports id or name; tag-only lookup is not available"), 400)
+		}
+		observed, found, err := api.DescribeSecretMetadata(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, secret.IsNotFound) {
+				return secret.SecretsManagerSecretOutputs{}, false, nil
+			}
+			return secret.SecretsManagerSecretOutputs{}, false, err
+		}
+		if !found {
+			return secret.SecretsManagerSecretOutputs{}, false, nil
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.ARN != id && observed.Name != id {
+			return secret.SecretsManagerSecretOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.Name != name {
+			return secret.SecretsManagerSecretOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return secret.SecretsManagerSecretOutputs{}, false, nil
+		}
+		return secret.SecretsManagerSecretOutputs{ARN: observed.ARN, Name: observed.Name, VersionID: observed.VersionID}, true, nil
 	}
 }
 
@@ -124,5 +156,8 @@ func NewSecretsManagerSecretAdapterWithAuth(auth authservice.AuthClient) *Secret
 // NewSecretsManagerSecretAdapterWithAPI builds an adapter with a fixed planning
 // API. Used by tests.
 func NewSecretsManagerSecretAdapterWithAPI(api secret.SecretsManagerSecretAPI) *SecretsManagerSecretAdapter {
+	if metadataAPI, ok := api.(secret.SecretsManagerSecretMetadataAPI); ok {
+		return NewGenericAdapterWithProbes(secretsManagerSecretDescriptor(), secretsManagerSecretProbe(api), secretsManagerSecretLookupProbe(metadataAPI))
+	}
 	return NewGenericAdapterWithProbe(secretsManagerSecretDescriptor(), secretsManagerSecretProbe(api))
 }

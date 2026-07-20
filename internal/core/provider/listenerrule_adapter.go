@@ -91,10 +91,39 @@ func listenerRuleDescriptor() GenericDescriptor[listenerrule.ListenerRuleSpec, l
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[listenerrule.ListenerRuleSpec, listenerrule.ListenerRuleOutputs, listenerrule.ObservedState] {
 			return listenerRuleProbe(listenerrule.NewListenerRuleAPI(awsclient.NewELBv2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[listenerrule.ListenerRuleOutputs] {
+			return listenerRuleLookupProbe(listenerrule.NewListenerRuleAPI(awsclient.NewELBv2Client(cfg)))
+		},
 
 		DiffFields: func(desired listenerrule.ListenerRuleSpec, observed listenerrule.ObservedState, _ listenerrule.ListenerRuleOutputs) []types.FieldDiff {
 			return listenerrule.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func listenerRuleLookupProbe(api listenerrule.ListenerRuleAPI) LookupProbeFunc[listenerrule.ListenerRuleOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (listenerrule.ListenerRuleOutputs, bool, error) {
+		ruleARN := strings.TrimSpace(filter.ID)
+		if ruleARN == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
+			return listenerrule.ListenerRuleOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("ListenerRule lookup supports rule ARN via id only"),
+				400,
+			)
+		}
+		observed, err := api.DescribeRule(ctx, ruleARN)
+		if err != nil {
+			if isLookupNotFound(err, listenerrule.IsNotFound) {
+				return listenerrule.ListenerRuleOutputs{}, false, nil
+			}
+			return listenerrule.ListenerRuleOutputs{}, false, err
+		}
+		if observed.RuleArn != ruleARN {
+			return listenerrule.ListenerRuleOutputs{}, false, nil
+		}
+		return listenerrule.ListenerRuleOutputs{
+			RuleArn:  observed.RuleArn,
+			Priority: observed.Priority,
+		}, true, nil
 	}
 }
 
@@ -122,7 +151,7 @@ func NewListenerRuleAdapterWithAuth(auth authservice.AuthClient) *ListenerRuleAd
 // NewListenerRuleAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewListenerRuleAdapterWithAPI(api listenerrule.ListenerRuleAPI) *ListenerRuleAdapter {
-	return NewGenericAdapterWithProbe(listenerRuleDescriptor(), listenerRuleProbe(api))
+	return NewGenericAdapterWithProbes(listenerRuleDescriptor(), listenerRuleProbe(api), listenerRuleLookupProbe(api))
 }
 
 func extractRegionFromListenerArn(arn string) string {

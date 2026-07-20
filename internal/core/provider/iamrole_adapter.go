@@ -1,5 +1,4 @@
-// IAMRole provider adapter — descriptor for the GenericAdapter, extended with
-// a data-source Lookup.
+// IAMRole provider adapter — descriptor for the GenericAdapter.
 //
 // Key scope: global (IAM is region-free).
 // Key parts: role name (optionally with path prefix).
@@ -21,15 +20,8 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// IAMRoleAdapter is the descriptor-driven adapter for IAMRole. Beyond the core
-// Adapter interface it keeps a read-only Lookup
-// for data source blocks, which need their own planning API plumbing.
 type IAMRoleAdapter struct {
 	*GenericAdapter[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs, iamrole.ObservedState]
-
-	auth              authservice.AuthClient
-	staticPlanningAPI iamrole.IAMRoleAPI
-	apiFactory        func(aws.Config) iamrole.IAMRoleAPI
 }
 
 func iamRoleDescriptor() GenericDescriptor[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs, iamrole.ObservedState] {
@@ -114,6 +106,9 @@ func iamRoleDescriptor() GenericDescriptor[iamrole.IAMRoleSpec, iamrole.IAMRoleO
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamrole.IAMRoleSpec, iamrole.IAMRoleOutputs, iamrole.ObservedState] {
 			return iamRoleProbe(iamrole.NewIAMRoleAPI(awsclient.NewIAMClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[iamrole.IAMRoleOutputs] {
+			return iamRoleLookupProbe(iamrole.NewIAMRoleAPI(awsclient.NewIAMClient(cfg)))
+		},
 
 		DiffFields: func(desired iamrole.IAMRoleSpec, observed iamrole.ObservedState, _ iamrole.IAMRoleOutputs) []types.FieldDiff {
 			return iamrole.ComputeFieldDiffs(desired, observed)
@@ -136,15 +131,31 @@ func iamRoleProbe(api iamrole.IAMRoleAPI) PlanProbeFunc[iamrole.IAMRoleSpec, iam
 	}
 }
 
+func iamRoleLookupProbe(api iamrole.IAMRoleAPI) LookupProbeFunc[iamrole.IAMRoleOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (iamrole.IAMRoleOutputs, bool, error) {
+		observed, err := lookupIAMRole(ctx, api, filter)
+		if err != nil {
+			if isLookupNotFound(err, iamrole.IsNotFound) {
+				return iamrole.IAMRoleOutputs{}, false, nil
+			}
+			return iamrole.IAMRoleOutputs{}, false, err
+		}
+		if !matchesIAMRoleFilter(observed, filter) {
+			return iamrole.IAMRoleOutputs{}, false, nil
+		}
+		return iamrole.IAMRoleOutputs{
+			Arn:      observed.Arn,
+			RoleId:   observed.RoleId,
+			RoleName: observed.RoleName,
+		}, true, nil
+	}
+}
+
 // NewIAMRoleAdapterWithAuth builds the production adapter; plan- and
 // lookup-time credentials are resolved through the Auth Service.
 func NewIAMRoleAdapterWithAuth(auth authservice.AuthClient) *IAMRoleAdapter {
 	return &IAMRoleAdapter{
 		GenericAdapter: NewGenericAdapter(iamRoleDescriptor(), auth),
-		auth:           auth,
-		apiFactory: func(cfg aws.Config) iamrole.IAMRoleAPI {
-			return iamrole.NewIAMRoleAPI(awsclient.NewIAMClient(cfg))
-		},
 	}
 }
 
@@ -152,51 +163,8 @@ func NewIAMRoleAdapterWithAuth(auth authservice.AuthClient) *IAMRoleAdapter {
 // for both Plan probes and Lookup. Used by tests.
 func NewIAMRoleAdapterWithAPI(api iamrole.IAMRoleAPI) *IAMRoleAdapter {
 	return &IAMRoleAdapter{
-		GenericAdapter:    NewGenericAdapterWithProbe(iamRoleDescriptor(), iamRoleProbe(api)),
-		staticPlanningAPI: api,
+		GenericAdapter: NewGenericAdapterWithProbes(iamRoleDescriptor(), iamRoleProbe(api), iamRoleLookupProbe(api)),
 	}
-}
-
-// Lookup performs a read-only data-source query for an existing IAMRole
-// resource, matching by ID, name, or tags. This is used by template data
-// source blocks to resolve references to pre-existing infrastructure.
-func (a *IAMRoleAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
-	api, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (iamrole.ObservedState, error) {
-		obs, runErr := lookupIAMRole(runCtx, api, filter)
-		if runErr != nil {
-			return obs, classifyLookupError(runErr, iamrole.IsNotFound)
-		}
-		return obs, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !matchesIAMRoleFilter(observed, filter) {
-		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no IAMRole found matching filter"), 404)
-	}
-	return a.NormalizeOutputs(iamrole.IAMRoleOutputs{Arn: observed.Arn, RoleId: observed.RoleId, RoleName: observed.RoleName})
-}
-
-// planningAPI returns the AWS API client used for Lookup (read-only)
-// operations. In production it resolves credentials for the given account via
-// the auth client and creates a fresh API. In tests it returns the
-// staticPlanningAPI.
-func (a *IAMRoleAdapter) planningAPI(ctx restate.Context, account string) (iamrole.IAMRoleAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("IAMRole adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve IAMRole planning account %q: %w", account, err)
-	}
-	return a.apiFactory(awsCfg), nil
 }
 
 func lookupIAMRole(ctx restate.RunContext, api iamrole.IAMRoleAPI, filter LookupFilter) (iamrole.ObservedState, error) {

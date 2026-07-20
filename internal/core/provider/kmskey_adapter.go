@@ -94,10 +94,46 @@ func kmsKeyDescriptor() GenericDescriptor[kmskey.KMSKeySpec, kmskey.KMSKeyOutput
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[kmskey.KMSKeySpec, kmskey.KMSKeyOutputs, kmskey.ObservedState] {
 			return kmsKeyProbe(kmskey.NewKMSKeyAPI(awsclient.NewKMSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[kmskey.KMSKeyOutputs] {
+			return kmsKeyLookupProbe(kmskey.NewKMSKeyAPI(awsclient.NewKMSClient(cfg)))
+		},
 
 		DiffFields: func(desired kmskey.KMSKeySpec, observed kmskey.ObservedState, _ kmskey.KMSKeyOutputs) []types.FieldDiff {
 			return kmskey.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func kmsKeyLookupProbe(api kmskey.KMSKeyAPI) LookupProbeFunc[kmskey.KMSKeyOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (kmskey.KMSKeyOutputs, bool, error) {
+		id := strings.TrimSpace(filter.ID)
+		name := strings.TrimSpace(filter.Name)
+		if id != "" && name != "" {
+			return kmskey.KMSKeyOutputs{}, false, restate.TerminalError(fmt.Errorf("KMSKey lookup accepts id or name, not both"), 400)
+		}
+		identity := id
+		aliasName := ""
+		if identity == "" && name != "" {
+			aliasName = "alias/" + aliasShortName(name)
+			identity = aliasName
+		}
+		if identity == "" {
+			return kmskey.KMSKeyOutputs{}, false, restate.TerminalError(fmt.Errorf("KMSKey lookup supports id or name; tag-only lookup is not available"), 400)
+		}
+		observed, found, err := api.DescribeKey(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, kmskey.IsNotFound) {
+				return kmskey.KMSKeyOutputs{}, false, nil
+			}
+			return kmskey.KMSKeyOutputs{}, false, err
+		}
+		if !found || !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return kmskey.KMSKeyOutputs{}, false, nil
+		}
+		if aliasName == "" && strings.HasPrefix(id, "alias/") {
+			aliasName = id
+		}
+		return kmskey.KMSKeyOutputs{ARN: observed.ARN, KeyID: observed.KeyID, AliasName: aliasName}, true, nil
 	}
 }
 
@@ -131,5 +167,5 @@ func NewKMSKeyAdapterWithAuth(auth authservice.AuthClient) *KMSKeyAdapter {
 
 // NewKMSKeyAdapterWithAPI builds an adapter with a fixed planning API. Used by tests.
 func NewKMSKeyAdapterWithAPI(api kmskey.KMSKeyAPI) *KMSKeyAdapter {
-	return NewGenericAdapterWithProbe(kmsKeyDescriptor(), kmsKeyProbe(api))
+	return NewGenericAdapterWithProbes(kmsKeyDescriptor(), kmsKeyProbe(api), kmsKeyLookupProbe(api))
 }

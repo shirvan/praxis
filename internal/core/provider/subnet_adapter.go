@@ -19,15 +19,10 @@ import (
 	"github.com/shirvan/praxis/pkg/types"
 )
 
-// SubnetAdapter is the descriptor-driven adapter for Subnet, extended with a
-// read-only Lookup for template data sources. The auth/staticPlanningAPI/
-// apiFactory fields back the Lookup path; the embedded GenericAdapter owns the
-// plan-time probe.
+// SubnetAdapter is the descriptor-driven adapter for Subnet. The embedded
+// GenericAdapter owns plan and data-source lookup execution.
 type SubnetAdapter struct {
 	*GenericAdapter[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState]
-	auth              authservice.AuthClient
-	staticPlanningAPI subnet.SubnetAPI
-	apiFactory        func(aws.Config) subnet.SubnetAPI
 }
 
 func subnetDescriptor() GenericDescriptor[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState] {
@@ -100,6 +95,9 @@ func subnetDescriptor() GenericDescriptor[subnet.SubnetSpec, subnet.SubnetOutput
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[subnet.SubnetSpec, subnet.SubnetOutputs, subnet.ObservedState] {
 			return subnetProbe(subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[subnet.SubnetOutputs] {
+			return subnetLookupProbe(subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired subnet.SubnetSpec, observed subnet.ObservedState, _ subnet.SubnetOutputs) []types.FieldDiff {
 			return subnet.ComputeFieldDiffs(desired, observed)
@@ -142,15 +140,38 @@ func subnetProbe(api subnet.SubnetAPI) PlanProbeFunc[subnet.SubnetSpec, subnet.S
 	}
 }
 
+func subnetLookupProbe(api subnet.SubnetAPI) LookupProbeFunc[subnet.SubnetOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (subnet.SubnetOutputs, bool, error) {
+		observed, err := lookupSubnet(ctx, api, filter)
+		if err != nil {
+			if isLookupNotFound(err, subnet.IsNotFound) {
+				return subnet.SubnetOutputs{}, false, nil
+			}
+			return subnet.SubnetOutputs{}, false, err
+		}
+		if !matchesSubnetFilter(observed, filter) {
+			return subnet.SubnetOutputs{}, false, nil
+		}
+		return subnet.SubnetOutputs{
+			SubnetId:            observed.SubnetId,
+			ARN:                 subnetARN(filter.Region, observed.OwnerId, observed.SubnetId),
+			VpcId:               observed.VpcId,
+			CidrBlock:           observed.CidrBlock,
+			AvailabilityZone:    observed.AvailabilityZone,
+			AvailabilityZoneId:  observed.AvailabilityZoneId,
+			MapPublicIpOnLaunch: observed.MapPublicIpOnLaunch,
+			State:               observed.State,
+			OwnerId:             observed.OwnerId,
+			AvailableIpCount:    observed.AvailableIpCount,
+		}, true, nil
+	}
+}
+
 // NewSubnetAdapterWithAuth builds the production adapter; plan-time and
 // lookup-time credentials are resolved through the Auth Service.
 func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
 	return &SubnetAdapter{
 		GenericAdapter: NewGenericAdapter(subnetDescriptor(), auth),
-		auth:           auth,
-		apiFactory: func(cfg aws.Config) subnet.SubnetAPI {
-			return subnet.NewSubnetAPI(awsclient.NewEC2Client(cfg))
-		},
 	}
 }
 
@@ -158,64 +179,8 @@ func NewSubnetAdapterWithAuth(auth authservice.AuthClient) *SubnetAdapter {
 // Used by tests.
 func NewSubnetAdapterWithAPI(api subnet.SubnetAPI) *SubnetAdapter {
 	return &SubnetAdapter{
-		GenericAdapter:    NewGenericAdapterWithProbe(subnetDescriptor(), subnetProbe(api)),
-		staticPlanningAPI: api,
+		GenericAdapter: NewGenericAdapterWithProbes(subnetDescriptor(), subnetProbe(api), subnetLookupProbe(api)),
 	}
-}
-
-// Lookup performs a read-only data-source query for an existing Subnet
-// resource, matching by ID, name, or tags. This is used by template data
-// source blocks to resolve references to pre-existing infrastructure.
-func (a *SubnetAdapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
-	api, err := a.lookupAPI(ctx, account, filter.Region)
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (subnet.ObservedState, error) {
-		obs, runErr := lookupSubnet(runCtx, api, filter)
-		if runErr != nil {
-			return obs, classifyLookupError(runErr, subnet.IsNotFound)
-		}
-		return obs, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !matchesSubnetFilter(observed, filter) {
-		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no Subnet found matching filter"), 404)
-	}
-	return normalizeSubnetOutputs(subnet.SubnetOutputs{
-		SubnetId:            observed.SubnetId,
-		ARN:                 subnetARN(filter.Region, observed.OwnerId, observed.SubnetId),
-		VpcId:               observed.VpcId,
-		CidrBlock:           observed.CidrBlock,
-		AvailabilityZone:    observed.AvailabilityZone,
-		AvailabilityZoneId:  observed.AvailabilityZoneId,
-		MapPublicIpOnLaunch: observed.MapPublicIpOnLaunch,
-		State:               observed.State,
-		OwnerId:             observed.OwnerId,
-		AvailableIpCount:    observed.AvailableIpCount,
-	}), nil
-}
-
-// lookupAPI returns the AWS API client used for Lookup (data-source) queries.
-// It resolves credentials per-account and overrides the region when the lookup
-// filter specifies one. In tests it returns the staticPlanningAPI.
-func (a *SubnetAdapter) lookupAPI(ctx restate.Context, account string, region string) (subnet.SubnetAPI, error) {
-	if a.staticPlanningAPI != nil {
-		return a.staticPlanningAPI, nil
-	}
-	if a.auth == nil || a.apiFactory == nil {
-		return nil, fmt.Errorf("subnet adapter planning API is not configured")
-	}
-	awsCfg, err := a.auth.GetCredentials(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("resolve Subnet planning account %q: %w", account, err)
-	}
-	if strings.TrimSpace(region) != "" {
-		awsCfg.Region = strings.TrimSpace(region)
-	}
-	return a.apiFactory(awsCfg), nil
 }
 
 func lookupSubnet(ctx restate.RunContext, api subnet.SubnetAPI, filter LookupFilter) (subnet.ObservedState, error) {

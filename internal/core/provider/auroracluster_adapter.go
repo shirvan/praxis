@@ -99,11 +99,47 @@ func auroraClusterDescriptor() GenericDescriptor[auroracluster.AuroraClusterSpec
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[auroracluster.AuroraClusterSpec, auroracluster.AuroraClusterOutputs, auroracluster.ObservedState] {
 			return auroraClusterProbe(auroracluster.NewAuroraClusterAPI(awsclient.NewRDSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[auroracluster.AuroraClusterOutputs] {
+			return auroraClusterLookupProbe(auroracluster.NewAuroraClusterAPI(awsclient.NewRDSClient(cfg)))
+		},
 
 		DiffFields: func(desired auroracluster.AuroraClusterSpec, observed auroracluster.ObservedState, _ auroracluster.AuroraClusterOutputs) []types.FieldDiff {
 			return auroracluster.ComputeFieldDiffs(desired, observed)
 		},
 		SensitiveFields: []string{"spec.masterUserPassword"},
+	}
+}
+
+func auroraClusterLookupProbe(api auroracluster.AuroraClusterAPI) LookupProbeFunc[auroracluster.AuroraClusterOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (auroracluster.AuroraClusterOutputs, bool, error) {
+		identifier := nativeLookupIdentity(filter)
+		if identifier == "" {
+			return auroracluster.AuroraClusterOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("AuroraCluster lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeDBCluster(ctx, identifier)
+		if err != nil {
+			if isLookupNotFound(err, auroracluster.IsNotFound) {
+				return auroracluster.AuroraClusterOutputs{}, false, nil
+			}
+			return auroracluster.AuroraClusterOutputs{}, false, err
+		}
+		if !matchesNativeLookupFilter(observed.ClusterIdentifier, observed.Tags, filter) {
+			return auroracluster.AuroraClusterOutputs{}, false, nil
+		}
+		return auroracluster.AuroraClusterOutputs{
+			ClusterIdentifier: observed.ClusterIdentifier,
+			ClusterResourceId: observed.ClusterResourceId,
+			ARN:               observed.ARN,
+			Endpoint:          observed.Endpoint,
+			ReaderEndpoint:    observed.ReaderEndpoint,
+			Port:              observed.Port,
+			Engine:            observed.Engine,
+			EngineVersion:     observed.EngineVersion,
+			Status:            observed.Status,
+		}, true, nil
 	}
 }
 
@@ -131,7 +167,7 @@ func NewAuroraClusterAdapterWithAuth(auth authservice.AuthClient) *AuroraCluster
 // NewAuroraClusterAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewAuroraClusterAdapterWithAPI(api auroracluster.AuroraClusterAPI) *AuroraClusterAdapter {
-	return &AuroraClusterAdapter{GenericAdapter: NewGenericAdapterWithProbe(auroraClusterDescriptor(), auroraClusterProbe(api))}
+	return &AuroraClusterAdapter{GenericAdapter: NewGenericAdapterWithProbes(auroraClusterDescriptor(), auroraClusterProbe(api), auroraClusterLookupProbe(api))}
 }
 
 // DefaultTimeouts provides per-kind default timeouts for Aurora clusters.

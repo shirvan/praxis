@@ -97,10 +97,43 @@ func eksClusterDescriptor() GenericDescriptor[ekscluster.EKSClusterSpec, eksclus
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ekscluster.EKSClusterSpec, ekscluster.EKSClusterOutputs, ekscluster.ObservedState] {
 			return eksClusterProbe(ekscluster.NewEKSClusterAPI(awsclient.NewEKSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ekscluster.EKSClusterOutputs] {
+			return eksClusterLookupProbe(ekscluster.NewEKSClusterAPI(awsclient.NewEKSClient(cfg)))
+		},
 
 		DiffFields: func(desired ekscluster.EKSClusterSpec, observed ekscluster.ObservedState, _ ekscluster.EKSClusterOutputs) []types.FieldDiff {
 			return ekscluster.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func eksClusterLookupProbe(api ekscluster.EKSClusterAPI) LookupProbeFunc[ekscluster.EKSClusterOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ekscluster.EKSClusterOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return ekscluster.EKSClusterOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("EKSCluster lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, found, err := api.DescribeCluster(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, ekscluster.IsNotFound) {
+				return ekscluster.EKSClusterOutputs{}, false, nil
+			}
+			return ekscluster.EKSClusterOutputs{}, false, err
+		}
+		if !found || !matchesNativeLookupFilter(observed.Name, observed.Tags, filter) {
+			return ekscluster.EKSClusterOutputs{}, false, nil
+		}
+		return ekscluster.EKSClusterOutputs{
+			ARN:             observed.ARN,
+			Name:            observed.Name,
+			Status:          observed.Status,
+			Version:         observed.Version,
+			PlatformVersion: observed.PlatformVersion,
+			Endpoint:        observed.Endpoint,
+		}, true, nil
 	}
 }
 
@@ -128,5 +161,5 @@ func NewEKSClusterAdapterWithAuth(auth authservice.AuthClient) *EKSClusterAdapte
 // NewEKSClusterAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewEKSClusterAdapterWithAPI(api ekscluster.EKSClusterAPI) *EKSClusterAdapter {
-	return NewGenericAdapterWithProbe(eksClusterDescriptor(), eksClusterProbe(api))
+	return NewGenericAdapterWithProbes(eksClusterDescriptor(), eksClusterProbe(api), eksClusterLookupProbe(api))
 }

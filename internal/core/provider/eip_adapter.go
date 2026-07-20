@@ -100,10 +100,43 @@ func eipDescriptor() GenericDescriptor[eip.ElasticIPSpec, eip.ElasticIPOutputs, 
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[eip.ElasticIPSpec, eip.ElasticIPOutputs, eip.ObservedState] {
 			return eipProbe(eip.NewEIPAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[eip.ElasticIPOutputs] {
+			return eipLookupProbe(eip.NewEIPAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired eip.ElasticIPSpec, observed eip.ObservedState, _ eip.ElasticIPOutputs) []types.FieldDiff {
 			return eip.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func eipLookupProbe(api eip.EIPAPI) LookupProbeFunc[eip.ElasticIPOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (eip.ElasticIPOutputs, bool, error) {
+		allocationID := strings.TrimSpace(filter.ID)
+		if allocationID == "" {
+			return eip.ElasticIPOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("ElasticIP lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeAddress(ctx, allocationID)
+		if err != nil {
+			if isLookupNotFound(err, eip.IsNotFound) {
+				return eip.ElasticIPOutputs{}, false, nil
+			}
+			return eip.ElasticIPOutputs{}, false, err
+		}
+		if observed.AllocationId != allocationID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return eip.ElasticIPOutputs{}, false, nil
+		}
+		arn := ""
+		if observed.Region != "" && observed.AccountId != "" {
+			arn = fmt.Sprintf("arn:aws:ec2:%s:%s:elastic-ip/%s", observed.Region, observed.AccountId, observed.AllocationId)
+		}
+		return eip.ElasticIPOutputs{
+			AllocationId: observed.AllocationId, PublicIp: observed.PublicIp, ARN: arn,
+			Domain: observed.Domain, NetworkBorderGroup: observed.NetworkBorderGroup,
+		}, true, nil
 	}
 }
 
@@ -131,5 +164,5 @@ func NewEIPAdapterWithAuth(auth authservice.AuthClient) *EIPAdapter {
 // NewEIPAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewEIPAdapterWithAPI(api eip.EIPAPI) *EIPAdapter {
-	return NewGenericAdapterWithProbe(eipDescriptor(), eipProbe(api))
+	return NewGenericAdapterWithProbes(eipDescriptor(), eipProbe(api), eipLookupProbe(api))
 }

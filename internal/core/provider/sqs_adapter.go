@@ -107,10 +107,57 @@ func sqsQueueDescriptor() GenericDescriptor[sqs.SQSQueueSpec, sqs.SQSQueueOutput
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[sqs.SQSQueueSpec, sqs.SQSQueueOutputs, sqs.ObservedState] {
 			return sqsQueueProbe(sqs.NewQueueAPI(awsclient.NewSQSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[sqs.SQSQueueOutputs] {
+			return sqsQueueLookupProbe(sqs.NewQueueAPI(awsclient.NewSQSClient(cfg)))
+		},
 
 		DiffFields: func(desired sqs.SQSQueueSpec, observed sqs.ObservedState, _ sqs.SQSQueueOutputs) []types.FieldDiff {
 			return sqs.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func sqsQueueLookupProbe(api sqs.QueueAPI) LookupProbeFunc[sqs.SQSQueueOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (sqs.SQSQueueOutputs, bool, error) {
+		queueURL := strings.TrimSpace(filter.ID)
+		if queueURL == "" {
+			queueName := strings.TrimSpace(filter.Name)
+			if queueName == "" {
+				return sqs.SQSQueueOutputs{}, false, restate.TerminalError(
+					fmt.Errorf("SQSQueue lookup supports id or name; tag-only lookup is not available"),
+					400,
+				)
+			}
+			var err error
+			queueURL, err = api.GetQueueUrl(ctx, queueName)
+			if err != nil {
+				if isLookupNotFound(err, sqs.IsNotFound) {
+					return sqs.SQSQueueOutputs{}, false, nil
+				}
+				return sqs.SQSQueueOutputs{}, false, err
+			}
+		}
+		observed, err := api.GetQueueAttributes(ctx, queueURL)
+		if err != nil {
+			if isLookupNotFound(err, sqs.IsNotFound) {
+				return sqs.SQSQueueOutputs{}, false, nil
+			}
+			return sqs.SQSQueueOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.QueueUrl != id {
+			return sqs.SQSQueueOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.QueueName != name {
+			return sqs.SQSQueueOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return sqs.SQSQueueOutputs{}, false, nil
+		}
+		return sqs.SQSQueueOutputs{
+			QueueUrl:  observed.QueueUrl,
+			QueueArn:  observed.QueueArn,
+			QueueName: observed.QueueName,
+		}, true, nil
 	}
 }
 
@@ -138,5 +185,5 @@ func NewSQSAdapterWithAuth(auth authservice.AuthClient) *SQSAdapter {
 // NewSQSAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewSQSAdapterWithAPI(api sqs.QueueAPI) *SQSAdapter {
-	return NewGenericAdapterWithProbe(sqsQueueDescriptor(), sqsQueueProbe(api))
+	return NewGenericAdapterWithProbes(sqsQueueDescriptor(), sqsQueueProbe(api), sqsQueueLookupProbe(api))
 }

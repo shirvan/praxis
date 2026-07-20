@@ -107,11 +107,59 @@ func route53RecordDescriptor() GenericDescriptor[route53record.RecordSpec, route
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53record.RecordSpec, route53record.RecordOutputs, route53record.ObservedState] {
 			return route53RecordProbe(route53record.NewRecordAPI(awsclient.NewRoute53Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[route53record.RecordOutputs] {
+			return route53RecordLookupProbe(route53record.NewRecordAPI(awsclient.NewRoute53Client(cfg)))
+		},
 
 		DiffFields: func(desired route53record.RecordSpec, observed route53record.ObservedState, _ route53record.RecordOutputs) []types.FieldDiff {
 			return route53record.ComputeFieldDiffs(desired, observed)
 		},
 	}
+}
+
+func route53RecordLookupProbe(api route53record.RecordAPI) LookupProbeFunc[route53record.RecordOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (route53record.RecordOutputs, bool, error) {
+		if strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 || strings.TrimSpace(filter.ID) == "" {
+			return route53record.RecordOutputs{}, false, restate.TerminalError(fmt.Errorf("Route53Record lookup requires its composite import identity in filter.id"), 400)
+		}
+		identity, err := route53RecordIdentityFromID(filter.ID)
+		if err != nil {
+			return route53record.RecordOutputs{}, false, restate.TerminalError(err, 400)
+		}
+		observed, err := api.DescribeRecord(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, route53record.IsNotFound) {
+				return route53record.RecordOutputs{}, false, nil
+			}
+			return route53record.RecordOutputs{}, false, err
+		}
+		return route53record.RecordOutputs{
+			HostedZoneId: observed.HostedZoneId, FQDN: observed.Name, Type: observed.Type, SetIdentifier: observed.SetIdentifier,
+		}, true, nil
+	}
+}
+
+func route53RecordIdentityFromID(value string) (route53record.RecordIdentity, error) {
+	trimmed := strings.TrimSpace(value)
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 1 {
+		parts = strings.Split(trimmed, KeySeparator)
+	}
+	if len(parts) < 3 || len(parts) > 4 {
+		return route53record.RecordIdentity{}, fmt.Errorf("Route53Record filter.id must be <hostedZoneId>/<fqdn>/<type>[/<setIdentifier>]")
+	}
+	identity := route53record.RecordIdentity{
+		HostedZoneId: strings.TrimPrefix(strings.TrimSpace(parts[0]), "/hostedzone/"),
+		Name:         strings.ToLower(strings.TrimSuffix(strings.TrimSpace(parts[1]), ".")),
+		Type:         strings.ToUpper(strings.TrimSpace(parts[2])),
+	}
+	if len(parts) == 4 {
+		identity.SetIdentifier = strings.TrimSpace(parts[3])
+	}
+	if identity.HostedZoneId == "" || identity.Name == "" || identity.Type == "" {
+		return route53record.RecordIdentity{}, fmt.Errorf("Route53Record filter.id contains an empty identity part")
+	}
+	return identity, nil
 }
 
 // route53RecordProbe adapts the driver API to the generic plan probe shape.
@@ -147,5 +195,5 @@ func NewRoute53RecordAdapterWithAuth(auth authservice.AuthClient) *Route53Record
 // NewRoute53RecordAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewRoute53RecordAdapterWithAPI(api route53record.RecordAPI) *Route53RecordAdapter {
-	return NewGenericAdapterWithProbe(route53RecordDescriptor(), route53RecordProbe(api))
+	return NewGenericAdapterWithProbes(route53RecordDescriptor(), route53RecordProbe(api), route53RecordLookupProbe(api))
 }

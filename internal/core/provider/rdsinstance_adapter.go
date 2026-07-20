@@ -108,6 +108,9 @@ func rdsInstanceDescriptor() GenericDescriptor[rdsinstance.RDSInstanceSpec, rdsi
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[rdsinstance.RDSInstanceSpec, rdsinstance.RDSInstanceOutputs, rdsinstance.ObservedState] {
 			return rdsInstanceProbe(rdsinstance.NewRDSInstanceAPI(awsclient.NewRDSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[rdsinstance.RDSInstanceOutputs] {
+			return rdsInstanceLookupProbe(rdsinstance.NewRDSInstanceAPI(awsclient.NewRDSClient(cfg)))
+		},
 
 		DiffFields: func(desired rdsinstance.RDSInstanceSpec, observed rdsinstance.ObservedState, _ rdsinstance.RDSInstanceOutputs) []types.FieldDiff {
 			return rdsinstance.ComputeFieldDiffs(desired, observed)
@@ -131,6 +134,38 @@ func rdsInstanceProbe(api rdsinstance.RDSInstanceAPI) PlanProbeFunc[rdsinstance.
 	}
 }
 
+func rdsInstanceLookupProbe(api rdsinstance.RDSInstanceAPI) LookupProbeFunc[rdsinstance.RDSInstanceOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (rdsinstance.RDSInstanceOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return rdsinstance.RDSInstanceOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("RDSInstance lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeDBInstance(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, rdsinstance.IsNotFound) {
+				return rdsinstance.RDSInstanceOutputs{}, false, nil
+			}
+			return rdsinstance.RDSInstanceOutputs{}, false, err
+		}
+		if !matchesNativeLookupFilter(observed.DBIdentifier, observed.Tags, filter) {
+			return rdsinstance.RDSInstanceOutputs{}, false, nil
+		}
+		return rdsinstance.RDSInstanceOutputs{
+			DBIdentifier:  observed.DBIdentifier,
+			DbiResourceId: observed.DbiResourceId,
+			ARN:           observed.ARN,
+			Endpoint:      observed.Endpoint,
+			Port:          observed.Port,
+			Engine:        observed.Engine,
+			EngineVersion: observed.EngineVersion,
+			Status:        observed.Status,
+		}, true, nil
+	}
+}
+
 // NewRDSInstanceAdapterWithAuth builds the production adapter; plan-time
 // credentials are resolved through the Auth Service.
 func NewRDSInstanceAdapterWithAuth(auth authservice.AuthClient) *RDSInstanceAdapter {
@@ -140,7 +175,7 @@ func NewRDSInstanceAdapterWithAuth(auth authservice.AuthClient) *RDSInstanceAdap
 // NewRDSInstanceAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewRDSInstanceAdapterWithAPI(api rdsinstance.RDSInstanceAPI) *RDSInstanceAdapter {
-	return &RDSInstanceAdapter{GenericAdapter: NewGenericAdapterWithProbe(rdsInstanceDescriptor(), rdsInstanceProbe(api))}
+	return &RDSInstanceAdapter{GenericAdapter: NewGenericAdapterWithProbes(rdsInstanceDescriptor(), rdsInstanceProbe(api), rdsInstanceLookupProbe(api))}
 }
 
 // DefaultTimeouts provides per-kind default timeouts for RDS instances.

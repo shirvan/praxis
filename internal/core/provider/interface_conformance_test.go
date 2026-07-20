@@ -10,6 +10,10 @@ type genericAdapterConformance interface {
 	genericAdapter()
 }
 
+type lookupConfigurationConformance interface {
+	lookupConfigured() bool
+}
+
 func TestProductionRegistry_AllAdaptersUseGenericAdapter(t *testing.T) {
 	registry := NewRegistry(nil)
 	adapters := registry.All()
@@ -17,6 +21,15 @@ func TestProductionRegistry_AllAdaptersUseGenericAdapter(t *testing.T) {
 	for kind, adapter := range adapters {
 		_, ok := adapter.(genericAdapterConformance)
 		assert.Truef(t, ok, "%s must be descriptor-backed by GenericAdapter", kind)
+	}
+}
+
+func TestProductionRegistry_GenericLookupCoverage(t *testing.T) {
+	for kind, adapter := range NewRegistry(nil).All() {
+		configured, ok := adapter.(lookupConfigurationConformance)
+		if assert.Truef(t, ok, "%s must expose generic lookup configuration", kind) {
+			assert.Truef(t, configured.lookupConfigured(), "%s must configure generic lookup", kind)
+		}
 	}
 }
 

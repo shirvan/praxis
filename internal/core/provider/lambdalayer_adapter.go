@@ -80,7 +80,53 @@ func lambdaLayerDescriptor() GenericDescriptor[lambdalayer.LambdaLayerSpec, lamb
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambdalayer.LambdaLayerSpec, lambdalayer.LambdaLayerOutputs, lambdalayer.ObservedState] {
 			return lambdaLayerProbe(lambdalayer.NewLayerAPI(awsclient.NewLambdaClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[lambdalayer.LambdaLayerOutputs] {
+			return lambdaLayerLookupProbe(lambdalayer.NewLayerAPI(awsclient.NewLambdaClient(cfg)))
+		},
 		DiffFields: lambdalayer.ComputeFieldDiffs,
+	}
+}
+
+func lambdaLayerLookupProbe(api lambdalayer.LayerAPI) LookupProbeFunc[lambdalayer.LambdaLayerOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (lambdalayer.LambdaLayerOutputs, bool, error) {
+		if strings.TrimSpace(filter.ID) != "" {
+			return lambdalayer.LambdaLayerOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("LambdaLayer lookup by id is not available; use name"),
+				400,
+			)
+		}
+		if len(filter.Tag) != 0 {
+			return lambdalayer.LambdaLayerOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("LambdaLayer lookup does not support tags"),
+				400,
+			)
+		}
+		name := strings.TrimSpace(filter.Name)
+		if name == "" {
+			return lambdalayer.LambdaLayerOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("LambdaLayer lookup requires name"),
+				400,
+			)
+		}
+		observed, err := api.GetLatestLayerVersion(ctx, name)
+		if err != nil {
+			if isLookupNotFound(err, lambdalayer.IsNotFound) {
+				return lambdalayer.LambdaLayerOutputs{}, false, nil
+			}
+			return lambdalayer.LambdaLayerOutputs{}, false, err
+		}
+		if observed.LayerName != name {
+			return lambdalayer.LambdaLayerOutputs{}, false, nil
+		}
+		return lambdalayer.LambdaLayerOutputs{
+			LayerArn:        observed.LayerArn,
+			LayerVersionArn: observed.LayerVersionArn,
+			LayerName:       observed.LayerName,
+			Version:         observed.Version,
+			CodeSize:        observed.CodeSize,
+			CodeSha256:      observed.CodeSha256,
+			CreatedDate:     observed.CreatedDate,
+		}, true, nil
 	}
 }
 
@@ -102,5 +148,5 @@ func NewLambdaLayerAdapterWithAuth(auth authservice.AuthClient) *LambdaLayerAdap
 }
 
 func NewLambdaLayerAdapterWithAPI(api lambdalayer.LayerAPI) *LambdaLayerAdapter {
-	return NewGenericAdapterWithProbe(lambdaLayerDescriptor(), lambdaLayerProbe(api))
+	return NewGenericAdapterWithProbes(lambdaLayerDescriptor(), lambdaLayerProbe(api), lambdaLayerLookupProbe(api))
 }

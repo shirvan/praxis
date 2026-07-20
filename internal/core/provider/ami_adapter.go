@@ -115,10 +115,59 @@ func amiDescriptor(staticAPI ami.AMIAPI) GenericDescriptor[ami.AMISpec, ami.AMIO
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ami.AMISpec, ami.AMIOutputs, ami.ObservedState] {
 			return amiProbe(ami.NewAMIAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ami.AMIOutputs] {
+			return amiLookupProbe(ami.NewAMIAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired ami.AMISpec, observed ami.ObservedState, _ ami.AMIOutputs) []types.FieldDiff {
 			return ami.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func amiLookupProbe(api ami.AMIAPI) LookupProbeFunc[ami.AMIOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ami.AMIOutputs, bool, error) {
+		imageID := strings.TrimSpace(filter.ID)
+		name := strings.TrimSpace(filter.Name)
+		if imageID == "" && name == "" {
+			return ami.AMIOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("AMI lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+
+		var observed ami.ObservedState
+		var err error
+		if imageID != "" {
+			observed, err = api.DescribeImage(ctx, imageID)
+		} else {
+			observed, err = api.DescribeImageByName(ctx, name)
+		}
+		if err != nil {
+			if isLookupNotFound(err, ami.IsNotFound) {
+				return ami.AMIOutputs{}, false, nil
+			}
+			return ami.AMIOutputs{}, false, err
+		}
+		if imageID != "" && observed.ImageId != imageID {
+			return ami.AMIOutputs{}, false, nil
+		}
+		if name != "" && observed.Name != name {
+			return ami.AMIOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return ami.AMIOutputs{}, false, nil
+		}
+		return ami.AMIOutputs{
+			ImageId:            observed.ImageId,
+			Name:               observed.Name,
+			State:              observed.State,
+			Architecture:       observed.Architecture,
+			VirtualizationType: observed.VirtualizationType,
+			RootDeviceName:     observed.RootDeviceName,
+			OwnerId:            observed.OwnerId,
+			CreationDate:       observed.CreationDate,
+		}, true, nil
 	}
 }
 
@@ -146,7 +195,7 @@ func NewAMIAdapterWithAuth(auth authservice.AuthClient) *AMIAdapter {
 // NewAMIAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewAMIAdapterWithAPI(api ami.AMIAPI) *AMIAdapter {
-	return NewGenericAdapterWithProbe(amiDescriptor(api), amiProbe(api))
+	return NewGenericAdapterWithProbes(amiDescriptor(api), amiProbe(api), amiLookupProbe(api))
 }
 
 func amiValidateSource(source ami.SourceSpec) error {

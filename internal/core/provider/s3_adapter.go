@@ -21,9 +21,8 @@ import (
 )
 
 // S3Adapter is the descriptor-driven adapter for S3Bucket, extended with
-// per-kind default timeouts, a custom live Observe,
-// and a data-source Lookup. The Observe and Lookup paths need a planning API
-// client, so the adapter keeps the auth/staticPlanningAPI/apiFactory wiring.
+// per-kind default timeouts and a custom live Observe. The generic adapter
+// owns data-source lookup execution.
 type S3Adapter struct {
 	*GenericAdapter[s3.S3BucketSpec, s3.S3BucketOutputs, s3.ObservedState]
 	auth              authservice.AuthClient
@@ -98,6 +97,9 @@ func s3Descriptor() GenericDescriptor[s3.S3BucketSpec, s3.S3BucketOutputs, s3.Ob
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[s3.S3BucketSpec, s3.S3BucketOutputs, s3.ObservedState] {
 			return s3Probe(s3.NewS3API(awsclient.NewS3Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[s3.S3BucketOutputs] {
+			return s3LookupProbe(s3.NewS3API(awsclient.NewS3Client(cfg)))
+		},
 
 		DiffFields: func(desired s3.S3BucketSpec, observed s3.ObservedState, _ s3.S3BucketOutputs) []types.FieldDiff {
 			return s3.ComputeFieldDiffs(desired, observed)
@@ -120,6 +122,27 @@ func s3Probe(api s3.S3API) PlanProbeFunc[s3.S3BucketSpec, s3.S3BucketOutputs, s3
 	}
 }
 
+func s3LookupProbe(api s3.S3API) LookupProbeFunc[s3.S3BucketOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (s3.S3BucketOutputs, bool, error) {
+		observed, err := lookupS3Bucket(ctx, api, filter)
+		if err != nil {
+			if isLookupNotFound(err, s3.IsNotFound) {
+				return s3.S3BucketOutputs{}, false, nil
+			}
+			return s3.S3BucketOutputs{}, false, err
+		}
+		if !matchesS3Filter(observed, filter) {
+			return s3.S3BucketOutputs{}, false, nil
+		}
+		return s3.S3BucketOutputs{
+			ARN:        fmt.Sprintf("arn:aws:s3:::%s", observed.BucketName),
+			BucketName: observed.BucketName,
+			Region:     observed.Region,
+			DomainName: bucketDomainName(observed.BucketName, observed.Region),
+		}, true, nil
+	}
+}
+
 // NewS3AdapterWithAuth builds the production adapter; plan-time credentials
 // are resolved through the Auth Service. The apiFactory closure creates a real
 // AWS API client from the resolved aws.Config for Observe/Lookup calls.
@@ -137,7 +160,7 @@ func NewS3AdapterWithAuth(auth authservice.AuthClient) *S3Adapter {
 // probe and the Observe/Lookup paths. This is primarily useful in tests.
 func NewS3AdapterWithAPI(api s3.S3API) *S3Adapter {
 	return &S3Adapter{
-		GenericAdapter:    NewGenericAdapterWithProbe(s3Descriptor(), s3Probe(api)),
+		GenericAdapter:    NewGenericAdapterWithProbes(s3Descriptor(), s3Probe(api), s3LookupProbe(api)),
 		staticPlanningAPI: api,
 	}
 }
@@ -189,40 +212,7 @@ func (a *S3Adapter) Observe(ctx restate.Context, key string, account string, spe
 	return ObserveResult{Exists: true, UpToDate: upToDate, Outputs: outputs}, nil
 }
 
-// Lookup performs a read-only data-source query for an existing S3Bucket
-// resource, matching by ID, name, or tags. This is used by template data
-// source blocks to resolve references to pre-existing infrastructure.
-func (a *S3Adapter) Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error) {
-	api, err := a.planningAPI(ctx, account)
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	observed, err := restate.Run(ctx, func(runCtx restate.RunContext) (s3.ObservedState, error) {
-		obs, runErr := lookupS3Bucket(runCtx, api, filter)
-		if runErr != nil {
-			return obs, classifyLookupError(runErr, s3.IsNotFound)
-		}
-		return obs, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !matchesS3Filter(observed, filter) {
-		return nil, restate.TerminalError(fmt.Errorf("data source lookup: no S3Bucket found matching filter"), 404)
-	}
-	outputs, err := a.NormalizeOutputs(s3.S3BucketOutputs{
-		ARN:        fmt.Sprintf("arn:aws:s3:::%s", observed.BucketName),
-		BucketName: observed.BucketName,
-		Region:     observed.Region,
-		DomainName: bucketDomainName(observed.BucketName, observed.Region),
-	})
-	if err != nil {
-		return nil, restate.TerminalError(err, 500)
-	}
-	return outputs, nil
-}
-
-// planningAPI returns the AWS API client used for Observe/Lookup (read-only)
+// planningAPI returns the AWS API client used for Observe (read-only)
 // operations. In production it resolves credentials for the given account via
 // the auth client and creates a fresh API. In tests it returns the
 // staticPlanningAPI.

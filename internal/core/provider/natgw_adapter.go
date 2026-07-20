@@ -117,10 +117,41 @@ func natgwDescriptor() GenericDescriptor[natgw.NATGatewaySpec, natgw.NATGatewayO
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[natgw.NATGatewaySpec, natgw.NATGatewayOutputs, natgw.ObservedState] {
 			return natgwProbe(natgw.NewNATGatewayAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[natgw.NATGatewayOutputs] {
+			return natgwLookupProbe(natgw.NewNATGatewayAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired natgw.NATGatewaySpec, observed natgw.ObservedState, _ natgw.NATGatewayOutputs) []types.FieldDiff {
 			return natgw.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func natgwLookupProbe(api natgw.NATGatewayAPI) LookupProbeFunc[natgw.NATGatewayOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (natgw.NATGatewayOutputs, bool, error) {
+		natGatewayID := strings.TrimSpace(filter.ID)
+		if natGatewayID == "" {
+			return natgw.NATGatewayOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("NATGateway lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeNATGateway(ctx, natGatewayID)
+		if err != nil {
+			if isLookupNotFound(err, natgw.IsNotFound) {
+				return natgw.NATGatewayOutputs{}, false, nil
+			}
+			return natgw.NATGatewayOutputs{}, false, err
+		}
+		if observed.NatGatewayId != natGatewayID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return natgw.NATGatewayOutputs{}, false, nil
+		}
+		return natgw.NATGatewayOutputs{
+			NatGatewayId: observed.NatGatewayId, SubnetId: observed.SubnetId, VpcId: observed.VpcId,
+			ConnectivityType: observed.ConnectivityType, State: observed.State, PublicIp: observed.PublicIp,
+			PrivateIp: observed.PrivateIp, AllocationId: observed.AllocationId,
+			NetworkInterfaceId: observed.NetworkInterfaceId,
+		}, true, nil
 	}
 }
 
@@ -148,7 +179,7 @@ func NewNATGatewayAdapterWithAuth(auth authservice.AuthClient) *NATGatewayAdapte
 // NewNATGatewayAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewNATGatewayAdapterWithAPI(api natgw.NATGatewayAPI) *NATGatewayAdapter {
-	return &NATGatewayAdapter{GenericAdapter: NewGenericAdapterWithProbe(natgwDescriptor(), natgwProbe(api))}
+	return &NATGatewayAdapter{GenericAdapter: NewGenericAdapterWithProbes(natgwDescriptor(), natgwProbe(api), natgwLookupProbe(api))}
 }
 
 // DefaultTimeouts provides per-kind default timeouts for NAT Gateways.

@@ -70,10 +70,36 @@ func route53HealthCheckDescriptor() GenericDescriptor[route53healthcheck.HealthC
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[route53healthcheck.HealthCheckSpec, route53healthcheck.HealthCheckOutputs, route53healthcheck.ObservedState] {
 			return route53HealthCheckProbe(route53healthcheck.NewHealthCheckAPI(awsclient.NewRoute53Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[route53healthcheck.HealthCheckOutputs] {
+			return route53HealthCheckLookupProbe(route53healthcheck.NewHealthCheckAPI(awsclient.NewRoute53Client(cfg)))
+		},
 
 		DiffFields: func(desired route53healthcheck.HealthCheckSpec, observed route53healthcheck.ObservedState, _ route53healthcheck.HealthCheckOutputs) []types.FieldDiff {
 			return route53healthcheck.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func route53HealthCheckLookupProbe(api route53healthcheck.HealthCheckAPI) LookupProbeFunc[route53healthcheck.HealthCheckOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (route53healthcheck.HealthCheckOutputs, bool, error) {
+		healthCheckID := strings.TrimSpace(filter.ID)
+		if healthCheckID == "" {
+			return route53healthcheck.HealthCheckOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("Route53HealthCheck lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeHealthCheck(ctx, healthCheckID)
+		if err != nil {
+			if isLookupNotFound(err, route53healthcheck.IsNotFound) {
+				return route53healthcheck.HealthCheckOutputs{}, false, nil
+			}
+			return route53healthcheck.HealthCheckOutputs{}, false, err
+		}
+		if observed.HealthCheckId != healthCheckID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return route53healthcheck.HealthCheckOutputs{}, false, nil
+		}
+		return route53healthcheck.HealthCheckOutputs{HealthCheckId: observed.HealthCheckId}, true, nil
 	}
 }
 
@@ -101,5 +127,5 @@ func NewRoute53HealthCheckAdapterWithAuth(auth authservice.AuthClient) *Route53H
 // NewRoute53HealthCheckAdapterWithAPI builds an adapter with a fixed planning
 // API. Used by tests.
 func NewRoute53HealthCheckAdapterWithAPI(api route53healthcheck.HealthCheckAPI) *Route53HealthCheckAdapter {
-	return NewGenericAdapterWithProbe(route53HealthCheckDescriptor(), route53HealthCheckProbe(api))
+	return NewGenericAdapterWithProbes(route53HealthCheckDescriptor(), route53HealthCheckProbe(api), route53HealthCheckLookupProbe(api))
 }

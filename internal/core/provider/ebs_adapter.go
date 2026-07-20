@@ -109,10 +109,44 @@ func ebsDescriptor() GenericDescriptor[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, 
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ebs.EBSVolumeSpec, ebs.EBSVolumeOutputs, ebs.ObservedState] {
 			return ebsProbe(ebs.NewEBSAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ebs.EBSVolumeOutputs] {
+			return ebsLookupProbe(ebs.NewEBSAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired ebs.EBSVolumeSpec, observed ebs.ObservedState, _ ebs.EBSVolumeOutputs) []types.FieldDiff {
 			return ebs.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func ebsLookupProbe(api ebs.EBSAPI) LookupProbeFunc[ebs.EBSVolumeOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ebs.EBSVolumeOutputs, bool, error) {
+		volumeID := strings.TrimSpace(filter.ID)
+		if volumeID == "" {
+			return ebs.EBSVolumeOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("EBSVolume lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeVolume(ctx, volumeID)
+		if err != nil {
+			if isLookupNotFound(err, ebs.IsNotFound) {
+				return ebs.EBSVolumeOutputs{}, false, nil
+			}
+			return ebs.EBSVolumeOutputs{}, false, err
+		}
+		if observed.VolumeId != volumeID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return ebs.EBSVolumeOutputs{}, false, nil
+		}
+		arn := ""
+		if observed.Region != "" && observed.AccountId != "" {
+			arn = fmt.Sprintf("arn:aws:ec2:%s:%s:volume/%s", observed.Region, observed.AccountId, observed.VolumeId)
+		}
+		return ebs.EBSVolumeOutputs{
+			VolumeId: observed.VolumeId, ARN: arn, AvailabilityZone: observed.AvailabilityZone,
+			State: observed.State, SizeGiB: observed.SizeGiB, VolumeType: observed.VolumeType,
+			Encrypted: observed.Encrypted,
+		}, true, nil
 	}
 }
 
@@ -140,7 +174,7 @@ func NewEBSAdapterWithAuth(auth authservice.AuthClient) *EBSAdapter {
 // NewEBSAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewEBSAdapterWithAPI(api ebs.EBSAPI) *EBSAdapter {
-	return &EBSAdapter{GenericAdapter: NewGenericAdapterWithProbe(ebsDescriptor(), ebsProbe(api))}
+	return &EBSAdapter{GenericAdapter: NewGenericAdapterWithProbes(ebsDescriptor(), ebsProbe(api), ebsLookupProbe(api))}
 }
 
 // DefaultTimeouts provides per-kind default timeouts for EBS volumes.

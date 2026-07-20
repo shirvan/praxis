@@ -34,6 +34,12 @@ type SSMParameterAPI interface {
 	ListTags(ctx context.Context, name string) (map[string]string, error)
 }
 
+// SSMParameterMetadataAPI is the least-privilege read surface used by
+// data-source lookup. It never reads or decrypts the parameter value.
+type SSMParameterMetadataAPI interface {
+	DescribeParameterMetadata(ctx context.Context, name string) (ObservedState, bool, error)
+}
+
 type realSSMParameterAPI struct {
 	client  *ssm.Client
 	limiter *ratelimit.Limiter
@@ -42,6 +48,16 @@ type realSSMParameterAPI struct {
 // NewSSMParameterAPI constructs a production SSMParameterAPI backed by the given
 // AWS SDK client, with built-in rate limiting to avoid throttling.
 func NewSSMParameterAPI(client *ssm.Client) SSMParameterAPI {
+	return newRealSSMParameterAPI(client)
+}
+
+// NewSSMParameterMetadataAPI constructs the metadata-only read surface used
+// by provider lookups.
+func NewSSMParameterMetadataAPI(client *ssm.Client) SSMParameterMetadataAPI {
+	return newRealSSMParameterAPI(client)
+}
+
+func newRealSSMParameterAPI(client *ssm.Client) *realSSMParameterAPI {
 	return &realSSMParameterAPI{
 		client:  client,
 		limiter: ratelimit.Shared("ssm-parameter", 10, 5),
@@ -141,6 +157,60 @@ func (r *realSSMParameterAPI) DescribeParameter(ctx context.Context, name string
 		}
 	}
 
+	tags, err := r.ListTags(ctx, name)
+	if err != nil && !IsNotFound(err) {
+		return ObservedState{}, false, err
+	}
+	if tags != nil {
+		observed.Tags = tags
+	}
+	return observed, true, nil
+}
+
+// DescribeParameterMetadata reads parameter identity, configuration, and tags
+// without requesting its value.
+func (r *realSSMParameterAPI) DescribeParameterMetadata(ctx context.Context, name string) (ObservedState, bool, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return ObservedState{}, false, err
+	}
+	desc, err := r.client.DescribeParameters(ctx, &ssm.DescribeParametersInput{
+		ParameterFilters: []ssmtypes.ParameterStringFilter{{
+			Key:    aws.String("Name"),
+			Option: aws.String("Equals"),
+			Values: []string{name},
+		}},
+	})
+	if err != nil {
+		if IsNotFound(err) {
+			return ObservedState{}, false, nil
+		}
+		return ObservedState{}, false, err
+	}
+	var observed ObservedState
+	found := false
+	for i := range desc.Parameters {
+		meta := &desc.Parameters[i]
+		if aws.ToString(meta.Name) != name {
+			continue
+		}
+		observed = ObservedState{
+			ARN:            aws.ToString(meta.ARN),
+			ParameterName:  aws.ToString(meta.Name),
+			Type:           string(meta.Type),
+			Description:    aws.ToString(meta.Description),
+			Tier:           string(meta.Tier),
+			KmsKeyID:       aws.ToString(meta.KeyId),
+			AllowedPattern: aws.ToString(meta.AllowedPattern),
+			DataType:       aws.ToString(meta.DataType),
+			Version:        meta.Version,
+			Tags:           map[string]string{},
+		}
+		found = true
+		break
+	}
+	if !found {
+		return ObservedState{}, false, nil
+	}
 	tags, err := r.ListTags(ctx, name)
 	if err != nil && !IsNotFound(err) {
 		return ObservedState{}, false, err

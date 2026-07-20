@@ -89,10 +89,43 @@ func dbSubnetGroupDescriptor() GenericDescriptor[dbsubnetgroup.DBSubnetGroupSpec
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[dbsubnetgroup.DBSubnetGroupSpec, dbsubnetgroup.DBSubnetGroupOutputs, dbsubnetgroup.ObservedState] {
 			return dbSubnetGroupProbe(dbsubnetgroup.NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[dbsubnetgroup.DBSubnetGroupOutputs] {
+			return dbSubnetGroupLookupProbe(dbsubnetgroup.NewDBSubnetGroupAPI(awsclient.NewRDSClient(cfg)))
+		},
 
 		DiffFields: func(desired dbsubnetgroup.DBSubnetGroupSpec, observed dbsubnetgroup.ObservedState, _ dbsubnetgroup.DBSubnetGroupOutputs) []types.FieldDiff {
 			return dbsubnetgroup.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func dbSubnetGroupLookupProbe(api dbsubnetgroup.DBSubnetGroupAPI) LookupProbeFunc[dbsubnetgroup.DBSubnetGroupOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (dbsubnetgroup.DBSubnetGroupOutputs, bool, error) {
+		groupName := nativeLookupIdentity(filter)
+		if groupName == "" {
+			return dbsubnetgroup.DBSubnetGroupOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("DBSubnetGroup lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeDBSubnetGroup(ctx, groupName)
+		if err != nil {
+			if isLookupNotFound(err, dbsubnetgroup.IsNotFound) {
+				return dbsubnetgroup.DBSubnetGroupOutputs{}, false, nil
+			}
+			return dbsubnetgroup.DBSubnetGroupOutputs{}, false, err
+		}
+		if !matchesNativeLookupFilter(observed.GroupName, observed.Tags, filter) {
+			return dbsubnetgroup.DBSubnetGroupOutputs{}, false, nil
+		}
+		return dbsubnetgroup.DBSubnetGroupOutputs{
+			GroupName:         observed.GroupName,
+			ARN:               observed.ARN,
+			VpcId:             observed.VpcId,
+			SubnetIds:         observed.SubnetIds,
+			AvailabilityZones: observed.AvailabilityZones,
+			Status:            observed.Status,
+		}, true, nil
 	}
 }
 
@@ -120,5 +153,5 @@ func NewDBSubnetGroupAdapterWithAuth(auth authservice.AuthClient) *DBSubnetGroup
 // NewDBSubnetGroupAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewDBSubnetGroupAdapterWithAPI(api dbsubnetgroup.DBSubnetGroupAPI) *DBSubnetGroupAdapter {
-	return NewGenericAdapterWithProbe(dbSubnetGroupDescriptor(), dbSubnetGroupProbe(api))
+	return NewGenericAdapterWithProbes(dbSubnetGroupDescriptor(), dbSubnetGroupProbe(api), dbSubnetGroupLookupProbe(api))
 }

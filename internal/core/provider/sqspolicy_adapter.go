@@ -96,11 +96,53 @@ func sqsQueuePolicyDescriptor() GenericDescriptor[sqspolicy.SQSQueuePolicySpec, 
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[sqspolicy.SQSQueuePolicySpec, sqspolicy.SQSQueuePolicyOutputs, sqspolicy.ObservedState] {
 			return sqsQueuePolicyProbe(sqspolicy.NewPolicyAPI(awsclient.NewSQSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[sqspolicy.SQSQueuePolicyOutputs] {
+			return sqsQueuePolicyLookupProbe(sqspolicy.NewPolicyAPI(awsclient.NewSQSClient(cfg)))
+		},
 
 		DiffFields: func(desired sqspolicy.SQSQueuePolicySpec, observed sqspolicy.ObservedState, _ sqspolicy.SQSQueuePolicyOutputs) []types.FieldDiff {
 			return sqspolicy.ComputeFieldDiffs(desired, observed)
 		},
 	}
+}
+
+func sqsQueuePolicyLookupProbe(api sqspolicy.PolicyAPI) LookupProbeFunc[sqspolicy.SQSQueuePolicyOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (sqspolicy.SQSQueuePolicyOutputs, bool, error) {
+		queueURL := strings.TrimSpace(filter.ID)
+		if queueURL == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
+			return sqspolicy.SQSQueuePolicyOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("SQSQueuePolicy lookup supports queue URL via id only"),
+				400,
+			)
+		}
+		observed, err := api.GetQueuePolicy(ctx, queueURL)
+		if err != nil {
+			if isLookupNotFound(err, sqspolicy.IsNotFound) {
+				return sqspolicy.SQSQueuePolicyOutputs{}, false, nil
+			}
+			return sqspolicy.SQSQueuePolicyOutputs{}, false, err
+		}
+		if observed.QueueUrl != queueURL {
+			return sqspolicy.SQSQueuePolicyOutputs{}, false, nil
+		}
+		if strings.TrimSpace(observed.Policy) == "" {
+			return sqspolicy.SQSQueuePolicyOutputs{}, false, nil
+		}
+		return sqspolicy.SQSQueuePolicyOutputs{
+			QueueUrl:  observed.QueueUrl,
+			QueueArn:  observed.QueueArn,
+			QueueName: sqsQueuePolicyLookupName(observed.QueueUrl),
+		}, true, nil
+	}
+}
+
+func sqsQueuePolicyLookupName(queueURL string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(queueURL), "/")
+	if trimmed == "" {
+		return ""
+	}
+	parts := strings.Split(trimmed, "/")
+	return parts[len(parts)-1]
 }
 
 // sqsQueuePolicyProbe adapts the driver API to the generic plan probe shape.
@@ -127,5 +169,5 @@ func NewSQSQueuePolicyAdapterWithAuth(auth authservice.AuthClient) *SQSQueuePoli
 // NewSQSQueuePolicyAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewSQSQueuePolicyAdapterWithAPI(api sqspolicy.PolicyAPI) *SQSQueuePolicyAdapter {
-	return NewGenericAdapterWithProbe(sqsQueuePolicyDescriptor(), sqsQueuePolicyProbe(api))
+	return NewGenericAdapterWithProbes(sqsQueuePolicyDescriptor(), sqsQueuePolicyProbe(api), sqsQueuePolicyLookupProbe(api))
 }

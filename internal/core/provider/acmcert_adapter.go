@@ -127,10 +127,43 @@ func acmCertificateDescriptor() GenericDescriptor[acmcert.ACMCertificateSpec, ac
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[acmcert.ACMCertificateSpec, acmcert.ACMCertificateOutputs, acmcert.ObservedState] {
 			return acmCertificateProbe(acmcert.NewCertificateAPI(awsclient.NewACMClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[acmcert.ACMCertificateOutputs] {
+			return acmCertificateLookupProbe(acmcert.NewCertificateAPI(awsclient.NewACMClient(cfg)))
+		},
 
 		DiffFields: func(desired acmcert.ACMCertificateSpec, observed acmcert.ObservedState, _ acmcert.ACMCertificateOutputs) []types.FieldDiff {
 			return acmcert.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func acmCertificateLookupProbe(api acmcert.CertificateAPI) LookupProbeFunc[acmcert.ACMCertificateOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (acmcert.ACMCertificateOutputs, bool, error) {
+		certificateARN := strings.TrimSpace(filter.ID)
+		if certificateARN == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
+			return acmcert.ACMCertificateOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("ACMCertificate lookup supports certificate ARN via id only"),
+				400,
+			)
+		}
+		observed, err := api.DescribeCertificate(ctx, certificateARN)
+		if err != nil {
+			if isLookupNotFound(err, acmcert.IsNotFound) {
+				return acmcert.ACMCertificateOutputs{}, false, nil
+			}
+			return acmcert.ACMCertificateOutputs{}, false, err
+		}
+		if observed.CertificateArn != certificateARN {
+			return acmcert.ACMCertificateOutputs{}, false, nil
+		}
+		return acmcert.ACMCertificateOutputs{
+			CertificateArn:       observed.CertificateArn,
+			DomainName:           observed.DomainName,
+			Status:               observed.Status,
+			DNSValidationRecords: observed.DNSValidationRecords,
+			NotBefore:            observed.NotBefore,
+			NotAfter:             observed.NotAfter,
+		}, true, nil
 	}
 }
 
@@ -159,7 +192,7 @@ func NewACMCertificateAdapterWithAuth(auth authservice.AuthClient) *ACMCertifica
 // Used by tests.
 func NewACMCertificateAdapterWithAPI(api acmcert.CertificateAPI) *ACMCertificateAdapter {
 	return &ACMCertificateAdapter{
-		GenericAdapter:    NewGenericAdapterWithProbe(acmCertificateDescriptor(), acmCertificateProbe(api)),
+		GenericAdapter:    NewGenericAdapterWithProbes(acmCertificateDescriptor(), acmCertificateProbe(api), acmCertificateLookupProbe(api)),
 		staticPlanningAPI: api,
 	}
 }

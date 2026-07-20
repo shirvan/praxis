@@ -8,6 +8,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -97,11 +98,55 @@ func iamUserDescriptor() GenericDescriptor[iamuser.IAMUserSpec, iamuser.IAMUserO
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[iamuser.IAMUserSpec, iamuser.IAMUserOutputs, iamuser.ObservedState] {
 			return iamUserProbe(iamuser.NewIAMUserAPI(awsclient.NewIAMClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[iamuser.IAMUserOutputs] {
+			return iamUserLookupProbe(iamuser.NewIAMUserAPI(awsclient.NewIAMClient(cfg)))
+		},
 
 		DiffFields: func(desired iamuser.IAMUserSpec, observed iamuser.ObservedState, _ iamuser.IAMUserOutputs) []types.FieldDiff {
 			return iamuser.ComputeFieldDiffs(desired, observed)
 		},
 	}
+}
+
+func iamUserLookupProbe(api iamuser.IAMUserAPI) LookupProbeFunc[iamuser.IAMUserOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (iamuser.IAMUserOutputs, bool, error) {
+		userName := iamUserLookupName(filter)
+		if userName == "" {
+			return iamuser.IAMUserOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("IAMUser lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeUser(ctx, userName)
+		if err != nil {
+			if isLookupNotFound(err, iamuser.IsNotFound) {
+				return iamuser.IAMUserOutputs{}, false, nil
+			}
+			return iamuser.IAMUserOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.Arn != id && observed.UserId != id && observed.UserName != id {
+			return iamuser.IAMUserOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.UserName != name {
+			return iamuser.IAMUserOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return iamuser.IAMUserOutputs{}, false, nil
+		}
+		return iamuser.IAMUserOutputs{
+			Arn:      observed.Arn,
+			UserId:   observed.UserId,
+			UserName: observed.UserName,
+		}, true, nil
+	}
+}
+
+func iamUserLookupName(filter LookupFilter) string {
+	identity := nativeLookupIdentity(filter)
+	if strings.Contains(identity, ":user/") {
+		return path.Base(identity)
+	}
+	return identity
 }
 
 // iamUserProbe adapts the driver API to the generic plan probe shape.
@@ -128,5 +173,5 @@ func NewIAMUserAdapterWithAuth(auth authservice.AuthClient) *IAMUserAdapter {
 // NewIAMUserAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewIAMUserAdapterWithAPI(api iamuser.IAMUserAPI) *IAMUserAdapter {
-	return NewGenericAdapterWithProbe(iamUserDescriptor(), iamUserProbe(api))
+	return NewGenericAdapterWithProbes(iamUserDescriptor(), iamUserProbe(api), iamUserLookupProbe(api))
 }

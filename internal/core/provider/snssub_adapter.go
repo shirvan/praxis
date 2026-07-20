@@ -99,10 +99,42 @@ func snsSubscriptionDescriptor() GenericDescriptor[snssub.SNSSubscriptionSpec, s
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[snssub.SNSSubscriptionSpec, snssub.SNSSubscriptionOutputs, snssub.ObservedState] {
 			return snsSubscriptionProbe(snssub.NewSubscriptionAPI(awsclient.NewSNSClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[snssub.SNSSubscriptionOutputs] {
+			return snsSubscriptionLookupProbe(snssub.NewSubscriptionAPI(awsclient.NewSNSClient(cfg)))
+		},
 
 		DiffFields: func(desired snssub.SNSSubscriptionSpec, observed snssub.ObservedState, _ snssub.SNSSubscriptionOutputs) []types.FieldDiff {
 			return snssub.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func snsSubscriptionLookupProbe(api snssub.SubscriptionAPI) LookupProbeFunc[snssub.SNSSubscriptionOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (snssub.SNSSubscriptionOutputs, bool, error) {
+		subscriptionARN := strings.TrimSpace(filter.ID)
+		if subscriptionARN == "" || strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 {
+			return snssub.SNSSubscriptionOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("SNSSubscription lookup supports subscription ARN via id only"),
+				400,
+			)
+		}
+		observed, err := api.GetSubscriptionAttributes(ctx, subscriptionARN)
+		if err != nil {
+			if isLookupNotFound(err, snssub.IsNotFound) {
+				return snssub.SNSSubscriptionOutputs{}, false, nil
+			}
+			return snssub.SNSSubscriptionOutputs{}, false, err
+		}
+		if observed.SubscriptionArn != subscriptionARN {
+			return snssub.SNSSubscriptionOutputs{}, false, nil
+		}
+		return snssub.SNSSubscriptionOutputs{
+			SubscriptionArn: observed.SubscriptionArn,
+			TopicArn:        observed.TopicArn,
+			Protocol:        observed.Protocol,
+			Endpoint:        observed.Endpoint,
+			Owner:           observed.Owner,
+		}, true, nil
 	}
 }
 
@@ -130,5 +162,5 @@ func NewSNSSubscriptionAdapterWithAuth(auth authservice.AuthClient) *SNSSubscrip
 // NewSNSSubscriptionAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewSNSSubscriptionAdapterWithAPI(api snssub.SubscriptionAPI) *SNSSubscriptionAdapter {
-	return NewGenericAdapterWithProbe(snsSubscriptionDescriptor(), snsSubscriptionProbe(api))
+	return NewGenericAdapterWithProbes(snsSubscriptionDescriptor(), snsSubscriptionProbe(api), snsSubscriptionLookupProbe(api))
 }

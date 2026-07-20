@@ -77,9 +77,44 @@ func targetGroupDescriptor() GenericDescriptor[targetgroup.TargetGroupSpec, targ
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[targetgroup.TargetGroupSpec, targetgroup.TargetGroupOutputs, targetgroup.ObservedState] {
 			return targetGroupProbe(targetgroup.NewTargetGroupAPI(awsclient.NewELBv2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[targetgroup.TargetGroupOutputs] {
+			return targetGroupLookupProbe(targetgroup.NewTargetGroupAPI(awsclient.NewELBv2Client(cfg)))
+		},
 		DiffFields: func(desired targetgroup.TargetGroupSpec, observed targetgroup.ObservedState, _ targetgroup.TargetGroupOutputs) []types.FieldDiff {
 			return targetgroup.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func targetGroupLookupProbe(api targetgroup.TargetGroupAPI) LookupProbeFunc[targetgroup.TargetGroupOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (targetgroup.TargetGroupOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return targetgroup.TargetGroupOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("TargetGroup lookup supports id or name; tag-only lookup is not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeTargetGroup(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, targetgroup.IsNotFound) {
+				return targetgroup.TargetGroupOutputs{}, false, nil
+			}
+			return targetgroup.TargetGroupOutputs{}, false, err
+		}
+		if id := strings.TrimSpace(filter.ID); id != "" && observed.TargetGroupArn != id {
+			return targetgroup.TargetGroupOutputs{}, false, nil
+		}
+		if name := strings.TrimSpace(filter.Name); name != "" && observed.Name != name {
+			return targetgroup.TargetGroupOutputs{}, false, nil
+		}
+		if !matchesLookupTags(observed.Tags, LookupFilter{Tag: filter.Tag}) {
+			return targetgroup.TargetGroupOutputs{}, false, nil
+		}
+		return targetgroup.TargetGroupOutputs{
+			TargetGroupArn:  observed.TargetGroupArn,
+			TargetGroupName: observed.Name,
+		}, true, nil
 	}
 }
 
@@ -101,5 +136,5 @@ func NewTargetGroupAdapterWithAuth(auth authservice.AuthClient) *TargetGroupAdap
 }
 
 func NewTargetGroupAdapterWithAPI(api targetgroup.TargetGroupAPI) *TargetGroupAdapter {
-	return NewGenericAdapterWithProbe(targetGroupDescriptor(), targetGroupProbe(api))
+	return NewGenericAdapterWithProbes(targetGroupDescriptor(), targetGroupProbe(api), targetGroupLookupProbe(api))
 }

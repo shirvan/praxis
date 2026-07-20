@@ -97,11 +97,52 @@ func lambdaPermissionDescriptor() GenericDescriptor[lambdaperm.LambdaPermissionS
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[lambdaperm.LambdaPermissionSpec, lambdaperm.LambdaPermissionOutputs, lambdaperm.ObservedState] {
 			return lambdaPermissionProbe(lambdaperm.NewPermissionAPI(awsclient.NewLambdaClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[lambdaperm.LambdaPermissionOutputs] {
+			return lambdaPermissionLookupProbe(lambdaperm.NewPermissionAPI(awsclient.NewLambdaClient(cfg)))
+		},
 
 		DiffFields: func(desired lambdaperm.LambdaPermissionSpec, observed lambdaperm.ObservedState, _ lambdaperm.LambdaPermissionOutputs) []types.FieldDiff {
 			return lambdaperm.ComputeFieldDiffs(desired, observed)
 		},
 	}
+}
+
+func lambdaPermissionLookupProbe(api lambdaperm.PermissionAPI) LookupProbeFunc[lambdaperm.LambdaPermissionOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (lambdaperm.LambdaPermissionOutputs, bool, error) {
+		if strings.TrimSpace(filter.Name) != "" || len(filter.Tag) > 0 || strings.TrimSpace(filter.ID) == "" {
+			return lambdaperm.LambdaPermissionOutputs{}, false, restate.TerminalError(fmt.Errorf("LambdaPermission lookup requires filter.id in functionName~statementId form"), 400)
+		}
+		functionName, statementID, err := lambdapermSplitResourceID(strings.TrimSpace(filter.ID))
+		if err != nil {
+			return lambdaperm.LambdaPermissionOutputs{}, false, restate.TerminalError(err, 400)
+		}
+		observed, err := api.GetPermission(ctx, functionName, statementID)
+		if err != nil {
+			if isLookupNotFound(err, lambdaperm.IsNotFound) {
+				return lambdaperm.LambdaPermissionOutputs{}, false, nil
+			}
+			return lambdaperm.LambdaPermissionOutputs{}, false, err
+		}
+		return lambdaperm.LambdaPermissionOutputs{
+			StatementId: observed.StatementId, FunctionName: observed.FunctionName,
+			Statement: lambdaPermissionStatement(observed),
+		}, true, nil
+	}
+}
+
+func lambdaPermissionStatement(observed lambdaperm.ObservedState) string {
+	statement := map[string]any{"Sid": observed.StatementId, "Principal": observed.Principal, "Action": observed.Action}
+	if observed.Condition != "" {
+		var condition any
+		if json.Unmarshal([]byte(observed.Condition), &condition) == nil {
+			statement["Condition"] = condition
+		}
+	}
+	raw, err := json.Marshal(statement)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 // lambdaPermissionProbe adapts the driver API to the generic plan probe shape.
@@ -133,13 +174,13 @@ func NewLambdaPermissionAdapterWithAuth(auth authservice.AuthClient) *LambdaPerm
 // NewLambdaPermissionAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewLambdaPermissionAdapterWithAPI(api lambdaperm.PermissionAPI) *LambdaPermissionAdapter {
-	return NewGenericAdapterWithProbe(lambdaPermissionDescriptor(), lambdaPermissionProbe(api))
+	return NewGenericAdapterWithProbes(lambdaPermissionDescriptor(), lambdaPermissionProbe(api), lambdaPermissionLookupProbe(api))
 }
 
 func lambdapermSplitResourceID(resourceID string) (string, string, error) {
 	parts := strings.SplitN(resourceID, "~", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("import resource ID must be functionName~statementId")
+		return "", "", fmt.Errorf("resource ID must be functionName~statementId")
 	}
 	return parts[0], parts[1], nil
 }

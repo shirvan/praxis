@@ -178,6 +178,24 @@ func (f *statefulEC2API) FindByManagedKey(_ context.Context, managedKey string) 
 	return "", nil
 }
 
+func (f *statefulEC2API) FindByTags(_ context.Context, tags map[string]string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reads++
+	if f.findErr != nil {
+		return "", f.findErr
+	}
+	if f.observed.InstanceId == "" || isTerminating(f.observed.State) {
+		return "", nil
+	}
+	for key, value := range tags {
+		if f.observed.Tags[key] != value {
+			return "", nil
+		}
+	}
+	return f.observed.InstanceId, nil
+}
+
 func (f *statefulEC2API) snapshot() drivertest.ProviderSnapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()

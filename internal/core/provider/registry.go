@@ -23,8 +23,8 @@ import (
 // LookupFilter contains the supported selectors for read-only data source lookup.
 // Templates declare data sources in a top-level `data {}` block; each entry is
 // unmarshalled into a LookupFilter and forwarded to the matching driver's Lookup
-// handler. At least one field must be set — the driver will use whichever
-// combination the underlying AWS API supports (ID > Name > Tag).
+// handler. At least one field must be set. Drivers use ID or Name as the
+// provider identity and apply any additional selectors as AND constraints.
 type LookupFilter struct {
 	// Region is the AWS region to query. When empty the driver falls back to
 	// the account's default region.
@@ -98,6 +98,11 @@ type Adapter interface {
 	// Import adopts an existing provider resource via the typed driver and
 	// converts the result into the generic command-service view.
 	Import(ctx restate.Context, key string, account string, ref types.ImportRef) (types.ResourceStatus, map[string]any, error)
+
+	// Lookup performs a read-only provider query for a template data source.
+	// Kinds whose lookup probe is still being migrated return a 501 terminal
+	// error from the generic adapter.
+	Lookup(ctx restate.Context, account string, filter LookupFilter) (map[string]any, error)
 }
 
 // AsyncInvocation is the common subset shared by provision and delete calls.

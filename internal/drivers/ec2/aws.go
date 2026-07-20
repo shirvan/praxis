@@ -35,6 +35,7 @@ type EC2API interface {
 	UpdateMonitoring(ctx context.Context, instanceId string, enabled bool) error
 	UpdateTags(ctx context.Context, instanceId string, tags map[string]string) error
 	FindByManagedKey(ctx context.Context, managedKey string) (string, error)
+	FindByTags(ctx context.Context, tags map[string]string) (string, error)
 }
 
 // realEC2API is the production implementation of EC2API backed by the AWS SDK v2 EC2 client.
@@ -497,17 +498,55 @@ func (r *realEC2API) UpdateTags(ctx context.Context, instanceId string, tags map
 // Returns "" if no match, the instance ID if exactly one match, or an error if multiple
 // instances claim the same managed key (ownership corruption requiring manual intervention).
 func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (string, error) {
-	if err := r.limiter.Wait(ctx); err != nil {
-		return "", err
-	}
-	out, err := r.client.DescribeInstances(ctx, &ec2sdk.DescribeInstancesInput{
-		Filters: []ec2types.Filter{
-			{Name: aws.String("tag:praxis:managed-key"), Values: []string{managedKey}},
-			{Name: aws.String("instance-state-name"), Values: []string{"pending", "running", "stopping", "stopped"}},
-		},
-	})
+	matches, err := r.findByTags(ctx, map[string]string{"praxis:managed-key": managedKey})
 	if err != nil {
 		return "", err
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ownership corruption: %d live instances claim managed-key %q: %v; manual intervention required", len(matches), managedKey, matches)
+	}
+}
+
+// FindByTags finds one live instance matching every supplied tag. An empty
+// result means no match; multiple results require a more specific filter.
+func (r *realEC2API) FindByTags(ctx context.Context, tags map[string]string) (string, error) {
+	matches, err := r.findByTags(ctx, tags)
+	if err != nil {
+		return "", err
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous EC2 instance lookup: %d live instances match tags %v", len(matches), tags)
+	}
+}
+
+func (r *realEC2API) findByTags(ctx context.Context, tags map[string]string) ([]string, error) {
+	if err := r.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	filters := make([]ec2types.Filter, 0, len(tags)+1)
+	for key, value := range tags {
+		filters = append(filters, ec2types.Filter{Name: aws.String("tag:" + key), Values: []string{value}})
+	}
+	sort.Slice(filters, func(i, j int) bool { return aws.ToString(filters[i].Name) < aws.ToString(filters[j].Name) })
+	filters = append(filters, ec2types.Filter{
+		Name:   aws.String("instance-state-name"),
+		Values: []string{"pending", "running", "stopping", "stopped"},
+	})
+	out, err := r.client.DescribeInstances(ctx, &ec2sdk.DescribeInstancesInput{
+		Filters: filters,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	var matches []string
@@ -519,14 +558,7 @@ func (r *realEC2API) FindByManagedKey(ctx context.Context, managedKey string) (s
 		}
 	}
 
-	switch len(matches) {
-	case 0:
-		return "", nil
-	case 1:
-		return matches[0], nil
-	default:
-		return "", fmt.Errorf("ownership corruption: %d live instances claim managed-key %q: %v; manual intervention required", len(matches), managedKey, matches)
-	}
+	return matches, nil
 }
 
 // IsNotFound returns true if the error indicates the instance does not exist.

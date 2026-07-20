@@ -89,10 +89,36 @@ func ecrRepositoryDescriptor() GenericDescriptor[ecrrepo.ECRRepositorySpec, ecrr
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[ecrrepo.ECRRepositorySpec, ecrrepo.ECRRepositoryOutputs, ecrrepo.ObservedState] {
 			return ecrRepositoryProbe(ecrrepo.NewRepositoryAPI(awsclient.NewECRClient(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[ecrrepo.ECRRepositoryOutputs] {
+			return ecrRepositoryLookupProbe(ecrrepo.NewRepositoryAPI(awsclient.NewECRClient(cfg)))
+		},
 
 		DiffFields: func(desired ecrrepo.ECRRepositorySpec, observed ecrrepo.ObservedState, _ ecrrepo.ECRRepositoryOutputs) []types.FieldDiff {
 			return ecrrepo.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func ecrRepositoryLookupProbe(api ecrrepo.RepositoryAPI) LookupProbeFunc[ecrrepo.ECRRepositoryOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (ecrrepo.ECRRepositoryOutputs, bool, error) {
+		identity := nativeLookupIdentity(filter)
+		if identity == "" {
+			return ecrrepo.ECRRepositoryOutputs{}, false, restate.TerminalError(fmt.Errorf("ECRRepository lookup supports id or name; tag-only lookup is not available"), 400)
+		}
+		observed, err := api.DescribeRepository(ctx, identity)
+		if err != nil {
+			if isLookupNotFound(err, ecrrepo.IsNotFound) {
+				return ecrrepo.ECRRepositoryOutputs{}, false, nil
+			}
+			return ecrrepo.ECRRepositoryOutputs{}, false, err
+		}
+		if !matchesNativeLookupFilter(observed.RepositoryName, observed.Tags, filter) {
+			return ecrrepo.ECRRepositoryOutputs{}, false, nil
+		}
+		return ecrrepo.ECRRepositoryOutputs{
+			RepositoryArn: observed.RepositoryArn, RepositoryName: observed.RepositoryName,
+			RepositoryUri: observed.RepositoryUri, RegistryId: observed.RegistryId,
+		}, true, nil
 	}
 }
 
@@ -120,5 +146,5 @@ func NewECRRepositoryAdapterWithAuth(auth authservice.AuthClient) *ECRRepository
 // NewECRRepositoryAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewECRRepositoryAdapterWithAPI(api ecrrepo.RepositoryAPI) *ECRRepositoryAdapter {
-	return &ECRRepositoryAdapter{GenericAdapter: NewGenericAdapterWithProbe(ecrRepositoryDescriptor(), ecrRepositoryProbe(api))}
+	return &ECRRepositoryAdapter{GenericAdapter: NewGenericAdapterWithProbes(ecrRepositoryDescriptor(), ecrRepositoryProbe(api), ecrRepositoryLookupProbe(api))}
 }

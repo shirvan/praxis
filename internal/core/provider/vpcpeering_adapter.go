@@ -113,10 +113,42 @@ func vpcPeeringDescriptor() GenericDescriptor[vpcpeering.VPCPeeringSpec, vpcpeer
 		NewPlanProbe: func(cfg aws.Config) PlanProbeFunc[vpcpeering.VPCPeeringSpec, vpcpeering.VPCPeeringOutputs, vpcpeering.ObservedState] {
 			return vpcPeeringProbe(vpcpeering.NewVPCPeeringAPI(awsclient.NewEC2Client(cfg)))
 		},
+		NewLookupProbe: func(cfg aws.Config) LookupProbeFunc[vpcpeering.VPCPeeringOutputs] {
+			return vpcPeeringLookupProbe(vpcpeering.NewVPCPeeringAPI(awsclient.NewEC2Client(cfg)))
+		},
 
 		DiffFields: func(desired vpcpeering.VPCPeeringSpec, observed vpcpeering.ObservedState, _ vpcpeering.VPCPeeringOutputs) []types.FieldDiff {
 			return vpcpeering.ComputeFieldDiffs(desired, observed)
 		},
+	}
+}
+
+func vpcPeeringLookupProbe(api vpcpeering.VPCPeeringAPI) LookupProbeFunc[vpcpeering.VPCPeeringOutputs] {
+	return func(ctx restate.RunContext, filter LookupFilter) (vpcpeering.VPCPeeringOutputs, bool, error) {
+		peeringID := strings.TrimSpace(filter.ID)
+		if peeringID == "" {
+			return vpcpeering.VPCPeeringOutputs{}, false, restate.TerminalError(
+				fmt.Errorf("VPCPeeringConnection lookup supports id; name-only and tag-only lookup are not available"),
+				400,
+			)
+		}
+		observed, err := api.DescribeVPCPeeringConnection(ctx, peeringID)
+		if err != nil {
+			if isLookupNotFound(err, vpcpeering.IsNotFound) {
+				return vpcpeering.VPCPeeringOutputs{}, false, nil
+			}
+			return vpcpeering.VPCPeeringOutputs{}, false, err
+		}
+		if observed.VpcPeeringConnectionId != peeringID || !matchesLookupTags(observed.Tags, LookupFilter{Name: filter.Name, Tag: filter.Tag}) {
+			return vpcpeering.VPCPeeringOutputs{}, false, nil
+		}
+		return vpcpeering.VPCPeeringOutputs{
+			VpcPeeringConnectionId: observed.VpcPeeringConnectionId,
+			RequesterVpcId:         observed.RequesterVpcId, AccepterVpcId: observed.AccepterVpcId,
+			RequesterCidrBlock: observed.RequesterCidrBlock, AccepterCidrBlock: observed.AccepterCidrBlock,
+			Status: observed.Status, RequesterOwnerId: observed.RequesterOwnerId,
+			AccepterOwnerId: observed.AccepterOwnerId,
+		}, true, nil
 	}
 }
 
@@ -144,5 +176,5 @@ func NewVPCPeeringAdapterWithAuth(auth authservice.AuthClient) *VPCPeeringAdapte
 // NewVPCPeeringAdapterWithAPI builds an adapter with a fixed planning API.
 // Used by tests.
 func NewVPCPeeringAdapterWithAPI(api vpcpeering.VPCPeeringAPI) *VPCPeeringAdapter {
-	return NewGenericAdapterWithProbe(vpcPeeringDescriptor(), vpcPeeringProbe(api))
+	return NewGenericAdapterWithProbes(vpcPeeringDescriptor(), vpcPeeringProbe(api), vpcPeeringLookupProbe(api))
 }

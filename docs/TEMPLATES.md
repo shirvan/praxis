@@ -193,8 +193,8 @@ resources: {
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `kind` | string | Yes | The resource kind to look up. Lookup is currently supported for `VPC`, `Subnet`, `SecurityGroup`, `S3Bucket`, `IAMRole`, and `Route53HostedZone`; other kinds fail with a 501 "lookup unsupported" error. |
-| `region` | string | No | AWS region for region-scoped resources. Required for kinds that use `KeyScopeRegion`. |
+| `kind` | string | Yes | The resource kind to look up. See [Supported Data Source Kinds](#supported-data-source-kinds); other kinds fail with a 501 "lookup unsupported" error. |
+| `region` | string | No | AWS region for region-scoped resources. Falls back to the account's configured default. |
 | `account` | string | No | Override the deployment's default account for this lookup. Falls back to the deployment account. |
 | `filter` | struct | Yes | Provider-specific filter criteria (see below). |
 
@@ -218,12 +218,12 @@ filter: {
 }
 ```
 
-**Resolution priority** (adapters apply the first matching filter):
-1. `id` — Direct `Describe<Resource>(id)` call. Fastest, no ambiguity.
-2. `name` — Uses the driver's `FindByManagedKey` or a name-based Describe.
-3. `tag` — Tag-based filter using the AWS `DescribeX(Filters: tag:Key=Value)` pattern.
+**Resolution priority** (adapters apply the first available identity):
+1. `id` — Direct provider identifier, such as an ARN, resource ID, URL, or native name.
+2. `name` — Native AWS name when the service has one, otherwise the resource's `Name` tag.
+3. `tag` — Tag-based discovery for drivers whose AWS API can enumerate by tags.
 
-When multiple filter fields are provided, they are ANDed (all must match).
+When multiple filter fields are provided, they are ANDed (all must match). Drivers that cannot enumerate resources by tag still accept tags as an additional constraint on an `id` or `name` lookup.
 
 ### Data Source Expressions
 
@@ -277,18 +277,31 @@ flowchart TD
 
 The trade-off is that data source lookups run synchronously during `plan` and `apply` compilation. This is acceptable because lookups are fast read-only API calls.
 
-### Supported Data Source Kinds
+### Data Source Kind Details
+
+All 51 resource kinds use the generic lookup contract. Filter support follows each AWS API: some resources can be found by name or tags, while composite resources require a provider-native ARN, URL, UUID, or documented import identity in `filter.id`.
+
+`SecretsManagerSecret` and `SSMParameter` use metadata-only lookup APIs. Data-source resolution never fetches a secret value or reads or decrypts an SSM parameter value.
+
+The table below documents the most commonly used kinds in detail. The public resource catalog tracks capability status for all 51 kinds.
 
 | Kind | Outputs | Filter Support |
 |---|---|---|
 | `VPC` | vpcId, arn, cidrBlock, state, enableDnsHostnames, enableDnsSupport, ownerId | id, name, tag |
 | `Subnet` | subnetId, cidrBlock, availabilityZone, vpcId, arn | id, name, tag |
 | `SecurityGroup` | groupId, vpcId, arn, groupName | id, name, tag |
-| `S3Bucket` | bucketName, arn, domainName, region | name |
+| `EC2Instance` | instanceId, privateIpAddress, publicIpAddress, privateDnsName, state, subnetId, vpcId | id, name, tag |
+| `S3Bucket` | bucketName, arn, domainName, region | id, name, tag |
+| `LambdaFunction` | functionArn, functionName, version, state, lastModified, lastUpdateStatus, codeSha256 | id, name; tags can narrow an id/name lookup |
+| `DynamoDBTable` | arn, name, status, itemCount | id, name; tags can narrow an id/name lookup |
+| `ECRRepository` | repositoryArn, repositoryName, repositoryUri, registryId | id, name; tags can narrow an id/name lookup |
+| `ECSCluster` | arn, name, status | id, name; tags can narrow an id/name lookup |
+| `LogGroup` | arn, logGroupName, logGroupClass, retentionInDays, kmsKeyId, creationTime, storedBytes | id, name; tags can narrow an id/name lookup |
+| `RDSInstance` | dbIdentifier, dbiResourceId, arn, endpoint, port, engine, engineVersion, status | id, name; tags can narrow an id/name lookup |
 | `IAMRole` | roleId, arn, roleName | id, name, tag |
 | `Route53HostedZone` | hostedZoneId, nameServers, isPrivate | id, name, tag |
 
-All other adapter kinds return a `501` error indicating lookup is not supported for that kind.
+Tag-only lookup is not available for resource APIs that require a native identifier. Those kinds return a `400` error when the supplied selector cannot be represented safely.
 
 ### Data Source Error Handling
 
