@@ -96,20 +96,20 @@ func dashboardLookupProbe(api dashboard.DashboardAPI) LookupProbeFunc[dashboard.
 	return func(ctx restate.RunContext, filter LookupFilter) (dashboard.DashboardOutputs, bool, error) {
 		if strings.TrimSpace(filter.ID) != "" {
 			return dashboard.DashboardOutputs{}, false, restate.TerminalError(
-				fmt.Errorf("Dashboard lookup by id is not available; use name"),
+				fmt.Errorf("dashboard lookup by id is not available; use name"),
 				400,
 			)
 		}
 		if len(filter.Tag) != 0 {
 			return dashboard.DashboardOutputs{}, false, restate.TerminalError(
-				fmt.Errorf("Dashboard lookup does not support tags"),
+				fmt.Errorf("dashboard lookup does not support tags"),
 				400,
 			)
 		}
 		name := strings.TrimSpace(filter.Name)
 		if name == "" {
 			return dashboard.DashboardOutputs{}, false, restate.TerminalError(
-				fmt.Errorf("Dashboard lookup requires name"),
+				fmt.Errorf("dashboard lookup requires name"),
 				400,
 			)
 		}

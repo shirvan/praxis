@@ -164,7 +164,7 @@ func deleteDeployment(ctx context.Context, flags *rootFlags, renderer *Renderer,
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 	}
 
-	err = pollDeployment(ctx, client, key, 2*time.Second, flags.outputFormat(), renderer)
+	err = pollDeployment(ctx, client, key, 2*time.Second, flags.outputFormat(), renderer, types.DeploymentDeleted)
 	if cancel != nil {
 		cancel()
 	}

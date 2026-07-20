@@ -1,28 +1,19 @@
-# Manual release workflow — triggered by pushing a semver tag (e.g. v0.1.0).
-#
-# Workflow:
-#   1. Developer runs `just release v0.1.0` locally (creates + pushes tag)
-#   2. This workflow runs: lint → test → build artifacts → create GitHub Release
-#   3. Developer edits the release on GitHub to add release notes
-#
-# Semver convention:
-#   Major — big architecture changes (shared, post-1.0.0)
-#   Minor — driver-level releases / new features
-#   Patch — hotfixes and patches
+# Owner-dispatched publication of the one mutable Praxis alpha contract.
+# A normal branch push or tag push cannot publish artifacts.
 
-name: Release
+name: Release alpha
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-alpha
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  # Releases are gated on the full Moto-backed integration suite — the unit
-  # suite alone proves very little about actual provisioning behavior.
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 70
@@ -48,9 +39,48 @@ jobs:
         env:
           PRAXIS_INTEGRATION_TIMEOUT: 60m
 
-  release:
+  artifacts:
     runs-on: ubuntu-latest
-    needs: integration
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Unit tests
+        run: just test
+
+      - name: Build and verify alpha artifacts
+        run: just release-verify
+
+      - name: Upload alpha artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: praxis-alpha
+          path: dist/alpha/*
+          if-no-files-found: error
+          retention-days: 7
+
+  production-topology:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,68 +93,31 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Lint
+      - name: Prepare production process topology
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
-          just lint
+          cp .env.example .env
+          docker compose build
+          docker compose up -d
+          just wait-stack
+          just register
+          just build-cli
 
-      - name: Unit tests
-        run: just test
+      - name: Compiled CLI acceptance test
+        run: just test-production-topology
 
-      - name: Build release artifacts
-        run: just release-build ${{ steps.version.outputs.version }}
+      - name: Capture service logs
+        if: failure()
+        run: docker compose logs --no-color
 
-      - name: Detect prerelease
-        id: prerelease
-        run: |
-          if echo "${GITHUB_REF_NAME}" | grep -qE '\-(alpha|beta|rc)'; then
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Stop topology
+        if: always()
+        run: docker compose down -v
 
-      - name: Extract release notes from tag
-        id: notes
-        run: |
-          # actions/checkout converts annotated tags into lightweight ones
-          # (actions/checkout#290), so re-fetch the real tag object first.
-          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
-          # Get tag message body (skip the first "title" line)
-          BODY=$(git tag -l --format='%(contents:body)' "${GITHUB_REF_NAME}")
-          SUBJECT=$(git tag -l --format='%(contents:subject)' "${GITHUB_REF_NAME}")
-          {
-            echo 'body<<RELEASE_NOTES_EOF'
-            echo "${SUBJECT}"
-            echo ""
-            echo "${BODY}"
-            echo 'RELEASE_NOTES_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.version }}
-          draft: true
-          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
-          body: ${{ steps.notes.outputs.body }}
-          files: |
-            dist/${{ steps.version.outputs.version }}/praxis_darwin_arm64.tar.gz
-            dist/${{ steps.version.outputs.version }}/praxis_darwin_amd64.tar.gz
-            dist/${{ steps.version.outputs.version }}/praxis_linux_amd64.tar.gz
-            dist/${{ steps.version.outputs.version }}/checksums.txt
-
-  docker:
+  build-images:
+    needs: [integration, artifacts, production-topology]
     runs-on: ubuntu-latest
-    needs: release
-    permissions:
-      contents: read
-      packages: write
     strategy:
+      fail-fast: false
       matrix:
         image:
           - name: praxis-core
@@ -143,9 +136,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.image.target }}
+          push: false
+          build-args: |
+            PRAXIS_VERSION=alpha
+            PRAXIS_REVISION=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.target }}
+
+  publish-images:
+    needs: build-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: praxis-core
+            target: praxis-core
+          - name: praxis-storage
+            target: praxis-storage
+          - name: praxis-network
+            target: praxis-network
+          - name: praxis-compute
+            target: praxis-compute
+          - name: praxis-identity
+            target: praxis-identity
+          - name: praxis-monitoring
+            target: praxis-monitoring
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -154,55 +190,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Publish alpha image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           target: ${{ matrix.image.target }}
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}:latest
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}:alpha
+          build-args: |
+            PRAXIS_VERSION=alpha
+            PRAXIS_REVISION=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image.target }}
 
-  helm:
+  release:
+    needs: [artifacts, publish-images]
     runs-on: ubuntu-latest
-    needs: release
     permissions:
       contents: write
-      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Extract version from tag
-        id: version
+      - name: Download alpha artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: praxis-alpha
+          path: dist/alpha
+
+      - name: Advance the mutable alpha tag
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          git tag --force alpha "$GITHUB_SHA"
+          git push --force origin refs/tags/alpha
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-
-      - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Stamp chart version
-        run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" charts/praxis/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" charts/praxis/Chart.yaml
-          cat charts/praxis/Chart.yaml
-
-      - name: Package Helm chart
-        run: |
-          mkdir -p dist/helm
-          helm package charts/praxis --destination dist/helm
-
-      - name: Push chart to GHCR
-        run: helm push dist/helm/praxis-${{ steps.version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
-
-      - name: Upload chart to GitHub Release
+      - name: Create or update the alpha release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          files: dist/helm/praxis-${{ steps.version.outputs.version }}.tgz
+          tag_name: alpha
+          name: Praxis alpha
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            Praxis alpha is a mutable, single-version contract.
+
+            Update the CLI, all Praxis service images, chart, schemas, and templates together. Backwards compatibility between alpha revisions is not supported.
+          files: dist/alpha/*

@@ -326,6 +326,9 @@ just test-core-integration
 # Full lifecycle tests (all 51 drivers, saas-platform.cue — requires Docker)
 just test-lifecycle
 
+# Compiled CLI against a running Core + five-pack production topology
+just test-production-topology
+
 # Full local CI (lint → unit → integration)
 just ci
 
@@ -337,6 +340,10 @@ just reset-moto
 
 ```mermaid
 graph TD
+    subgraph L4["Layer 4: Production Topology Acceptance"]
+        PTA["Compiled CLI through Restate<br/>Six service processes + direct provider checks"]
+    end
+
     subgraph L3["Layer 3: End-to-End Tests"]
         E2E["Full deployment lifecycle<br/>Testcontainers: Restate + Moto"]
     end
@@ -349,13 +356,26 @@ graph TD
         UT["DAG, drift detection,<br/>templates, diff, adapters<br/>No Docker required"]
     end
 
+    L4 ~~~ L3
     L3 ~~~ L2
     L2 ~~~ L1
 
     style L1 fill:#4CAF50,color:#fff
     style L2 fill:#FF9800,color:#fff
     style L3 fill:#F44336,color:#fff
+    style L4 fill:#7E57C2,color:#fff
 ```
+
+#### Layer 4: Production Topology Acceptance
+
+The acceptance suite does not reflect services in-process. It executes the
+compiled `praxis` binary against Restate, Praxis Core, and all five production
+driver-pack processes. It requires all 51 driver services and all 19 Core
+services to be visible in Restate, then runs plan, deploy, get, and delete
+through the CLI while checking the resulting S3 resource directly in Moto. This
+catches binary entry-point,
+container, registration, routing, and CLI/API integration failures that package
+tests cannot see.
 
 #### Layer 1: Unit Tests (Pure Logic)
 
@@ -672,67 +692,63 @@ generic lifecycle and binding path.
 - **Formatting**: `gofmt -s` (check with `just fmt-check`)
 - **Linting**: `golangci-lint` (run with `just lint`)
 
-## Release
+## Alpha Release
 
-Praxis uses [semver](https://semver.org/). Releases are **manual** — you control what version ships and with what notes. No automated release-on-push.
+Praxis has one supported mutable version: `alpha`. The CLI, Core, all five
+driver packs, container images, Helm app version, schemas, saved plans, state,
+and template API belong to that one contract. There are no per-service versions,
+numbered product releases, aliases, migrations, or compatibility readers during
+alpha.
 
-### Versioning
+Publishing is owner-controlled. Normal branch pushes and tag pushes cannot
+release Praxis. An owner must manually dispatch
+[`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
-All services currently share a **single monolithic version**. After the initial public release, each service will move to independent per-service versioning.
-
-| Component | Binary / Image | Current Versioning |
-| --- | --- | --- |
-| **CLI** | `praxis` | Shared tag |
-| **Core** | `praxis-core` | Shared tag |
-| **Network Pack** | `praxis-network` | Shared tag |
-| **Compute Pack** | `praxis-compute` | Shared tag |
-| **Storage Pack** | `praxis-storage` | Shared tag |
-| **Identity Pack** | `praxis-identity` | Shared tag |
-| **Monitoring Pack** | `praxis-monitoring` | Shared tag |
-
-### Release Workflow
-
-```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant GH as GitHub Actions
-    participant GHCR as ghcr.io
-    participant Rel as GitHub Releases
-
-    Dev->>Dev: just release-preflight <tag>
-    Note over Dev: lint, test, build
-    Dev->>GH: just release <tag> (tag + push)
-    GH->>GH: lint, test, cross-compile CLI
-    GH->>GHCR: Push Docker images
-    GH->>Rel: Create draft release + tarballs
-    Dev->>Rel: Edit notes and publish
-```
+### Local Verification
 
 ```bash
-# 1. Run pre-release checks (lint, test, build)
-just release-preflight <tag>
+# Build CLI archives, the no-clone quick-start bundle, and the Helm chart.
+just release-build
 
-# 2. Tag and push — triggers GitHub Actions to build artifacts and create a draft release
-just release <tag>
+# Rebuild and verify checksums, the native CLI, Compose image wiring, and Helm.
+just release-verify
 
-# 3. Go to GitHub Releases, edit the draft, add release notes, and publish
+# Run lint, formatting, unit tests, builds, and artifact verification.
+just release-preflight
 ```
 
-### What Happens
-
-1. `just release <tag>` validates the tag, checks for a clean working tree on `main`, creates an annotated git tag, and pushes it.
-2. GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) runs: lint → test → cross-compile CLI (darwin/arm64, darwin/amd64, linux/amd64) → create a **draft** GitHub Release with tarballs and checksums attached.
-3. Docker images for all services are built and pushed to `ghcr.io/shirvan/praxis-*`.
-4. You edit the draft release on GitHub to add your release notes, then publish.
-
-### Local-Only Build (No Tag)
+The Docker-backed integration and production-topology acceptance suites are
+explicit because the integration suite can take more than 45 minutes:
 
 ```bash
-# Build release artifacts locally without tagging (for inspection)
-just release-build <tag>
+just test-integration
+
+cp .env.example .env
+docker compose build
+docker compose up -d
+just wait-stack
+just register
+just test-production-topology
+docker compose down -v
 ```
 
-This runs the `release-build` recipe which cross-compiles the CLI and service binaries into `dist/<tag>/`.
+### Published Artifacts
+
+One approved workflow dispatch:
+
+1. Runs the complete Moto-backed integration suite.
+2. Builds and verifies the downloadable artifacts.
+3. Starts the real six-service process topology and drives it through the
+   compiled CLI.
+4. Builds all six container targets before publication.
+5. Advances every GHCR image to `:alpha`.
+6. Advances the mutable Git tag and GitHub prerelease named `alpha`.
+7. Replaces the CLI archives, checksums, image-based quick-start bundle, and
+   Helm chart attached to that release.
+
+The workflow does not publish `:latest` or per-service tags. Alpha revisions
+may break prior state and templates. Consumers must update the complete artifact
+set together.
 
 ### CI
 

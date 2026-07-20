@@ -6,6 +6,19 @@
 .env
 bin/
 dist/
+# None of these directories are inputs to the Go service binaries or the
+# schema bundle copied into praxis-core. Keeping them out avoids invalidating
+# image caches for website, documentation, test, and packaging-only changes.
+.github/
+charts/
+deploy/
+docs/
+examples/
+moto-init/
+scripts/
+site/
+skills/
+tests/
 # Judy is an independent Rust project and is never part of Praxis's Go image.
 judy/
 .DS_Store

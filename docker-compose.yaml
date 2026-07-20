@@ -78,6 +78,7 @@ services:
   # --- Praxis Services ------------------------------------------------------
 
   praxis-storage:
+    image: praxis-storage:alpha
     build:
       context: .
       dockerfile: Dockerfile
@@ -98,6 +99,7 @@ services:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
   praxis-compute:
+    image: praxis-compute:alpha
     build:
       context: .
       dockerfile: Dockerfile
@@ -116,6 +118,7 @@ services:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
   praxis-identity:
+    image: praxis-identity:alpha
     build:
       context: .
       dockerfile: Dockerfile
@@ -134,6 +137,7 @@ services:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
   praxis-network:
+    image: praxis-network:alpha
     build:
       context: .
       dockerfile: Dockerfile
@@ -152,6 +156,7 @@ services:
       - PRAXIS_LISTEN_ADDR=0.0.0.0:9080
 
   praxis-core:
+    image: praxis-core:alpha
     build:
       context: .
       dockerfile: Dockerfile
@@ -183,6 +188,7 @@ services:
       - "./schemas:/schemas:ro"
 
   praxis-monitoring:
+    image: praxis-monitoring:alpha
     build:
       context: .
       dockerfile: Dockerfile

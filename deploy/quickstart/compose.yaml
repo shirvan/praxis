@@ -1,0 +1,110 @@
+name: praxis
+
+x-praxis-environment: &praxis-environment
+  PRAXIS_LISTEN_ADDR: 0.0.0.0:9080
+  PRAXIS_RESTATE_ENDPOINT: http://restate:8080
+  PRAXIS_SCHEMA_DIR: /schemas
+  PRAXIS_ACCOUNT_NAME: local
+  PRAXIS_ACCOUNT_REGION: us-east-1
+  PRAXIS_ACCOUNT_CREDENTIAL_SOURCE: static
+  PRAXIS_ACCOUNT_ACCESS_KEY_ID: test
+  PRAXIS_ACCOUNT_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://moto:4566
+
+x-praxis-service: &praxis-service
+  pull_policy: always
+  restart: unless-stopped
+  environment: *praxis-environment
+  depends_on:
+    moto:
+      condition: service_healthy
+    restate:
+      condition: service_healthy
+
+services:
+  moto:
+    image: motoserver/moto:latest
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      MOTO_PORT: "4566"
+      MOTO_IAM_LOAD_MANAGED_POLICIES: "true"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/moto-api/')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  restate:
+    image: docker.restate.dev/restatedev/restate:1.6
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9070:9070"
+      - "127.0.0.1:9071:9071"
+    environment:
+      RESTATE_OBSERVABILITY__LOG__FILTER: restate=info
+    volumes:
+      - restate-data:/target/restate
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9070/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  praxis-core:
+    <<: *praxis-service
+    image: ghcr.io/shirvan/praxis-core:alpha
+
+  praxis-storage:
+    <<: *praxis-service
+    image: ghcr.io/shirvan/praxis-storage:alpha
+
+  praxis-network:
+    <<: *praxis-service
+    image: ghcr.io/shirvan/praxis-network:alpha
+
+  praxis-compute:
+    <<: *praxis-service
+    image: ghcr.io/shirvan/praxis-compute:alpha
+
+  praxis-identity:
+    <<: *praxis-service
+    image: ghcr.io/shirvan/praxis-identity:alpha
+
+  praxis-monitoring:
+    <<: *praxis-service
+    image: ghcr.io/shirvan/praxis-monitoring:alpha
+
+  register:
+    image: curlimages/curl:8.12.1
+    restart: "no"
+    depends_on:
+      restate:
+        condition: service_healthy
+      praxis-core:
+        condition: service_started
+      praxis-storage:
+        condition: service_started
+      praxis-network:
+        condition: service_started
+      praxis-compute:
+        condition: service_started
+      praxis-identity:
+        condition: service_started
+      praxis-monitoring:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      - |
+        for service in core storage network compute identity monitoring; do
+          uri="http://praxis-$${service}:9080"
+          echo "Registering praxis-$${service} at $${uri}"
+          until curl -fsS -o /dev/null -X POST http://restate:9070/deployments \
+            -H 'content-type: application/json' \
+            -d "{\"uri\":\"$${uri}\",\"force\":true}"; do
+            sleep 2
+          done
+        done
+
+volumes:
+  restate-data:

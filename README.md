@@ -132,74 +132,67 @@ None of them let you declare infrastructure, have it continuously converged, and
 
 Praxis runs anywhere Restate runs — a single Docker Compose stack on your laptop, a Kubernetes cluster, or fully managed on Restate Cloud. Pick the path that fits your situation.
 
-### Local Development
+### Try Praxis alpha locally
 
-The fastest way to try Praxis. Docker Compose brings up Moto (mock AWS), Restate, Praxis Core, and all driver packs.
+The supported evaluation path downloads published artifacts. It does not require
+Go, `just`, or a repository clone.
 
-#### Prerequisites
+#### Prerequisite
 
-- [Docker](https://www.docker.com/) + Docker Compose
-- [just](https://github.com/casey/just) (task runner)
-- [jq](https://jqlang.github.io/jq/) (used by `just up` to register services)
-- [Go](https://go.dev/) >= 1.25 (for building from source)
+- [Docker](https://www.docker.com/) with Docker Compose
 
-#### Start the Stack
+#### Download the CLI and stack
 
-```bash
-git clone https://github.com/shirvan/praxis.git
-cd praxis
+Open the [Praxis alpha release](https://github.com/shirvan/praxis/releases/tag/alpha)
+and download:
 
-# Create the operator environment file
-cp .env.example .env
+- the CLI archive for your operating system and architecture
+- `checksums.txt`
+- `praxis-alpha-quickstart.tar.gz`
 
-# Start Moto + Restate + Praxis Core + drivers, then register services
-just up
-```
-
-#### Use the CLI
-
-The CLI is built to `bin/praxis`. The snippets below call it as `./bin/praxis`;
-add `bin/` to your `PATH` (`export PATH="$PWD/bin:$PATH"`) to drop the prefix.
-These commands use the shipped [`examples/ec2/dev-instance.cue`](examples/ec2/dev-instance.cue)
-template and its `dev-instance.vars.json` variables file.
+Verify the downloaded files against `checksums.txt`, place the `praxis`
+binary on your `PATH`, then extract and start the stack:
 
 ```bash
-# Build the CLI
-just build-cli
-
-# --- Operator: register a template ---
-./bin/praxis template register examples/ec2/dev-instance.cue --description "Dev EC2 instance"
-./bin/praxis template list
-./bin/praxis template describe dev-instance
-
-# --- User: deploy from a registered template ---
-# Preview changes (dry-run)
-./bin/praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.json --dry-run
-
-# Deploy with a variables file
-./bin/praxis deploy dev-instance --account local -f examples/ec2/dev-instance.vars.json --key myapp-dev --wait
-
-# --- Common operations ---
-./bin/praxis get Deployment/myapp-dev          # Check deployment status
-./bin/praxis list deployments                  # List all deployments
-./bin/praxis observe Deployment/myapp-dev      # Follow deployment events
-./bin/praxis delete Deployment/myapp-dev --yes --wait
-
-# --- Operator: inline CUE (development/testing) ---
-./bin/praxis plan examples/ec2/dev-instance.cue --account local -f examples/ec2/dev-instance.vars.json
+tar -xzf praxis-alpha-quickstart.tar.gz
+cd praxis-alpha-quickstart
+./praxis-up
+praxis version
 ```
+
+The bundle pulls the six `:alpha` Praxis images from GHCR and starts them with
+Restate and Moto. It compiles nothing locally.
+
+#### Plan and deploy
+
+```bash
+praxis plan bucket.cue --account local
+praxis deploy bucket.cue --account local --key quickstart --yes --wait
+praxis get Deployment/quickstart
+praxis delete Deployment/quickstart --yes --wait
+./praxis-down
+```
+
+Praxis alpha is one mutable contract. Update the CLI, all service images,
+schemas, chart, and templates together. Backwards compatibility between alpha
+revisions is not supported.
+
+For source builds and contributor workflows, clone the repository and follow
+the [developer guide](docs/DEVELOPERS.md).
 
 ### Centralized Deployment (Kubernetes)
 
-For team and production use, deploy Praxis on Kubernetes with the Helm chart published to GitHub Container Registry. The chart deploys all Praxis components and optionally bundles a Restate instance — or you can point to an external one (like [Restate Cloud](https://restate.dev/cloud/)).
+For team environments, deploy Praxis on Kubernetes with the Helm chart attached
+to the same GitHub alpha release. The chart deploys all Praxis components and
+optionally bundles Restate, or points to an external Restate environment.
 
 ```bash
 # Deploy with bundled Restate
-helm install praxis oci://ghcr.io/shirvan/charts/praxis \
+helm install praxis https://github.com/shirvan/praxis/releases/download/alpha/praxis-alpha-chart.tgz \
   --namespace praxis-system --create-namespace
 
 # Or deploy against Restate Cloud (no bundled Restate)
-helm install praxis oci://ghcr.io/shirvan/charts/praxis \
+helm install praxis https://github.com/shirvan/praxis/releases/download/alpha/praxis-alpha-chart.tgz \
   --namespace praxis-system --create-namespace \
   --set restate.enabled=false \
   --set restate.external.ingressUrl=https://<env>.dev.restate.cloud:8080 \
@@ -210,7 +203,7 @@ kubectl -n praxis-system wait --for=condition=ready pod \
   -l app.kubernetes.io/part-of=praxis --timeout=120s
 
 # (Optional) Enable autoscaling for driver packs
-helm upgrade praxis oci://ghcr.io/shirvan/charts/praxis \
+helm upgrade praxis https://github.com/shirvan/praxis/releases/download/alpha/praxis-alpha-chart.tgz \
   --namespace praxis-system \
   --set drivers.network.autoscaling.enabled=true \
   --set drivers.compute.autoscaling.enabled=true

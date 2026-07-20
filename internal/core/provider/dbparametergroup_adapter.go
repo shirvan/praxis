@@ -119,8 +119,8 @@ func dbParameterGroupIdentityFromARN(value string) (string, string, error) {
 		":cluster-pg:": dbparametergroup.TypeCluster,
 		":pg:":         dbparametergroup.TypeDB,
 	} {
-		if index := strings.Index(arn, marker); index >= 0 {
-			name := strings.TrimSpace(arn[index+len(marker):])
+		if _, resource, ok := strings.Cut(arn, marker); ok {
+			name := strings.TrimSpace(resource)
 			if name != "" {
 				return name, groupType, nil
 			}

@@ -2,8 +2,10 @@ apiVersion: v2
 name: praxis
 description: Declarative infrastructure automation — without the cluster
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Helm requires a SemVer package version. This is packaging metadata only;
+# Praxis exposes one mutable product version and image tag: alpha.
+version: 0.0.0-alpha
+appVersion: "alpha"
 home: https://github.com/shirvan/praxis
 sources:
   - https://github.com/shirvan/praxis
