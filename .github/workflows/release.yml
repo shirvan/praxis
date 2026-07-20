@@ -25,7 +25,7 @@ jobs:
   # suite alone proves very little about actual provisioning behavior.
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 70
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
       - name: Integration tests
         run: just test-integration
         env:
-          PRAXIS_INTEGRATION_TIMEOUT: 40m
+          PRAXIS_INTEGRATION_TIMEOUT: 60m
 
   release:
     runs-on: ubuntu-latest

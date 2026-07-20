@@ -4,14 +4,14 @@
 //
 // These tests exercise the complete plan → deploy → read → change → read →
 // delete → verify cycle using the end-to-end.cue template, which provisions
-// all 45 resource kinds with real DAG dependency resolution, data sources,
+// the broad application-stack resource set with real DAG dependency resolution, data sources,
 // SSM parameters, for-loop comprehensions, conditional resources, and
 // lifecycle policies.
 //
 // Unlike unit tests (mock AWS) or integration tests (single-driver), these
 // functional tests validate that the entire vertical stack works end-to-end:
 //
-//	CLI payload → CUE engine → DAG → Orchestrator → All 45 Drivers → Moto
+//	Command API payload → CUE engine → DAG → Orchestrator → Production Driver Packs → Moto
 //
 // Run with:
 //
@@ -51,59 +51,18 @@ import (
 	"github.com/shirvan/praxis/internal/core/provider"
 	"github.com/shirvan/praxis/internal/core/registry"
 	"github.com/shirvan/praxis/internal/core/workspace"
-
-	driveracmcert "github.com/shirvan/praxis/internal/drivers/acmcert"
-	driveralb "github.com/shirvan/praxis/internal/drivers/alb"
-	driverami "github.com/shirvan/praxis/internal/drivers/ami"
-	driverauroracluster "github.com/shirvan/praxis/internal/drivers/auroracluster"
-	driverdashboard "github.com/shirvan/praxis/internal/drivers/dashboard"
-	driverdbparametergroup "github.com/shirvan/praxis/internal/drivers/dbparametergroup"
-	driverdbsubnetgroup "github.com/shirvan/praxis/internal/drivers/dbsubnetgroup"
-	driverebs "github.com/shirvan/praxis/internal/drivers/ebs"
-	driverec2 "github.com/shirvan/praxis/internal/drivers/ec2"
-	driverecrpolicy "github.com/shirvan/praxis/internal/drivers/ecrpolicy"
-	driverecrrepo "github.com/shirvan/praxis/internal/drivers/ecrrepo"
-	drivereip "github.com/shirvan/praxis/internal/drivers/eip"
-	driveresm "github.com/shirvan/praxis/internal/drivers/esm"
-	driveriamgroup "github.com/shirvan/praxis/internal/drivers/iamgroup"
-	driveriaminstanceprofile "github.com/shirvan/praxis/internal/drivers/iaminstanceprofile"
-	driveriampolicy "github.com/shirvan/praxis/internal/drivers/iampolicy"
-	driveriamrole "github.com/shirvan/praxis/internal/drivers/iamrole"
-	driveriamuser "github.com/shirvan/praxis/internal/drivers/iamuser"
-	driverigw "github.com/shirvan/praxis/internal/drivers/igw"
-	driverkeypair "github.com/shirvan/praxis/internal/drivers/keypair"
-	driverlambda "github.com/shirvan/praxis/internal/drivers/lambda"
-	driverlambdalayer "github.com/shirvan/praxis/internal/drivers/lambdalayer"
-	driverlambdaperm "github.com/shirvan/praxis/internal/drivers/lambdaperm"
-	driverlistener "github.com/shirvan/praxis/internal/drivers/listener"
-	driverlistenerrule "github.com/shirvan/praxis/internal/drivers/listenerrule"
-	driverloggroup "github.com/shirvan/praxis/internal/drivers/loggroup"
-	drivermetricalarm "github.com/shirvan/praxis/internal/drivers/metricalarm"
-	drivernacl "github.com/shirvan/praxis/internal/drivers/nacl"
-	drivernatgw "github.com/shirvan/praxis/internal/drivers/natgw"
-	drivernlb "github.com/shirvan/praxis/internal/drivers/nlb"
-	driverrdsinstance "github.com/shirvan/praxis/internal/drivers/rdsinstance"
-	driverroute53healthcheck "github.com/shirvan/praxis/internal/drivers/route53healthcheck"
-	driverroute53record "github.com/shirvan/praxis/internal/drivers/route53record"
-	driverroute53zone "github.com/shirvan/praxis/internal/drivers/route53zone"
-	driverroutetable "github.com/shirvan/praxis/internal/drivers/routetable"
-	drivers3 "github.com/shirvan/praxis/internal/drivers/s3"
-	driversg "github.com/shirvan/praxis/internal/drivers/sg"
-	driversnssub "github.com/shirvan/praxis/internal/drivers/snssub"
-	driversnstopic "github.com/shirvan/praxis/internal/drivers/snstopic"
-	driversqs "github.com/shirvan/praxis/internal/drivers/sqs"
-	driversqspolicy "github.com/shirvan/praxis/internal/drivers/sqspolicy"
-	driversubnet "github.com/shirvan/praxis/internal/drivers/subnet"
-	drivertargetgroup "github.com/shirvan/praxis/internal/drivers/targetgroup"
-	drivervpc "github.com/shirvan/praxis/internal/drivers/vpc"
-	drivervpcpeering "github.com/shirvan/praxis/internal/drivers/vpcpeering"
+	computepack "github.com/shirvan/praxis/internal/driverpack/compute"
+	identitypack "github.com/shirvan/praxis/internal/driverpack/identity"
+	monitoringpack "github.com/shirvan/praxis/internal/driverpack/monitoring"
+	networkpack "github.com/shirvan/praxis/internal/driverpack/network"
+	storagepack "github.com/shirvan/praxis/internal/driverpack/storage"
 
 	"github.com/shirvan/praxis/internal/infra/awsclient"
 	"github.com/shirvan/praxis/pkg/types"
 )
 
 // ---------------------------------------------------------------------------
-// Full-stack test environment (all 45 drivers)
+// Full-stack test environment (all production drivers)
 // ---------------------------------------------------------------------------
 
 type lifecycleTestEnv struct {
@@ -139,8 +98,7 @@ func setupFullStack(t *testing.T) *lifecycleTestEnv {
 	deleteWorkflow := orchestrator.NewDeploymentDeleteWorkflow(providers)
 	rollbackWorkflow := orchestrator.NewDeploymentRollbackWorkflow(providers)
 
-	// --- Instantiate ALL 45 drivers ---
-	env := restatetest.Start(t,
+	services := []restate.ServiceDefinition{
 		// Core infrastructure
 		restate.Reflect(authservice.NewAuthService(authservice.LoadBootstrapFromEnv())),
 		restate.Reflect(workspace.NewWorkspaceService(absSchemaDir)),
@@ -161,74 +119,17 @@ func setupFullStack(t *testing.T) *lifecycleTestEnv {
 		restate.Reflect(registry.TemplateRegistry{}),
 		restate.Reflect(registry.TemplateIndex{}),
 		restate.Reflect(registry.PolicyRegistry{}),
+	}
 
-		// ── Storage drivers ──
-		restate.Reflect(drivers3.NewGenericS3BucketDriver(authClient)),
+	// Bind the exact definitions used by the five production driver binaries.
+	// This keeps the full-stack harness aligned with production automatically.
+	services = append(services, computepack.Definitions(authClient)...)
+	services = append(services, identitypack.Definitions(authClient)...)
+	services = append(services, monitoringpack.Definitions(authClient)...)
+	services = append(services, networkpack.Definitions(authClient)...)
+	services = append(services, storagepack.Definitions(authClient)...)
 
-		// ── Network drivers ──
-		restate.Reflect(drivervpc.NewGenericVPCDriver(authClient)),
-		restate.Reflect(driversg.NewGenericSecurityGroupDriver(authClient)),
-		restate.Reflect(driversubnet.NewGenericSubnetDriver(authClient)),
-		restate.Reflect(driverigw.NewGenericIGWDriver(authClient)),
-		restate.Reflect(drivernatgw.NewGenericNATGatewayDriver(authClient)),
-		restate.Reflect(drivereip.NewGenericElasticIPDriver(authClient)),
-		restate.Reflect(driverroutetable.NewGenericRouteTableDriver(authClient)),
-		restate.Reflect(drivernacl.NewGenericNetworkACLDriver(authClient)),
-		restate.Reflect(drivervpcpeering.NewGenericVPCPeeringDriver(authClient)),
-
-		// ── Compute drivers ──
-		restate.Reflect(driverec2.NewGenericEC2InstanceDriver(authClient)),
-		restate.Reflect(driverkeypair.NewGenericKeyPairDriver(authClient)),
-		restate.Reflect(driverebs.NewGenericEBSVolumeDriver(authClient)),
-		restate.Reflect(driverami.NewGenericAMIDriver(authClient)),
-
-		// ── Identity drivers ──
-		restate.Reflect(driveriamrole.NewGenericIAMRoleDriver(authClient)),
-		restate.Reflect(driveriampolicy.NewGenericIAMPolicyDriver(authClient)),
-		restate.Reflect(driveriaminstanceprofile.NewGenericIAMInstanceProfileDriver(authClient)),
-		restate.Reflect(driveriamgroup.NewGenericIAMGroupDriver(authClient)),
-		restate.Reflect(driveriamuser.NewGenericIAMUserDriver(authClient)),
-
-		// ── DNS & TLS drivers ──
-		restate.Reflect(driveracmcert.NewGenericACMCertificateDriver(authClient)),
-		restate.Reflect(driverroute53zone.NewGenericHostedZoneDriver(authClient)),
-		restate.Reflect(driverroute53record.NewGenericDNSRecordDriver(authClient)),
-		restate.Reflect(driverroute53healthcheck.NewGenericHealthCheckDriver(authClient)),
-
-		// ── Load balancer drivers ──
-		restate.Reflect(driveralb.NewGenericALBDriver(authClient)),
-		restate.Reflect(drivernlb.NewGenericNLBDriver(authClient)),
-		restate.Reflect(drivertargetgroup.NewGenericTargetGroupDriver(authClient)),
-		restate.Reflect(driverlistener.NewGenericListenerDriver(authClient)),
-		restate.Reflect(driverlistenerrule.NewGenericListenerRuleDriver(authClient)),
-
-		// ── Serverless drivers ──
-		restate.Reflect(driverlambda.NewGenericLambdaFunctionDriver(authClient)),
-		restate.Reflect(driverlambdalayer.NewGenericLambdaLayerDriver(authClient)),
-		restate.Reflect(driverlambdaperm.NewGenericLambdaPermissionDriver(authClient)),
-		restate.Reflect(driveresm.NewGenericEventSourceMappingDriver(authClient)),
-
-		// ── Database drivers ──
-		restate.Reflect(driverrdsinstance.NewGenericRDSInstanceDriver(authClient)),
-		restate.Reflect(driverauroracluster.NewGenericAuroraClusterDriver(authClient)),
-		restate.Reflect(driverdbsubnetgroup.NewGenericDBSubnetGroupDriver(authClient)),
-		restate.Reflect(driverdbparametergroup.NewGenericDBParameterGroupDriver(authClient)),
-
-		// ── Container registry drivers ──
-		restate.Reflect(driverecrrepo.NewGenericECRRepositoryDriver(authClient)),
-		restate.Reflect(driverecrpolicy.NewGenericECRLifecyclePolicyDriver(authClient)),
-
-		// ── Messaging drivers ──
-		restate.Reflect(driversnstopic.NewGenericSNSTopicDriver(authClient)),
-		restate.Reflect(driversnssub.NewGenericSNSSubscriptionDriver(authClient)),
-		restate.Reflect(driversqs.NewGenericSQSQueueDriver(authClient)),
-		restate.Reflect(driversqspolicy.NewGenericSQSQueuePolicyDriver(authClient)),
-
-		// ── Monitoring drivers ──
-		restate.Reflect(driverloggroup.NewGenericLogGroupDriver(authClient)),
-		restate.Reflect(drivermetricalarm.NewGenericMetricAlarmDriver(authClient)),
-		restate.Reflect(driverdashboard.NewGenericDashboardDriver(authClient)),
-	)
+	env := restatetest.Start(t, services...)
 
 	return &lifecycleTestEnv{
 		ingress:   env.Ingress(),

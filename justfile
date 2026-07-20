@@ -24,9 +24,9 @@ judy-ci:
 
 wait_timeout_seconds := "120"
 test_heartbeat_seconds := "30"
-# The serial integration suite starts isolated Restate testcontainers. Ten
+# The serial integration suite starts isolated Restate testcontainers. Twenty
 # minutes is too narrow on Docker Desktop even when every assertion is healthy.
-integration_timeout := env_var_or_default("PRAXIS_INTEGRATION_TIMEOUT", "20m")
+integration_timeout := env_var_or_default("PRAXIS_INTEGRATION_TIMEOUT", "60m")
 
 # ─── Development ────────────────────────────────────────────
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	ecrsdk "github.com/aws/aws-sdk-go-v2/service/ecr"
+	"github.com/stretchr/testify/require"
 
 	"github.com/restatedev/sdk-go/ingress"
 
@@ -29,12 +30,10 @@ func uniqueRepoName(t *testing.T) string {
 	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano()%100000)
 }
 
-func skipIfECRUnavailable(t *testing.T, client *ecrsdk.Client) {
+func requireECRAvailable(t *testing.T, client *ecrsdk.Client) {
 	t.Helper()
 	_, err := client.DescribeRepositories(context.Background(), &ecrsdk.DescribeRepositoriesInput{})
-	if err != nil && !ecrrepo.IsNotFound(err) {
-		t.Skipf("ECR API unavailable in test environment: %v", err)
-	}
+	require.True(t, err == nil || ecrrepo.IsNotFound(err), "ECR API must be available in the integration environment: %v", err)
 }
 
 func setupECRRepoDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
@@ -43,7 +42,7 @@ func setupECRRepoDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ecrClient := awsclient.NewECRClient(awsCfg)
-	skipIfECRUnavailable(t, ecrClient)
+	requireECRAvailable(t, ecrClient)
 
 	return setupDriverEventingEnv(t, ecrrepo.NewGenericECRRepositoryDriver(authservice.NewAuthClient())), ecrClient
 }
@@ -54,7 +53,7 @@ func setupECRPolicyDriver(t *testing.T) (*ingress.Client, *ecrsdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	ecrClient := awsclient.NewECRClient(awsCfg)
-	skipIfECRUnavailable(t, ecrClient)
+	requireECRAvailable(t, ecrClient)
 
 	return setupDriverEventingEnv(t, ecrpolicy.NewGenericECRLifecyclePolicyDriver(authservice.NewAuthClient())), ecrClient
 }

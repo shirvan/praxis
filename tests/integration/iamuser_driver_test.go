@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -37,30 +36,21 @@ func setupIAMUserDriver(t *testing.T) (*ingress.Client, *iamsdk.Client) {
 func createIAMGroup(t *testing.T, iamClient *iamsdk.Client, groupName string) {
 	t.Helper()
 	_, err := iamClient.CreateGroup(context.Background(), &iamsdk.CreateGroupInput{GroupName: aws.String(groupName)})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 }
 
 func createManagedPolicy(t *testing.T, iamClient *iamsdk.Client, name string) string {
 	t.Helper()
 	doc := allowAllS3PolicyDoc()
 	out, err := iamClient.CreatePolicy(context.Background(), &iamsdk.CreatePolicyInput{PolicyName: aws.String(name), PolicyDocument: aws.String(doc)})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 	return aws.ToString(out.Policy.Arn)
 }
 
 func createIAMUserDirect(t *testing.T, iamClient *iamsdk.Client, userName string) {
 	t.Helper()
 	_, err := iamClient.CreateUser(context.Background(), &iamsdk.CreateUserInput{UserName: aws.String(userName)})
-	if err != nil && strings.Contains(err.Error(), "Service 'iam' is not enabled") {
-		t.Skip("Moto IAM service is not enabled; restart the local stack after the compose update")
-	}
-	require.NoError(t, err)
+	require.NoError(t, err, "IAM API must be available in the integration environment")
 }
 
 func TestIAMUserProvision_CreatesUser(t *testing.T) {

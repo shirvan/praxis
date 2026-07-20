@@ -12,6 +12,7 @@ import (
 	snssdk "github.com/aws/aws-sdk-go-v2/service/sns"
 	sqssdk "github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"github.com/stretchr/testify/require"
 
 	"github.com/restatedev/sdk-go/ingress"
 
@@ -31,12 +32,10 @@ func uniqueTopicName(t *testing.T) string {
 	return fmt.Sprintf("praxis-test-%s-%d", name, time.Now().UnixNano()%100000)
 }
 
-func skipIfSNSUnavailable(t *testing.T, client *snssdk.Client) {
+func requireSNSAvailable(t *testing.T, client *snssdk.Client) {
 	t.Helper()
 	_, err := client.ListTopics(context.Background(), &snssdk.ListTopicsInput{})
-	if err != nil {
-		t.Skipf("SNS API unavailable in test environment: %v", err)
-	}
+	require.NoError(t, err, "SNS API must be available in the integration environment")
 }
 
 func setupSNSTopicDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
@@ -45,7 +44,7 @@ func setupSNSTopicDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	snsClient := awsclient.NewSNSClient(awsCfg)
-	skipIfSNSUnavailable(t, snsClient)
+	requireSNSAvailable(t, snsClient)
 
 	return setupDriverEventingEnv(t, snstopic.NewGenericSNSTopicDriver(authservice.NewAuthClient())), snsClient
 }
@@ -56,7 +55,7 @@ func setupSNSSubDriver(t *testing.T) (*ingress.Client, *snssdk.Client) {
 
 	awsCfg := motoAWSConfig(t)
 	snsClient := awsclient.NewSNSClient(awsCfg)
-	skipIfSNSUnavailable(t, snsClient)
+	requireSNSAvailable(t, snsClient)
 
 	return setupDriverEventingEnv(t, snssub.NewGenericSNSSubscriptionDriver(authservice.NewAuthClient())), snsClient
 }

@@ -68,7 +68,7 @@ func albDefaultSgId(t *testing.T, ec2Client *ec2sdk.Client) string {
 func setupALBDriver(t *testing.T) (*ingress.Client, *elbv2sdk.Client, *ec2sdk.Client) {
 	t.Helper()
 	configureLocalAccount(t)
-	skipIfELBv2Unavailable(t)
+	requireELBv2Available(t)
 
 	awsCfg := motoAWSConfig(t)
 	elbClient := awsclient.NewELBv2Client(awsCfg)

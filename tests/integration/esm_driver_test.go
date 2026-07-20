@@ -73,9 +73,7 @@ func createTestSQSQueue(t *testing.T, name string) string {
 	out, err := sqsClient.CreateQueue(context.Background(), &sqssdk.CreateQueueInput{
 		QueueName: aws.String(name),
 	})
-	if err != nil {
-		t.Skipf("SQS not available in Moto: %v", err)
-	}
+	require.NoError(t, err, "SQS API must be available in the integration environment")
 
 	attrs, err := sqsClient.GetQueueAttributes(context.Background(), &sqssdk.GetQueueAttributesInput{
 		QueueUrl:       out.QueueUrl,
