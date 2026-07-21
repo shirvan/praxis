@@ -1,0 +1,147 @@
+@import './tokens.css';
+
+:root,
+:root[data-theme='light'] {
+  --docs-text: #34445a;
+  --sl-color-accent-low: #e2edfb;
+  --sl-color-accent: var(--blue);
+  --sl-color-accent-high: #173f70;
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: #26354a;
+  --sl-color-gray-2: var(--docs-text);
+  --sl-color-gray-3: #718096;
+  --sl-color-gray-4: #9aa9ba;
+  --sl-color-gray-5: #d6dfe9;
+  --sl-color-gray-6: #edf2f7;
+  --sl-color-black: var(--surface);
+  --sl-color-text: var(--docs-text);
+  --sl-color-bg-nav: var(--nav-bg);
+  --sl-color-bg-sidebar: var(--surface-raised);
+  --docs-action-bg: #1f5da7;
+  --docs-action-text: #ffffff;
+  --docs-action-secondary-bg: #ffffff;
+  --docs-action-secondary-text: #172235;
+  --docs-action-secondary-border: #8797aa;
+  --sl-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sl-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+:root[data-theme='dark'] {
+  --docs-text: #c6ced9;
+  --sl-color-accent-low: #102a4d;
+  --sl-color-accent: var(--blue);
+  --sl-color-accent-high: #d7e8ff;
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: #d7deea;
+  --sl-color-gray-2: var(--docs-text);
+  --sl-color-gray-3: #768195;
+  --sl-color-gray-4: #4a5669;
+  --sl-color-gray-5: #263143;
+  --sl-color-gray-6: #171f2c;
+  --sl-color-black: var(--surface);
+  --sl-color-text: var(--docs-text);
+  --sl-color-bg-nav: var(--nav-bg);
+  --sl-color-bg-sidebar: var(--surface-raised);
+  --docs-action-bg: #2f74c8;
+  --docs-action-text: #ffffff;
+  --docs-action-secondary-bg: #171f2c;
+  --docs-action-secondary-text: #f4f7fb;
+  --docs-action-secondary-border: #60718a;
+}
+
+header.header {
+  background: var(--nav-bg);
+  backdrop-filter: blur(16px);
+}
+
+body {
+  font-weight: 450;
+}
+
+.sl-markdown-content {
+  color: var(--docs-text);
+  font-size: 1.015rem;
+}
+
+.sl-markdown-content :is(p, li, dd) {
+  font-weight: 450;
+}
+
+button,
+.sl-link-button,
+select {
+  font-weight: 700;
+}
+
+.sl-link-button.primary,
+.sl-link-button.primary:hover,
+.sl-link-button.primary:focus {
+  border-color: var(--docs-action-bg);
+  background: var(--docs-action-bg);
+  color: var(--docs-action-text);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000000 24%, transparent);
+}
+
+.sl-link-button.secondary,
+.sl-link-button.secondary:hover,
+.sl-link-button.secondary:focus {
+  border-color: var(--docs-action-secondary-border);
+  background: var(--docs-action-secondary-bg);
+  color: var(--docs-action-secondary-text);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background: var(--docs-action-bg);
+  color: var(--docs-action-text);
+  font-weight: 700;
+}
+
+@media (min-width: 50rem) {
+  header.header {
+    padding-inline: 0;
+  }
+
+  header.header > .header {
+    width: min(var(--max), calc(100% - 48px));
+    margin-inline: auto;
+  }
+}
+
+.site-title {
+  font-weight: 760;
+  letter-spacing: -0.025em;
+}
+
+.sl-markdown-content h2 {
+  border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
+}
+
+.sl-markdown-content a:not([class]) {
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content table {
+  font-size: 0.9rem;
+}
+
+.sl-markdown-content svg[data-d2-version] {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem auto;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px color-mix(in srgb, #000000 12%, transparent);
+}
+
+.sl-markdown-content .resource-reference {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface-raised);
+}

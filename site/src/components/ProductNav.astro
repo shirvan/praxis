@@ -1,0 +1,128 @@
+---
+import ThemeControl from './ThemeControl.astro';
+
+const base = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`;
+const path = Astro.url.pathname;
+const links = [
+  { label: 'Product', href: `${base}#product` },
+  { label: 'Resources', href: `${base}resources/` },
+  { label: 'Docs', href: `${base}docs/` },
+  { label: 'Architecture', href: `${base}docs/understand/architecture/` },
+];
+---
+
+<nav class="product-nav" aria-label="Primary navigation">
+  <div class="nav-inner">
+    <a class="brand" href={base} aria-label="Praxis home">
+      <span class="mark" aria-hidden="true">P</span>
+      <span>Praxis</span>
+      <span class="alpha">alpha</span>
+    </a>
+    <div class="nav-links">
+      {links.map((link) => (
+        <a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>
+      ))}
+      <ThemeControl />
+      <a class="github" href="https://github.com/shirvan/praxis">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<style>
+  .product-nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-bottom: 1px solid var(--line);
+    background: var(--nav-bg);
+    backdrop-filter: blur(18px);
+  }
+
+  .nav-inner {
+    max-width: var(--max);
+    min-height: 66px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-weight: 760;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+
+  .mark {
+    width: 30px;
+    height: 30px;
+    border: 1px solid color-mix(in srgb, var(--blue) 65%, var(--line));
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(145deg, #1c4275, #12243f);
+    color: #dcecff;
+    font-size: 0.86rem;
+  }
+
+  .alpha {
+    border: 1px solid color-mix(in srgb, var(--amber) 50%, var(--line));
+    border-radius: 999px;
+    padding: 2px 7px;
+    color: var(--amber);
+    font: 600 0.65rem/1.4 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .nav-links a {
+    color: var(--ink-subtle);
+    font-size: 0.9rem;
+    font-weight: 560;
+    text-decoration: none;
+  }
+
+  .nav-links a:hover,
+  .nav-links a[aria-current='page'] {
+    color: var(--ink);
+  }
+
+  .nav-links .github {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 13px;
+    color: var(--ink);
+  }
+
+  @media (max-width: 820px) {
+    .nav-inner {
+      align-items: flex-start;
+      flex-direction: column;
+      padding-block: 14px;
+    }
+
+    .nav-links {
+      width: 100%;
+      gap: 18px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .nav-links a {
+      white-space: nowrap;
+    }
+  }
+</style>

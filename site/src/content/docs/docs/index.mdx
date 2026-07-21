@@ -1,0 +1,66 @@
+---
+title: Praxis documentation
+description: Learn how to declare, plan, deploy, import, and continuously reconcile AWS infrastructure with Praxis.
+slug: docs
+template: splash
+hero:
+  tagline: Build and operate continuously converged AWS infrastructure with CUE and Restate.
+  actions:
+    - text: Deploy your first stack
+      link: start/first-deployment/
+      icon: right-arrow
+      variant: primary
+    - text: Browse AWS resources
+      link: ../resources/
+      icon: external
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Choose a path
+
+<CardGrid>
+  <Card title="Try Praxis" icon="rocket">
+    Start the local stack against Moto and deploy a real multi-resource CUE template.
+    [Follow the quickstart](/docs/start/first-deployment/).
+  </Card>
+  <Card title="Build a template" icon="puzzle">
+    Learn the resource shape, variables, validation, output expressions, and lifecycle controls.
+    [Read the template guide](/docs/build/templates/).
+  </Card>
+  <Card title="Operate resources" icon="seti:config">
+    Plan changes, import existing infrastructure, inspect conditions, and control reconciliation.
+    [Open the operations guide](/docs/operate/plan-deploy/).
+  </Card>
+  <Card title="Integrate with Praxis" icon="open-book">
+    Use the CLI, JSON output, or Restate ingress HTTP API from automation and agents.
+    [Browse the reference](/docs/reference/cli/).
+  </Card>
+  <Card title="Find an AWS resource" icon="magnifier">
+    Search all 51 resource kinds, filter by domain, and open lifecycle, lookup, schema,
+    and output details. [Browse the resource catalog](/resources/).
+  </Card>
+</CardGrid>
+
+## The mental model
+
+Praxis keeps two facts for each managed resource:
+
+1. **Desired state** comes from the evaluated CUE template.
+2. **Observed state** comes from the live AWS API.
+
+The resource driver compares them, reports conditions and field-level drift, and converges AWS according to the resource lifecycle policy. Restate supplies durable workflow progress, per-resource serialization, state, retries, and timers.
+
+## Reference
+
+<div class="resource-reference">
+  The **AWS resource catalog** is part of the Praxis reference. It covers every current
+  resource kind and provides both a scannable list and detailed resource pages.
+
+  [Open the AWS resource catalog →](/resources/)
+</div>
+
+:::caution[Alpha contract]
+Praxis currently supports one API version: `praxis.io/alpha`. The alpha contract can change without backwards compatibility. Use the documentation and schemas from the same Praxis revision.
+:::
