@@ -595,21 +595,24 @@ func TestLifecycle_EndToEnd_FullCycle(t *testing.T) {
 	pollDeploymentList(t, env.ingress, deployKey, false, 15*time.Second)
 
 	// Delete lifecycle CloudEvents should have been emitted.
-	cloudEvents3, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
+	expectedDeleteEventTypes := []string{
+		orchestrator.EventTypeDeploymentDeleteStarted,
+		orchestrator.EventTypeDeploymentDeleteDone,
+	}
+	cloudEvents3 := pollDeploymentEventTypes(
+		t,
 		env.ingress,
-		orchestrator.DeploymentEventStoreServiceName,
 		deployKey,
-		"ListSince",
-	).Request(t.Context(), int64(0))
-	require.NoError(t, err)
+		expectedDeleteEventTypes,
+		15*time.Second,
+	)
 	typeSet3 := make(map[string]bool, len(cloudEvents3))
 	for _, record := range cloudEvents3 {
 		typeSet3[record.Event.Type()] = true
 	}
-	assert.True(t, typeSet3[orchestrator.EventTypeDeploymentDeleteStarted],
-		"delete should emit deployment.delete.started")
-	assert.True(t, typeSet3[orchestrator.EventTypeDeploymentDeleteDone],
-		"delete should emit deployment.delete.completed")
+	for _, eventType := range expectedDeleteEventTypes {
+		assert.True(t, typeSet3[eventType])
+	}
 
 	t.Log("Full lifecycle test passed")
 }
