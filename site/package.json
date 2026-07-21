@@ -1,0 +1,17 @@
+{
+  "name": "praxis-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.2.1",
+    "@astrojs/starlight": "0.41.3",
+    "astro": "7.1.1",
+    "astro-d2": "^0.13.1",
+    "starlight-announcement": "^1.1.0"
+  }
+}

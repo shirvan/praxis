@@ -1,0 +1,28 @@
+---
+import DefaultFooter from '@astrojs/starlight/components/Footer.astro';
+---
+
+<DefaultFooter />
+<div class="license-footer">
+  <span>Praxis is open source.</span>
+  <a href="https://github.com/shirvan/praxis/blob/main/LICENSE">Apache License 2.0</a>
+</div>
+
+<style>
+  .license-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    margin-top: 2rem;
+    border-top: 1px solid var(--sl-color-hairline);
+    padding-top: 1.25rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+
+  a {
+    color: var(--sl-color-text-accent);
+    text-underline-offset: 0.2em;
+  }
+</style>

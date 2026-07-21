@@ -1,0 +1,75 @@
+---
+interface Props {
+  code: string;
+  label?: string;
+}
+
+const { code, label = 'CUE' } = Astro.props;
+---
+
+<praxis-code-block>
+  <div class="code-toolbar">
+    <span>{label}</span>
+    <button type="button" aria-label={`Copy ${label} example`}>Copy</button>
+  </div>
+  <pre><code>{code}</code></pre>
+</praxis-code-block>
+
+<script>
+  class PraxisCodeBlock extends HTMLElement {
+    connectedCallback() {
+      const button = this.querySelector('button');
+      const code = this.querySelector('code');
+      button?.addEventListener('click', async () => {
+        if (!code) return;
+        await navigator.clipboard.writeText(code.textContent ?? '');
+        button.textContent = 'Copied';
+        window.setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+      });
+    }
+  }
+
+  if (!customElements.get('praxis-code-block')) {
+    customElements.define('praxis-code-block', PraxisCodeBlock);
+  }
+</script>
+
+<style>
+  praxis-code-block {
+    display: block;
+    overflow: hidden;
+    border: 1px solid var(--code-line);
+    border-radius: 10px;
+    background: var(--code-surface);
+    color: var(--code-ink);
+  }
+
+  .code-toolbar {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--code-line);
+    padding: 0 12px 0 16px;
+    color: #aab5c4;
+    font: 650 .69rem/1 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .055em;
+    text-transform: uppercase;
+  }
+
+  button {
+    min-height: 28px;
+    border: 1px solid #3a4b63;
+    border-radius: 6px;
+    padding: 0 9px;
+    background: #151e2b;
+    color: #dce5f1;
+    cursor: pointer;
+    font: 650 .7rem/1 system-ui, sans-serif;
+    text-transform: none;
+  }
+
+  button:hover { border-color: #6883a5; }
+  button:focus-visible { outline: 2px solid #8bbcff; outline-offset: 2px; }
+  pre { margin: 0; padding: 20px; overflow: auto; color: var(--code-ink); font-size: .78rem; line-height: 1.68; }
+</style>

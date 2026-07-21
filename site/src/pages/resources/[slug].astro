@@ -1,0 +1,174 @@
+---
+import ProductNav from '../../components/ProductNav.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import { loadResourceReference, type ResourceReference } from '../../data/resource-reference';
+import { resources, type PraxisResource } from '../../data/resources';
+
+export function getStaticPaths() {
+  return resources.map((resource) => ({
+    params: { slug: resource.slug },
+    props: { resource, reference: loadResourceReference(resource) },
+  }));
+}
+
+interface Props { resource: PraxisResource; reference: ResourceReference }
+const { resource, reference } = Astro.props;
+const base = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`;
+const schemaUrl = `https://github.com/shirvan/praxis/blob/main/${resource.schema}`;
+const requiredCount = reference.specFields.filter((field) => field.required).length;
+const hasRegion = reference.specFields.some((field) => field.name === 'region');
+const lookupExample = `data: existing: {
+  kind: "${resource.kind}"${hasRegion ? '\n  region: "us-west-2"' : ''}
+  filter: {
+    name: "replace-with-provider-name"
+  }
+}`;
+const importIdentity = resource.details?.importIdentifier ?? `Provider identifier for the existing ${resource.kind}`;
+const importExample = `praxis import ${resource.kind} \\
+  --id <provider-identifier>${hasRegion ? ' \\\n  --region us-west-2' : ''} \\
+  --account production \\
+  --observe`;
+---
+
+<SiteLayout title={`${resource.kind} | Praxis resources`} description={resource.description}>
+  <ProductNav />
+  <main class="shell">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href={`${base}resources/`}>Resources</a><span>/</span><span>{resource.kind}</span></nav>
+    <header class="resource-header">
+      <div><p class="eyebrow">{resource.service} · {resource.domain}</p><h1>{resource.kind}</h1><p>{resource.description}</p></div>
+      <div class="status-card"><span>Generic driver</span><strong>Uniform lifecycle</strong><dl><div><dt>Scope</dt><dd>{resource.scope}</dd></div><div><dt>Spec fields</dt><dd>{reference.specFields.length}</dd></div><div><dt>Outputs</dt><dd>{reference.outputFields.length}</dd></div><div><dt>Lookup</dt><dd class="yes">Supported</dd></div></dl></div>
+    </header>
+
+    <div class="resource-content">
+      <article>
+        <section id="example">
+          <div class="section-intro"><p class="section-kicker">Resource definition</p><h2>What this resource looks like</h2><p>This is the CUE shape a Praxis template uses to declare a {resource.kind}. The resource key is local to the template; <code>metadata.name</code> supplies its stable Praxis identity.</p></div>
+          <CodeBlock code={reference.example} label={reference.exampleOrigin === 'generated' ? 'CUE shape' : 'CUE example'} />
+          {reference.exampleOrigin === 'repository' && <p class="example-note">Excerpted from <a href={reference.exampleSource?.url}>{reference.exampleSource?.path}</a>. Open the complete example for its variables and related resources.</p>}
+          {reference.exampleOrigin === 'generated' && <p class="example-note">This representative shape is generated from the current alpha schema. Replace placeholders and review the accepted values below before deploying it.</p>}
+          {reference.examples.length > 0 && (
+            <div class="examples-in-repo">
+              <strong>Complete examples in the repository</strong>
+              <div>{reference.examples.map((example) => <a href={example.url}>{example.label}</a>)}</div>
+            </div>
+          )}
+        </section>
+
+        <section id="configuration">
+          <div class="section-intro"><p class="section-kicker">Desired state</p><h2>Configuration</h2><p>The <code>spec</code> block accepts {reference.specFields.length} fields. {requiredCount} {requiredCount === 1 ? 'is' : 'are'} required by the schema; fields with defaults can be omitted.</p></div>
+          <div class="field-list" role="list">
+            {reference.specFields.map((field) => (
+              <div class="field-row" role="listitem">
+                <div class="field-name"><code>{field.name}</code><span class:list={{ required: field.required }}>{field.required ? 'Required' : 'Optional'}</span></div>
+                <div class="field-description"><p>{field.description}</p><code class="constraint">{field.constraint}</code></div>
+                <div class="field-facts"><span>{field.type}</span>{field.defaultValue && <span>Default <code>{field.defaultValue}</code></span>}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="outputs">
+          <div class="section-intro"><p class="section-kicker">Observed values</p><h2>Outputs</h2><p>Praxis records these values after observation. A dependent resource can read one with <code>{'${resources.<name>.outputs.<field>}'}</code>.</p></div>
+          <div class="output-grid">
+            {reference.outputFields.map((field) => <div><code>{field.name}</code><span>{field.type}{field.required ? '' : ' · optional'}</span></div>)}
+          </div>
+        </section>
+
+        <section id="lookup">
+          <div class="section-intro"><p class="section-kicker">Read without ownership</p><h2>Data-source lookup</h2><p>A <code>data</code> block reads an existing {resource.kind} and exposes its outputs without storing lifecycle state. The generic filter surface accepts <code>id</code>, <code>name</code>, and <code>tag</code>; supported combinations depend on the AWS identity used by this resource.</p></div>
+          <CodeBlock code={lookupExample} label="CUE data source" />
+          {resource.details?.lookupFilters && <div class="supported-filters"><strong>Documented selectors</strong>{resource.details.lookupFilters.map((filter) => <code>{filter}</code>)}</div>}
+          <p><a class="schema-link" href={`${base}docs/build/data-sources/`}>Understand data sources and filters →</a></p>
+        </section>
+
+        <section id="import">
+          <div class="section-intro"><p class="section-kicker">Adopt existing infrastructure</p><h2>Import</h2><p>Import persists Praxis state for an existing AWS resource. For this kind, supply: {importIdentity}. The example starts in observed mode so Praxis reports drift without correcting it.</p></div>
+          <CodeBlock code={importExample} label="CLI" />
+          <p><a class="schema-link" href={`${base}docs/operate/import/`}>Choose managed or observed ownership →</a></p>
+        </section>
+
+        <section id="schema">
+          <div class="section-intro"><p class="section-kicker">Canonical contract</p><h2>Complete CUE schema</h2><p>The field guide above is derived from this definition. The schema remains the source of truth for accepted values, defaults, validation constraints, and outputs in the current alpha revision.</p></div>
+          <details class="schema-disclosure"><summary>Show the complete schema</summary><div><CodeBlock code={reference.schemaSource} label={resource.schema} /></div></details>
+          <p><a class="schema-link" href={schemaUrl}>View this schema on GitHub →</a></p>
+        </section>
+      </article>
+
+      <aside>
+        <div class="aside-section"><h2>On this page</h2><nav aria-label="On this page"><a href="#example">Resource definition</a><a href="#configuration">Configuration</a><a href="#outputs">Outputs</a><a href="#lookup">Data-source lookup</a><a href="#import">Import</a><a href="#schema">Complete schema</a></nav></div>
+        <div class="aside-section"><h2>Capabilities</h2><ul><li><span>Provision</span><b>Yes</b></li><li><span>Plan</span><b>Yes</b></li><li><span>Import</span><b>Yes</b></li><li><span>Observe</span><b>Yes</b></li><li><span>Reconcile</span><b>Yes</b></li><li><span>Lookup</span><b>Yes</b></li></ul><a href={`${base}docs/operate/reconciliation/`}>Lifecycle semantics →</a></div>
+      </aside>
+    </div>
+  </main>
+  <SiteFooter />
+</SiteLayout>
+
+<style>
+  .shell { width: min(var(--max), calc(100% - 48px)); margin: 0 auto; }
+  .breadcrumbs { display: flex; gap: 9px; padding-top: 30px; color: var(--ink-muted); font-size: .78rem; }
+  .breadcrumbs a { color: var(--blue-bright); text-decoration: none; }
+  .resource-header { display: grid; grid-template-columns: 1fr 330px; gap: 70px; align-items: end; padding: 72px 0 62px; border-bottom: 1px solid var(--line); }
+  .eyebrow { margin: 0 0 14px; color: var(--blue-bright); font: 650 .75rem/1.4 "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: clamp(3rem, 7vw, 5.5rem); line-height: 1; letter-spacing: -.06em; }
+  .resource-header > div > p:last-child { max-width: 690px; margin: 22px 0 0; color: var(--ink-subtle); font-size: 1.08rem; line-height: 1.68; }
+  .status-card { border: 1px solid var(--line); border-radius: 11px; padding: 20px; background: var(--surface-raised); }
+  .status-card > span { color: var(--green); font: .65rem/1.2 "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+  .status-card > strong { display: block; margin-top: 7px; }
+  dl { margin: 18px 0 0; }
+  dl div { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding: 10px 0; font-size: .78rem; }
+  dt { color: var(--ink-subtle); }
+  dd { margin: 0; } dd.yes { color: var(--green); }
+  .resource-content { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 64px; padding: 64px 0 110px; }
+  article section { padding-bottom: 56px; scroll-margin-top: 92px; }
+  article section + section { border-top: 1px solid var(--line); padding-top: 56px; }
+  h2 { margin: 0; font-size: 1.68rem; letter-spacing: -.03em; }
+  section p { max-width: 780px; color: var(--ink-subtle); line-height: 1.72; }
+  :not(pre) > code { border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; background: var(--surface-raised); color: var(--blue-bright); font-size: .82em; }
+  .section-intro { margin-bottom: 24px; }
+  .section-intro > p:last-child { margin-bottom: 0; }
+  .section-kicker { margin: 0 0 8px; color: var(--blue-bright); font: 650 .69rem/1.35 "SFMono-Regular", Consolas, monospace; letter-spacing: .07em; text-transform: uppercase; }
+  .example-note { margin: 12px 0 0; border-left: 2px solid var(--amber); padding-left: 12px; font-size: .8rem; }
+  .examples-in-repo { margin-top: 22px; border: 1px solid var(--line); border-radius: 9px; padding: 17px; background: var(--surface-raised); }
+  .examples-in-repo strong { font-size: .8rem; }
+  .examples-in-repo div { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+  .examples-in-repo a { color: var(--blue-bright); font-size: .79rem; text-decoration: none; }
+  .field-list { overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-raised); }
+  .field-row { display: grid; grid-template-columns: minmax(150px, .55fr) minmax(280px, 1.4fr) minmax(130px, .55fr); gap: 20px; padding: 18px 20px; }
+  .field-row + .field-row { border-top: 1px solid var(--line); }
+  .field-name { display: flex; align-items: flex-start; flex-direction: column; gap: 8px; }
+  .field-name > code { border: 0; padding: 0; background: transparent; color: var(--ink); font-size: .8rem; font-weight: 650; }
+  .field-name span { border: 1px solid var(--line); border-radius: 999px; padding: 3px 7px; color: var(--ink-muted); font: 650 .58rem/1 "SFMono-Regular", Consolas, monospace; letter-spacing: .03em; text-transform: uppercase; }
+  .field-name span.required { border-color: color-mix(in srgb, var(--blue) 48%, var(--line)); background: var(--blue-soft); color: var(--blue-bright); }
+  .field-description p { margin: 0 0 9px; color: var(--ink-subtle); font-size: .84rem; line-height: 1.55; }
+  .field-description .constraint { display: block; overflow-wrap: anywhere; border: 0; padding: 0; background: transparent; color: var(--ink-muted); font-size: .67rem; line-height: 1.55; }
+  .field-facts { display: flex; align-items: flex-end; flex-direction: column; gap: 8px; color: var(--ink-muted); font-size: .7rem; text-align: right; }
+  .field-facts > span:first-child { color: var(--ink); font-weight: 650; }
+  .field-facts code { display: inline; margin-left: 3px; }
+  .output-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); }
+  .output-grid div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  .output-grid div:nth-child(odd) { border-right: 1px solid var(--line); }
+  .output-grid code { border: 0; padding: 0; background: transparent; color: var(--ink); font-size: .76rem; }
+  .output-grid span { color: var(--ink-muted); font-size: .67rem; }
+  .supported-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+  .supported-filters strong { margin-right: 4px; font-size: .76rem; }
+  .supported-filters code { font-size: .69rem; }
+  .schema-disclosure { border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); }
+  .schema-disclosure summary { padding: 16px 18px; color: var(--ink); cursor: pointer; font-size: .84rem; font-weight: 650; }
+  .schema-disclosure > div { border-top: 1px solid var(--line); padding: 12px; }
+  .schema-link, aside > a { color: var(--blue-bright); font-size: .86rem; font-weight: 620; text-decoration: none; }
+  aside { position: sticky; top: 92px; align-self: start; border: 1px solid var(--line); border-radius: 11px; padding: 20px; background: var(--surface-raised); }
+  aside h2 { font-size: .78rem; letter-spacing: .03em; text-transform: uppercase; }
+  .aside-section + .aside-section { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 22px; }
+  aside nav { display: grid; gap: 9px; margin-top: 14px; }
+  aside nav a { color: var(--ink-subtle); font-size: .75rem; text-decoration: none; }
+  aside nav a:hover { color: var(--ink); }
+  aside ul { margin: 14px 0 18px; padding: 0; list-style: none; }
+  aside li { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding: 9px 0; color: var(--ink-subtle); font-size: .78rem; }
+  aside li b { color: var(--green); font-weight: 650; }
+  .aside-section > a { color: var(--blue-bright); font-size: .78rem; text-decoration: none; }
+  @media (max-width: 900px) { .resource-header, .resource-content { grid-template-columns: 1fr; gap: 36px; } .status-card { max-width: 430px; } aside { position: static; } .field-row { grid-template-columns: 150px 1fr; } .field-facts { grid-column: 2; align-items: flex-start; flex-direction: row; text-align: left; } }
+  @media (max-width: 680px) { .field-row { grid-template-columns: 1fr; gap: 12px; } .field-facts { grid-column: 1; } .output-grid { grid-template-columns: 1fr; } .output-grid div:nth-child(odd) { border-right: 0; } }
+  @media (max-width: 620px) { .shell { width: min(var(--max), calc(100% - 32px)); } .resource-header { padding-top: 52px; } }
+</style>
