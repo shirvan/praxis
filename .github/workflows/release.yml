@@ -228,15 +228,14 @@ jobs:
           git push --force origin refs/tags/alpha
 
       - name: Create or update the alpha release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: alpha
           name: Praxis alpha
           prerelease: true
           make_latest: false
           generate_release_notes: false
-          body: |
-            Praxis alpha is a mutable, single-version contract.
-
-            Update the CLI, all Praxis service images, chart, schemas, and templates together. Backwards compatibility between alpha revisions is not supported.
+          body_path: .github/RELEASE_ALPHA.md
+          fail_on_unmatched_files: true
+          preserve_order: true
           files: dist/alpha/*
