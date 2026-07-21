@@ -423,22 +423,25 @@ func TestLifecycle_EndToEnd_FullCycle(t *testing.T) {
 	pollDeploymentList(t, env.ingress, deployKey, true, 15*time.Second)
 
 	// Verify CloudEvents were emitted for the apply lifecycle.
-	cloudEvents, err := ingress.Object[int64, []orchestrator.SequencedCloudEvent](
+	expectedApplyEventTypes := []string{
+		orchestrator.EventTypeDeploymentSubmitted,
+		orchestrator.EventTypeDeploymentStarted,
+		orchestrator.EventTypeDeploymentCompleted,
+	}
+	cloudEvents := pollDeploymentEventTypes(
+		t,
 		env.ingress,
-		orchestrator.DeploymentEventStoreServiceName,
 		deployKey,
-		"ListSince",
-	).Request(t.Context(), int64(0))
-	require.NoError(t, err)
-	require.NotEmpty(t, cloudEvents,
-		"apply workflow should have emitted CloudEvents")
+		expectedApplyEventTypes,
+		15*time.Second,
+	)
 	typeSet := make(map[string]bool, len(cloudEvents))
 	for _, record := range cloudEvents {
 		typeSet[record.Event.Type()] = true
 	}
-	assert.True(t, typeSet[orchestrator.EventTypeDeploymentSubmitted])
-	assert.True(t, typeSet[orchestrator.EventTypeDeploymentStarted])
-	assert.True(t, typeSet[orchestrator.EventTypeDeploymentCompleted])
+	for _, eventType := range expectedApplyEventTypes {
+		assert.True(t, typeSet[eventType])
+	}
 	t.Logf("Apply emitted %d CloudEvents", len(cloudEvents))
 
 	// ══════════════════════════════════════════════════════════════════
